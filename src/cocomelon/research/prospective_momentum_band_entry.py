@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
+from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.learning_feature_snapshots import (
@@ -149,6 +150,169 @@ def _signed(value: Decimal, direction: Direction) -> Decimal:
     return value if direction is Direction.LONG else -value
 
 
+def prospective_momentum_band_snapshot_decision(
+    feature_store: LearningFeatureSnapshotStore,
+    *,
+    market: MarketId,
+    direction: Direction,
+    timestamp_ms: int,
+    feature_snapshot_id: str,
+    prior_strikes: int,
+) -> dict[str, object]:
+    if prior_strikes < 0:
+        raise ProspectiveMomentumBandEntryError(
+            "prior strikes must be non-negative"
+        )
+    detail: dict[str, object] = {
+        "prior_strikes": prior_strikes,
+        "feature_snapshot_id": feature_snapshot_id,
+        "feature_record_sha256": None,
+        "decision": "ADMIT",
+        "reason": "nonzero_strike_bypass",
+    }
+    if prior_strikes > 0:
+        return detail
+
+    try:
+        verified = feature_store.load(feature_snapshot_id)
+    except Exception as exc:
+        raise ProspectiveMomentumBandEntryError(
+            "opening feature snapshot could not be verified"
+        ) from exc
+    if verified is None:
+        detail["reason"] = "missing_feature_fail_open"
+        return detail
+
+    snapshot = verified.snapshot
+    detail["feature_record_sha256"] = verified.record_sha256
+    if snapshot.market != market:
+        raise ProspectiveMomentumBandEntryError(
+            "opening feature market does not match trade"
+        )
+    if snapshot.as_of_ms > timestamp_ms:
+        raise ProspectiveMomentumBandEntryError(
+            "opening feature snapshot is from the future"
+        )
+    if snapshot.return_1h is None or snapshot.day_return is None:
+        detail["reason"] = "incomplete_feature_fail_open"
+        return detail
+
+    signed_return_1h = _signed(snapshot.return_1h, direction)
+    signed_day_return = _signed(snapshot.day_return, direction)
+    should_block = (
+        signed_return_1h < MIN_SIGNED_RETURN_1H
+        or signed_day_return > MAX_SIGNED_DAY_RETURN
+    )
+    detail.update(
+        {
+            "signed_return_1h": str(signed_return_1h),
+            "signed_day_return": str(signed_day_return),
+            "decision": "BLOCK" if should_block else "ADMIT",
+            "reason": (
+                "momentum_band"
+                if should_block
+                else "momentum_band_pass"
+            ),
+        }
+    )
+    return detail
+
+
+def prospective_momentum_band_prior_strikes_at(
+    trades: Sequence[TradeJournalEntry],
+    feature_store: LearningFeatureSnapshotStore,
+    state: ProspectiveMomentumBandEntryState,
+    *,
+    market: MarketId,
+    direction: Direction,
+    timestamp_ms: int,
+) -> int:
+    if timestamp_ms < state.started_at_ms:
+        raise ProspectiveMomentumBandEntryError(
+            "query timestamp precedes momentum-band clean start"
+        )
+
+    prospective = tuple(
+        trade
+        for trade in trades
+        if trade.opened_at_ms >= state.started_at_ms
+        and trade.opened_at_ms < timestamp_ms
+    )
+    trade_ids = tuple(trade.trade_id for trade in prospective)
+    if len(set(trade_ids)) != len(trade_ids):
+        raise ProspectiveMomentumBandEntryError(
+            "prospective trades contain duplicate trade ids"
+        )
+
+    strikes: dict[tuple[str, Direction], int] = {}
+    admitted_ids: set[str] = set()
+    events: list[tuple[int, int, TradeJournalEntry]] = []
+    for trade in prospective:
+        events.append((trade.opened_at_ms, 1, trade))
+        if trade.closed_at_ms <= timestamp_ms:
+            events.append((trade.closed_at_ms, 0, trade))
+    events.sort(
+        key=lambda item: (
+            item[0],
+            item[1],
+            item[2].opened_at_ms,
+            item[2].trade_id,
+        )
+    )
+
+    for _event_ms, event_kind, trade in events:
+        key = (trade.market.canonical, trade.direction)
+        if event_kind == 1:
+            prior_strikes = strikes.get(key, 0)
+            detail = prospective_momentum_band_snapshot_decision(
+                feature_store,
+                market=trade.market,
+                direction=trade.direction,
+                timestamp_ms=trade.opened_at_ms,
+                feature_snapshot_id=trade.feature_snapshot_id,
+                prior_strikes=prior_strikes,
+            )
+            if detail["decision"] == "ADMIT":
+                admitted_ids.add(trade.trade_id)
+            continue
+        if trade.trade_id not in admitted_ids:
+            continue
+        if _qualifying_loss(trade):
+            strikes[key] = strikes.get(key, 0) + 1
+        else:
+            strikes[key] = 0
+
+    return strikes.get((market.canonical, direction), 0)
+
+
+def prospective_momentum_band_opportunity_decision(
+    trades: Sequence[TradeJournalEntry],
+    feature_store: LearningFeatureSnapshotStore,
+    state: ProspectiveMomentumBandEntryState,
+    *,
+    market: MarketId,
+    direction: Direction,
+    timestamp_ms: int,
+    feature_snapshot_id: str,
+) -> dict[str, object]:
+    prior_strikes = prospective_momentum_band_prior_strikes_at(
+        trades,
+        feature_store,
+        state,
+        market=market,
+        direction=direction,
+        timestamp_ms=timestamp_ms,
+    )
+    return prospective_momentum_band_snapshot_decision(
+        feature_store,
+        market=market,
+        direction=direction,
+        timestamp_ms=timestamp_ms,
+        feature_snapshot_id=feature_snapshot_id,
+        prior_strikes=prior_strikes,
+    )
+
+
 def _direction_summary(
     trades: tuple[TradeJournalEntry, ...],
     blocked_ids: set[str],
@@ -246,78 +410,26 @@ def prospective_momentum_band_entry_summary(
         if event_kind == 1:
             prior_strikes = strikes.get(key, 0)
             prior_strikes_by_trade[trade.trade_id] = prior_strikes
-            detail: dict[str, object] = {
-                "prior_strikes": prior_strikes,
-                "feature_snapshot_id": trade.feature_snapshot_id,
-                "decision": "ADMIT",
-                "reason": "nonzero_strike_bypass",
-            }
-            if prior_strikes > 0:
+            detail = prospective_momentum_band_snapshot_decision(
+                feature_store,
+                market=trade.market,
+                direction=trade.direction,
+                timestamp_ms=trade.opened_at_ms,
+                feature_snapshot_id=trade.feature_snapshot_id,
+                prior_strikes=prior_strikes,
+            )
+            reason = detail["reason"]
+            if reason == "nonzero_strike_bypass":
                 nonzero_strike_bypass += 1
-                admitted_ids.add(trade.trade_id)
-                decision_details[trade.trade_id] = detail
-                continue
-
-            try:
-                verified = feature_store.load(
-                    trade.feature_snapshot_id
-                )
-            except Exception as exc:
-                raise ProspectiveMomentumBandEntryError(
-                    "opening feature snapshot could not be verified"
-                ) from exc
-            if verified is None:
+            elif reason in {
+                "missing_feature_fail_open",
+                "incomplete_feature_fail_open",
+            }:
                 missing_feature_ids.add(trade.trade_id)
-                detail["reason"] = "missing_feature_fail_open"
-                admitted_ids.add(trade.trade_id)
-                decision_details[trade.trade_id] = detail
-                continue
+            else:
+                zero_strike_feature_evaluated += 1
 
-            snapshot = verified.snapshot
-            if snapshot.market != trade.market:
-                raise ProspectiveMomentumBandEntryError(
-                    "opening feature market does not match trade"
-                )
-            if snapshot.as_of_ms > trade.opened_at_ms:
-                raise ProspectiveMomentumBandEntryError(
-                    "opening feature snapshot is from the future"
-                )
-            if (
-                snapshot.return_1h is None
-                or snapshot.day_return is None
-            ):
-                missing_feature_ids.add(trade.trade_id)
-                detail["reason"] = "incomplete_feature_fail_open"
-                admitted_ids.add(trade.trade_id)
-                decision_details[trade.trade_id] = detail
-                continue
-
-            zero_strike_feature_evaluated += 1
-            signed_return_1h = _signed(
-                snapshot.return_1h,
-                trade.direction,
-            )
-            signed_day_return = _signed(
-                snapshot.day_return,
-                trade.direction,
-            )
-            should_block = (
-                signed_return_1h < MIN_SIGNED_RETURN_1H
-                or signed_day_return > MAX_SIGNED_DAY_RETURN
-            )
-            detail.update(
-                {
-                    "signed_return_1h": str(signed_return_1h),
-                    "signed_day_return": str(signed_day_return),
-                    "decision": "BLOCK" if should_block else "ADMIT",
-                    "reason": (
-                        "momentum_band"
-                        if should_block
-                        else "momentum_band_pass"
-                    ),
-                }
-            )
-            if should_block:
+            if detail["decision"] == "BLOCK":
                 blocked_ids.add(trade.trade_id)
             else:
                 admitted_ids.add(trade.trade_id)
