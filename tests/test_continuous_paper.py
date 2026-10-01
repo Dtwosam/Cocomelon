@@ -57,6 +57,7 @@ from cocomelon.continuous_paper import (
     _prospective_consecutive_loss_cooldown_shadow_payload,
     _prospective_full_stack_capacity_reflow_payload,
     _prospective_full_stack_entry_exit_payload,
+    _prospective_full_stack_exit_capacity_reflow_payload,
     _prospective_momentum_band_entry_payload,
     _prospective_two_strike_stop_filter_payload,
     _record_from_gap,
@@ -170,6 +171,100 @@ def test_candidate_stack_overlap_telemetry_fails_open() -> None:
     assert payload["promotion_authority"] is False
     assert payload["changes_readiness_gate"] is False
     assert "started_at_ms" in str(payload["error"])
+def test_full_stack_exit_capacity_reflow_telemetry_fails_open() -> None:
+    payload = _prospective_full_stack_exit_capacity_reflow_payload(
+        SimpleNamespace(iter_records=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(started_at_ms=0),  # type: ignore[arg-type]
+        SimpleNamespace(started_at_ms=0),  # type: ignore[arg-type]
+        SimpleNamespace(started_at_ms=0),  # type: ignore[arg-type]
+        {},
+        {},
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        PaperExecutionConfig(),
+        position_history_loader=lambda _plan_id, _through_ms: (),
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["changes_readiness_gate"] is False
+    assert "overlap_started_at_ms" in str(payload["error"])
+
+
+def test_full_stack_exit_capacity_reflow_composes_exact_one_hop_economics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "prospective_full_stack_exit_capacity_reflow",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            releases=(),
+            release_terminal_contributions=(),
+            summary={
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "descriptive_only": True,
+                "changes_readiness_gate": False,
+                "integrity_clean": True,
+                "portfolio_counterfactual": False,
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "prospective_capacity_reflow_fill_feasibility_summary",
+        lambda *_args, **_kwargs: {
+            "replacement_entry_fills_modeled": True,
+            "fillable_options": 1,
+        },
+    )
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "evaluate_prospective_capacity_reflow_exit_fill",
+        lambda *_args, **_kwargs: {
+            "replacement_exit_fills_modeled": True,
+        },
+    )
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "evaluate_prospective_capacity_reflow_realized_pnl",
+        lambda *_args, **_kwargs: {
+            "exact_realized_pnl_available": True,
+            "exact_realized_pnl_option_horizons": 1,
+            "strategy_level_realized_pnl_claimed": False,
+        },
+    )
+
+    payload = _prospective_full_stack_exit_capacity_reflow_payload(
+        SimpleNamespace(iter_records=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(started_at_ms=0),  # type: ignore[arg-type]
+        SimpleNamespace(started_at_ms=0),  # type: ignore[arg-type]
+        SimpleNamespace(started_at_ms=0),  # type: ignore[arg-type]
+        {"overlap_started_at_ms": 0, "breakeven_started_at_ms": 0},
+        {},
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        PaperExecutionConfig(),
+        position_history_loader=lambda _plan_id, _through_ms: (),
+    )
+
+    assert payload["enabled"] is True
+    assert payload["replacement_entries_modeled"] is True
+    assert payload["replacement_exits_modeled"] is True
+    assert payload["pnl_modeled"] is True
+    assert payload["exact_realized_pnl_available"] is True
+    assert payload["cross_horizon_economics_aggregated"] is False
+    assert payload["strategy_level_realized_pnl_claimed"] is False
+    assert payload["portfolio_counterfactual"] is False
+
+
 def test_full_stack_capacity_reflow_telemetry_fails_open() -> None:
     payload = _prospective_full_stack_capacity_reflow_payload(
         SimpleNamespace(iter_records=lambda: ()),  # type: ignore[arg-type]
