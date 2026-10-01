@@ -436,27 +436,30 @@ jobs:
               "",
               "### Fixed cooldown windows",
               "",
-              "| Relaxed cooldown | Terminal options | Filled | Settled 1h | 1h PnL | LOO option min | LOO market min |",
-              "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+              "| Relaxed cooldown | Terminal | Filled | Settled 1h | 1h PnL | Fee-adj return | Ready? |",
+              "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
           ]
           for window_ms in ledger["relaxed_cooldown_windows_ms"]:
               item = summary["relaxation_windows"][str(window_ms)]
               robust = item["robustness"]
+              readiness = robust["review_readiness"]
               lines.append(
                   "| {minutes}m | {terminal} | {filled} | {settled} | "
-                  "{pnl} | {loo_option} | {loo_market} |".format(
+                  "{pnl} | {ret} | {ready} |".format(
                       minutes=window_ms // 60000,
                       terminal=item["terminal_options"],
                       filled=item["filled_options"],
                       settled=robust["settled_options"],
                       pnl=robust["total_entry_fee_adjusted_1h_pnl"],
-                      loo_option=robust["leave_one_option_out_min_pnl"],
-                      loo_market=robust["leave_one_market_out_min_pnl"],
+                      ret=robust["total_fee_adjusted_directional_return"],
+                      ready=readiness["ready_for_evidence_review"],
                   )
               )
           lines.extend(
               [
                   "",
+                  "Precommitted review bar per window: >=20 settled 1h options, >=5 LONG, >=5 SHORT, >=4 markets, positive fee-adjusted PnL and return, plus leave-one-option and leave-one-market robustness in both units.",
+                  "Evidence review readiness cannot change the real cooldown; realized-exit evidence is still required before any risk-limit proposal.",
                   "Only terminal option rows are immutable. Filled rows remain pending while any 5m/15m/1h mark is pending or missing.",
                   "Every previously published terminal row must remain byte-for-byte equivalent after canonicalization.",
                   "",
