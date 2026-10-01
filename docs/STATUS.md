@@ -3457,3 +3457,21 @@ The ledger mirrors the precommitted sample/economic/leave-one-trade/leave-one-ma
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Candidate stack overlap diagnostic — 2026-10-01
+
+The frozen combined entry selector and the frozen future-only two-strike stop filter now have a shared clean-overlap diagnostic starting at the later candidate start.
+
+Every matched closed trade is placed into exactly one descriptive bucket:
+
+- blocked by both candidates;
+- blocked only by the combined selector;
+- blocked only by the two-strike candidate;
+- blocked by neither.
+
+The report compares actual, combined-only, two-strike-only, and stacked trade-contribution PnL/net R. The key incremental quantity is the two-strike-only bucket: those are trades the new repeated-stop rule removes that the existing combined selector would still have taken. Its contribution is also stress-tested with the same trade/market robustness framework and split by LONG versus SHORT.
+
+This overlap is descriptive only. It gives no fresh readiness credit to either candidate, does not combine their promotion gates, and does not change paper execution, entries, exits, sizing, stops, risk, or live authority.
+
+**LIVE TRADING: DISABLED.**

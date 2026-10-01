@@ -11,6 +11,7 @@ from scripts.render_continuous_paper_live_status import (
     _delayed_entry_stop_l2_lines,
     _opening_opportunity_evidence_lines,
     _prospective_allowed_residual_lines,
+    _prospective_candidate_stack_overlap_lines,
     _prospective_capacity_reflow_exit_fill_lines,
     _prospective_capacity_reflow_fill_feasibility_lines,
     _prospective_capacity_reflow_forward_excursion_lines,
@@ -6362,3 +6363,103 @@ def test_two_strike_renderer_exposes_restore_failure() -> None:
     assert "ValueError: bad state" in output
     assert "research error" in output
     assert "RuntimeError: audit boom" in output
+
+
+def test_candidate_stack_overlap_renderer_exposes_incremental_value() -> None:
+    output = "\n".join(
+        _prospective_candidate_stack_overlap_lines(
+            {
+                "enabled": True,
+                "error": None,
+                "overlap_started_at_ms": 1000,
+                "closed_trades_since_overlap_start": 4,
+                "matched_trades": 4,
+                "missing_combined_decisions": 0,
+                "missing_two_strike_decisions": 0,
+                "integrity_clean": True,
+                "actual_net_pnl": "-4",
+                "combined_candidate_net_pnl": "2",
+                "two_strike_candidate_net_pnl": "12",
+                "stack_candidate_net_pnl": "8",
+                "stack_minus_combined_net_pnl": "6",
+                "stack_minus_combined_net_r": "0.6",
+                "stack_minus_two_strike_net_pnl": "-4",
+                "stack_minus_two_strike_net_r": "-0.4",
+                "buckets": {
+                    "both_block": {
+                        "trades": 1,
+                        "wins": 0,
+                        "losses": 1,
+                        "net_pnl": "-10",
+                        "net_r": "-1",
+                    },
+                    "combined_only": {
+                        "trades": 1,
+                        "wins": 1,
+                        "losses": 0,
+                        "net_pnl": "4",
+                        "net_r": "0.4",
+                    },
+                    "two_strike_only": {
+                        "trades": 1,
+                        "wins": 0,
+                        "losses": 1,
+                        "net_pnl": "-6",
+                        "net_r": "-0.6",
+                    },
+                    "neither_block": {
+                        "trades": 1,
+                        "wins": 1,
+                        "losses": 0,
+                        "net_pnl": "8",
+                        "net_r": "0.8",
+                    },
+                },
+                "two_strike_incremental_by_direction": {
+                    "long": {
+                        "trades": 0,
+                        "wins": 0,
+                        "losses": 0,
+                        "net_pnl": "0",
+                        "net_r": "0",
+                    },
+                    "short": {
+                        "trades": 1,
+                        "wins": 0,
+                        "losses": 1,
+                        "net_pnl": "-6",
+                        "net_r": "-0.6",
+                    },
+                },
+                "two_strike_incremental_robustness": {
+                    "leave_one_trade_out_min_delta": "0",
+                    "positive_after_any_single_trade_removed": False,
+                    "leave_one_market_out_min_delta": "0",
+                    "positive_after_any_single_market_removed": False,
+                },
+            }
+        )
+    )
+
+    assert "Prospective candidate stack overlap" in output
+    assert "`1000 / 4 / 4`" in output
+    assert "| Both block | 1 | 0 | 1 | -10 | -1 |" in output
+    assert "| Combined only | 1 | 1 | 0 | 4 | 0.4 |" in output
+    assert "| Two-strike only | 1 | 0 | 1 | -6 | -0.6 |" in output
+    assert "| Neither blocks | 1 | 1 | 0 | 8 | 0.8 |" in output
+    assert "| SHORT | 1 | 0 | 1 | -6 | -0.6 |" in output
+    assert "does not change either candidate's readiness gate" in output
+
+
+def test_candidate_stack_overlap_renderer_exposes_failure() -> None:
+    output = "\n".join(
+        _prospective_candidate_stack_overlap_lines(
+            {
+                "enabled": False,
+                "error": "RuntimeError: overlap boom",
+            }
+        )
+    )
+
+    assert "research error" in output
+    assert "RuntimeError: overlap boom" in output

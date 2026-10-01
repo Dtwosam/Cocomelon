@@ -411,6 +411,10 @@ def prospective_combined_entry_filter_summary(
         ),
         "allowed_net_pnl": str(allowed_net_pnl),
         "blocked_net_pnl": str(blocked_net_pnl),
+        "decision_block_reason_by_trade_id": {
+            trade.trade_id: reason
+            for trade, _rank, _lead_strategy, reason in attributed
+        },
         "robustness": robustness,
         "allowed_residual": allowed_residual,
         "residual_profit_lock": residual_profit_lock,

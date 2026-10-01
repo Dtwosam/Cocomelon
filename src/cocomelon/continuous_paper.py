@@ -247,6 +247,9 @@ from cocomelon.research.profit_lock_readiness import (
     MIN_TRIGGERED_TRADES_PER_RULE,
     profit_lock_readiness,
 )
+from cocomelon.research.prospective_candidate_stack_overlap import (
+    prospective_candidate_stack_overlap_summary,
+)
 from cocomelon.research.prospective_capacity_reflow_exit_fill import (
     evaluate_prospective_capacity_reflow_exit_fill,
 )
@@ -2079,6 +2082,32 @@ def _prospective_two_strike_stop_filter_payload(
     payload = dict(payload)
     payload["enabled"] = True
     payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
+
+
+def _prospective_candidate_stack_overlap_payload(
+    journal: JournalStore,
+    combined: dict[str, object],
+    two_strike: dict[str, object],
+) -> dict[str, object]:
+    try:
+        payload = prospective_candidate_stack_overlap_summary(
+            tuple(journal.iter_trades()),
+            combined,
+            two_strike,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "changes_readiness_gate": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
     payload["error"] = None
     return payload
 
@@ -4730,6 +4759,13 @@ def _live_status_payload(
             ),
         )
     )
+    prospective_candidate_stack_overlap = (
+        _prospective_candidate_stack_overlap_payload(
+            pump.journal,
+            prospective_combined_entry_filter,
+            prospective_two_strike_stop_filter,
+        )
+    )
     prospective_capacity_reflow_opportunities = (
         _prospective_capacity_reflow_opportunity_payload(
             opening_opportunity_store,
@@ -5206,6 +5242,9 @@ def _live_status_payload(
         ),
         "prospective_two_strike_stop_filter": (
             prospective_two_strike_stop_filter
+        ),
+        "prospective_candidate_stack_overlap": (
+            prospective_candidate_stack_overlap
         ),
         "prospective_capacity_reflow_opportunities": (
             prospective_capacity_reflow_opportunities

@@ -4214,6 +4214,135 @@ def _prospective_two_strike_stop_filter_lines(
     return lines
 
 
+def _prospective_candidate_stack_overlap_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Prospective candidate stack overlap",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No candidate-stack overlap in this heartbeat._")
+        return lines
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            (
+                "- overlap start / closed / matched: "
+                f"`{raw.get('overlap_started_at_ms')} / "
+                f"{raw.get('closed_trades_since_overlap_start', 0)} / "
+                f"{raw.get('matched_trades', 0)}`"
+            ),
+            (
+                "- missing combined / two-strike decisions: "
+                f"`{raw.get('missing_combined_decisions', 0)} / "
+                f"{raw.get('missing_two_strike_decisions', 0)}`"
+            ),
+            (
+                "- integrity clean: "
+                f"`{str(bool(raw.get('integrity_clean'))).lower()}`"
+            ),
+            (
+                "- actual / combined / two-strike / stacked PnL: "
+                f"`{raw.get('actual_net_pnl', '0')} / "
+                f"{raw.get('combined_candidate_net_pnl', '0')} / "
+                f"{raw.get('two_strike_candidate_net_pnl', '0')} / "
+                f"{raw.get('stack_candidate_net_pnl', '0')}`"
+            ),
+            (
+                "- stack minus combined PnL / R: "
+                f"`{raw.get('stack_minus_combined_net_pnl', '0')} / "
+                f"{raw.get('stack_minus_combined_net_r', '0')}`"
+            ),
+            (
+                "- stack minus two-strike PnL / R: "
+                f"`{raw.get('stack_minus_two_strike_net_pnl', '0')} / "
+                f"{raw.get('stack_minus_two_strike_net_r', '0')}`"
+            ),
+        ]
+    )
+
+    buckets = raw.get("buckets", {})
+    if not isinstance(buckets, dict):
+        buckets = {}
+    lines.extend(
+        [
+            "",
+            "| Decision overlap | Trades | W | L | Net PnL | Net R |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for key, label in (
+        ("both_block", "Both block"),
+        ("combined_only", "Combined only"),
+        ("two_strike_only", "Two-strike only"),
+        ("neither_block", "Neither blocks"),
+    ):
+        item = buckets.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            "| {label} | {trades} | {wins} | {losses} | {pnl} | {net_r} |".format(
+                label=label,
+                trades=item.get("trades", 0),
+                wins=item.get("wins", 0),
+                losses=item.get("losses", 0),
+                pnl=item.get("net_pnl", "0"),
+                net_r=item.get("net_r", "0"),
+            )
+        )
+
+    directions = raw.get("two_strike_incremental_by_direction", {})
+    if not isinstance(directions, dict):
+        directions = {}
+    lines.extend(
+        [
+            "",
+            "| Two-strike-only side | Trades | W | L | Net PnL | Net R |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for side in ("long", "short"):
+        item = directions.get(side, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            "| {side} | {trades} | {wins} | {losses} | {pnl} | {net_r} |".format(
+                side=side.upper(),
+                trades=item.get("trades", 0),
+                wins=item.get("wins", 0),
+                losses=item.get("losses", 0),
+                pnl=item.get("net_pnl", "0"),
+                net_r=item.get("net_r", "0"),
+            )
+        )
+
+    lines.extend(
+        _prospective_filter_robustness_lines(
+            raw.get("two_strike_incremental_robustness")
+        )
+    )
+    lines.extend(
+        [
+            "",
+            (
+                "_Descriptive overlap only. It does not change either candidate's "
+                "readiness gate or any paper order._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_combined_entry_filter_lines(
     raw: object,
 ) -> list[str]:
@@ -9005,6 +9134,11 @@ def render_live_status(
     lines.extend(
         _prospective_two_strike_stop_filter_lines(
             payload.get("prospective_two_strike_stop_filter")
+        )
+    )
+    lines.extend(
+        _prospective_candidate_stack_overlap_lines(
+            payload.get("prospective_candidate_stack_overlap")
         )
     )
     lines.extend(
