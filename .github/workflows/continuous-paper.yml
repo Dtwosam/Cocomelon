@@ -470,12 +470,74 @@ jobs:
             continuous-paper-state/prospective-momentum-band-entry-state.json
             continuous-paper-state/prospective-consecutive-loss-cooldown-shadow-state.json
             continuous-paper-state/prospective-consecutive-loss-cooldown-shadow-summary.json
+            continuous-paper-state/prospective-full-stack-entry-exit-summary.json
             continuous-paper-state/prospective-two-strike-stop-filter-state.json
             continuous-paper-state/learning-features
             continuous-paper-state/opening-lineage
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
+
+      - name: Upload full-stack entry-exit research summary
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-full-stack-entry-exit-summary.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-full-stack-entry-exit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/prospective-full-stack-entry-exit-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Render full-stack entry-exit research summary
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-full-stack-entry-exit-summary.json') != '' }}
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/"
+                  "prospective-full-stack-entry-exit-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          print("## Prospective full entry + breakeven stack")
+          print("- authority: RESEARCH ONLY / NO EXECUTION")
+          if payload.get("error"):
+              print(f"- research error: {payload['error']}")
+          else:
+              print(
+                  "- common start / closed / evaluated: "
+                  f"{payload.get('overlap_started_at_ms')} / "
+                  f"{payload.get('closed_trades_since_overlap_start', 0)} / "
+                  f"{payload.get('economically_evaluated_trades', 0)}"
+              )
+              print(
+                  "- entry blocked / admitted: "
+                  f"{payload.get('entry_blocked_trades', 0)} / "
+                  f"{payload.get('entry_admitted_trades', 0)}"
+              )
+              print(
+                  "- integrity clean: "
+                  f"{payload.get('integrity_clean', False)}"
+              )
+              print(
+                  "- actual / entry-stack / full-stack PnL: "
+                  f"{payload.get('actual_net_pnl', '0')} / "
+                  f"{payload.get('entry_stack_candidate_net_pnl', '0')} / "
+                  f"{payload.get('full_stack_candidate_net_pnl', '0')}"
+              )
+              print(
+                  "- full-stack delta PnL / R: "
+                  f"{payload.get('full_stack_delta_net_pnl', '0')} / "
+                  f"{payload.get('full_stack_delta_net_r', '0')}"
+              )
+              print(
+                  "- breakeven incremental PnL / R: "
+                  f"{payload.get('breakeven_incremental_net_pnl', '0')} / "
+                  f"{payload.get('breakeven_incremental_net_r', '0')}"
+              )
+          PY
 
       - name: Pack durable continuous paper state
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
