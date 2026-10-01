@@ -1294,15 +1294,24 @@ class _SupervisorGroup:
             )
         )
 
-    def all_required_l2_stale(
+    def systemically_stale_l2(
         self,
         *,
         now_ms: int,
     ) -> bool:
-        return bool(self.required_market_keys) and (
+        required_count = len(self.required_market_keys)
+        if required_count == 0:
+            return False
+        stale_count = len(
             self.stale_l2_market_keys(now_ms=now_ms)
-            == self.required_market_keys
         )
+        if required_count == 1:
+            return stale_count == 1
+        minimum_stale = max(
+            2,
+            (required_count + 1) // 2,
+        )
+        return stale_count >= minimum_stale
 
 
 async def _wait_supervisor_group_ready(
@@ -7651,7 +7660,7 @@ async def run_continuous_paper_session(
                     )
 
                 health_now_ms = utc_now_ms()
-                if supervisor_group.all_required_l2_stale(
+                if supervisor_group.systemically_stale_l2(
                     now_ms=health_now_ms,
                 ):
                     pump.stale_l2_recovery_attempts += 1
