@@ -1041,6 +1041,15 @@ def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
     recovery_index = source.index(
         "systemically_unhealthy_l2 = ("
     )
+    reseed_index = source.index(
+        "_reseed_l2_books_via_rest(",
+        recovery_index,
+    )
+    replacement_index = source.index(
+        "replacement_group = await start_supervisors(",
+        reseed_index,
+    )
+    assert recovery_index < reseed_index < replacement_index
     rotation_index = source.index(
         "if (\n"
         "                    not systemically_unhealthy_l2\n"
