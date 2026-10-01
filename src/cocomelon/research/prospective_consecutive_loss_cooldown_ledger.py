@@ -286,7 +286,7 @@ def _canonical_option(
         raise ProspectiveConsecutiveLossCooldownLedgerError(
             "cooldown option direction must be long or short"
         )
-    lead_strategy = _required_string(raw, "lead_strategy")
+    lead_strategy = _optional_string(raw, "lead_strategy")
     rank_ordinal = _required_int(raw, "rank_ordinal")
     if rank_ordinal <= 0:
         raise ProspectiveConsecutiveLossCooldownLedgerError(
@@ -764,6 +764,17 @@ def _source_rows(
     if not isinstance(raw_options, list):
         raise ProspectiveConsecutiveLossCooldownLedgerError(
             "cooldown shadow option results must be a list"
+        )
+    eligible_count = summary.get(
+        "candidate_eligible_cooldown_rejections"
+    )
+    if (
+        isinstance(eligible_count, bool)
+        or not isinstance(eligible_count, int)
+        or eligible_count != len(raw_options)
+    ):
+        raise ProspectiveConsecutiveLossCooldownLedgerError(
+            "cooldown shadow eligible option count does not reconcile"
         )
     terminal_rows: list[dict[str, object]] = []
     pending = 0
