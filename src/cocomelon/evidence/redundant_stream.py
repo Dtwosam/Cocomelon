@@ -18,7 +18,8 @@ class RedundantStreamMux:
     One lane is active per stream while the other continuously buffers normalized
     events. A lane-local disconnect or stale-stream gap switches that stream to
     a proven healthy standby while unrelated streams can remain on the same lane.
-    backfills events the active lane did not emit. A durable gap is forwarded
+    The standby backfills events the active lane did not emit. A durable gap is
+    forwarded
     whenever no lane has demonstrated continuous coverage for the stream.
 
     Supervisors send every subscription before they begin receiving messages. The
