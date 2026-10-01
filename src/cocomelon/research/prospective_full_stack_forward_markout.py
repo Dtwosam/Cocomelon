@@ -260,6 +260,7 @@ def _horizon_summary(
 ) -> dict[str, object]:
     key = str(horizon_ms)
     decisions: dict[str, dict[str, object]] = {}
+    settled_counts: dict[str, int] = {}
     settled_all: list[tuple[dict[str, object], Decimal]] = []
     for decision in ("ADMIT", "BLOCK"):
         values: list[Decimal] = []
@@ -293,6 +294,7 @@ def _horizon_summary(
             by_direction[direction] += 1
             markets.add(market)
         mean_value = _mean(tuple(values))
+        settled_counts[decision] = len(values)
         decisions[decision.lower()] = {
             "opportunities": sum(
                 1 for row in rows if row["stack_decision"] == decision
@@ -339,8 +341,8 @@ def _horizon_summary(
     )
     sample_complete = (
         len(settled_all) >= MIN_SETTLED_PER_HORIZON
-        and int(admit["settled"]) >= MIN_ADMIT_SETTLED_PER_HORIZON
-        and int(block["settled"]) >= MIN_BLOCK_SETTLED_PER_HORIZON
+        and settled_counts["ADMIT"] >= MIN_ADMIT_SETTLED_PER_HORIZON
+        and settled_counts["BLOCK"] >= MIN_BLOCK_SETTLED_PER_HORIZON
         and long_settled >= MIN_LONG_SETTLED_PER_HORIZON
         and short_settled >= MIN_SHORT_SETTLED_PER_HORIZON
         and len(markets) >= MIN_MARKETS_PER_HORIZON
