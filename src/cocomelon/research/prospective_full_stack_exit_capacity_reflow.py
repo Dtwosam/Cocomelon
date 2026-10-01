@@ -31,7 +31,6 @@ from cocomelon.research.prospective_combined_entry_filter import (
     prospective_combined_block_reason,
 )
 from cocomelon.research.prospective_momentum_band_entry import (
-    MOMENTUM_INTEGRITY_REASONS,
     ProspectiveMomentumBandEntryState,
     prospective_momentum_band_opportunity_decision,
 )
@@ -42,6 +41,12 @@ from cocomelon.research.prospective_two_strike_stop_filter import (
 )
 
 RELEASE_REASON: Final = "breakeven_exact_early_close"
+MOMENTUM_INTEGRITY_REASONS: Final = frozenset(
+    {
+        "missing_feature_fail_open",
+        "incomplete_feature_fail_open",
+    }
+)
 
 
 class ProspectiveFullStackExitCapacityReflowError(RuntimeError):
@@ -171,7 +176,7 @@ def prospective_full_stack_exit_capacity_reflow(
     momentum_integrity_misses = 0
     entry_stack_blocked_opportunities = 0
     entry_stack_eligible_opportunities = 0
-    missing_active_trade_lineage = 0
+    pre_overlap_release_positions = 0
     missing_full_stack_decision = 0
     non_admitted_release_positions = 0
     missing_breakeven_outcomes = 0
@@ -208,6 +213,15 @@ def prospective_full_stack_exit_capacity_reflow(
 
         request = evidence.risk_request_object
         direction = request.strategy_decision.direction
+        if (
+            request.strategy_decision.market.canonical != evidence.market
+            or direction.value != evidence.direction
+            or request.strategy_decision.feature_snapshot_id
+            != evidence.feature_snapshot_id
+        ):
+            raise ProspectiveFullStackExitCapacityReflowError(
+                "opening opportunity decision lineage mismatch"
+            )
         if direction is Direction.NO_TRADE:
             raise ProspectiveFullStackExitCapacityReflowError(
                 "opening opportunity direction cannot be no-trade"
@@ -259,7 +273,9 @@ def prospective_full_stack_exit_capacity_reflow(
                 opportunity_timestamp_ms=evidence.opportunity_timestamp_ms,
             )
             if trade is None:
-                missing_active_trade_lineage += 1
+                continue
+            if trade.opened_at_ms < overlap_start:
+                pre_overlap_release_positions += 1
                 continue
 
             raw_decision = raw_decisions.get(trade.trade_id)
@@ -351,7 +367,6 @@ def prospective_full_stack_exit_capacity_reflow(
         missing_rank == 0
         and stale_rank == 0
         and momentum_integrity_misses == 0
-        and missing_active_trade_lineage == 0
         and missing_full_stack_decision == 0
         and missing_breakeven_outcomes == 0
     )
@@ -379,7 +394,7 @@ def prospective_full_stack_exit_capacity_reflow(
         "entry_stack_eligible_opportunities": (
             entry_stack_eligible_opportunities
         ),
-        "missing_active_trade_lineage": missing_active_trade_lineage,
+        "pre_overlap_release_positions": pre_overlap_release_positions,
         "missing_full_stack_decision": missing_full_stack_decision,
         "non_admitted_release_positions": non_admitted_release_positions,
         "missing_breakeven_outcomes": missing_breakeven_outcomes,
