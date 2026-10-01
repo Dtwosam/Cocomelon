@@ -184,6 +184,7 @@ def test_exact_ledger_rejects_changed_published_economics() -> None:
     row = exits["300000"]
     assert isinstance(row, dict)
     row["exact_realized_pnl"] = "9"
+    row["exact_realized_return_fraction"] = "0.045"
 
     with pytest.raises(
         ProspectiveFullStackReflowExactLedgerError,
