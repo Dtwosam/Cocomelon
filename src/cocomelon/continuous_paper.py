@@ -296,6 +296,9 @@ from cocomelon.research.prospective_entry_filter import (
     ProspectiveEntryFilterState,
     evaluate_prospective_entry_filter,
 )
+from cocomelon.research.prospective_full_stack_entry_exit import (
+    prospective_full_stack_entry_exit_summary,
+)
 from cocomelon.research.prospective_momentum_band_entry import (
     ProspectiveMomentumBandEntryState,
     evaluate_prospective_momentum_band_entry,
@@ -2283,6 +2286,39 @@ def _prospective_candidate_stack_overlap_payload(
             "research_only": True,
             "execution_authority": False,
             "promotion_authority": False,
+            "changes_readiness_gate": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
+def _prospective_full_stack_entry_exit_payload(
+    journal: JournalStore,
+    combined: dict[str, object],
+    two_strike: dict[str, object],
+    momentum: dict[str, object],
+    execution_shadow_state: dict[str, object],
+    breakeven_state: ProspectiveBreakevenProfitLockState,
+) -> dict[str, object]:
+    try:
+        payload = prospective_full_stack_entry_exit_summary(
+            tuple(journal.iter_trades()),
+            combined,
+            two_strike,
+            momentum,
+            execution_shadow_state,
+            breakeven_state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "descriptive_only": True,
             "changes_readiness_gate": False,
             "error": f"{type(exc).__name__}: {exc}",
         }
@@ -4961,6 +4997,16 @@ def _live_status_payload(
             prospective_momentum_band_entry,
         )
     )
+    prospective_full_stack_entry_exit = (
+        _prospective_full_stack_entry_exit_payload(
+            pump.journal,
+            prospective_combined_entry_filter,
+            prospective_two_strike_stop_filter,
+            prospective_momentum_band_entry,
+            profit_lock_execution_shadow.state_payload(),
+            prospective_breakeven_profit_lock_state,
+        )
+    )
     prospective_capacity_reflow_opportunities = (
         _prospective_capacity_reflow_opportunity_payload(
             opening_opportunity_store,
@@ -5443,6 +5489,9 @@ def _live_status_payload(
         ),
         "prospective_candidate_stack_overlap": (
             prospective_candidate_stack_overlap
+        ),
+        "prospective_full_stack_entry_exit": (
+            prospective_full_stack_entry_exit
         ),
         "prospective_capacity_reflow_opportunities": (
             prospective_capacity_reflow_opportunities
