@@ -3618,3 +3618,19 @@ This study does **not** model a replacement exit or realized trade PnL and canno
 **Promotion authority:** `false`  
 **Changes risk limits:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Append-only cooldown relaxation evidence ledger — 2026-10-01
+
+The future-only consecutive-loss cooldown relaxation shadow now has a separate append-only evidence contract tracked in Issue #733.
+
+The ledger binds every update to the exact compact paper artifact and locks the candidate freeze, six-hour clean start, fixed 15m/30m/45m relaxation windows, fixed 5m/15m/1h markout horizons, and rule metadata.
+
+A filled shadow option is **not** made immutable while any fixed forward mark is still `pending` or `missing_path`. It can enter the permanent ledger only after every fixed horizon is either `settled` or definitively `stale`. Risk, planning, or execution rejections are terminal immediately. This prevents ordinary forward-path maturation from being misclassified as historical evidence drift.
+
+Previously published terminal rows must remain equivalent after canonicalization. Freeze/rule/source-artifact drift blocks publication instead of rewriting history.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**Changes risk limits:** `false`  
+**LIVE TRADING: DISABLED.**
