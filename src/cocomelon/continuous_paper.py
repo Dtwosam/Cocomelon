@@ -7048,16 +7048,30 @@ async def run_continuous_paper_session(
                 ),
             )
         )
-        full_stack_entry_exit = (
-            _prospective_full_stack_entry_exit_payload(
-                journal,
-                full_stack_combined,
-                full_stack_two_strike,
-                full_stack_momentum,
-                profit_lock_execution_shadow.state_payload(),
-                prospective_breakeven_profit_lock_state,
+        if profit_lock_execution_shadow.shadow is None:
+            full_stack_entry_exit = {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "descriptive_only": True,
+                "changes_readiness_gate": False,
+                "error": (
+                    profit_lock_execution_shadow.error
+                    or "profit-lock execution shadow unavailable"
+                ),
+            }
+        else:
+            full_stack_entry_exit = (
+                _prospective_full_stack_entry_exit_payload(
+                    journal,
+                    full_stack_combined,
+                    full_stack_two_strike,
+                    full_stack_momentum,
+                    profit_lock_execution_shadow.shadow.state_payload(),
+                    prospective_breakeven_profit_lock_state,
+                )
             )
-        )
         _write_json_atomic(
             root / PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME,
             full_stack_entry_exit,
