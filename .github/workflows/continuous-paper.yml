@@ -463,6 +463,7 @@ jobs:
             continuous-paper-state/journal.sqlite3
             continuous-paper-state/profit-lock-execution-shadow-state.json
             continuous-paper-state/prospective-consecutive-loss-cooldown-shadow-state.json
+            continuous-paper-state/prospective-consecutive-loss-cooldown-shadow-summary.json
             continuous-paper-state/prospective-two-strike-stop-filter-state.json
             continuous-paper-state/learning-features
             continuous-paper-state/opening-lineage
