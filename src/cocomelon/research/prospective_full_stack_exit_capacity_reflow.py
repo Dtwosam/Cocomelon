@@ -56,6 +56,7 @@ class ProspectiveFullStackExitCapacityReflowError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class ProspectiveFullStackExitCapacityReflowEvaluation:
     releases: tuple[CandidateCausedCapacityRelease, ...]
+    release_terminal_contributions: tuple[tuple[str, Decimal], ...]
     summary: dict[str, object]
 
 
@@ -186,6 +187,7 @@ def prospective_full_stack_exit_capacity_reflow(
     by_release_market: Counter[str] = Counter()
     by_opportunity_market: Counter[str] = Counter()
     releases: list[CandidateCausedCapacityRelease] = []
+    terminal_contributions: dict[str, Decimal] = {}
     seen_release_keys: set[tuple[str, str]] = set()
 
     for evidence in prospective_opportunities:
@@ -305,6 +307,7 @@ def prospective_full_stack_exit_capacity_reflow(
                 or not outcome.simulated_close_complete
                 or outcome.candidate_source != "visible_book_ioc"
                 or outcome.completion_timestamp_ms is None
+                or outcome.candidate_net_pnl_estimate is None
             ):
                 non_exact_breakeven_outcomes += 1
                 continue
@@ -328,6 +331,21 @@ def prospective_full_stack_exit_capacity_reflow(
                     "duplicate exit-driven capacity release"
                 )
             seen_release_keys.add(key)
+            candidate_contribution = outcome.candidate_net_pnl_estimate
+            assert candidate_contribution is not None
+            existing_contribution = terminal_contributions.get(
+                trade.opening_plan_id
+            )
+            if (
+                existing_contribution is not None
+                and existing_contribution != candidate_contribution
+            ):
+                raise ProspectiveFullStackExitCapacityReflowError(
+                    "early-release terminal contribution drift"
+                )
+            terminal_contributions[trade.opening_plan_id] = (
+                candidate_contribution
+            )
             by_release_market[trade.market.canonical] += 1
             by_opportunity_market[evidence.market] += 1
             releases.append(
@@ -409,9 +427,16 @@ def prospective_full_stack_exit_capacity_reflow(
         "by_opportunity_market": dict(
             sorted(by_opportunity_market.items())
         ),
+        "release_terminal_contribution_by_opening_plan": {
+            plan_id: str(value)
+            for plan_id, value in sorted(terminal_contributions.items())
+        },
         "integrity_clean": integrity_clean,
     }
     return ProspectiveFullStackExitCapacityReflowEvaluation(
         releases=values,
+        release_terminal_contributions=tuple(
+            sorted(terminal_contributions.items())
+        ),
         summary=summary,
     )
