@@ -2558,7 +2558,7 @@ def test_full_stack_entry_exit_summary_is_persisted_at_worker_end() -> None:
         in source
     )
     assert "_prospective_full_stack_entry_exit_payload(" in source
-    assert "profit_lock_execution_shadow.state_payload()" in source
+    assert "profit_lock_execution_shadow.shadow.state_payload()" in source
     assert (
         "root / PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME"
         in source
