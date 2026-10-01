@@ -112,6 +112,8 @@ def _summary(
             "horizons_ms": list(horizons),
             "option_results": options,
             "exact_realized_pnl_option_horizons": exact_count,
+            "exact_realized_return_modeled": True,
+            "entry_notional_normalized": True,
             "cross_horizon_economics_aggregated": False,
             "strategy_level_realized_pnl_claimed": False,
         },
