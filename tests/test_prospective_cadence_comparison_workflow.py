@@ -39,3 +39,25 @@ def test_prospective_comparison_checks_same_future_rows() -> None:
     assert "microstructure_minus_baseline_net_return_sum" in source
     assert "microstructure_only_realized_net_return_sum" in source
     assert "baseline_only_realized_net_return_sum" in source
+
+
+def test_prospective_comparison_catchup_and_no_evidence_contract() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert (
+        "actions/workflows/continuous-paper.yml/"
+        "runs?status=success&branch=main&per_page=100"
+    ) in source
+    assert (
+        "actions/runs?status=success&per_page=100"
+        not in source
+    )
+    assert "cadence-model-comparison-no-evidence.json" in source
+    assert "cadence-model-comparison-no-evidence-" in source
+    assert '"status": "no_evidence"' in source
+    assert (
+        '"reason": "compact_research_artifacts_unavailable"'
+        in source
+    )
+    assert "cat > /tmp/comparison-status.md <<EOF" not in source
+    assert 'Path("/tmp/comparison-status.md").write_text' in source
