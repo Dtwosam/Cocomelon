@@ -1,0 +1,602 @@
+from __future__ import annotations
+
+from collections import Counter
+from collections.abc import Sequence
+from decimal import Decimal
+from typing import Final
+
+from cocomelon.domain.journal import TradeJournalEntry
+from cocomelon.domain.strategy import Direction
+from cocomelon.research.continuous_paper_opening_opportunity import (
+    ContinuousPaperOpeningOpportunityEvidence,
+)
+from cocomelon.research.continuous_paper_opening_opportunity_paths import (
+    ContinuousPaperOpeningOpportunityPath,
+)
+from cocomelon.research.learning_feature_snapshots import (
+    LearningFeatureSnapshotStore,
+)
+from cocomelon.research.prospective_combined_entry_filter import (
+    MAX_ACCEPTED_RANK_AGE_MS,
+    ProspectiveCombinedEntryFilterState,
+    prospective_combined_block_reason,
+)
+from cocomelon.research.prospective_momentum_band_entry import (
+    ProspectiveMomentumBandEntryState,
+    prospective_momentum_band_opportunity_decision,
+)
+from cocomelon.research.prospective_momentum_band_forward_markout import (
+    FORWARD_HORIZONS_MS,
+    MAX_MARK_LAG_MS,
+)
+from cocomelon.research.prospective_two_strike_stop_filter import (
+    STRIKE_THRESHOLD,
+    ProspectiveTwoStrikeStopFilterState,
+    prospective_two_strike_prior_strikes_at,
+)
+
+ZERO: Final = Decimal("0")
+MIN_SETTLED_PER_HORIZON: Final = 20
+MIN_ADMIT_SETTLED_PER_HORIZON: Final = 5
+MIN_BLOCK_SETTLED_PER_HORIZON: Final = 5
+MIN_LONG_SETTLED_PER_HORIZON: Final = 5
+MIN_SHORT_SETTLED_PER_HORIZON: Final = 5
+MIN_MARKETS_PER_HORIZON: Final = 4
+MOMENTUM_INTEGRITY_REASONS: Final = frozenset(
+    {
+        "missing_feature_fail_open",
+        "incomplete_feature_fail_open",
+    }
+)
+
+
+class ProspectiveFullStackForwardMarkoutError(RuntimeError):
+    pass
+
+
+def _mean(values: tuple[Decimal, ...]) -> Decimal | None:
+    if not values:
+        return None
+    return sum(values, ZERO) / Decimal(len(values))
+
+
+def _path_map(
+    paths: Sequence[ContinuousPaperOpeningOpportunityPath],
+) -> dict[str, ContinuousPaperOpeningOpportunityPath]:
+    output: dict[str, ContinuousPaperOpeningOpportunityPath] = {}
+    for path in paths:
+        if path.opportunity_id in output:
+            raise ProspectiveFullStackForwardMarkoutError(
+                "duplicate opening-opportunity forward path"
+            )
+        output[path.opportunity_id] = path
+    return output
+
+
+def _markout(
+    evidence: ContinuousPaperOpeningOpportunityEvidence,
+    path: ContinuousPaperOpeningOpportunityPath | None,
+    *,
+    horizon_ms: int,
+) -> dict[str, object]:
+    target_at_ms = evidence.opportunity_timestamp_ms + horizon_ms
+    if path is None:
+        return {
+            "status": "missing_path",
+            "target_at_ms": target_at_ms,
+            "observed_at_ms": None,
+            "observation_lag_ms": None,
+            "mark_px": None,
+            "directional_return": None,
+        }
+    if (
+        path.market != evidence.market
+        or path.direction != evidence.direction
+        or path.opportunity_timestamp_ms
+        != evidence.opportunity_timestamp_ms
+    ):
+        raise ProspectiveFullStackForwardMarkoutError(
+            "opening-opportunity path lineage mismatch"
+        )
+    if horizon_ms > path.max_path_age_ms:
+        return {
+            "status": "unsupported_horizon",
+            "target_at_ms": target_at_ms,
+            "observed_at_ms": None,
+            "observation_lag_ms": None,
+            "mark_px": None,
+            "directional_return": None,
+        }
+    mark = next(
+        (
+            item
+            for item in path.marks
+            if item.observed_at_ms >= target_at_ms
+        ),
+        None,
+    )
+    if mark is None:
+        return {
+            "status": "pending",
+            "target_at_ms": target_at_ms,
+            "observed_at_ms": None,
+            "observation_lag_ms": None,
+            "mark_px": None,
+            "directional_return": None,
+        }
+    lag_ms = mark.observed_at_ms - target_at_ms
+    if lag_ms > MAX_MARK_LAG_MS:
+        return {
+            "status": "stale",
+            "target_at_ms": target_at_ms,
+            "observed_at_ms": mark.observed_at_ms,
+            "observation_lag_ms": lag_ms,
+            "mark_px": str(mark.mark_px),
+            "directional_return": None,
+        }
+
+    request = evidence.risk_request_object
+    entry = request.entry_reference_price
+    direction = request.strategy_decision.direction
+    if direction is Direction.LONG:
+        signed = (mark.mark_px - entry) / entry
+    elif direction is Direction.SHORT:
+        signed = (entry - mark.mark_px) / entry
+    else:
+        raise ProspectiveFullStackForwardMarkoutError(
+            "opening opportunity direction cannot be no-trade"
+        )
+    return {
+        "status": "settled",
+        "target_at_ms": target_at_ms,
+        "observed_at_ms": mark.observed_at_ms,
+        "observation_lag_ms": lag_ms,
+        "mark_px": str(mark.mark_px),
+        "directional_return": str(signed),
+    }
+
+
+def _spread(
+    values: Sequence[tuple[str, str, Decimal]],
+) -> Decimal | None:
+    admits = tuple(
+        value
+        for decision, _market, value in values
+        if decision == "ADMIT"
+    )
+    blocks = tuple(
+        value
+        for decision, _market, value in values
+        if decision == "BLOCK"
+    )
+    admit_mean = _mean(admits)
+    block_mean = _mean(blocks)
+    if admit_mean is None or block_mean is None:
+        return None
+    return admit_mean - block_mean
+
+
+def _spread_robustness(
+    rows: tuple[dict[str, object], ...],
+    *,
+    horizon_key: str,
+) -> dict[str, object]:
+    settled: list[tuple[str, str, Decimal]] = []
+    for row in rows:
+        markouts = row.get("markouts")
+        if not isinstance(markouts, dict):
+            continue
+        markout = markouts.get(horizon_key)
+        if not isinstance(markout, dict):
+            continue
+        raw_return = markout.get("directional_return")
+        decision = row.get("stack_decision")
+        market = row.get("market")
+        if (
+            markout.get("status") != "settled"
+            or not isinstance(raw_return, str)
+            or decision not in {"ADMIT", "BLOCK"}
+            or not isinstance(market, str)
+        ):
+            continue
+        settled.append((decision, market, Decimal(raw_return)))
+
+    full = _spread(settled)
+    leave_one = tuple(
+        candidate
+        for index in range(len(settled))
+        if (
+            candidate := _spread(
+                settled[:index] + settled[index + 1 :]
+            )
+        )
+        is not None
+    )
+    markets = tuple(
+        sorted({market for _decision, market, _value in settled})
+    )
+    leave_market = tuple(
+        candidate
+        for market in markets
+        if (
+            candidate := _spread(
+                tuple(
+                    item for item in settled if item[1] != market
+                )
+            )
+        )
+        is not None
+    )
+    return {
+        "settled_opportunities": len(settled),
+        "market_count": len(markets),
+        "admit_minus_block_mean_return": (
+            None if full is None else str(full)
+        ),
+        "leave_one_opportunity_min_spread": (
+            None if not leave_one else str(min(leave_one))
+        ),
+        "positive_after_removing_any_one_opportunity": (
+            len(leave_one) == len(settled)
+            and bool(leave_one)
+            and min(leave_one) > ZERO
+        ),
+        "leave_one_market_min_spread": (
+            None if not leave_market else str(min(leave_market))
+        ),
+        "positive_after_removing_any_one_market": (
+            len(leave_market) == len(markets)
+            and bool(leave_market)
+            and min(leave_market) > ZERO
+        ),
+    }
+
+
+def _horizon_summary(
+    rows: tuple[dict[str, object], ...],
+    *,
+    horizon_ms: int,
+    integrity_clean: bool,
+) -> dict[str, object]:
+    key = str(horizon_ms)
+    decisions: dict[str, dict[str, object]] = {}
+    settled_all: list[tuple[dict[str, object], Decimal]] = []
+    for decision in ("ADMIT", "BLOCK"):
+        values: list[Decimal] = []
+        statuses: Counter[str] = Counter()
+        by_direction: Counter[str] = Counter()
+        markets: set[str] = set()
+        for row in rows:
+            if row["stack_decision"] != decision:
+                continue
+            markouts = row["markouts"]
+            assert isinstance(markouts, dict)
+            markout = markouts[key]
+            assert isinstance(markout, dict)
+            status = markout["status"]
+            assert isinstance(status, str)
+            statuses[status] += 1
+            if status != "settled":
+                continue
+            raw = markout["directional_return"]
+            if not isinstance(raw, str):
+                raise ProspectiveFullStackForwardMarkoutError(
+                    "settled markout is missing directional return"
+                )
+            value = Decimal(raw)
+            values.append(value)
+            settled_all.append((row, value))
+            direction = row["direction"]
+            market = row["market"]
+            assert isinstance(direction, str)
+            assert isinstance(market, str)
+            by_direction[direction] += 1
+            markets.add(market)
+        mean_value = _mean(tuple(values))
+        decisions[decision.lower()] = {
+            "opportunities": sum(
+                1 for row in rows if row["stack_decision"] == decision
+            ),
+            "settled": len(values),
+            "positive": sum(value > ZERO for value in values),
+            "negative": sum(value < ZERO for value in values),
+            "flat": sum(value == ZERO for value in values),
+            "mean_directional_return": (
+                None if mean_value is None else str(mean_value)
+            ),
+            "sum_directional_return": str(sum(values, ZERO)),
+            "status_counts": dict(sorted(statuses.items())),
+            "settled_by_direction": dict(sorted(by_direction.items())),
+            "market_count": len(markets),
+        }
+
+    robustness = _spread_robustness(rows, horizon_key=key)
+    admit = decisions["admit"]
+    block = decisions["block"]
+    long_settled = sum(
+        1
+        for row, _value in settled_all
+        if row["direction"] == Direction.LONG.value
+    )
+    short_settled = sum(
+        1
+        for row, _value in settled_all
+        if row["direction"] == Direction.SHORT.value
+    )
+    markets = {
+        row["market"]
+        for row, _value in settled_all
+        if isinstance(row["market"], str)
+    }
+    raw_admit_mean = admit["mean_directional_return"]
+    raw_block_mean = block["mean_directional_return"]
+    separation_positive = (
+        isinstance(raw_admit_mean, str)
+        and isinstance(raw_block_mean, str)
+        and Decimal(raw_admit_mean) > ZERO
+        and Decimal(raw_block_mean) < ZERO
+        and Decimal(raw_admit_mean) - Decimal(raw_block_mean) > ZERO
+    )
+    sample_complete = (
+        len(settled_all) >= MIN_SETTLED_PER_HORIZON
+        and int(admit["settled"]) >= MIN_ADMIT_SETTLED_PER_HORIZON
+        and int(block["settled"]) >= MIN_BLOCK_SETTLED_PER_HORIZON
+        and long_settled >= MIN_LONG_SETTLED_PER_HORIZON
+        and short_settled >= MIN_SHORT_SETTLED_PER_HORIZON
+        and len(markets) >= MIN_MARKETS_PER_HORIZON
+    )
+    opportunity_robust = (
+        robustness["positive_after_removing_any_one_opportunity"]
+        is True
+    )
+    market_robust = (
+        robustness["positive_after_removing_any_one_market"]
+        is True
+    )
+    return {
+        "horizon_ms": horizon_ms,
+        "admit": admit,
+        "block": block,
+        "settled_opportunities": len(settled_all),
+        "long_settled": long_settled,
+        "short_settled": short_settled,
+        "market_count": len(markets),
+        "spread_robustness": robustness,
+        "review_readiness": {
+            "sample_complete": sample_complete,
+            "integrity_clean": integrity_clean,
+            "separation_positive": separation_positive,
+            "single_opportunity_robust": opportunity_robust,
+            "single_market_robust": market_robust,
+            "ready_for_early_evidence_review": (
+                sample_complete
+                and integrity_clean
+                and separation_positive
+                and opportunity_robust
+                and market_robust
+            ),
+            "changes_closed_trade_readiness_gate": False,
+        },
+    }
+
+
+def prospective_full_stack_forward_markout_summary(
+    opportunities: Sequence[
+        ContinuousPaperOpeningOpportunityEvidence
+    ],
+    paths: Sequence[ContinuousPaperOpeningOpportunityPath],
+    closed_trades: Sequence[TradeJournalEntry],
+    feature_store: LearningFeatureSnapshotStore,
+    combined_state: ProspectiveCombinedEntryFilterState,
+    two_strike_state: ProspectiveTwoStrikeStopFilterState,
+    momentum_state: ProspectiveMomentumBandEntryState,
+) -> dict[str, object]:
+    overlap_start = max(
+        combined_state.started_at_ms,
+        two_strike_state.started_at_ms,
+        momentum_state.started_at_ms,
+    )
+    path_by_id = _path_map(paths)
+    ordered_trades = tuple(closed_trades)
+    prospective = tuple(
+        sorted(
+            (
+                evidence
+                for evidence in opportunities
+                if evidence.opportunity_timestamp_ms >= overlap_start
+            ),
+            key=lambda item: (
+                item.opportunity_timestamp_ms,
+                item.market,
+                item.opportunity_id,
+            ),
+        )
+    )
+
+    baseline_risk_rejected = 0
+    missing_rank = 0
+    stale_rank = 0
+    momentum_feature_integrity_misses = 0
+    block_layer_counts: Counter[str] = Counter()
+    decision_counts: Counter[str] = Counter()
+    rows: list[dict[str, object]] = []
+
+    for evidence in prospective:
+        if not evidence.baseline_risk_approved:
+            baseline_risk_rejected += 1
+            continue
+
+        observed_at = evidence.rank_observed_at_ms
+        ordinal = evidence.rank_ordinal
+        if observed_at is None or ordinal is None:
+            missing_rank += 1
+            continue
+        rank_age_ms = evidence.opportunity_timestamp_ms - observed_at
+        if rank_age_ms < 0:
+            raise ProspectiveFullStackForwardMarkoutError(
+                "opening opportunity rank is from the future"
+            )
+        if rank_age_ms > MAX_ACCEPTED_RANK_AGE_MS:
+            stale_rank += 1
+            continue
+
+        request = evidence.risk_request_object
+        direction = request.strategy_decision.direction
+        if direction is Direction.NO_TRADE:
+            raise ProspectiveFullStackForwardMarkoutError(
+                "opening opportunity direction cannot be no-trade"
+            )
+        if (
+            request.strategy_decision.market.canonical != evidence.market
+            or direction.value != evidence.direction
+            or request.strategy_decision.feature_snapshot_id
+            != evidence.feature_snapshot_id
+        ):
+            raise ProspectiveFullStackForwardMarkoutError(
+                "opening opportunity decision lineage mismatch"
+            )
+
+        combined_reason = prospective_combined_block_reason(
+            direction=direction,
+            lead_strategy=evidence.lead_strategy,
+            ordinal=ordinal,
+        )
+        prior_two_strikes = prospective_two_strike_prior_strikes_at(
+            ordered_trades,
+            two_strike_state,
+            market=evidence.market,
+            direction=direction,
+            timestamp_ms=evidence.opportunity_timestamp_ms,
+        )
+
+        momentum_detail: dict[str, object] | None = None
+        momentum_reason: str | None = None
+        momentum_decision: str | None = None
+        if combined_reason is not None:
+            stack_decision = "BLOCK"
+            block_layer = "combined"
+        elif prior_two_strikes >= STRIKE_THRESHOLD:
+            stack_decision = "BLOCK"
+            block_layer = "two_strike"
+        else:
+            momentum_detail = prospective_momentum_band_opportunity_decision(
+                ordered_trades,
+                feature_store,
+                momentum_state,
+                market=request.strategy_decision.market,
+                direction=direction,
+                timestamp_ms=evidence.opportunity_timestamp_ms,
+                feature_snapshot_id=evidence.feature_snapshot_id,
+            )
+            raw_reason = momentum_detail.get("reason")
+            raw_decision = momentum_detail.get("decision")
+            if raw_reason in MOMENTUM_INTEGRITY_REASONS:
+                momentum_feature_integrity_misses += 1
+                continue
+            if raw_decision not in {"ADMIT", "BLOCK"}:
+                raise ProspectiveFullStackForwardMarkoutError(
+                    "momentum opportunity decision is invalid"
+                )
+            if not isinstance(raw_reason, str):
+                raise ProspectiveFullStackForwardMarkoutError(
+                    "momentum opportunity reason must be a string"
+                )
+            momentum_reason = raw_reason
+            momentum_decision = raw_decision
+            if raw_decision == "BLOCK":
+                stack_decision = "BLOCK"
+                block_layer = "momentum"
+            else:
+                stack_decision = "ADMIT"
+                block_layer = "none"
+
+        decision_counts[stack_decision] += 1
+        block_layer_counts[block_layer] += 1
+        path = path_by_id.get(evidence.opportunity_id)
+        markouts = {
+            str(horizon_ms): _markout(
+                evidence,
+                path,
+                horizon_ms=horizon_ms,
+            )
+            for horizon_ms in FORWARD_HORIZONS_MS
+        }
+        rows.append(
+            {
+                "opportunity_id": evidence.opportunity_id,
+                "timestamp_ms": evidence.opportunity_timestamp_ms,
+                "market": evidence.market,
+                "direction": evidence.direction,
+                "lead_strategy": evidence.lead_strategy,
+                "rank_ordinal": ordinal,
+                "rank_age_ms": rank_age_ms,
+                "combined_block_reason": combined_reason,
+                "two_strike_prior_strikes": prior_two_strikes,
+                "momentum_decision": momentum_decision,
+                "momentum_reason": momentum_reason,
+                "momentum_prior_strikes": (
+                    None
+                    if momentum_detail is None
+                    else momentum_detail.get("prior_strikes")
+                ),
+                "signed_return_1h": (
+                    None
+                    if momentum_detail is None
+                    else momentum_detail.get("signed_return_1h")
+                ),
+                "signed_day_return": (
+                    None
+                    if momentum_detail is None
+                    else momentum_detail.get("signed_day_return")
+                ),
+                "stack_decision": stack_decision,
+                "block_layer": block_layer,
+                "markouts": markouts,
+            }
+        )
+
+    row_values = tuple(rows)
+    integrity_clean = (
+        missing_rank == 0
+        and stale_rank == 0
+        and momentum_feature_integrity_misses == 0
+    )
+    horizons = {
+        str(horizon_ms): _horizon_summary(
+            row_values,
+            horizon_ms=horizon_ms,
+            integrity_clean=integrity_clean,
+        )
+        for horizon_ms in FORWARD_HORIZONS_MS
+    }
+    return {
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "descriptive_only": True,
+        "changes_readiness_gate": False,
+        "changes_closed_trade_readiness_gate": False,
+        "candidate_stack": (
+            "combined+two_strike+momentum"
+        ),
+        "overlap_started_at_ms": overlap_start,
+        "combined_started_at_ms": combined_state.started_at_ms,
+        "two_strike_started_at_ms": two_strike_state.started_at_ms,
+        "momentum_started_at_ms": momentum_state.started_at_ms,
+        "forward_horizons_ms": list(FORWARD_HORIZONS_MS),
+        "max_mark_lag_ms": MAX_MARK_LAG_MS,
+        "prospective_opportunities": len(prospective),
+        "baseline_risk_rejected": baseline_risk_rejected,
+        "missing_rank": missing_rank,
+        "stale_rank": stale_rank,
+        "momentum_feature_integrity_misses": (
+            momentum_feature_integrity_misses
+        ),
+        "stack_risk_approved_evaluated": len(row_values),
+        "stack_admitted": decision_counts["ADMIT"],
+        "stack_blocked": decision_counts["BLOCK"],
+        "block_layer_counts": dict(sorted(block_layer_counts.items())),
+        "integrity_clean": integrity_clean,
+        "horizons": horizons,
+        "rows": list(row_values),
+    }
