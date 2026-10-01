@@ -3936,3 +3936,20 @@ Systemic L2 health is now evaluated before shortlist rotation. If the current gr
 This changes data-plane recovery only. The existing 5-second book-freshness ceiling, scanner eligibility, strategy, sizing, risk, stops, exits, candidate gates, and live authority are unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Event-driven systemic L2 recovery wakeup — 2026-10-01
+
+After the recovery-readiness fix, the replacement paper worker reproduced a second timing issue: its first decision epoch saw 16 of 20 rankable markets fail with `stale_book` at about 6.3 seconds of age while recovery attempts were still zero. The selected universe remained at 20, but the epoch was lost because group-level recovery was only polled by the 30-second REST context loop while book eligibility expires after 5 seconds.
+
+The redundant websocket group now owns a lightweight L2-health wake event. After the normal 5-second startup/freshness grace, an open stale/disconnect gap can wake the runtime early when fresh-book readiness is simultaneously missing for a systemic share of required markets on both lanes.
+
+On wake:
+
+1. systemic group health is re-checked from supervisor staleness plus fresh-book readiness;
+2. replacement supervisors are attempted immediately when the condition is still real;
+3. only after that does the runtime perform the REST context refresh and any eligible shortlist work.
+
+The ordinary REST context cadence remains 30 seconds. Healthy operation does not poll REST faster; only a systemic L2-health event can interrupt the sleep. The existing majority threshold, 5-second book freshness ceiling, replacement readiness barrier, strategy, risk, sizing, stops, exits, candidate gates, and live authority are unchanged.
+
+**LIVE TRADING: DISABLED.**
