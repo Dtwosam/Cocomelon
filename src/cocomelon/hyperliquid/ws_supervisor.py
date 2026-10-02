@@ -57,12 +57,20 @@ class WebSocketSupervisor:
         sleep: Sleep = asyncio.sleep,
         heartbeat_seconds: float = 45.0,
         stale_after_ms: int = 15_000,
+        server_silence_timeout_ms: int | None = None,
         dedup_size: int = 2048,
     ) -> None:
         if heartbeat_seconds <= 0:
             raise ValueError("heartbeat_seconds must be positive")
         if stale_after_ms <= 0:
             raise ValueError("stale_after_ms must be positive")
+        if (
+            server_silence_timeout_ms is not None
+            and server_silence_timeout_ms <= 0
+        ):
+            raise ValueError(
+                "server_silence_timeout_ms must be positive or None"
+            )
         if dedup_size <= 0:
             raise ValueError("dedup_size must be positive")
         self._connection_factory = connection_factory
@@ -74,6 +82,7 @@ class WebSocketSupervisor:
         self._sleep = sleep
         self._heartbeat_seconds = heartbeat_seconds
         self._stale_after_ms = stale_after_ms
+        self._server_silence_timeout_ms = server_silence_timeout_ms
         self._dedup_size = dedup_size
         self._recent_keys: dict[str, deque[str]] = defaultdict(deque)
         self._recent_key_sets: dict[str, set[str]] = defaultdict(set)
@@ -270,18 +279,39 @@ class WebSocketSupervisor:
         await self._subscribe_all(connection)
         received = 0
         heartbeat_ms = max(1, int(self._heartbeat_seconds * 1000))
-        next_heartbeat_ms = self._clock_ms() + heartbeat_ms
+        session_started_ms = self._clock_ms()
+        last_session_message_ms: int | None = None
+        next_heartbeat_ms = session_started_ms + heartbeat_ms
         while max_messages is None or received < max_messages:
             now_ms = self._clock_ms()
             next_stale_ms = self._next_l2_stale_deadline_ms()
             wake_ms = next_heartbeat_ms
             if next_stale_ms is not None:
                 wake_ms = min(wake_ms, next_stale_ms)
+            silence_deadline_ms: int | None = None
+            if self._server_silence_timeout_ms is not None:
+                silence_anchor_ms = (
+                    session_started_ms
+                    if last_session_message_ms is None
+                    else last_session_message_ms
+                )
+                silence_deadline_ms = (
+                    silence_anchor_ms
+                    + self._server_silence_timeout_ms
+                )
+                wake_ms = min(wake_ms, silence_deadline_ms)
             remaining_seconds = max(
                 0.0,
                 (wake_ms - now_ms) / 1000,
             )
             if remaining_seconds == 0.0:
+                if (
+                    silence_deadline_ms is not None
+                    and now_ms >= silence_deadline_ms
+                ):
+                    raise ConnectionError(
+                        "websocket server message silence timeout"
+                    )
                 await self._open_l2_stale_gaps_if_needed(now_ms)
                 if now_ms >= next_heartbeat_ms:
                     await connection.send_json({"method": "ping"})
@@ -296,6 +326,13 @@ class WebSocketSupervisor:
                 )
             except TimeoutError:
                 now_ms = self._clock_ms()
+                if (
+                    silence_deadline_ms is not None
+                    and now_ms >= silence_deadline_ms
+                ):
+                    raise ConnectionError(
+                        "websocket server message silence timeout"
+                    )
                 await self._open_l2_stale_gaps_if_needed(now_ms)
                 heartbeat_due = wake_ms == next_heartbeat_ms
                 if heartbeat_due or now_ms >= next_heartbeat_ms:
@@ -304,7 +341,9 @@ class WebSocketSupervisor:
                         self._clock_ms() + heartbeat_ms
                     )
                 continue
-            self._last_server_message_ms = self._clock_ms()
+            received_at_ms = self._clock_ms()
+            self._last_server_message_ms = received_at_ms
+            last_session_message_ms = received_at_ms
             await self._dispatch(raw)
             received += 1
             now_ms = self._clock_ms()
