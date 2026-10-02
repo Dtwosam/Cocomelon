@@ -4227,3 +4227,14 @@ The runtime handoff watchdog also no longer requires a newer push-triggered pape
 Replay behavior is unchanged unless callers explicitly opt into decision-free bootstrap seeding. The 60-second context ceiling, book freshness, strategy rules, risk limits, sizing, stops, readiness, promotion state, and live-order authority remain unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Fresh opening-book gate — 2026-10-02
+
+Current worker `37007947897` recovered broad L2 usability to 14 deep-ready markets, but its session risk telemetry included two `stale_market_data` opening vetoes. The opening queue previously allowed a cached post-latency book to proceed to risk even when that book had aged beyond the execution freshness ceiling by the time the queue was evaluated.
+
+The opening engine now keeps the candidate pending when its cached market book is older than the existing execution `max_book_age_ms` limit. The candidate is evaluated only after that same market supplies a fresh post-latency book. Canonical candidate ordering is preserved, and stale context/account/execution-health conditions still fail closed through the existing independent risk engine.
+
+This does not widen book freshness, context freshness, risk budgets, sizing, stops, eligibility, strategy thresholds, or live authority.
+
+**LIVE TRADING: DISABLED.**

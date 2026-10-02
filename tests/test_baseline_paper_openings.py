@@ -248,6 +248,43 @@ def test_books_before_latency_never_fill_and_later_recorded_book_may_fill(
     adapter.close()
 
 
+def test_stale_cached_book_waits_for_fresh_market_book(
+    tmp_path: Path,
+) -> None:
+    adapter = _adapter(tmp_path / "fresh-book-wait.sqlite3")
+    state = _state(BTC, ETH)
+    config = BaselineReplayConfig()
+    engine = BaselineOpeningEngine(config, adapter, state)
+    engine.stage_epoch(_epoch(BTC, ETH))
+
+    eligible_ms = EVALUATED_AT_MS + config.execution.latency_ms
+    cached_eth = _book(ETH, receive_ms=eligible_ms)
+    assert engine.on_book(cached_eth, eligible_ms) == ()
+    assert tuple(
+        market.canonical for market in engine.pending_markets
+    ) == ("BTC", "ETH")
+
+    stale_now_ms = eligible_ms + config.execution.max_book_age_ms + 1
+    fresh_btc = _book(BTC, receive_ms=stale_now_ms)
+    outcomes = engine.on_book(fresh_btc, stale_now_ms)
+    assert len(outcomes) == 1
+    assert outcomes[0].risk_decision.market == BTC
+    assert tuple(
+        market.canonical for market in engine.pending_markets
+    ) == ("ETH",)
+
+    fresh_eth = _book(ETH, receive_ms=stale_now_ms + 1)
+    outcomes = engine.on_book(fresh_eth, stale_now_ms + 1)
+    assert len(outcomes) == 1
+    assert outcomes[0].risk_decision.market == ETH
+    assert outcomes[0].risk_decision.reason_codes != (
+        "stale_market_data",
+    )
+    assert engine.pending_markets == ()
+
+    adapter.close()
+
+
 def test_opening_trace_preserves_exact_fill_book_liquidity(
     tmp_path: Path,
 ) -> None:
@@ -385,8 +422,9 @@ def test_insufficient_visible_depth_and_stale_market_data_create_zero_exposure(
     stale_state = _state(BTC, snapshot_age_ms=10_000)
     stale = BaselineOpeningEngine(config, stale_adapter, stale_state)
     stale.stage_epoch(_epoch(BTC))
-    stale_book = _book(BTC, receive_ms=eligible_ms)
-    stale_outcomes = stale.on_book(stale_book, eligible_ms + 2_000)
+    stale_now_ms = eligible_ms + 2_000
+    stale_book = _book(BTC, receive_ms=stale_now_ms)
+    stale_outcomes = stale.on_book(stale_book, stale_now_ms)
     assert len(stale_outcomes) == 1
     assert stale_outcomes[0].risk_decision.approved is False
     assert stale_outcomes[0].risk_decision.reason_codes == ("stale_market_data",)

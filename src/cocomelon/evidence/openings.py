@@ -293,7 +293,13 @@ class BaselineOpeningEngine:
             if candidate_book is None:
                 break
             earliest_ms = pending.evaluated_at_ms + self._config.execution.latency_ms
-            if _receive_ms(candidate_book) < earliest_ms:
+            candidate_book_received_ms = _receive_ms(candidate_book)
+            if candidate_book_received_ms < earliest_ms:
+                break
+            if (
+                now_ms - candidate_book_received_ms
+                > self._config.execution.max_book_age_ms
+            ):
                 break
 
             request, instrument, reference = self._risk_request(
