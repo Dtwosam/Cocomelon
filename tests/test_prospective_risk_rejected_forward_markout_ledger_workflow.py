@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(
-    ".github/workflows/prospective-momentum-fast-markout-ledger.yml"
+    ".github/workflows/"
+    "prospective-risk-rejected-fast-markout-ledger.yml"
 )
 
 
@@ -11,24 +12,25 @@ def _source() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_fast_markout_ledger_workflow_is_research_only() -> None:
+def test_risk_rejected_ledger_workflow_is_research_only() -> None:
     source = _source()
 
-    assert "Prospective Momentum Fast-Markout Ledger" in source
-    assert '"Continuous Mainnet Paper Trader"' in source
+    assert "Prospective Risk-Rejected Fast-Markout Ledger" in source
+    assert "Continuous Mainnet Paper Trader" in source
+    assert 'LEDGER_ISSUE: "774"' in source
     assert "actions: read" in source
     assert "contents: read" in source
     assert "issues: write" in source
     assert "actions: write" not in source
-    assert 'LEDGER_ISSUE: "750"' in source
     assert "COCOMELON_EXECUTION_MODE" not in source
-    assert "**Execution authority:**" in source
-    assert "**Promotion authority:**" in source
-    assert "**Changes closed-trade readiness:**" in source
-    assert "**LIVE TRADING: DISABLED.**" in source
+    assert "Execution authority:" in source
+    assert "Promotion authority:" in source
+    assert "Changes risk limits:" in source
+    assert "Changes candidate readiness:" in source
+    assert "LIVE TRADING: DISABLED." in source
 
 
-def test_fast_markout_ledger_binds_exact_compact_source() -> None:
+def test_risk_rejected_ledger_binds_exact_compact_source() -> None:
     source = _source()
 
     assert (
@@ -45,16 +47,18 @@ def test_fast_markout_ledger_binds_exact_compact_source() -> None:
         in source
     )
     assert "source artifact digest is missing or invalid" in source
-    assert "prospective-momentum-band-forward-markout-summary.json" in source
-    assert "prospective-momentum-band-entry-state.json" in source
+    assert "prospective-full-stack-forward-markout-summary.json" in source
 
 
-def test_fast_markout_ledger_restores_append_only_evidence() -> None:
+def test_risk_rejected_ledger_restores_append_only_evidence() -> None:
     source = _source()
 
-    assert "prospective-momentum-fast-markout-ledger-" in source
-    assert "prospective-momentum-fast-markout-ledger.json" in source
-    assert "update_prospective_momentum_fast_markout_ledger.py" in source
+    assert "prospective-risk-rejected-fast-markout-ledger-" in source
+    assert "prospective-risk-rejected-fast-markout-ledger.json" in source
+    assert (
+        "update_prospective_risk_rejected_fast_markout_ledger.py"
+        in source
+    )
     assert "--source-artifact-digest" in source
     assert "--previous" in source
     assert "append-only invariant failure" in source
@@ -62,17 +66,34 @@ def test_fast_markout_ledger_restores_append_only_evidence() -> None:
     assert "Every previously published terminal row" in source
 
 
-def test_fast_markout_ledger_keeps_pending_rows_unfrozen() -> None:
+def test_risk_rejected_ledger_keeps_pending_rows_unfrozen() -> None:
     source = _source()
 
     assert "terminal / previous / new / pending" in source
-    assert "all 5m/15m/1h horizons settled or definitively stale" in source
-    assert "Pending or missing-path rows remain unfrozen." in source
-    assert "Per-horizon early review bar" in source
-    assert "cannot change the momentum candidate's closed-trade readiness gate" in source
+    assert (
+        "Only rows with all fixed horizons terminal become immutable"
+        in source
+    )
+    assert "pending and missing-path rows remain unfrozen" in source
+    assert (
+        "cannot relax a risk veto or change any entry-candidate "
+        "readiness gate"
+        in source
+    )
 
 
-def test_fast_markout_ledger_non_success_wake_falls_back() -> None:
+def test_risk_rejected_ledger_surfaces_reason_level_markouts() -> None:
+    source = _source()
+
+    assert "risk reason counts" in source
+    assert "by risk reason" in source
+    assert "stack-admit-settled={admit_n}" in source
+    assert "stack-admit-mean={admit_mean}" in source
+    assert "leave_one_opportunity_min_mean" in source
+    assert "leave_one_market_min_mean" in source
+
+
+def test_risk_rejected_ledger_non_success_wake_falls_back() -> None:
     source = _source()
 
     assert (
@@ -92,7 +113,7 @@ def test_fast_markout_ledger_non_success_wake_falls_back() -> None:
     )
 
 
-def test_fast_markout_waiting_and_blocked_status_use_quoted_python_builders() -> None:
+def test_risk_rejected_waiting_and_blocked_status_use_quoted_builders() -> None:
     source = _source()
     waiting = source.split(
         "      - name: Publish waiting-for-source status",
@@ -108,23 +129,16 @@ def test_fast_markout_waiting_and_blocked_status_use_quoted_python_builders() ->
         "      - name: Fail closed on ledger drift",
         1,
     )[0]
-    clean = source.split(
-        "      - name: Publish clean ledger status",
-        1,
-    )[1]
 
     assert "python - <<'PY'" in waiting
     assert "python - <<'PY'" in blocked
-    assert "cat > /tmp/momentum-fast-status.md <<EOF" not in waiting
-    assert "cat > /tmp/momentum-fast-status.md <<EOF" not in blocked
     assert "os.environ['SOURCE_RUN_ID']" in waiting
     assert "os.environ['SOURCE_RUN_ATTEMPT']" in waiting
     assert "os.environ['RESOLUTION_MODE']" in waiting
     assert 'os.environ.get("ERROR_TEXT")' in blocked
-    assert r"\`false\`" not in clean
 
 
-def test_fast_markout_source_skips_empty_successful_handoffs() -> None:
+def test_risk_rejected_source_skips_empty_successful_handoffs() -> None:
     source = _source()
 
     assert "artifact_for_run()" in source

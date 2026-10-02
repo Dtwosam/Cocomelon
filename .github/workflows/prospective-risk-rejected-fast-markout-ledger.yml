@@ -1,11 +1,11 @@
-name: Prospective Momentum Fast-Markout Ledger
+name: Prospective Risk-Rejected Fast-Markout Ledger
 
 on:
   push:
     branches:
       - main
     paths:
-      - ".github/workflows/prospective-momentum-fast-markout-ledger.yml"
+      - ".github/workflows/prospective-risk-rejected-fast-markout-ledger.yml"
   workflow_run:
     workflows:
       - "Continuous Mainnet Paper Trader"
@@ -29,7 +29,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: prospective-momentum-fast-markout-ledger
+  group: prospective-risk-rejected-fast-markout-ledger
   cancel-in-progress: false
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      LEDGER_ISSUE: "750"
+      LEDGER_ISSUE: "774"
       GH_TOKEN: ${{ github.token }}
 
     steps:
@@ -220,26 +220,21 @@ jobs:
           ARTIFACT_ID: ${{ steps.source.outputs.artifact_id }}
         run: |
           set -euo pipefail
-          rm -rf /tmp/momentum-fast-source
-          mkdir -p /tmp/momentum-fast-source
-          gh api             "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/momentum-fast-source.zip
-          unzip -q /tmp/momentum-fast-source.zip -d /tmp/momentum-fast-source
+          rm -rf /tmp/risk-rejected-fast-source
+          mkdir -p /tmp/risk-rejected-fast-source
+          gh api             "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/risk-rejected-fast-source.zip
+          unzip -q /tmp/risk-rejected-fast-source.zip -d /tmp/risk-rejected-fast-source
 
           summary_path="$(
-            find /tmp/momentum-fast-source               -type f               -name prospective-momentum-band-forward-markout-summary.json               -print -quit
+            find /tmp/risk-rejected-fast-source               -type f               -name prospective-full-stack-forward-markout-summary.json               -print -quit
           )"
-          state_path="$(
-            find /tmp/momentum-fast-source               -type f               -name prospective-momentum-band-entry-state.json               -print -quit
-          )"
-          if [ -z "$summary_path" ] || [ -z "$state_path" ]; then
+          if [ -z "$summary_path" ]; then
             echo "eligible=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           test -s "$summary_path"
-          test -s "$state_path"
           echo "eligible=true" >> "$GITHUB_OUTPUT"
           echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
-          echo "state_path=$state_path" >> "$GITHUB_OUTPUT"
 
       - name: Publish waiting-for-source status
         if: ${{ steps.compact.outputs.eligible != 'true' }}
@@ -254,7 +249,7 @@ jobs:
           from pathlib import Path
 
           lines = [
-              "## Momentum fast-markout evidence ledger",
+              "## Risk-rejected full-stack fast-markout ledger",
               "",
               "**Status:** waiting for new-format compact source",
               "",
@@ -267,21 +262,22 @@ jobs:
                   "- source resolution: "
                   f"`{os.environ['RESOLUTION_MODE']}`"
               ),
-              "- reason: compact source predates the fast momentum-markout export",
+              "- reason: compact source predates the full-stack fast-markout export",
               "",
-              "No fast-markout row is credited from this run.",
+              "No risk-rejected fast-markout row is credited from this run.",
               "",
               "**Execution authority:** `false`",
               "**Promotion authority:** `false`",
-              "**Changes closed-trade readiness:** `false`",
+              "**Changes risk limits:** `false`",
+              "**Changes candidate readiness:** `false`",
               "**LIVE TRADING: DISABLED.**",
           ]
-          Path("/tmp/momentum-fast-status.md").write_text(
+          Path("/tmp/risk-rejected-fast-status.md").write_text(
               "\n".join(lines) + "\n",
               encoding="utf-8",
           )
           PY
-          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/momentum-fast-status.md)"
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/risk-rejected-fast-status.md)"
 
       - name: Restore previous fast-markout ledger
         if: ${{ steps.compact.outputs.eligible == 'true' }}
@@ -294,7 +290,7 @@ jobs:
           previous_path=""
           previous_workflow_run_id=""
           runs_json="$(
-            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-momentum-fast-markout-ledger.yml/runs?status=success&per_page=100"
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-risk-rejected-fast-markout-ledger.yml/runs?status=success&per_page=100"
           )"
           mapfile -t prior_runs < <(
             jq -r               --arg current "$CURRENT_RUN_ID"               '.workflow_runs
@@ -315,7 +311,7 @@ jobs:
                       (.expired | not)
                       and (
                         .name
-                        | startswith("prospective-momentum-fast-markout-ledger-")
+                        | startswith("prospective-risk-rejected-fast-markout-ledger-")
                       )
                     )
                   )
@@ -329,12 +325,12 @@ jobs:
               continue
             fi
             IFS=$'\t' read -r artifact_id artifact_name <<<"$artifact_line"
-            rm -rf /tmp/previous-momentum-fast-ledger
-            mkdir -p /tmp/previous-momentum-fast-ledger
-            gh api               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > /tmp/previous-momentum-fast-ledger.zip
-            unzip -q               /tmp/previous-momentum-fast-ledger.zip               -d /tmp/previous-momentum-fast-ledger
+            rm -rf /tmp/previous-risk-rejected-fast-ledger
+            mkdir -p /tmp/previous-risk-rejected-fast-ledger
+            gh api               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > /tmp/previous-risk-rejected-fast-ledger.zip
+            unzip -q               /tmp/previous-risk-rejected-fast-ledger.zip               -d /tmp/previous-risk-rejected-fast-ledger
             candidate="$(
-              find /tmp/previous-momentum-fast-ledger                 -type f                 -name prospective-momentum-fast-markout-ledger.json                 -print -quit
+              find /tmp/previous-risk-rejected-fast-ledger                 -type f                 -name prospective-risk-rejected-fast-markout-ledger.json                 -print -quit
             )"
             if [ -n "$candidate" ] && [ -s "$candidate" ]; then
               previous_path="$candidate"
@@ -352,7 +348,6 @@ jobs:
         shell: bash
         env:
           SUMMARY_PATH: ${{ steps.compact.outputs.summary_path }}
-          STATE_PATH: ${{ steps.compact.outputs.state_path }}
           PREVIOUS_LEDGER_PATH: ${{ steps.previous.outputs.previous_path }}
           SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
           SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
@@ -362,27 +357,26 @@ jobs:
           set +e
           args=(
             "$SUMMARY_PATH"
-            "$STATE_PATH"
             --source-paper-run-id "$SOURCE_RUN_ID"
             --source-paper-run-attempt "$SOURCE_RUN_ATTEMPT"
             --source-artifact-name "$SOURCE_ARTIFACT_NAME"
             --source-artifact-digest "$SOURCE_ARTIFACT_DIGEST"
-            --json-out prospective-momentum-fast-markout-ledger.json
+            --json-out prospective-risk-rejected-fast-markout-ledger.json
           )
           if [ -n "$PREVIOUS_LEDGER_PATH" ]; then
             args+=(--previous "$PREVIOUS_LEDGER_PATH")
           fi
-          python scripts/update_prospective_momentum_fast_markout_ledger.py             "${args[@]}"             > /tmp/momentum-fast-ledger.stdout.json             2> /tmp/momentum-fast-ledger.error
+          python scripts/update_prospective_risk_rejected_fast_markout_ledger.py             "${args[@]}"             > /tmp/risk-rejected-fast-ledger.stdout.json             2> /tmp/risk-rejected-fast-ledger.error
           status=$?
           set -e
           if [ "$status" -eq 0 ]; then
-            test -s prospective-momentum-fast-markout-ledger.json
+            test -s prospective-risk-rejected-fast-markout-ledger.json
             echo "clean=true" >> "$GITHUB_OUTPUT"
           else
             echo "clean=false" >> "$GITHUB_OUTPUT"
             {
               echo "error<<EOF"
-              cat /tmp/momentum-fast-ledger.error
+              cat /tmp/risk-rejected-fast-ledger.error
               echo "EOF"
             } >> "$GITHUB_OUTPUT"
           fi
@@ -401,7 +395,7 @@ jobs:
 
           error = os.environ.get("ERROR_TEXT") or "unknown error"
           lines = [
-              "## Momentum fast-markout evidence ledger",
+              "## Risk-rejected full-stack fast-markout ledger",
               "",
               "**Status:** BLOCKED — append-only invariant failure",
               "",
@@ -412,25 +406,26 @@ jobs:
               ),
               f"- error: `{error}`",
               "",
-              "No fast momentum evidence is published from this run.",
+              "No risk-rejected fast-markout evidence is published from this run.",
               "",
               "**Execution authority:** `false`",
               "**Promotion authority:** `false`",
-              "**Changes closed-trade readiness:** `false`",
+              "**Changes risk limits:** `false`",
+              "**Changes candidate readiness:** `false`",
               "**LIVE TRADING: DISABLED.**",
           ]
-          Path("/tmp/momentum-fast-status.md").write_text(
+          Path("/tmp/risk-rejected-fast-status.md").write_text(
               "\n".join(lines) + "\n",
               encoding="utf-8",
           )
           PY
-          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/momentum-fast-status.md)"
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/risk-rejected-fast-status.md)"
 
       - name: Fail closed on ledger drift
         if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean != 'true' }}
         shell: bash
         run: |
-          echo "Momentum fast-markout append-only ledger is blocked." >&2
+          echo "Risk-rejected fast-markout append-only ledger is blocked." >&2
           exit 1
 
       - name: Publish clean ledger status
@@ -449,9 +444,9 @@ jobs:
           from pathlib import Path
 
           ledger = json.loads(
-              Path("prospective-momentum-fast-markout-ledger.json").read_text(
-                  encoding="utf-8"
-              )
+              Path(
+                  "prospective-risk-rejected-fast-markout-ledger.json"
+              ).read_text(encoding="utf-8")
           )
           summary = ledger["summary"]
 
@@ -463,75 +458,100 @@ jobs:
 
           previous = os.environ["PREVIOUS_WORKFLOW_RUN_ID"] or "none"
           lines = [
-              "## Momentum fast-markout evidence ledger",
+              "## Risk-rejected full-stack fast-markout ledger",
               "",
               "**Status:** append-only clean",
               "",
-              f"- candidate: `{ledger['candidate_id']}`",
-              f"- candidate clean start: `{stamp(ledger['started_at_ms'])}`",
               f"- common stack start: `{stamp(ledger['overlap_started_at_ms'])}`",
               f"- source paper run / attempt: `{os.environ['SOURCE_RUN_ID']} / {os.environ['SOURCE_RUN_ATTEMPT']}`",
               f"- source resolution: `{os.environ['RESOLUTION_MODE']}`",
               f"- previous ledger workflow run: `{previous}`",
               f"- terminal / previous / new / pending: `{ledger['row_count']} / {ledger['previous_row_count']} / {ledger['new_row_count']} / {ledger['pending_opportunity_count']}`",
               f"- cumulative source integrity clean: `{summary['integrity_clean']}`",
+              f"- stack admitted / blocked terminal: `{summary['stack_admitted_terminal']} / {summary['stack_blocked_terminal']}`",
+              f"- risk reason counts: `{summary['risk_reason_counts']}`",
               f"- rows SHA-256: `{ledger['rows_sha256']}`",
               f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
               "",
               "### Fixed forward horizons",
               "",
-              "| Horizon | Settled | Stale | Admit | Block | LONG | SHORT | Markets | Admit mean | Block mean | Spread | LOO opp | LOO market | Ready? |",
-              "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+              "| Horizon | Settled | Admit | Block | LONG | SHORT | Markets | Admit mean | Block mean | LOO admit opp | LOO admit market |",
+              "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
           ]
           for horizon_ms in ledger["forward_horizons_ms"]:
               item = summary["horizons"][str(horizon_ms)]
-              ready = item["review_readiness"]
+              admit = item["stack_admit"]
               lines.append(
-                  "| {minutes}m | {settled} | {stale} | {admit} | {block} | "
-                  "{long} | {short} | {markets} | {admit_mean} | {block_mean} | "
-                  "{spread} | {loo_opp} | {loo_market} | {ready} |".format(
+                  "| {minutes}m | {settled} | {admit_n} | {block_n} | "
+                  "{long} | {short} | {markets} | {admit_mean} | "
+                  "{block_mean} | {loo_opp} | {loo_market} |".format(
                       minutes=horizon_ms // 60000,
                       settled=item["settled_opportunities"],
-                      stale=item["stale_opportunities"],
-                      admit=item["admit_settled"],
-                      block=item["block_settled"],
+                      admit_n=item["stack_admit_settled"],
+                      block_n=item["stack_block_settled"],
                       long=item["long_settled"],
                       short=item["short_settled"],
                       markets=item["market_count"],
-                      admit_mean=item["admit_mean_directional_return"],
-                      block_mean=item["block_mean_directional_return"],
-                      spread=item["admit_minus_block_mean_return"],
-                      loo_opp=item["leave_one_opportunity_min_spread"],
-                      loo_market=item["leave_one_market_min_spread"],
-                      ready=ready["ready_for_early_evidence_review"],
+                      admit_mean=admit["mean_directional_return"],
+                      block_mean=item[
+                          "stack_block_mean_directional_return"
+                      ],
+                      loo_opp=admit[
+                          "leave_one_opportunity_min_mean"
+                      ],
+                      loo_market=admit[
+                          "leave_one_market_min_mean"
+                      ],
                   )
               )
+              lines.append("")
+              lines.append(
+                  f"**{horizon_ms // 60000}m by risk reason**"
+              )
+              for reason, values in sorted(
+                  item["by_risk_reason"].items()
+              ):
+                  lines.append(
+                      "- {reason}: opportunities={opportunities}, "
+                      "settled={settled}, mean={mean}, "
+                      "stack-admit-settled={admit_n}, "
+                      "stack-admit-mean={admit_mean}".format(
+                          reason=reason,
+                          opportunities=values["opportunities"],
+                          settled=values["settled"],
+                          mean=values["mean_directional_return"],
+                          admit_n=values["stack_admit_settled"],
+                          admit_mean=values[
+                              "stack_admit_mean_directional_return"
+                          ],
+                      )
+                  )
           lines.extend(
               [
                   "",
-                  "Per-horizon early review bar: >=20 settled opportunities, >=5 ADMIT, >=5 BLOCK, >=5 LONG, >=5 SHORT, >=4 markets, positive ADMIT mean, negative BLOCK mean, positive ADMIT-minus-BLOCK spread, and positive leave-one-opportunity / leave-one-market spread robustness.",
-                  "This is a fast descriptive separation check only. It cannot change the momentum candidate's closed-trade readiness gate.",
-                  "Only opportunities with all 5m/15m/1h horizons settled or definitively stale become immutable. Pending or missing-path rows remain unfrozen.",
+                  "Only rows with all fixed horizons terminal become immutable; pending and missing-path rows remain unfrozen.",
                   "Every previously published terminal row must remain byte-for-byte equivalent after canonicalization.",
+                  "This ledger is descriptive only. It cannot relax a risk veto or change any entry-candidate readiness gate.",
                   "",
                   "**Execution authority:** `false`",
                   "**Promotion authority:** `false`",
-                  "**Changes closed-trade readiness:** `false`",
+                  "**Changes risk limits:** `false`",
+                  "**Changes candidate readiness:** `false`",
                   "**LIVE TRADING: DISABLED.**",
               ]
           )
-          Path("/tmp/momentum-fast-status.md").write_text(
+          Path("/tmp/risk-rejected-fast-status.md").write_text(
               "\n".join(lines) + "\n",
               encoding="utf-8",
           )
           PY
-          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/momentum-fast-status.md)"
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/risk-rejected-fast-status.md)"
 
-      - name: Upload fast-markout ledger
+      - name: Upload risk-rejected fast-markout ledger
         if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean == 'true' }}
         uses: actions/upload-artifact@v7
         with:
-          name: prospective-momentum-fast-markout-ledger-${{ github.run_id }}-${{ github.run_attempt }}
-          path: prospective-momentum-fast-markout-ledger.json
+          name: prospective-risk-rejected-fast-markout-ledger-${{ github.run_id }}-${{ github.run_attempt }}
+          path: prospective-risk-rejected-fast-markout-ledger.json
           if-no-files-found: error
           retention-days: 90

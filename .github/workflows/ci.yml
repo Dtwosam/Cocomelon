@@ -219,6 +219,8 @@ jobs:
           tests/test_prospective_combined_entry_filter.py
           tests/test_prospective_full_stack_entry_exit.py
           tests/test_prospective_full_stack_forward_markout.py
+          tests/test_prospective_risk_rejected_forward_markout_ledger.py
+          tests/test_prospective_risk_rejected_forward_markout_ledger_workflow.py
           tests/test_prospective_full_stack_matched_trade_ledger.py
           tests/test_prospective_full_stack_matched_trade_ledger_workflow.py
           tests/test_prospective_full_stack_capacity_reflow.py
