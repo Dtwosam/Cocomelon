@@ -948,6 +948,53 @@ def test_pipeline_l2_recovery_plan_falls_back_to_epoch_stale_count() -> None:
     assert fallback is True
 
 
+def test_pipeline_l2_recovery_plan_survives_watchlist_count_drift() -> None:
+    stale_ages = tuple(
+        (f"old-{index}", 42_598)
+        for index in range(17)
+    )
+    activity = SessionDecisionActivity(
+        decision_epochs=1,
+        last_decision_boundary_ms=40_000,
+        last_decision_evaluated_at_ms=40_100,
+        long_decisions=0,
+        short_decisions=0,
+        no_trade_decisions=21,
+        decision_reason_counts=(("not_deep_ready", 21),),
+        eligibility_evaluations=21,
+        eligibility_rankable=17,
+        eligibility_deep_ready=0,
+        eligibility_reason_counts=(("stale_book", 17),),
+        latest_epoch_market_count=21,
+        latest_epoch_rankable_count=17,
+        latest_epoch_deep_ready_count=0,
+        latest_epoch_eligibility_reason_counts=(
+            ("stale_book", 17),
+        ),
+        latest_epoch_stale_book_age_ms=stale_ages,
+        risk_evaluations=0,
+        risk_approvals=0,
+        risk_rejections=0,
+        risk_reason_counts=(),
+        opening_execution_attempts=0,
+        opening_fills=0,
+    )
+    current_selected = frozenset(
+        f"current-{index}" for index in range(20)
+    )
+
+    boundary, markets, fallback = _pipeline_l2_recovery_plan(
+        activity,
+        selected_market_keys=current_selected,
+        last_recovery_boundary_ms=None,
+        max_book_age_ms=5_000,
+    )
+
+    assert boundary == 40_000
+    assert markets == current_selected
+    assert fallback is True
+
+
 def test_pipeline_l2_recovery_plan_does_not_repeat_or_overreact() -> None:
     activity = SessionDecisionActivity(
         decision_epochs=1,
