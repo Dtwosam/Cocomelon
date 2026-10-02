@@ -4192,3 +4192,14 @@ Only then does that risk reason become `ready_for_risk_budget_investigation`. Th
 The gate is review-only and cannot change risk limits, candidate readiness, order sizing, execution, promotion state, or live authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Decision-epoch L2 recovery wakeup — 2026-10-02
+
+Worker `36995939153` showed a completed decision epoch with 20 selected markets, 15 `stale_book` rejections, only one deep-ready market, and zero L2 recovery/reseed triggers even after repeated operational heartbeats. The pure recovery planner already classified that stale majority as systemic; the remaining failure was wakeup timing.
+
+The continuous paper runtime now signals the control loop whenever a new decision epoch completes. The loop waits on that signal as well as its normal context-poll deadline, so a newly completed systemic stale/missing-deep epoch can trigger the existing REST L2 reseed and redundant websocket replacement immediately instead of waiting for the next 30-second context cycle. The normal REST context cadence is preserved, and the existing decision-boundary deduplication prevents repeated recovery from one epoch.
+
+This changes data-plane liveness only. Book freshness limits, deep eligibility, strategy thresholds, risk vetoes, sizing, candidate readiness, execution semantics, promotion state, and live-order authority remain unchanged.
+
+**LIVE TRADING: DISABLED.**
