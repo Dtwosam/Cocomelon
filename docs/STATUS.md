@@ -4116,3 +4116,28 @@ This closes a current learning blind spot without weakening risk:
 This cohort has no readiness, promotion, sizing, risk-relaxation, order, or live authority. Its purpose is to answer whether a risk lockout is protecting the account from poor signals or merely suppressing otherwise good setups before any proposal to change that guard is considered.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Append-only risk-rejected fast-markout ledger — 2026-10-02
+
+The risk-rejected full-stack fast-markout shadow now has a separate append-only evidence surface on Issue #774.
+
+Each successful paper handoff is bound to its exact compact learning artifact and contributes only risk-rejected opening-opportunity rows whose fixed 5m / 15m / 60m horizons are terminal. Pending or missing-path rows remain unfrozen until a later source makes them terminal.
+
+The ledger preserves:
+
+- exact baseline risk reason codes, including `weekly_drawdown_lockout`;
+- frozen combined + two-strike + momentum stack decision and block layer;
+- direction, market, strategy and point-in-time scanner rank lineage;
+- terminal forward markouts and their lag status;
+- cumulative reason-level means plus stack-admitted leave-one-opportunity and leave-one-market robustness.
+
+Previously published terminal rows may not disappear or change after canonicalization. Source run/attempt and compact-artifact digest are recorded on every append. Metadata drift, source identity drift, or historical row mutation blocks the ledger update instead of rewriting evidence.
+
+This ledger is descriptive only. It cannot relax risk, change candidate readiness, place paper orders, alter sizing, promote a candidate, or enable live trading.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**Changes risk limits:** `false`  
+**Changes candidate readiness:** `false`  
+**LIVE TRADING: DISABLED.**
