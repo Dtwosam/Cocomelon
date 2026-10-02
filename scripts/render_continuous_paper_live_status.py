@@ -9313,6 +9313,81 @@ def _render_operational_live_status(
     )
     if not isinstance(latest_eligibility, dict):
         latest_eligibility = {}
+    l2_health = payload.get("l2_supervisor_health", {})
+    if not isinstance(l2_health, dict):
+        l2_health = {}
+    raw_lanes = l2_health.get("lanes", [])
+    if not isinstance(raw_lanes, list):
+        raw_lanes = []
+    l2_lane_lines: list[str] = []
+    for raw_lane in raw_lanes:
+        if not isinstance(raw_lane, dict):
+            continue
+        stale_markets = raw_lane.get("stale_l2_markets", [])
+        missing_ready = raw_lane.get(
+            "missing_ready_l2_markets",
+            [],
+        )
+        if not isinstance(stale_markets, list):
+            stale_markets = []
+        if not isinstance(missing_ready, list):
+            missing_ready = []
+        l2_lane_lines.append(
+            "- L2 lane {lane}: connected={connected}, ready={ready}, "
+            "stale={stale}, missing-ready={missing}, reconnects={reconnects}, "
+            "server-age={server_age}ms, duplicates={duplicates}, "
+            "anomalies={anomalies}".format(
+                lane=raw_lane.get("lane", "?"),
+                connected=str(
+                    bool(raw_lane.get("connected"))
+                ).lower(),
+                ready=raw_lane.get(
+                    "ready_l2_market_count",
+                    0,
+                ),
+                stale=raw_lane.get(
+                    "stale_l2_market_count",
+                    0,
+                ),
+                missing=raw_lane.get(
+                    "missing_ready_l2_market_count",
+                    0,
+                ),
+                reconnects=raw_lane.get(
+                    "reconnect_count",
+                    0,
+                ),
+                server_age=raw_lane.get(
+                    "last_server_message_age_ms"
+                ),
+                duplicates=raw_lane.get(
+                    "duplicate_count",
+                    0,
+                ),
+                anomalies=raw_lane.get(
+                    "anomaly_count",
+                    0,
+                ),
+            )
+        )
+        if stale_markets:
+            l2_lane_lines.append(
+                "- L2 lane {lane} stale markets: {markets}".format(
+                    lane=raw_lane.get("lane", "?"),
+                    markets=", ".join(
+                        str(value) for value in stale_markets
+                    ),
+                )
+            )
+        if missing_ready:
+            l2_lane_lines.append(
+                "- L2 lane {lane} missing-ready markets: {markets}".format(
+                    lane=raw_lane.get("lane", "?"),
+                    markets=", ".join(
+                        str(value) for value in missing_ready
+                    ),
+                )
+            )
 
     lines = [
         "## Continuous paper runtime live status",
@@ -9587,6 +9662,12 @@ def _render_operational_live_status(
                 f"{payload.get('stale_l2_pipeline_recovery_triggers', 0)} / "
                 f"{payload.get('stale_l2_pipeline_reason_fallback_triggers', 0)}"
             ),
+            (
+                "- L2 supervisor unhealthy markets: "
+                f"{l2_health.get('unhealthy_l2_market_count', 0)} / "
+                f"{l2_health.get('required_market_count', 0)}"
+            ),
+            *l2_lane_lines,
             (
                 "- journal observations: "
                 f"{payload['journal_observations']}"
