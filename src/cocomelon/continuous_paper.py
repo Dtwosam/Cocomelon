@@ -346,6 +346,10 @@ from cocomelon.research.prospective_two_strike_stop_filter import (
     ProspectiveTwoStrikeStopFilterState,
     evaluate_prospective_two_strike_stop_filter,
 )
+from cocomelon.research.prospective_weekly_drawdown_lockout_shadow import (
+    ProspectiveWeeklyDrawdownLockoutShadowState,
+    evaluate_prospective_weekly_drawdown_lockout_shadow,
+)
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
@@ -395,6 +399,12 @@ PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_STATE_FILENAME = (
 )
 PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME = (
     "prospective-consecutive-loss-cooldown-shadow-summary.json"
+)
+PROSPECTIVE_WEEKLY_DRAWDOWN_LOCKOUT_SHADOW_STATE_FILENAME = (
+    "prospective-weekly-drawdown-lockout-shadow-state.json"
+)
+PROSPECTIVE_WEEKLY_DRAWDOWN_LOCKOUT_SHADOW_SUMMARY_FILENAME = (
+    "prospective-weekly-drawdown-lockout-shadow-summary.json"
 )
 PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME = (
     "prospective-full-stack-entry-exit-summary.json"
@@ -2551,6 +2561,76 @@ def _prospective_consecutive_loss_cooldown_shadow_payload(
             "execution_authority": False,
             "promotion_authority": False,
             "changes_risk_limits": False,
+            "candidate_id": state.candidate_id,
+            "frozen_at_ms": state.frozen_at_ms,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
+
+
+def _restore_prospective_weekly_drawdown_lockout_shadow(
+    path: Path,
+    *,
+    frozen_at_ms: int,
+) -> tuple[
+    ProspectiveWeeklyDrawdownLockoutShadowState,
+    str | None,
+]:
+    if not path.exists():
+        return (
+            ProspectiveWeeklyDrawdownLockoutShadowState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveWeeklyDrawdownLockoutShadowState.from_payload(
+                raw
+            ),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveWeeklyDrawdownLockoutShadowState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _prospective_weekly_drawdown_lockout_shadow_payload(
+    opportunity_store: ContinuousPaperOpeningOpportunityStore,
+    path_store: ContinuousPaperOpeningOpportunityPathStore,
+    full_stack_summary: object,
+    state: ProspectiveWeeklyDrawdownLockoutShadowState,
+    config: PaperExecutionConfig,
+    *,
+    restore_error: str | None,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_weekly_drawdown_lockout_shadow(
+            opportunity_store,
+            path_store,
+            full_stack_summary,
+            state,
+            config,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "changes_risk_limits": False,
+            "changes_candidate_readiness": False,
             "candidate_id": state.candidate_id,
             "frozen_at_ms": state.frozen_at_ms,
             "started_at_ms": state.started_at_ms,
@@ -7612,6 +7692,14 @@ async def run_continuous_paper_session(
         frozen_at_ms=started_at_ms,
     )
     (
+        prospective_weekly_drawdown_lockout_shadow_state,
+        prospective_weekly_drawdown_lockout_shadow_restore_error,
+    ) = _restore_prospective_weekly_drawdown_lockout_shadow(
+        root
+        / PROSPECTIVE_WEEKLY_DRAWDOWN_LOCKOUT_SHADOW_STATE_FILENAME,
+        frozen_at_ms=started_at_ms,
+    )
+    (
         prospective_breakeven_profit_lock_state,
         _prospective_breakeven_profit_lock_restore_error,
     ) = _restore_prospective_breakeven_profit_lock(
@@ -7910,6 +7998,11 @@ async def run_continuous_paper_session(
                 root
                 / PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_STATE_FILENAME,
                 prospective_consecutive_loss_cooldown_shadow_state.payload(),
+            )
+            _write_json_atomic(
+                root
+                / PROSPECTIVE_WEEKLY_DRAWDOWN_LOCKOUT_SHADOW_STATE_FILENAME,
+                prospective_weekly_drawdown_lockout_shadow_state.payload(),
             )
             _write_json_atomic(
                 root / PROSPECTIVE_BREAKEVEN_PROFIT_LOCK_STATE_FILENAME,
@@ -8442,6 +8535,23 @@ async def run_continuous_paper_session(
             root
             / PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME,
             full_stack_forward_markout,
+        )
+        weekly_drawdown_lockout_shadow = (
+            _prospective_weekly_drawdown_lockout_shadow_payload(
+                opening_opportunity_store,
+                opening_opportunity_path_store,
+                full_stack_forward_markout,
+                prospective_weekly_drawdown_lockout_shadow_state,
+                replay_config.execution,
+                restore_error=(
+                    prospective_weekly_drawdown_lockout_shadow_restore_error
+                ),
+            )
+        )
+        _write_json_atomic(
+            root
+            / PROSPECTIVE_WEEKLY_DRAWDOWN_LOCKOUT_SHADOW_SUMMARY_FILENAME,
+            weekly_drawdown_lockout_shadow,
         )
         if profit_lock_execution_shadow.shadow is None:
             full_stack_entry_exit = {
