@@ -422,8 +422,9 @@ def test_insufficient_visible_depth_and_stale_market_data_create_zero_exposure(
     stale_state = _state(BTC, snapshot_age_ms=10_000)
     stale = BaselineOpeningEngine(config, stale_adapter, stale_state)
     stale.stage_epoch(_epoch(BTC))
-    stale_book = _book(BTC, receive_ms=eligible_ms)
-    stale_outcomes = stale.on_book(stale_book, eligible_ms + 2_000)
+    stale_now_ms = eligible_ms + 2_000
+    stale_book = _book(BTC, receive_ms=stale_now_ms)
+    stale_outcomes = stale.on_book(stale_book, stale_now_ms)
     assert len(stale_outcomes) == 1
     assert stale_outcomes[0].risk_decision.approved is False
     assert stale_outcomes[0].risk_decision.reason_codes == ("stale_market_data",)
