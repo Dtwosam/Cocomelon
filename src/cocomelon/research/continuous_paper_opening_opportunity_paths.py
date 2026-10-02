@@ -292,6 +292,14 @@ class ContinuousPaperOpeningOpportunityPathStore:
         self.records_root.mkdir(parents=True, exist_ok=True)
         self.max_path_age_ms = max_path_age_ms
         self.max_completion_lag_ms = max_completion_lag_ms
+        self._paths_by_id: dict[
+            str, ContinuousPaperOpeningOpportunityPath
+        ] = {}
+        self._active_by_market: dict[
+            str,
+            dict[str, ContinuousPaperOpeningOpportunityPath],
+        ] = {}
+        self._load_index_from_disk()
 
     @staticmethod
     def _record_name(opportunity_id: str) -> str:
@@ -328,6 +336,31 @@ class ContinuousPaperOpeningOpportunityPathStore:
             if temporary.exists():
                 temporary.unlink()
 
+    def _index_path(
+        self,
+        path: ContinuousPaperOpeningOpportunityPath,
+    ) -> None:
+        self._paths_by_id[path.opportunity_id] = path
+        market_paths = self._active_by_market.setdefault(
+            path.market,
+            {},
+        )
+        if path.complete:
+            market_paths.pop(path.opportunity_id, None)
+            if not market_paths:
+                self._active_by_market.pop(path.market, None)
+            return
+        market_paths[path.opportunity_id] = path
+
+    def _load_index_from_disk(self) -> None:
+        for record_path in sorted(self.records_root.glob("*.json")):
+            loaded = self._load_path(record_path)
+            if loaded.opportunity_id in self._paths_by_id:
+                raise ContinuousPaperOpeningOpportunityPathError(
+                    "duplicate opening opportunity path id"
+                )
+            self._index_path(loaded)
+
     def register(
         self,
         *,
@@ -344,7 +377,12 @@ class ContinuousPaperOpeningOpportunityPathStore:
             max_path_age_ms=self.max_path_age_ms,
             max_completion_lag_ms=self.max_completion_lag_ms,
         )
-        existing = self.load(opportunity_id)
+        existing = self._paths_by_id.get(opportunity_id)
+        if existing is None:
+            existing_path = self._path(opportunity_id)
+            if existing_path.exists():
+                existing = self._load_path(existing_path)
+                self._index_path(existing)
         if existing is not None:
             if (
                 existing.market != proposed.market
@@ -361,6 +399,7 @@ class ContinuousPaperOpeningOpportunityPathStore:
                 )
             return False
         self._write(proposed)
+        self._index_path(proposed)
         return True
 
     def _load_path(
@@ -397,20 +436,22 @@ class ContinuousPaperOpeningOpportunityPathStore:
         self,
         opportunity_id: str,
     ) -> ContinuousPaperOpeningOpportunityPath | None:
+        cached = self._paths_by_id.get(opportunity_id)
+        if cached is not None:
+            return cached
         path = self._path(opportunity_id)
         if not path.exists():
             return None
-        return self._load_path(path)
+        loaded = self._load_path(path)
+        self._index_path(loaded)
+        return loaded
 
     def iter_paths(
         self,
     ) -> tuple[ContinuousPaperOpeningOpportunityPath, ...]:
         return tuple(
             sorted(
-                (
-                    self._load_path(path)
-                    for path in self.records_root.glob("*.json")
-                ),
+                self._paths_by_id.values(),
                 key=lambda item: (
                     item.opportunity_timestamp_ms,
                     item.market,
@@ -436,9 +477,16 @@ class ContinuousPaperOpeningOpportunityPathStore:
             source=source,
         )
         recorded = 0
-        for current in self.iter_paths():
-            if current.market != market or current.complete:
-                continue
+        market_paths = tuple(
+            sorted(
+                self._active_by_market.get(market, {}).values(),
+                key=lambda item: (
+                    item.opportunity_timestamp_ms,
+                    item.opportunity_id,
+                ),
+            )
+        )
+        for current in market_paths:
             if observed_at_ms < current.opportunity_timestamp_ms:
                 continue
             if observed_at_ms > current.completion_deadline_ms:
@@ -481,6 +529,7 @@ class ContinuousPaperOpeningOpportunityPathStore:
                 schema_version=current.schema_version,
             )
             self._write(updated)
+            self._index_path(updated)
             recorded += 1
         return recorded
 
