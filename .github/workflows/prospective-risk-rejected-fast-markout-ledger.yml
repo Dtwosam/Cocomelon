@@ -236,21 +236,21 @@ jobs:
           test -s "$summary_path"
           format_check="$(
             SUMMARY_PATH="$summary_path" python -c '
-import json, os
-from pathlib import Path
-payload = json.loads(Path(os.environ["SUMMARY_PATH"]).read_text(encoding="utf-8"))
-rows = payload.get("risk_rejected_rows") if isinstance(payload, dict) else None
-evaluated = payload.get("risk_rejected_stack_evaluated") if isinstance(payload, dict) else None
-integrity = payload.get("risk_rejected_integrity_clean") if isinstance(payload, dict) else None
-current = (
-    isinstance(rows, list)
-    and isinstance(evaluated, int)
-    and not isinstance(evaluated, bool)
-    and evaluated == len(rows)
-    and isinstance(integrity, bool)
-)
-print("current" if current else "legacy")
-'
+          import json, os
+          from pathlib import Path
+          payload = json.loads(Path(os.environ["SUMMARY_PATH"]).read_text(encoding="utf-8"))
+          rows = payload.get("risk_rejected_rows") if isinstance(payload, dict) else None
+          evaluated = payload.get("risk_rejected_stack_evaluated") if isinstance(payload, dict) else None
+          integrity = payload.get("risk_rejected_integrity_clean") if isinstance(payload, dict) else None
+          current = (
+              isinstance(rows, list)
+              and isinstance(evaluated, int)
+              and not isinstance(evaluated, bool)
+              and evaluated == len(rows)
+              and isinstance(integrity, bool)
+          )
+          print("current" if current else "legacy")
+          '
           )"
           if [ "$format_check" != "current" ]; then
             echo "eligible=false" >> "$GITHUB_OUTPUT"
