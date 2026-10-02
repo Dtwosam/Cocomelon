@@ -4086,3 +4086,16 @@ It also reports total safe-notional shortfall and the extra planned risk that fo
 This is attribution only. It does not raise order size, change risk-per-trade, loosen aggregate or bucket risk, widen leverage/margin/liquidity limits, alter candidate readiness, or add live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Point-in-time opening-rank lineage — 2026-10-02
+
+The completed paper artifact from worker `36963189604` exposed 18 prospective opening opportunities after the full-stack clean start, but none could enter the full entry-stack markout cohort: 16 were baseline risk rejections and the remaining two risk-approved opportunities had missing coarse-rank lineage. The capacity-reflow audit independently showed nine capacity-rejected opportunities with missing rank evidence.
+
+The root cause was an in-memory lineage race. Opening traces are stamped at the L2 event's decision-time timestamp, while the coarse-rank tracker previously retained only the newest context-refresh snapshot. If an older queued L2 event was processed after a newer context refresh, the only retained rank snapshot could be later than the opening timestamp, so the research sink correctly refused to attach future rank evidence even though a valid earlier snapshot had existed.
+
+The coarse-rank tracker now retains a bounded history of the latest 64 canonical snapshots and resolves the newest snapshot that actually existed at or before the opening timestamp. It does not resurrect a market that was absent from that latest prior snapshot, and downstream rank-age gates remain unchanged.
+
+This repairs evidence lineage only. Scanner ranks, entry decisions, risk approvals, order sizing, stops, exits, candidate rules, readiness gates, promotion state, and live authority are unchanged.
+
+**LIVE TRADING: DISABLED.**
