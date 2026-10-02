@@ -1565,44 +1565,35 @@ def test_continuous_context_poll_has_freshness_headroom() -> None:
     assert "--context-poll-seconds 60" not in workflow
 
 
-def test_startup_warmup_refreshes_context_with_headroom() -> None:
+def test_startup_warmup_seeds_before_fresh_context_starts_decisions() -> None:
     source = Path("src/cocomelon/continuous_paper.py").read_text(
         encoding="utf-8"
     )
-    helper_index = source.index(
-        "async def refresh_startup_context() -> int:"
+    startup_index = source.index(
+        "selected_keys = {market.canonical for market in selected}"
     )
     warmup_index = source.index(
         "for market in _iter_until_stop(selected, stop_path):",
-        helper_index,
+        startup_index,
     )
-    interval_refresh_index = source.index(
-        "await refresh_startup_context()",
+    fresh_context_index = source.index(
+        "startup_context_received_at_ms",
         warmup_index,
-    )
-    final_refresh_index = source.index(
-        "await refresh_startup_context()",
-        interval_refresh_index + 1,
     )
     funding_index = source.index(
         "async def refresh_funding() -> None:",
-        final_refresh_index,
+        fresh_context_index,
     )
 
+    bootstrap_window = source[startup_index:fresh_context_index]
+    assert bootstrap_window.count("evaluate_decisions=False") >= 2
+    assert "startup_context_refreshed_at_ms" not in source
     assert (
-        helper_index
+        startup_index
         < warmup_index
-        < interval_refresh_index
-        < final_refresh_index
+        < fresh_context_index
         < funding_index
     )
-    assert (
-        "utc_now_ms() - startup_context_refreshed_at_ms\n"
-        "                >= config.context_poll_seconds * 1000"
-    ) in source
-    assert source.count(
-        "await _refresh_native_market_snapshots(reader)"
-    ) >= 3
 
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:
