@@ -51,7 +51,7 @@ def _markout(
     directional_return: str = "0.01",
 ) -> dict[str, object]:
     target = timestamp_ms + horizon_ms
-    if status in {"pending", "missing_path"}:
+    if status in {"pending", "missing_path", "unsupported_horizon"}:
         return {
             "status": status,
             "target_at_ms": target,
@@ -104,6 +104,8 @@ def _row(
         "lead_strategy": "breakout",
         "rank_ordinal": 3,
         "rank_age_ms": 100,
+        "baseline_risk_approved": True,
+        "baseline_risk_reason_codes": [],
         "combined_block_reason": None,
         "two_strike_prior_strikes": 0,
         "momentum_decision": decision,
@@ -232,6 +234,35 @@ def test_full_stack_fast_ledger_treats_stale_as_terminal() -> None:
     middle = horizons[str(FORWARD_HORIZONS_MS[1])]
     assert middle["settled_opportunities"] == 0
     assert middle["stale_opportunities"] == 1
+
+
+def test_full_stack_fast_ledger_treats_unsupported_horizon_as_terminal() -> None:
+    row = _row(
+        1,
+        statuses=("settled", "unsupported_horizon", "settled"),
+    )
+    ledger = _update(_summary([row]))
+
+    assert ledger["row_count"] == 1
+    assert ledger["pending_opportunity_count"] == 0
+    middle = ledger["summary"]["horizons"][
+        str(FORWARD_HORIZONS_MS[1])
+    ]
+    assert middle["settled_opportunities"] == 0
+    assert middle["unsupported_horizon_opportunities"] == 1
+    assert middle["status_counts"] == {"unsupported_horizon": 1}
+
+
+def test_full_stack_fast_ledger_rejects_risk_rejected_source_row() -> None:
+    row = _row(1)
+    row["baseline_risk_approved"] = False
+    row["baseline_risk_reason_codes"] = ["weekly_drawdown_lockout"]
+
+    with pytest.raises(
+        ProspectiveFullStackForwardMarkoutLedgerError,
+        match="full-stack row must be baseline-risk approved",
+    ):
+        _update(_summary([row]))
 
 
 def test_full_stack_fast_ledger_rejects_changed_terminal_row() -> None:
