@@ -1,0 +1,576 @@
+name: Prospective Full Entry-Stack Fast-Markout Ledger
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-full-stack-fast-markout-ledger.yml"
+  workflow_run:
+    workflows:
+      - "Continuous Mainnet Paper Trader"
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed Continuous Mainnet Paper Trader run ID
+        required: true
+        type: string
+      source_run_attempt:
+        description: Exact source run attempt
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: prospective-full-stack-fast-markout-ledger
+  cancel-in-progress: false
+
+jobs:
+  ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LEDGER_ISSUE: "769"
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e .
+
+      - name: Resolve exact source paper run
+        id: source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
+          EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt || '' }}
+          INPUT_RUN_ID: ${{ inputs.source_run_id || '' }}
+          INPUT_RUN_ATTEMPT: ${{ inputs.source_run_attempt || '' }}
+        run: |
+          set -euo pipefail
+          echo "source_eligible=true" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "workflow_run" ] && [ "$EVENT_CONCLUSION" = "success" ]; then
+            run_id="$EVENT_RUN_ID"
+            run_attempt="$EVENT_RUN_ATTEMPT"
+            resolution_mode="successful_event"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_id="$INPUT_RUN_ID"
+            run_attempt="$INPUT_RUN_ATTEMPT"
+            resolution_mode="manual_exact"
+          else
+            runs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=50"
+            )"
+            read -r run_id run_attempt <<< "$(
+              printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in payload.get("workflow_runs", []):
+              if (
+                  run.get("path") == ".github/workflows/continuous-paper.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and (run.get("head_repository") or {}).get("full_name") == repo
+                  and isinstance(run.get("id"), int)
+                  and isinstance(run.get("run_attempt"), int)
+              ):
+                  print(run["id"], run["run_attempt"])
+                  break
+          '
+            )"
+            if [ "$EVENT_NAME" = "workflow_run" ]; then
+              resolution_mode="latest_successful_after_non_success_wake"
+            else
+              resolution_mode="latest_successful_push"
+            fi
+          fi
+          if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
+            echo "source paper run identity is invalid" >&2
+            exit 1
+          fi
+
+          artifact_for_run() {
+            local candidate_run_id="$1"
+            local candidate_attempt="$2"
+            local expected_name="continuous-paper-learning-source-$candidate_run_id-$candidate_attempt"
+            local artifacts_json
+            artifacts_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/artifacts?per_page=100"
+            )"
+            printf '%s' "$artifacts_json" |
+            ARTIFACT_NAME="$expected_name" python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          name = os.environ["ARTIFACT_NAME"]
+          matches = [
+              item for item in payload.get("artifacts", [])
+              if item.get("name") == name and item.get("expired") is False
+          ]
+          if not matches:
+              raise SystemExit(0)
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected at most one non-expired source artifact named {name}"
+              )
+          item = matches[0]
+          digest = item.get("digest")
+          if not isinstance(digest, str) or not digest.startswith("sha256:"):
+              raise SystemExit("source artifact digest is missing or invalid")
+          print(item["id"], item["name"], digest, sep="\t")
+          '
+          }
+
+          artifact_line="$(artifact_for_run "$run_id" "$run_attempt")"
+          if [ -z "$artifact_line" ] && [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            runs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=50"
+            )"
+            mapfile -t artifact_candidates < <(
+              printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in payload.get("workflow_runs", []):
+              if (
+                  run.get("path") == ".github/workflows/continuous-paper.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and (run.get("head_repository") or {}).get("full_name") == repo
+                  and isinstance(run.get("id"), int)
+                  and isinstance(run.get("run_attempt"), int)
+              ):
+                  print(run["id"], run["run_attempt"], sep="\t")
+          '
+            )
+            for candidate in "${artifact_candidates[@]}"; do
+              IFS=$'\t' read -r candidate_run_id candidate_attempt <<<"$candidate"
+              if [ "$candidate_run_id" = "$run_id" ] && [ "$candidate_attempt" = "$run_attempt" ]; then
+                continue
+              fi
+              candidate_artifact_line="$(
+                artifact_for_run "$candidate_run_id" "$candidate_attempt"
+              )"
+              if [ -n "$candidate_artifact_line" ]; then
+                run_id="$candidate_run_id"
+                run_attempt="$candidate_attempt"
+                artifact_line="$candidate_artifact_line"
+                resolution_mode="latest_successful_with_compact_artifact"
+                break
+              fi
+            done
+          fi
+          if [ -z "$artifact_line" ]; then
+            echo "selected source has no authenticated compact artifact" >&2
+            exit 1
+          fi
+
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+          head_sha="$(
+            printf '%s' "$run_json" |
+            SOURCE_ATTEMPT="$run_attempt" python -c '
+          import json, os, sys
+          run = json.load(sys.stdin)
+          if run.get("path") != ".github/workflows/continuous-paper.yml":
+              raise SystemExit("source workflow path mismatch")
+          if run.get("head_branch") != "main":
+              raise SystemExit("source run must be from main")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("source run must be completed successfully")
+          if str(run.get("run_attempt")) != os.environ["SOURCE_ATTEMPT"]:
+              raise SystemExit("source run attempt mismatch")
+          if (run.get("head_repository") or {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("source repository mismatch")
+          sha = run.get("head_sha")
+          if not isinstance(sha, str) or len(sha) != 40:
+              raise SystemExit("source head sha is invalid")
+          print(sha)
+          '
+          )"
+          IFS=$'\t' read -r artifact_id artifact_name artifact_digest <<<"$artifact_line"
+
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$artifact_digest" >> "$GITHUB_OUTPUT"
+          echo "resolution_mode=$resolution_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Download compact paper source
+        id: compact
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.source.outputs.artifact_id }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/full-stack-fast-source
+          mkdir -p /tmp/full-stack-fast-source
+          gh api             "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/full-stack-fast-source.zip
+          unzip -q /tmp/full-stack-fast-source.zip -d /tmp/full-stack-fast-source
+
+          summary_path="$(
+            find /tmp/full-stack-fast-source               -type f               -name prospective-full-stack-forward-markout-summary.json               -print -quit
+          )"
+          two_strike_state_path="$(
+            find /tmp/full-stack-fast-source               -type f               -name prospective-two-strike-stop-filter-state.json               -print -quit
+          )"
+          momentum_state_path="$(
+            find /tmp/full-stack-fast-source               -type f               -name prospective-momentum-band-entry-state.json               -print -quit
+          )"
+          if [ -z "$summary_path" ] || [ -z "$two_strike_state_path" ] || [ -z "$momentum_state_path" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "reason=compact source predates the full-stack fast-markout export" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          test -s "$summary_path"
+          test -s "$two_strike_state_path"
+          test -s "$momentum_state_path"
+          format_check="$(
+            SUMMARY_PATH="$summary_path" python -c '
+          import json, os
+          from pathlib import Path
+          payload = json.loads(Path(os.environ["SUMMARY_PATH"]).read_text(encoding="utf-8"))
+          rows = payload.get("rows") if isinstance(payload, dict) else None
+          evaluated = payload.get("stack_risk_approved_evaluated") if isinstance(payload, dict) else None
+          integrity = payload.get("integrity_clean") if isinstance(payload, dict) else None
+          current = (
+              isinstance(rows, list)
+              and isinstance(evaluated, int)
+              and not isinstance(evaluated, bool)
+              and evaluated == len(rows)
+              and isinstance(integrity, bool)
+              and all(
+                  isinstance(row, dict)
+                  and row.get("baseline_risk_approved") is True
+                  and row.get("baseline_risk_reason_codes") in ([], ())
+                  for row in rows
+              )
+          )
+          print("current" if current else "legacy")
+          '
+          )"
+          if [ "$format_check" != "current" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "reason=compact source predates risk-approved full-stack row lineage" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+          echo "reason=current full-stack source format" >> "$GITHUB_OUTPUT"
+          echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
+          echo "two_strike_state_path=$two_strike_state_path" >> "$GITHUB_OUTPUT"
+          echo "momentum_state_path=$momentum_state_path" >> "$GITHUB_OUTPUT"
+
+      - name: Publish waiting-for-source status
+        if: ${{ steps.compact.outputs.eligible != 'true' }}
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          WAIT_REASON: ${{ steps.compact.outputs.reason }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          lines = [
+              "## Full entry-stack fast-markout evidence ledger",
+              "",
+              "**Status:** waiting for new-format compact source",
+              "",
+              (
+                  "- source paper run / attempt: "
+                  f"`{os.environ['SOURCE_RUN_ID']} / "
+                  f"{os.environ['SOURCE_RUN_ATTEMPT']}`"
+              ),
+              (
+                  "- source resolution: "
+                  f"`{os.environ['RESOLUTION_MODE']}`"
+              ),
+              f"- reason: {os.environ.get('WAIT_REASON') or 'compact source is not yet eligible'}",
+              "",
+              "No full-stack fast-markout row is credited from this run.",
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**Changes closed-trade readiness:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/full-stack-fast-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/full-stack-fast-status.md)"
+
+      - name: Restore previous fast-markout ledger
+        if: ${{ steps.compact.outputs.eligible == 'true' }}
+        id: previous
+        shell: bash
+        env:
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          previous_path=""
+          previous_workflow_run_id=""
+          runs_json="$(
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-full-stack-fast-markout-ledger.yml/runs?status=success&per_page=100"
+          )"
+          mapfile -t prior_runs < <(
+            jq -r               --arg current "$CURRENT_RUN_ID"               '.workflow_runs
+               | map(select((.id | tostring) != $current))
+               | sort_by(.updated_at)
+               | reverse
+               | .[].id'               <<<"$runs_json"
+          )
+          for run_id in "${prior_runs[@]}"; do
+            artifacts_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+            )"
+            artifact_line="$(
+              jq -r '
+                .artifacts
+                | map(
+                    select(
+                      (.expired | not)
+                      and (
+                        .name
+                        | startswith("prospective-full-stack-fast-markout-ledger-")
+                      )
+                    )
+                  )
+                | if length > 0
+                  then [.[0].id, .[0].name] | @tsv
+                  else ""
+                  end
+              ' <<<"$artifacts_json"
+            )"
+            if [ -z "$artifact_line" ]; then
+              continue
+            fi
+            IFS=$'\t' read -r artifact_id artifact_name <<<"$artifact_line"
+            rm -rf /tmp/previous-full-stack-fast-ledger
+            mkdir -p /tmp/previous-full-stack-fast-ledger
+            gh api               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > /tmp/previous-full-stack-fast-ledger.zip
+            unzip -q               /tmp/previous-full-stack-fast-ledger.zip               -d /tmp/previous-full-stack-fast-ledger
+            candidate="$(
+              find /tmp/previous-full-stack-fast-ledger                 -type f                 -name prospective-full-stack-fast-markout-ledger.json                 -print -quit
+            )"
+            if [ -n "$candidate" ] && [ -s "$candidate" ]; then
+              previous_path="$candidate"
+              previous_workflow_run_id="$run_id"
+              break
+            fi
+          done
+          echo "previous_path=$previous_path" >> "$GITHUB_OUTPUT"
+          echo "previous_workflow_run_id=$previous_workflow_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Extend append-only fast-markout ledger
+        if: ${{ steps.compact.outputs.eligible == 'true' }}
+        id: ledger
+        continue-on-error: true
+        shell: bash
+        env:
+          SUMMARY_PATH: ${{ steps.compact.outputs.summary_path }}
+          TWO_STRIKE_STATE_PATH: ${{ steps.compact.outputs.two_strike_state_path }}
+          MOMENTUM_STATE_PATH: ${{ steps.compact.outputs.momentum_state_path }}
+          PREVIOUS_LEDGER_PATH: ${{ steps.previous.outputs.previous_path }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          SOURCE_ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
+          SOURCE_ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
+        run: |
+          set +e
+          args=(
+            "$SUMMARY_PATH"
+            "$TWO_STRIKE_STATE_PATH"
+            "$MOMENTUM_STATE_PATH"
+            --source-paper-run-id "$SOURCE_RUN_ID"
+            --source-paper-run-attempt "$SOURCE_RUN_ATTEMPT"
+            --source-artifact-name "$SOURCE_ARTIFACT_NAME"
+            --source-artifact-digest "$SOURCE_ARTIFACT_DIGEST"
+            --json-out prospective-full-stack-fast-markout-ledger.json
+          )
+          if [ -n "$PREVIOUS_LEDGER_PATH" ]; then
+            args+=(--previous "$PREVIOUS_LEDGER_PATH")
+          fi
+          python scripts/update_prospective_full_stack_fast_markout_ledger.py             "${args[@]}"             > /tmp/full-stack-fast-ledger.stdout.json             2> /tmp/full-stack-fast-ledger.error
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            test -s prospective-full-stack-fast-markout-ledger.json
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "error<<EOF"
+              cat /tmp/full-stack-fast-ledger.error
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish blocked ledger status
+        if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean != 'true' }}
+        shell: bash
+        env:
+          ERROR_TEXT: ${{ steps.ledger.outputs.error }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          error = os.environ.get("ERROR_TEXT") or "unknown error"
+          lines = [
+              "## Full entry-stack fast-markout evidence ledger",
+              "",
+              "**Status:** BLOCKED — append-only invariant failure",
+              "",
+              (
+                  "- source paper run / attempt: "
+                  f"`{os.environ['SOURCE_RUN_ID']} / "
+                  f"{os.environ['SOURCE_RUN_ATTEMPT']}`"
+              ),
+              f"- error: `{error}`",
+              "",
+              "No full-stack fast-markout evidence is published from this run.",
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**Changes closed-trade readiness:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/full-stack-fast-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/full-stack-fast-status.md)"
+
+      - name: Fail closed on ledger drift
+        if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean != 'true' }}
+        shell: bash
+        run: |
+          echo "Full entry-stack fast-markout append-only ledger is blocked." >&2
+          exit 1
+
+      - name: Publish clean ledger status
+        if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean == 'true' }}
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          PREVIOUS_WORKFLOW_RUN_ID: ${{ steps.previous.outputs.previous_workflow_run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          ledger = json.loads(
+              Path("prospective-full-stack-fast-markout-ledger.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          summary = ledger["summary"]
+
+          def stamp(value):
+              return datetime.fromtimestamp(
+                  int(value) / 1000,
+                  tz=UTC,
+              ).isoformat()
+
+          previous = os.environ["PREVIOUS_WORKFLOW_RUN_ID"] or "none"
+          lines = [
+              "## Full entry-stack fast-markout evidence ledger",
+              "",
+              "**Status:** append-only clean",
+              "",
+              f"- candidate stack: `{ledger['candidate_stack']}`",
+              f"- common stack start: `{stamp(ledger['overlap_started_at_ms'])}`",
+              f"- source paper run / attempt: `{os.environ['SOURCE_RUN_ID']} / {os.environ['SOURCE_RUN_ATTEMPT']}`",
+              f"- source resolution: `{os.environ['RESOLUTION_MODE']}`",
+              f"- previous ledger workflow run: `{previous}`",
+              f"- terminal / previous / new / pending: `{ledger['row_count']} / {ledger['previous_row_count']} / {ledger['new_row_count']} / {ledger['pending_opportunity_count']}`",
+              f"- cumulative source integrity clean: `{summary['integrity_clean']}`",
+              f"- rows SHA-256: `{ledger['rows_sha256']}`",
+              f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
+              "",
+              "### Fixed forward horizons",
+              "",
+              "| Horizon | Settled | Stale | Unsupported | Admit | Block | LONG | SHORT | Markets | Admit mean | Block mean | Spread | LOO opp | LOO market | Ready? |",
+              "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+          ]
+          for horizon_ms in ledger["forward_horizons_ms"]:
+              item = summary["horizons"][str(horizon_ms)]
+              ready = item["review_readiness"]
+              lines.append(
+                  "| {minutes}m | {settled} | {stale} | {unsupported} | {admit} | {block} | "
+                  "{long} | {short} | {markets} | {admit_mean} | {block_mean} | "
+                  "{spread} | {loo_opp} | {loo_market} | {ready} |".format(
+                      minutes=horizon_ms // 60000,
+                      settled=item["settled_opportunities"],
+                      stale=item["stale_opportunities"],
+                      unsupported=item["unsupported_horizon_opportunities"],
+                      admit=item["admit_settled"],
+                      block=item["block_settled"],
+                      long=item["long_settled"],
+                      short=item["short_settled"],
+                      markets=item["market_count"],
+                      admit_mean=item["admit_mean_directional_return"],
+                      block_mean=item["block_mean_directional_return"],
+                      spread=item["admit_minus_block_mean_return"],
+                      loo_opp=item["leave_one_opportunity_min_spread"],
+                      loo_market=item["leave_one_market_min_spread"],
+                      ready=ready["ready_for_early_evidence_review"],
+                  )
+              )
+          lines.extend(
+              [
+                  "",
+                  "Per-horizon early review bar: >=20 settled opportunities, >=5 ADMIT, >=5 BLOCK, >=5 LONG, >=5 SHORT, >=4 markets, positive ADMIT mean, negative BLOCK mean, positive ADMIT-minus-BLOCK spread, and positive leave-one-opportunity / leave-one-market spread robustness.",
+                  "This is a fast descriptive separation check only. It cannot change the full entry stack's closed-trade readiness gates.",
+                  "Only opportunities with all 5m/15m/1h horizons settled, definitively stale, or explicitly unsupported become immutable. Pending or missing-path rows remain unfrozen.",
+                  "Every previously published terminal row must remain byte-for-byte equivalent after canonicalization.",
+                  "",
+                  "**Execution authority:** `false`",
+                  "**Promotion authority:** `false`",
+                  "**Changes closed-trade readiness:** `false`",
+                  "**LIVE TRADING: DISABLED.**",
+              ]
+          )
+          Path("/tmp/full-stack-fast-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/full-stack-fast-status.md)"
+
+      - name: Upload fast-markout ledger
+        if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-prospective-full-stack-fast-markout-ledger-${{ github.run_id }}-${{ github.run_attempt }}
+          path: prospective-full-stack-fast-markout-ledger.json
+          if-no-files-found: error
+          retention-days: 90
