@@ -4379,3 +4379,16 @@ The runtime now runs a 250ms event-loop watchdog. It records total samples, maxi
 This is diagnostic-only. It changes no market-data freshness threshold, strategy rule, risk limit, sizing rule, execution behavior, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Index opening-opportunity mark paths by market — 2026-10-02
+
+The continuous-paper context refresh records forward marks for opening opportunities. The path store previously implemented each market observation by calling `iter_paths()`, which globbed, read, JSON-decoded, validated, and sorted every historical path file. Because context refresh calls this once per market, runtime cost grew with both market count and total accumulated evidence and could block the asyncio event loop as the ledger expanded.
+
+The store now validates persisted path files once when it opens, maintains an in-memory mirror keyed by opportunity id, and maintains a second index containing only incomplete paths by market. Registering and appending a mark update both the durable file and the indexes. `observe()` now touches only incomplete paths for the observed market, while `iter_paths()`, record counts, completion counts, and state digests use the validated in-memory mirror rather than rescanning disk.
+
+Durable JSON files remain authoritative across process restarts: a new store rebuilds and validates both indexes from disk before use. Path semantics, completion horizons, mark ordering, source provenance, and terminal evidence are unchanged.
+
+This is a performance/data-plane reliability change only. It changes no strategy threshold, risk rule, sizing rule, execution semantics, readiness gate, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
