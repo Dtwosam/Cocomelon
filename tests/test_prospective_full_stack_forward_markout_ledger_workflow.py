@@ -145,3 +145,22 @@ def test_full_stack_fast_markout_status_uses_quoted_python_builders() -> None:
     assert "WAIT_REASON" in waiting
     assert 'os.environ.get("ERROR_TEXT")' in blocked
     assert r"\`false\`" not in clean
+
+
+def test_full_stack_fast_markout_surfaces_source_integrity_diagnostics() -> None:
+    source = _source()
+    clean = source.split(
+        "      - name: Publish clean ledger status",
+        1,
+    )[1]
+
+    assert 'SUMMARY_PATH: ${{ steps.compact.outputs.summary_path }}' in clean
+    assert "prospective_opportunities" in clean
+    assert "baseline_risk_rejected" in clean
+    assert "stack_risk_approved_evaluated" in clean
+    assert "stack_admitted" in clean
+    assert "stack_blocked" in clean
+    assert "missing_rank" in clean
+    assert "stale_rank" in clean
+    assert "momentum_feature_integrity_misses" in clean
+    assert "source integrity misses" in clean
