@@ -748,6 +748,63 @@ def test_record_pump_drops_duplicate_event_keys() -> None:
     assert pump.duplicate_records_dropped == 1
 
 
+def test_record_pump_wakes_on_new_decision_epoch() -> None:
+    async def scenario() -> None:
+        class Pipeline:
+            def __init__(self) -> None:
+                self.session_decision_activity = SimpleNamespace(
+                    last_decision_boundary_ms=None
+                )
+
+            def on_record(
+                self,
+                _record: ReplayRecord,
+                _now_ms: int,
+            ) -> tuple[object, ...]:
+                self.session_decision_activity = SimpleNamespace(
+                    last_decision_boundary_ms=30_000
+                )
+                return ()
+
+            def finalize(self, _end_ms: int) -> tuple[object, ...]:
+                return ()
+
+        class Journal:
+            def iter_trades(self) -> tuple[object, ...]:
+                return ()
+
+            def record_observation(self, _observation: object) -> None:
+                raise AssertionError("no observations expected")
+
+            def record_trade(self, _trade: object) -> None:
+                raise AssertionError("no trades expected")
+
+        wakeup = asyncio.Event()
+        pump = _RecordPump(
+            Pipeline(),  # type: ignore[arg-type]
+            Journal(),  # type: ignore[arg-type]
+            last_available_at_ms=0,
+            decision_epoch_wakeup=wakeup,
+        )
+        record = ReplayRecord(
+            record_kind=SourceRecordKind.NORMALIZED_EVENT,
+            available_at_ms=1,
+            source="hyperliquid-mainnet-ws",
+            schema_version=1,
+            market="BTC",
+            exchange_time_ms=1,
+            event_key="decision-epoch-wakeup",
+            payload_json='{"mark_px":"100"}',
+            event_kind="active_asset_ctx",
+        )
+
+        await pump.process(record)
+
+        assert wakeup.is_set() is True
+
+    asyncio.run(scenario())
+
+
 def test_rest_l2_reseed_accepts_only_fresh_real_books() -> None:
     class Reader:
         def l2_book(self, market: MarketId) -> object:
@@ -1198,21 +1255,34 @@ def test_rotation_promotes_replacement_before_retiring_previous() -> None:
     assert "_l2_event_fresh_for_promotion(" in source
     assert "required_market_keys <= ready" in source
 
-def test_runtime_rechecks_l2_after_async_rotation_before_heartbeat() -> None:
+def test_runtime_wakes_l2_recovery_on_completed_decision_epoch() -> None:
     source = Path("src/cocomelon/continuous_paper.py").read_text(
         encoding="utf-8"
     )
     helper_index = source.index(
         "async def recover_systemic_l2_if_needed()"
     )
-    first_check_index = source.index(
-        "await recover_systemic_l2_if_needed()",
+    wake_wait_index = source.index(
+        "await asyncio.wait_for(\n"
+        "                        decision_epoch_wakeup.wait()",
         helper_index,
+    )
+    wake_recovery_index = source.index(
+        "await recover_systemic_l2_if_needed()",
+        wake_wait_index,
+    )
+    context_refresh_index = source.index(
+        "await _refresh_native_market_snapshots(reader)",
+        wake_recovery_index,
+    )
+    first_poll_recovery_index = source.index(
+        "await recover_systemic_l2_if_needed()",
+        context_refresh_index,
     )
     rotation_index = source.index(
         "not systemically_unhealthy_l2\n"
         "                    and now_ms >= next_selection_refresh_ms",
-        first_check_index,
+        first_poll_recovery_index,
     )
     late_check_index = source.index(
         "await recover_systemic_l2_if_needed()",
@@ -1225,14 +1295,19 @@ def test_runtime_rechecks_l2_after_async_rotation_before_heartbeat() -> None:
 
     assert (
         helper_index
-        < first_check_index
+        < wake_wait_index
+        < wake_recovery_index
+        < context_refresh_index
+        < first_poll_recovery_index
         < rotation_index
         < late_check_index
         < heartbeat_index
     )
+    assert "decision_epoch_wakeup=decision_epoch_wakeup" in source
+    assert "self._decision_epoch_wakeup.set()" in source
     assert source.count(
         "await recover_systemic_l2_if_needed()"
-    ) == 2
+    ) == 3
 
 
 def test_stale_l2_gap_revokes_rotation_readiness() -> None:
@@ -3767,7 +3842,7 @@ def test_runtime_hot_path_uses_only_operational_heartbeat() -> None:
     )
 
     assert '"heartbeat_scope": "operational"' in source
-    assert source.count("_emit_operational_live_status(") == 3
+    assert source.count("_emit_operational_live_status(") == 4
     assert source.count("_emit_live_status(") == 1
 
 
