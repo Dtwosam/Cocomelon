@@ -4277,3 +4277,14 @@ This changes scheduling correctness only. The 30-second context cadence, 60-seco
 
 **LIVE TRADING: DISABLED.**
 
+
+
+### Risk-rejected stack block-layer attribution — 2026-10-02
+
+With market-data freshness restored, the active paper worker is again producing directional signals while the weekly drawdown lockout remains active. The risk-rejected fast-markout ledger already preserved each opportunity's frozen full-stack decision and blocking layer, but Issue #774 only summarized ADMIT versus BLOCK and risk reason. That made it impossible to see whether the combined filter, two-strike stop filter, or momentum band was responsible for rejecting the setups.
+
+The ledger summary now derives terminal block-layer counts and, at each fixed 5m / 15m / 60m horizon, reports per-layer opportunity count, settled count, directional-return mean, sign counts, and market breadth. Existing immutable rows are unchanged, and validation explicitly accepts previously published summaries that predate this attribution.
+
+This is descriptive entry-quality evidence only. It cannot relax risk, change entry-candidate readiness, alter sizing or execution, promote a strategy, or enable live trading.
+
+**LIVE TRADING: DISABLED.**

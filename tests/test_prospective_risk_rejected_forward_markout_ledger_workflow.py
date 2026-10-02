@@ -96,6 +96,16 @@ def test_risk_rejected_ledger_surfaces_reason_level_markouts() -> None:
     assert "leave_one_market_min_mean" in source
 
 
+def test_risk_rejected_ledger_surfaces_stack_block_layers() -> None:
+    source = _source()
+
+    assert "stack block layer counts" in source
+    assert "by stack block layer" in source
+    assert 'item.get("by_block_layer", {})' in source
+    assert 'values.get("mean_directional_return")' in source
+    assert 'values.get("market_count", 0)' in source
+
+
 def test_risk_rejected_ledger_non_success_wake_falls_back() -> None:
     source = _source()
 

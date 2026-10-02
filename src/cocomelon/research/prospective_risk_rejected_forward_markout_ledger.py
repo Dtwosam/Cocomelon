@@ -648,17 +648,26 @@ def _horizon_summary(
     rows: tuple[dict[str, object], ...],
     *,
     horizon_ms: int,
+    include_block_layer_attribution: bool = True,
 ) -> dict[str, object]:
     key = str(horizon_ms)
     settled: list[tuple[dict[str, object], Decimal]] = []
     status_counts: Counter[str] = Counter()
     by_reason_values: dict[str, list[tuple[str, Decimal]]] = {}
     by_reason_opportunities: Counter[str] = Counter()
+    by_block_layer_values: dict[
+        str, list[tuple[str, Decimal]]
+    ] = {}
+    by_block_layer_opportunities: Counter[str] = Counter()
 
     for row in rows:
         reasons = cast(list[str], row["baseline_risk_reason_codes"])
         for reason in reasons:
             by_reason_opportunities[reason] += 1
+        if row["stack_decision"] == "BLOCK":
+            by_block_layer_opportunities[
+                cast(str, row["block_layer"])
+            ] += 1
         markouts = cast(dict[str, dict[str, object]], row["markouts"])
         markout = markouts[key]
         status = cast(str, markout["status"])
@@ -672,6 +681,11 @@ def _horizon_summary(
             by_reason_values.setdefault(reason, []).append(
                 (cast(str, row["market"]), value)
             )
+        if row["stack_decision"] == "BLOCK":
+            by_block_layer_values.setdefault(
+                cast(str, row["block_layer"]),
+                [],
+            ).append((cast(str, row["market"]), value))
 
     admitted = tuple(
         (cast(str, row["market"]), value)
@@ -717,7 +731,7 @@ def _horizon_summary(
             ),
         }
 
-    return {
+    result: dict[str, object] = {
         "horizon_ms": horizon_ms,
         "terminal_opportunities": len(rows),
         "settled_opportunities": len(settled),
@@ -748,6 +762,26 @@ def _horizon_summary(
         "changes_risk_limits": False,
         "changes_candidate_readiness": False,
     }
+    if include_block_layer_attribution:
+        by_block_layer: dict[str, dict[str, object]] = {}
+        for layer in sorted(by_block_layer_opportunities):
+            values = tuple(by_block_layer_values.get(layer, ()))
+            returns = tuple(value for _market, value in values)
+            by_block_layer[layer] = {
+                "opportunities": by_block_layer_opportunities[layer],
+                "settled": len(values),
+                "positive": sum(value > ZERO for value in returns),
+                "negative": sum(value < ZERO for value in returns),
+                "flat": sum(value == ZERO for value in returns),
+                "mean_directional_return": (
+                    None if not returns else str(_mean(returns))
+                ),
+                "market_count": len(
+                    {market for market, _value in values}
+                ),
+            }
+        result["by_block_layer"] = by_block_layer
+    return result
 
 
 def _summary(
@@ -756,12 +790,18 @@ def _summary(
     pending_opportunity_count: int,
     integrity_clean: bool,
     include_investigation_readiness: bool = True,
+    include_block_layer_attribution: bool = True,
 ) -> dict[str, object]:
     reason_counts: Counter[str] = Counter()
     for row in rows:
         reason_counts.update(
             cast(list[str], row["baseline_risk_reason_codes"])
         )
+    block_layer_counts: Counter[str] = Counter(
+        cast(str, row["block_layer"])
+        for row in rows
+        if row["stack_decision"] == "BLOCK"
+    )
     result: dict[str, object] = {
         "terminal_opportunity_count": len(rows),
         "pending_opportunity_count": pending_opportunity_count,
@@ -777,10 +817,17 @@ def _summary(
             str(horizon_ms): _horizon_summary(
                 rows,
                 horizon_ms=horizon_ms,
+                include_block_layer_attribution=(
+                    include_block_layer_attribution
+                ),
             )
             for horizon_ms in FORWARD_HORIZONS_MS
         },
     }
+    if include_block_layer_attribution:
+        result["stack_block_layer_counts"] = dict(
+            sorted(block_layer_counts.items())
+        )
     if include_investigation_readiness:
         result["risk_budget_investigation_readiness"] = (
             _risk_reason_investigation_readiness(
@@ -866,13 +913,31 @@ def validate_risk_rejected_forward_markout_ledger(
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
     )
-    legacy_summary = _summary(
+    pre_layer_summary = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_block_layer_attribution=False,
+    )
+    pre_readiness_summary = _summary(
         rows,
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
         include_investigation_readiness=False,
     )
-    if raw.get("summary") not in (current_summary, legacy_summary):
+    legacy_summary = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_investigation_readiness=False,
+        include_block_layer_attribution=False,
+    )
+    if raw.get("summary") not in (
+        current_summary,
+        pre_layer_summary,
+        pre_readiness_summary,
+        legacy_summary,
+    ):
         raise ProspectiveRiskRejectedForwardMarkoutLedgerError(
             "risk-rejected markout summary does not reconcile"
         )
