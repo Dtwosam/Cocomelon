@@ -305,6 +305,23 @@ class BaselineDecisionEngine:
             self._next_boundary_ms += DECISION_INTERVAL_MS
         return tuple(emitted)
 
+    def seed(self, record: ReplayRecord, now_ms: int) -> None:
+        if now_ms < record.available_at_ms:
+            raise ValueError("now_ms cannot precede record availability")
+        if self._next_boundary_ms is not None:
+            raise ValueError(
+                "baseline decision seed cannot follow live observation"
+            )
+        if (
+            self._last_available_at_ms is not None
+            and record.available_at_ms < self._last_available_at_ms
+        ):
+            raise ValueError(
+                "baseline decision records must not regress in availability time"
+            )
+        self._state.apply(record, now_ms)
+        self._last_available_at_ms = record.available_at_ms
+
     def observe(self, record: ReplayRecord, now_ms: int) -> tuple[DecisionEpoch, ...]:
         if now_ms < record.available_at_ms:
             raise ValueError("now_ms cannot precede record availability")

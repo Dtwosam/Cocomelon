@@ -180,6 +180,10 @@ jobs:
           if [ -n "$ACTIVE" ]; then
             echo "continuous paper runtime already active in run $ACTIVE"
             echo "skip=true" >> "$GITHUB_OUTPUT"
+            if [ "$EVENT_NAME" = "push" ]; then
+              echo "::notice::holding runtime push rendezvous for active worker handoff"
+              sleep 75
+            fi
           fi
 
       - uses: actions/checkout@v7
@@ -409,7 +413,6 @@ jobs:
               and run.get("event") == "push"
               and run.get("head_branch") == "main"
               and run.get("head_sha") != os.environ["GITHUB_SHA"]
-              and run.get("status") in {"queued", "pending", "in_progress"}
               and int(run.get("run_number", 0)) > current_number
           ]
           newer.sort(

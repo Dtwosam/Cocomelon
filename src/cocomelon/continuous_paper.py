@@ -3789,7 +3789,12 @@ class _RecordPump:
             return None
         return boundary_ms
 
-    async def process(self, record: ReplayRecord) -> None:
+    async def process(
+        self,
+        record: ReplayRecord,
+        *,
+        evaluate_decisions: bool = True,
+    ) -> None:
         async with self._lock:
             previous_decision_boundary_ms = self._decision_boundary_ms()
             record_key = record.event_key
@@ -3812,10 +3817,17 @@ class _RecordPump:
                     payload_json=record.payload_json,
                     event_kind=record.event_kind,
                 )
-            observations: tuple[JournalObservation, ...] = self.pipeline.on_record(
-                record,
-                available,
-            )
+            if evaluate_decisions:
+                observations = self.pipeline.on_record(
+                    record,
+                    available,
+                )
+            else:
+                observations = self.pipeline.on_record(
+                    record,
+                    available,
+                    evaluate_decisions=False,
+                )
             for observation in observations:
                 self.journal.record_observation(observation)
             if observations:
@@ -7732,44 +7744,10 @@ async def run_continuous_paper_session(
             await pump.process(
                 _record_from_public(
                     market_snapshot_record_event(snapshot)
-                )
+                ),
+                evaluate_decisions=False,
             )
 
-        async def refresh_startup_context() -> int:
-            nonlocal snapshots
-            (
-                snapshots,
-                received_at_ms,
-            ) = await _refresh_native_market_snapshots(reader)
-            opening_opportunity_sink.observe_snapshots(snapshots)
-            await capture_due_exit_books(
-                snapshots,
-                now_ms=received_at_ms,
-            )
-            rank_observed_at_ms = utc_now_ms()
-            _features, ranks = _startup_ranks(
-                snapshots,
-                as_of_ms=rank_observed_at_ms,
-            )
-            rank_tracker.update(
-                ranks,
-                observed_at_ms=rank_observed_at_ms,
-            )
-            for selected_market in selected:
-                snapshot = snapshots.get(
-                    selected_market.canonical
-                )
-                if snapshot is not None:
-                    await pump.process(
-                        _record_from_public(
-                            market_snapshot_record_event(
-                                snapshot
-                            )
-                        )
-                    )
-            return received_at_ms
-
-        startup_context_refreshed_at_ms = initial_received_at_ms
         for market in _iter_until_stop(selected, stop_path):
             for candle in await _warmup_market(
                 reader,
@@ -7780,21 +7758,39 @@ async def run_continuous_paper_session(
                 if _stop_requested(stop_path):
                     break
                 await pump.process(
-                    _record_from_public(candle_record_event(candle))
-                )
-            if (
-                not _stop_requested(stop_path)
-                and utc_now_ms() - startup_context_refreshed_at_ms
-                >= config.context_poll_seconds * 1000
-            ):
-                startup_context_refreshed_at_ms = (
-                    await refresh_startup_context()
+                    _record_from_public(candle_record_event(candle)),
+                    evaluate_decisions=False,
                 )
 
         if not _stop_requested(stop_path):
-            startup_context_refreshed_at_ms = (
-                await refresh_startup_context()
+            (
+                snapshots,
+                startup_context_received_at_ms,
+            ) = await _refresh_native_market_snapshots(reader)
+            opening_opportunity_sink.observe_snapshots(snapshots)
+            await capture_due_exit_books(
+                snapshots,
+                now_ms=startup_context_received_at_ms,
             )
+            startup_rank_observed_at_ms = utc_now_ms()
+            _startup_features, startup_ranks = _startup_ranks(
+                snapshots,
+                as_of_ms=startup_rank_observed_at_ms,
+            )
+            rank_tracker.update(
+                startup_ranks,
+                observed_at_ms=startup_rank_observed_at_ms,
+            )
+            for market in selected:
+                snapshot = snapshots.get(market.canonical)
+                if snapshot is not None:
+                    await pump.process(
+                        _record_from_public(
+                            market_snapshot_record_event(
+                                snapshot
+                            )
+                        )
+                    )
 
         async def refresh_funding() -> None:
             now_ms = utc_now_ms()
