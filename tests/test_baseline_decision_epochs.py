@@ -173,6 +173,38 @@ def _run_epoch(
     return emitted[0]
 
 
+def test_bootstrap_seed_does_not_start_or_emit_decision_epochs() -> None:
+    engine = BaselineDecisionEngine(
+        (BTC,),
+        replay_config=BaselineReplayConfig(),
+    )
+    seeded_snapshot = _record(
+        BTC,
+        kind="market_snapshot",
+        available_at_ms=EVALUATED_AT_MS + 120_000,
+        payload=_snapshot_payload(BTC, mark="100"),
+        source="hyperliquid-mainnet-info",
+    )
+    engine.seed(
+        seeded_snapshot,
+        seeded_snapshot.available_at_ms,
+    )
+
+    fresh_snapshot = _record(
+        BTC,
+        kind="market_snapshot",
+        available_at_ms=EVALUATED_AT_MS + 180_000,
+        payload=_snapshot_payload(BTC, mark="101"),
+        source="hyperliquid-mainnet-info",
+        key="post-bootstrap-context",
+    )
+
+    assert engine.observe(
+        fresh_snapshot,
+        fresh_snapshot.available_at_ms,
+    ) == ()
+
+
 def test_epoch_identity_is_invariant_to_same_time_market_arrival_order() -> None:
     first = _run_epoch(_ordered_rows(False), (BTC, ETH))
     second = _run_epoch(_ordered_rows(True), (ETH, BTC))
