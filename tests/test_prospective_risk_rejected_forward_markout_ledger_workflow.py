@@ -170,3 +170,17 @@ def test_risk_rejected_legacy_compact_source_waits_instead_of_blocking() -> None
     )
     assert 'echo "eligible=false"' in compact
     assert "Fail closed on ledger drift" not in compact
+
+
+def test_risk_rejected_ledger_surfaces_investigation_gate() -> None:
+    source = _source()
+
+    assert "Risk-budget investigation gate" in source
+    assert "ready reasons" in source
+    assert "min_stack_admit_settled_per_horizon" in source
+    assert "Investigation readiness by risk reason" in source
+    assert "ready_for_risk_budget_investigation" in source
+    assert "leave_one_opportunity_min_mean" in source
+    assert "leave_one_market_min_mean" in source
+    assert "changes_risk_limits" in source
+    assert "execution_authority" in source
