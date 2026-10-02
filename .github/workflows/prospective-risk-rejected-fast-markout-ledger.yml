@@ -1,0 +1,506 @@
+name: Prospective Risk-Rejected Fast-Markout Ledger
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-risk-rejected-fast-markout-ledger.yml"
+  workflow_run:
+    workflows:
+      - "Continuous Mainnet Paper Trader"
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed Continuous Mainnet Paper Trader run ID
+        required: true
+        type: string
+      source_run_attempt:
+        description: Exact source run attempt
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: prospective-risk-rejected-fast-markout-ledger
+  cancel-in-progress: false
+
+jobs:
+  ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LEDGER_ISSUE: "774"
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e .
+
+      - name: Resolve exact source paper run
+        id: source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
+          EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt || '' }}
+          INPUT_RUN_ID: ${{ inputs.source_run_id || '' }}
+          INPUT_RUN_ATTEMPT: ${{ inputs.source_run_attempt || '' }}
+        run: |
+          set -euo pipefail
+          echo "source_eligible=true" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "workflow_run" ] && [ "$EVENT_CONCLUSION" = "success" ]; then
+            run_id="$EVENT_RUN_ID"
+            run_attempt="$EVENT_RUN_ATTEMPT"
+            resolution_mode="successful_event"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_id="$INPUT_RUN_ID"
+            run_attempt="$INPUT_RUN_ATTEMPT"
+            resolution_mode="manual_exact"
+          else
+            runs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=50"
+            )"
+            read -r run_id run_attempt <<< "$(
+              printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in payload.get("workflow_runs", []):
+              if (
+                  run.get("path") == ".github/workflows/continuous-paper.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and (run.get("head_repository") or {}).get("full_name") == repo
+                  and isinstance(run.get("id"), int)
+                  and isinstance(run.get("run_attempt"), int)
+              ):
+                  print(run["id"], run["run_attempt"])
+                  break
+          '
+            )"
+            if [ "$EVENT_NAME" = "workflow_run" ]; then
+              resolution_mode="latest_successful_after_non_success_wake"
+            else
+              resolution_mode="latest_successful_push"
+            fi
+          fi
+          if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
+            echo "source paper run identity is invalid" >&2
+            exit 1
+          fi
+
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+          head_sha="$(
+            printf '%s' "$run_json" |
+            SOURCE_ATTEMPT="$run_attempt" python -c '
+          import json, os, sys
+          run = json.load(sys.stdin)
+          if run.get("path") != ".github/workflows/continuous-paper.yml":
+              raise SystemExit("source workflow path mismatch")
+          if run.get("head_branch") != "main":
+              raise SystemExit("source run must be from main")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("source run must be completed successfully")
+          if str(run.get("run_attempt")) != os.environ["SOURCE_ATTEMPT"]:
+              raise SystemExit("source run attempt mismatch")
+          if (run.get("head_repository") or {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("source repository mismatch")
+          sha = run.get("head_sha")
+          if not isinstance(sha, str) or len(sha) != 40:
+              raise SystemExit("source head sha is invalid")
+          print(sha)
+          '
+          )"
+
+          artifact_name="continuous-paper-learning-source-$run_id-$run_attempt"
+          artifacts_json="$(
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+          )"
+          artifact_line="$(
+            printf '%s' "$artifacts_json" |
+            ARTIFACT_NAME="$artifact_name" python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          name = os.environ["ARTIFACT_NAME"]
+          matches = [
+              item for item in payload.get("artifacts", [])
+              if item.get("name") == name and item.get("expired") is False
+          ]
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected exactly one non-expired source artifact named {name}"
+              )
+          item = matches[0]
+          digest = item.get("digest")
+          if not isinstance(digest, str) or not digest.startswith("sha256:"):
+              raise SystemExit("source artifact digest is missing or invalid")
+          print(item["id"], item["name"], digest, sep="\t")
+          '
+          )"
+          IFS=$'\t' read -r artifact_id artifact_name artifact_digest <<<"$artifact_line"
+
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$artifact_digest" >> "$GITHUB_OUTPUT"
+          echo "resolution_mode=$resolution_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Download compact paper source
+        id: compact
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.source.outputs.artifact_id }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/risk-rejected-fast-source
+          mkdir -p /tmp/risk-rejected-fast-source
+          gh api             "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/risk-rejected-fast-source.zip
+          unzip -q /tmp/risk-rejected-fast-source.zip -d /tmp/risk-rejected-fast-source
+
+          summary_path="$(
+            find /tmp/risk-rejected-fast-source               -type f               -name prospective-full-stack-forward-markout-summary.json               -print -quit
+          )"
+          if [ -z "$summary_path" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          test -s "$summary_path"
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+          echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
+
+      - name: Publish waiting-for-source status
+        if: ${{ steps.compact.outputs.eligible != 'true' }}
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          lines = [
+              "## Risk-rejected full-stack fast-markout ledger",
+              "",
+              "**Status:** waiting for new-format compact source",
+              "",
+              (
+                  "- source paper run / attempt: "
+                  f"`{os.environ['SOURCE_RUN_ID']} / "
+                  f"{os.environ['SOURCE_RUN_ATTEMPT']}`"
+              ),
+              (
+                  "- source resolution: "
+                  f"`{os.environ['RESOLUTION_MODE']}`"
+              ),
+              "- reason: compact source predates the full-stack fast-markout export",
+              "",
+              "No risk-rejected fast-markout row is credited from this run.",
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**Changes risk limits:** `false`",
+              "**Changes candidate readiness:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/risk-rejected-fast-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/risk-rejected-fast-status.md)"
+
+      - name: Restore previous fast-markout ledger
+        if: ${{ steps.compact.outputs.eligible == 'true' }}
+        id: previous
+        shell: bash
+        env:
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          previous_path=""
+          previous_workflow_run_id=""
+          runs_json="$(
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-risk-rejected-fast-markout-ledger.yml/runs?status=success&per_page=100"
+          )"
+          mapfile -t prior_runs < <(
+            jq -r               --arg current "$CURRENT_RUN_ID"               '.workflow_runs
+               | map(select((.id | tostring) != $current))
+               | sort_by(.updated_at)
+               | reverse
+               | .[].id'               <<<"$runs_json"
+          )
+          for run_id in "${prior_runs[@]}"; do
+            artifacts_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+            )"
+            artifact_line="$(
+              jq -r '
+                .artifacts
+                | map(
+                    select(
+                      (.expired | not)
+                      and (
+                        .name
+                        | startswith("prospective-risk-rejected-fast-markout-ledger-")
+                      )
+                    )
+                  )
+                | if length > 0
+                  then [.[0].id, .[0].name] | @tsv
+                  else ""
+                  end
+              ' <<<"$artifacts_json"
+            )"
+            if [ -z "$artifact_line" ]; then
+              continue
+            fi
+            IFS=$'\t' read -r artifact_id artifact_name <<<"$artifact_line"
+            rm -rf /tmp/previous-risk-rejected-fast-ledger
+            mkdir -p /tmp/previous-risk-rejected-fast-ledger
+            gh api               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > /tmp/previous-risk-rejected-fast-ledger.zip
+            unzip -q               /tmp/previous-risk-rejected-fast-ledger.zip               -d /tmp/previous-risk-rejected-fast-ledger
+            candidate="$(
+              find /tmp/previous-risk-rejected-fast-ledger                 -type f                 -name prospective-risk-rejected-fast-markout-ledger.json                 -print -quit
+            )"
+            if [ -n "$candidate" ] && [ -s "$candidate" ]; then
+              previous_path="$candidate"
+              previous_workflow_run_id="$run_id"
+              break
+            fi
+          done
+          echo "previous_path=$previous_path" >> "$GITHUB_OUTPUT"
+          echo "previous_workflow_run_id=$previous_workflow_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Extend append-only fast-markout ledger
+        if: ${{ steps.compact.outputs.eligible == 'true' }}
+        id: ledger
+        continue-on-error: true
+        shell: bash
+        env:
+          SUMMARY_PATH: ${{ steps.compact.outputs.summary_path }}
+          PREVIOUS_LEDGER_PATH: ${{ steps.previous.outputs.previous_path }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          SOURCE_ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
+          SOURCE_ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
+        run: |
+          set +e
+          args=(
+            "$SUMMARY_PATH"
+            --source-paper-run-id "$SOURCE_RUN_ID"
+            --source-paper-run-attempt "$SOURCE_RUN_ATTEMPT"
+            --source-artifact-name "$SOURCE_ARTIFACT_NAME"
+            --source-artifact-digest "$SOURCE_ARTIFACT_DIGEST"
+            --json-out prospective-risk-rejected-fast-markout-ledger.json
+          )
+          if [ -n "$PREVIOUS_LEDGER_PATH" ]; then
+            args+=(--previous "$PREVIOUS_LEDGER_PATH")
+          fi
+          python scripts/update_prospective_risk_rejected_fast_markout_ledger.py             "${args[@]}"             > /tmp/risk-rejected-fast-ledger.stdout.json             2> /tmp/risk-rejected-fast-ledger.error
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            test -s prospective-risk-rejected-fast-markout-ledger.json
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "error<<EOF"
+              cat /tmp/risk-rejected-fast-ledger.error
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish blocked ledger status
+        if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean != 'true' }}
+        shell: bash
+        env:
+          ERROR_TEXT: ${{ steps.ledger.outputs.error }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          error = os.environ.get("ERROR_TEXT") or "unknown error"
+          lines = [
+              "## Risk-rejected full-stack fast-markout ledger",
+              "",
+              "**Status:** BLOCKED — append-only invariant failure",
+              "",
+              (
+                  "- source paper run / attempt: "
+                  f"`{os.environ['SOURCE_RUN_ID']} / "
+                  f"{os.environ['SOURCE_RUN_ATTEMPT']}`"
+              ),
+              f"- error: `{error}`",
+              "",
+              "No risk-rejected fast-markout evidence is published from this run.",
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**Changes risk limits:** `false`\n              **Changes candidate readiness:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/risk-rejected-fast-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/risk-rejected-fast-status.md)"
+
+      - name: Fail closed on ledger drift
+        if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean != 'true' }}
+        shell: bash
+        run: |
+          echo "Risk-rejected fast-markout append-only ledger is blocked." >&2
+          exit 1
+
+      - name: Publish clean ledger status
+        if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean == 'true' }}
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          PREVIOUS_WORKFLOW_RUN_ID: ${{ steps.previous.outputs.previous_workflow_run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          ledger = json.loads(
+              Path(
+                  "prospective-risk-rejected-fast-markout-ledger.json"
+              ).read_text(encoding="utf-8")
+          )
+          summary = ledger["summary"]
+
+          def stamp(value):
+              return datetime.fromtimestamp(
+                  int(value) / 1000,
+                  tz=UTC,
+              ).isoformat()
+
+          previous = os.environ["PREVIOUS_WORKFLOW_RUN_ID"] or "none"
+          lines = [
+              "## Risk-rejected full-stack fast-markout ledger",
+              "",
+              "**Status:** append-only clean",
+              "",
+              f"- common stack start: `{stamp(ledger['overlap_started_at_ms'])}`",
+              f"- source paper run / attempt: `{os.environ['SOURCE_RUN_ID']} / {os.environ['SOURCE_RUN_ATTEMPT']}`",
+              f"- source resolution: `{os.environ['RESOLUTION_MODE']}`",
+              f"- previous ledger workflow run: `{previous}`",
+              f"- terminal / previous / new / pending: `{ledger['row_count']} / {ledger['previous_row_count']} / {ledger['new_row_count']} / {ledger['pending_opportunity_count']}`",
+              f"- cumulative source integrity clean: `{summary['integrity_clean']}`",
+              f"- stack admitted / blocked terminal: `{summary['stack_admitted_terminal']} / {summary['stack_blocked_terminal']}`",
+              f"- risk reason counts: `{summary['risk_reason_counts']}`",
+              f"- rows SHA-256: `{ledger['rows_sha256']}`",
+              f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
+              "",
+              "### Fixed forward horizons",
+              "",
+              "| Horizon | Settled | Admit | Block | LONG | SHORT | Markets | Admit mean | Block mean | LOO admit opp | LOO admit market |",
+              "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+          ]
+          for horizon_ms in ledger["forward_horizons_ms"]:
+              item = summary["horizons"][str(horizon_ms)]
+              admit = item["stack_admit"]
+              lines.append(
+                  "| {minutes}m | {settled} | {admit_n} | {block_n} | "
+                  "{long} | {short} | {markets} | {admit_mean} | "
+                  "{block_mean} | {loo_opp} | {loo_market} |".format(
+                      minutes=horizon_ms // 60000,
+                      settled=item["settled_opportunities"],
+                      admit_n=item["stack_admit_settled"],
+                      block_n=item["stack_block_settled"],
+                      long=item["long_settled"],
+                      short=item["short_settled"],
+                      markets=item["market_count"],
+                      admit_mean=admit["mean_directional_return"],
+                      block_mean=item[
+                          "stack_block_mean_directional_return"
+                      ],
+                      loo_opp=admit[
+                          "leave_one_opportunity_min_mean"
+                      ],
+                      loo_market=admit[
+                          "leave_one_market_min_mean"
+                      ],
+                  )
+              )
+              lines.append("")
+              lines.append(
+                  f"**{horizon_ms // 60000}m by risk reason**"
+              )
+              for reason, values in sorted(
+                  item["by_risk_reason"].items()
+              ):
+                  lines.append(
+                      "- {reason}: opportunities={opportunities}, "
+                      "settled={settled}, mean={mean}, "
+                      "stack-admit-settled={admit_n}, "
+                      "stack-admit-mean={admit_mean}".format(
+                          reason=reason,
+                          opportunities=values["opportunities"],
+                          settled=values["settled"],
+                          mean=values["mean_directional_return"],
+                          admit_n=values["stack_admit_settled"],
+                          admit_mean=values[
+                              "stack_admit_mean_directional_return"
+                          ],
+                      )
+                  )
+          lines.extend(
+              [
+                  "",
+                  "Only rows with all fixed horizons terminal become immutable; pending and missing-path rows remain unfrozen.",
+                  "Every previously published terminal row must remain byte-for-byte equivalent after canonicalization.",
+                  "This ledger is descriptive only. It cannot relax a risk veto or change any entry-candidate readiness gate.",
+                  "",
+                  "**Execution authority:** `false`",
+                  "**Promotion authority:** `false`",
+                  "**Changes risk limits:** `false`",
+                  "**Changes candidate readiness:** `false`",
+                  "**LIVE TRADING: DISABLED.**",
+              ]
+          )
+          Path("/tmp/risk-rejected-fast-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/risk-rejected-fast-status.md)"
+
+      - name: Upload risk-rejected fast-markout ledger
+        if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-risk-rejected-fast-markout-ledger-${{ github.run_id }}-${{ github.run_attempt }}
+          path: prospective-risk-rejected-fast-markout-ledger.json
+          if-no-files-found: error
+          retention-days: 90
