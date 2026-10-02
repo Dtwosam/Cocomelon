@@ -4342,3 +4342,14 @@ Pre-recovery telemetry from worker `37063325586` resolved the repeated stale-L2 
 The existing 5,000 ms deep-book freshness ceiling remains unchanged. This does not weaken eligibility, fabricate freshness, change recovery evidence, alter strategy/risk/sizing/execution rules, promote any candidate, or enable live orders.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Record-pump stall timing telemetry — 2026-10-02
+
+The current worker on `354324f` proves repeated L2 freshness loss is not explained by independent socket disconnects. Immediately before recovery both redundant lanes can remain connected with all 20 markets previously ready, zero reconnects, and more than 80 seconds since the last server message. The configured 15-second server-silence watchdog cannot fire if the supervisor coroutine is blocked downstream after receiving a message.
+
+The continuous paper heartbeat now records the maximum shared record-pump processing duration, maximum wait for the pump lock, count of records taking at least one second, and the exact last slow record kind / event kind / market. This is diagnostic only and is intended to distinguish a slow pipeline record from lock contention before changing any WebSocket, replay, strategy, or risk behavior.
+
+No data-freshness threshold, strategy rule, risk limit, sizing rule, execution behavior, readiness gate, promotion state, or live-order authority changes.
+
+**LIVE TRADING: DISABLED.**
