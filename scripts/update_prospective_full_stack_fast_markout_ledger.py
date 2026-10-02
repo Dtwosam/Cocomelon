@@ -33,7 +33,6 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("summary_path", type=Path)
-    parser.add_argument("combined_state_path", type=Path)
     parser.add_argument("two_strike_state_path", type=Path)
     parser.add_argument("momentum_state_path", type=Path)
     parser.add_argument("--previous", type=Path)
@@ -65,11 +64,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.summary_path,
             label="full-stack fast-markout summary",
         )
-        combined = ProspectiveCombinedEntryFilterState.from_payload(
-            _load_json(
-                args.combined_state_path,
-                label="combined-filter state",
+        if not isinstance(summary, dict):
+            raise ProspectiveFullStackForwardMarkoutLedgerError(
+                "full-stack fast-markout summary must be an object"
             )
+        combined_started_at_ms = summary.get(
+            "combined_started_at_ms"
+        )
+        if (
+            isinstance(combined_started_at_ms, bool)
+            or not isinstance(combined_started_at_ms, int)
+        ):
+            raise ProspectiveFullStackForwardMarkoutLedgerError(
+                "combined candidate start is missing from summary"
+            )
+        combined = ProspectiveCombinedEntryFilterState(
+            started_at_ms=combined_started_at_ms
         )
         two_strike = ProspectiveTwoStrikeStopFilterState.from_payload(
             _load_json(
