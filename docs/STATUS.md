@@ -4152,3 +4152,20 @@ The pipeline recovery planner now treats a systemic latest-epoch `missing_deep_d
 Small/non-systemic missing-deep cohorts do not trigger recovery, and a decision boundary can trigger the fallback only once. This changes data recovery only; it does not relax deep-readiness, strategy, risk, sizing, or execution gates.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Risk-rejected ledger source-format compatibility — 2026-10-02
+
+The risk-rejected fast-markout ledger now distinguishes an authenticated compact paper artifact that predates the `risk_rejected_rows` export from a malformed current-format source.
+
+A compact full-stack forward-markout summary is ledger-eligible only when it carries:
+
+- `risk_rejected_rows` as a list;
+- `risk_rejected_stack_evaluated` as an integer equal to the row count;
+- `risk_rejected_integrity_clean` as a boolean.
+
+Older authenticated summaries publish a waiting-for-new-format status and receive zero ledger credit. Current-format summaries still pass through the strict append-only ledger validator, where schema drift or immutable-row mutation fails closed.
+
+This changes evidence-source compatibility only. It cannot alter risk vetoes, candidate readiness, execution, sizing, promotion state, or live authority.
+
+**LIVE TRADING: DISABLED.**
