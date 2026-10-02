@@ -4099,3 +4099,20 @@ The coarse-rank tracker now retains a bounded history of the latest 64 canonical
 This repairs evidence lineage only. Scanner ranks, entry decisions, risk approvals, order sizing, stops, exits, candidate rules, readiness gates, promotion state, and live authority are unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Risk-rejected full-stack fast-markout shadow — 2026-10-02
+
+The full entry-stack forward-markout audit now keeps a second, strictly descriptive cohort for strategy opportunities rejected by baseline risk.
+
+This closes a current learning blind spot without weakening risk:
+
+- risk-rejected opportunities are scored through the same frozen combined + two-strike + momentum entry stack;
+- 5m / 15m / 60m directional markouts are recorded separately from risk-approved candidate rows;
+- baseline risk reason codes are preserved, including lockouts such as `weekly_drawdown_lockout`;
+- the shadow reports whether the frozen entry stack would itself ADMIT or BLOCK each rejected opportunity and the mean forward return by risk reason;
+- missing rank or momentum evidence in this cohort has its own integrity counters and cannot contaminate the existing candidate readiness calculation.
+
+This cohort has no readiness, promotion, sizing, risk-relaxation, order, or live authority. Its purpose is to answer whether a risk lockout is protecting the account from poor signals or merely suppressing otherwise good setups before any proposal to change that guard is considered.
+
+**LIVE TRADING: DISABLED.**
