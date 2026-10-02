@@ -3724,6 +3724,7 @@ class _RecordPump:
         position_provider: (
             Callable[[], Sequence[PaperPosition]] | None
         ) = None,
+        decision_epoch_wakeup: asyncio.Event | None = None,
     ) -> None:
         self.pipeline = pipeline
         self.journal = journal
@@ -3733,6 +3734,7 @@ class _RecordPump:
             entry_mid_markout_shadow
         )
         self._position_provider = position_provider
+        self._decision_epoch_wakeup = decision_epoch_wakeup
         if (
             self.entry_mid_markout_shadow is not None
             and self._position_provider is None
@@ -3771,6 +3773,9 @@ class _RecordPump:
 
     async def process(self, record: ReplayRecord) -> None:
         async with self._lock:
+            previous_decision_boundary_ms = (
+                self.pipeline.session_decision_activity.last_decision_boundary_ms
+            )
             record_key = record.event_key
             if (
                 record_key is not None
@@ -3833,6 +3838,16 @@ class _RecordPump:
             self.last_available_at_ms = available
             self.processed_records += 1
             self.journal_observations += len(observations)
+            current_decision_boundary_ms = (
+                self.pipeline.session_decision_activity.last_decision_boundary_ms
+            )
+            if (
+                self._decision_epoch_wakeup is not None
+                and current_decision_boundary_ms is not None
+                and current_decision_boundary_ms
+                != previous_decision_boundary_ms
+            ):
+                self._decision_epoch_wakeup.set()
             if record_key is not None:
                 self._recent_record_key_set.add(record_key)
                 self._recent_record_keys.append(record_key)
@@ -7681,6 +7696,7 @@ async def run_continuous_paper_session(
             selected,
             replay_config=replay_config,
         )
+        decision_epoch_wakeup = asyncio.Event()
         pump = _RecordPump(
             pipeline,
             journal,
@@ -7688,6 +7704,7 @@ async def run_continuous_paper_session(
             cadence_shadow=cadence_shadow,
             entry_mid_markout_shadow=entry_mid_markout_shadow,
             position_provider=lambda: execution.account.positions,
+            decision_epoch_wakeup=decision_epoch_wakeup,
         )
 
         selected_keys = {market.canonical for market in selected}
@@ -7953,6 +7970,9 @@ async def run_continuous_paper_session(
             capture_replacement_funding_oracles()
         )
         deadline_ms = started_at_ms + config.duration_seconds * 1000
+        next_context_poll_ms = (
+            utc_now_ms() + config.context_poll_seconds * 1000
+        )
         next_selection_refresh_ms = started_at_ms + config.selection_refresh_seconds * 1000
         next_checkpoint_ms = started_at_ms + config.checkpoint_seconds * 1000
         last_pipeline_stale_recovery_boundary_ms: int | None = None
@@ -8057,15 +8077,50 @@ async def run_continuous_paper_session(
                     exit_reason = "upgrade_requested"
                     break
                 now_ms = utc_now_ms()
-                sleep_seconds = min(
-                    float(config.context_poll_seconds),
-                    max(0.1, (deadline_ms - now_ms) / 1000),
+                wake_deadline_ms = min(
+                    deadline_ms,
+                    next_context_poll_ms,
                 )
-                await asyncio.sleep(sleep_seconds)
+                wait_seconds = max(
+                    0.1,
+                    (wake_deadline_ms - now_ms) / 1000,
+                )
+                woke_for_decision_epoch = False
+                try:
+                    await asyncio.wait_for(
+                        decision_epoch_wakeup.wait(),
+                        timeout=wait_seconds,
+                    )
+                    woke_for_decision_epoch = True
+                except TimeoutError:
+                    pass
+                if woke_for_decision_epoch:
+                    decision_epoch_wakeup.clear()
+
                 now_ms = utc_now_ms()
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
+
+                systemically_unhealthy_l2 = False
+                if woke_for_decision_epoch:
+                    systemically_unhealthy_l2 = (
+                        await recover_systemic_l2_if_needed()
+                    )
+                    if systemically_unhealthy_l2:
+                        _emit_operational_live_status(
+                            execution,
+                            pump,
+                            selected,
+                            replay_config.risk_limits,
+                            timestamp_ms=now_ms,
+                        )
+
+                if now_ms < next_context_poll_ms:
+                    continue
+                next_context_poll_ms = (
+                    now_ms + config.context_poll_seconds * 1000
+                )
 
                 (
                     refreshed,
@@ -8105,9 +8160,10 @@ async def run_continuous_paper_session(
                     exit_reason = "upgrade_requested"
                     break
 
-                systemically_unhealthy_l2 = (
-                    await recover_systemic_l2_if_needed()
-                )
+                if not systemically_unhealthy_l2:
+                    systemically_unhealthy_l2 = (
+                        await recover_systemic_l2_if_needed()
+                    )
 
                 if (
                     not systemically_unhealthy_l2
