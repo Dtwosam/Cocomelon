@@ -1448,6 +1448,78 @@ class _SupervisorGroup:
         )
 
 
+def _supervisor_group_health_payload(
+    group: _SupervisorGroup,
+    *,
+    now_ms: int,
+) -> dict[str, object]:
+    if len(group.supervisors) != len(group.ready_market_keys):
+        raise RuntimeError(
+            "supervisor and L2 readiness lane counts differ"
+        )
+    lanes: list[dict[str, object]] = []
+    for lane, (supervisor, ready) in enumerate(
+        zip(
+            group.supervisors,
+            group.ready_market_keys,
+            strict=True,
+        )
+    ):
+        health = supervisor.health
+        stale_markets = tuple(
+            sorted(
+                stream_id.removeprefix("l2Book:")
+                for stream_id in supervisor.stale_l2_streams(
+                    now_ms=now_ms
+                )
+                if stream_id.startswith("l2Book:")
+            )
+        )
+        missing_ready = tuple(
+            sorted(group.required_market_keys - ready)
+        )
+        lanes.append(
+            {
+                "lane": lane,
+                "connected": health.connected,
+                "reconnect_count": health.reconnect_count,
+                "duplicate_count": health.duplicate_count,
+                "anomaly_count": health.anomaly_count,
+                "last_server_message_ms": (
+                    health.last_server_message_ms
+                ),
+                "last_server_message_age_ms": (
+                    None
+                    if health.last_server_message_ms is None
+                    else max(
+                        0,
+                        now_ms - health.last_server_message_ms,
+                    )
+                ),
+                "ready_l2_market_count": len(
+                    group.required_market_keys & ready
+                ),
+                "missing_ready_l2_market_count": len(
+                    missing_ready
+                ),
+                "missing_ready_l2_markets": list(
+                    missing_ready
+                ),
+                "stale_l2_market_count": len(stale_markets),
+                "stale_l2_markets": list(stale_markets),
+            }
+        )
+    unhealthy = tuple(
+        sorted(group.unhealthy_l2_market_keys(now_ms=now_ms))
+    )
+    return {
+        "required_market_count": len(group.required_market_keys),
+        "unhealthy_l2_market_count": len(unhealthy),
+        "unhealthy_l2_markets": list(unhealthy),
+        "lanes": lanes,
+    }
+
+
 async def _wait_supervisor_group_ready(
     group: _SupervisorGroup,
     *,
@@ -6714,6 +6786,7 @@ def _operational_live_status_payload(
     risk_limits: RiskLimits,
     *,
     timestamp_ms: int,
+    l2_supervisor_group: _SupervisorGroup | None = None,
 ) -> dict[str, object]:
     positions: list[dict[str, object]] = []
     for position in execution.account.positions:
@@ -6844,6 +6917,14 @@ def _operational_live_status_payload(
         "stale_l2_pipeline_reason_fallback_triggers": (
             pump.stale_l2_pipeline_reason_fallback_triggers
         ),
+        "l2_supervisor_health": (
+            None
+            if l2_supervisor_group is None
+            else _supervisor_group_health_payload(
+                l2_supervisor_group,
+                now_ms=timestamp_ms,
+            )
+        ),
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
         "session_closed_trades": pump.session_closed_trades,
@@ -6957,6 +7038,7 @@ def _emit_operational_live_status(
     risk_limits: RiskLimits,
     *,
     timestamp_ms: int,
+    l2_supervisor_group: _SupervisorGroup | None = None,
 ) -> None:
     payload = _operational_live_status_payload(
         execution,
@@ -6964,6 +7046,7 @@ def _emit_operational_live_status(
         selected_markets,
         risk_limits,
         timestamp_ms=timestamp_ms,
+        l2_supervisor_group=l2_supervisor_group,
     )
     print(
         "COCOMELON_PAPER_HEARTBEAT "
@@ -8207,6 +8290,7 @@ async def run_continuous_paper_session(
                         selected,
                         replay_config.risk_limits,
                         timestamp_ms=now_ms,
+                        l2_supervisor_group=supervisor_group,
                     )
 
                 if now_ms < next_context_poll_ms:
@@ -8342,6 +8426,7 @@ async def run_continuous_paper_session(
                     selected,
                     replay_config.risk_limits,
                     timestamp_ms=now_ms,
+                    l2_supervisor_group=supervisor_group,
                 )
 
                 if now_ms >= next_checkpoint_ms:
