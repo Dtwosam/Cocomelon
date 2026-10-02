@@ -1256,6 +1256,54 @@ def test_rotation_promotes_replacement_before_retiring_previous() -> None:
     assert "_l2_event_fresh_for_promotion(" in source
     assert "required_market_keys <= ready" in source
 
+def test_runtime_checkpoints_write_off_event_loop_single_flight() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    snapshot_index = source.index(
+        "def checkpoint_payloads()"
+    )
+    background_index = source.index(
+        "async def maybe_start_background_checkpoint()",
+        snapshot_index,
+    )
+    skip_index = source.index(
+        "pump.checkpoint_background_skips += 1",
+        background_index,
+    )
+    thread_index = source.index(
+        "await asyncio.to_thread(",
+        background_index,
+    )
+    runtime_index = source.index(
+        "await maybe_start_background_checkpoint()",
+        thread_index,
+    )
+    deadline_index = source.index(
+        "utc_now_ms()\n"
+        "                        + config.checkpoint_seconds * 1000",
+        runtime_index,
+    )
+    flush_index = source.index(
+        "await flush_background_checkpoint()",
+        deadline_index,
+    )
+
+    assert (
+        snapshot_index
+        < background_index
+        < skip_index
+        < thread_index
+        < runtime_index
+        < deadline_index
+        < flush_index
+    )
+    assert "persist_checkpoint_sync()" in source
+    assert source.count(
+        "await maybe_start_background_checkpoint()"
+    ) == 1
+
+
 def test_runtime_wakes_l2_recovery_on_completed_decision_epoch() -> None:
     source = Path("src/cocomelon/continuous_paper.py").read_text(
         encoding="utf-8"
