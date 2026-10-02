@@ -4299,3 +4299,13 @@ The risk-rejected fast-markout ledger now breaks combined-layer blocks into the 
 Previously published immutable rows remain unchanged and older summaries remain valid. This is descriptive evidence only and cannot change the combined filter, risk limits, sizing, execution, readiness, promotion state, or live authority.
 
 **LIVE TRADING: DISABLED.**
+
+### Per-lane L2 supervisor diagnostics — 2026-10-02
+
+The active continuous paper worker accumulated more than one hundred systemic L2 recovery attempts while still returning to a latest decision epoch with 16 stale books and zero deep-ready markets. REST reseeds were largely successful and replacement websocket groups were usually promoted, so recovery counters alone could not distinguish a subscription failure, reconnect churn, one-lane degradation, or post-promotion message loss.
+
+Operational heartbeats now include a diagnostic snapshot for each redundant websocket lane: connection state, reconnect / duplicate / anomaly counters, last-server-message age, ready-market count, missing-ready markets, stale-L2 market count, and stale market identities. The live status also reports the cross-lane unhealthy-market count.
+
+This is observability only. It does not change L2 freshness limits, websocket subscriptions, recovery thresholds, REST reseeding, strategy decisions, risk limits, sizing, execution behavior, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
