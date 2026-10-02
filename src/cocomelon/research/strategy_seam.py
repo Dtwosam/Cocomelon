@@ -754,6 +754,25 @@ class ResearchStrategyContextEngine:
             self._next_boundary_ms += DECISION_INTERVAL_MS
         return tuple(emitted)
 
+    def seed(self, record: ReplayRecord, now_ms: int) -> None:
+        if now_ms < record.available_at_ms:
+            raise ValueError(
+                "research strategy now_ms cannot precede record availability"
+            )
+        if self._next_boundary_ms is not None:
+            raise ValueError(
+                "research strategy seed cannot follow live observation"
+            )
+        if (
+            self._last_available_at_ms is not None
+            and record.available_at_ms < self._last_available_at_ms
+        ):
+            raise ValueError(
+                "research strategy records must not regress in availability time"
+            )
+        self._state.apply(record, now_ms)
+        self._last_available_at_ms = record.available_at_ms
+
     def observe(
         self,
         record: ReplayRecord,
@@ -1009,6 +1028,9 @@ class CandidateDecisionEpochEngine:
             evaluated_at_ms=epoch.evaluated_at_ms,
             markets=tuple(evaluations),
         )
+
+    def seed(self, record: ReplayRecord, now_ms: int) -> None:
+        self._contexts.seed(record, now_ms)
 
     def observe(self, record: ReplayRecord, now_ms: int) -> tuple[DecisionEpoch, ...]:
         return tuple(
