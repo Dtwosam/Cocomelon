@@ -136,3 +136,13 @@ def test_risk_rejected_waiting_and_blocked_status_use_quoted_builders() -> None:
     assert "os.environ['SOURCE_RUN_ATTEMPT']" in waiting
     assert "os.environ['RESOLUTION_MODE']" in waiting
     assert 'os.environ.get("ERROR_TEXT")' in blocked
+
+
+def test_risk_rejected_source_skips_empty_successful_handoffs() -> None:
+    source = _source()
+
+    assert "artifact_for_run()" in source
+    assert "latest_successful_with_compact_artifact" in source
+    assert "selected source has no authenticated compact artifact" in source
+    assert "artifact_candidates" in source
+    assert 'EVENT_NAME" != "workflow_dispatch"' in source
