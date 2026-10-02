@@ -1086,6 +1086,8 @@ class BaselineReplayPipeline:
         self,
         record: ReplayRecord,
         now_ms: int,
+        *,
+        evaluate_decisions: bool = True,
     ) -> tuple[JournalObservation, ...]:
         if now_ms < record.available_at_ms:
             raise ReplayInvariantError("baseline replay consumed future evidence")
@@ -1119,8 +1121,11 @@ class BaselineReplayPipeline:
                 elif interval not in self._gap_intervals:
                     self._gap_intervals.append(interval)
 
-        for epoch in self._decision_engine.observe(record, now_ms):
-            observations.extend(self._process_epoch(epoch))
+        if evaluate_decisions:
+            for epoch in self._decision_engine.observe(record, now_ms):
+                observations.extend(self._process_epoch(epoch))
+        else:
+            self._decision_engine.seed(record, now_ms)
 
         if record.record_kind is SourceRecordKind.DATA_GAP:
             observations.extend(self._due_funding(now_ms))
