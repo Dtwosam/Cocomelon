@@ -703,6 +703,33 @@ jobs:
                   "- block layers: "
                   f"{payload.get('block_layer_counts', {})}"
               )
+              print(
+                  "- risk-rejected opportunities / evaluated / stack admit / "
+                  "stack block / integrity clean: "
+                  f"{payload.get('baseline_risk_rejected', 0)} / "
+                  f"{payload.get('risk_rejected_stack_evaluated', 0)} / "
+                  f"{payload.get('risk_rejected_stack_admitted', 0)} / "
+                  f"{payload.get('risk_rejected_stack_blocked', 0)} / "
+                  f"{payload.get('risk_rejected_integrity_clean', False)}"
+              )
+              print(
+                  "- risk-rejected reasons: "
+                  f"{payload.get('risk_rejected_reason_counts', {})}"
+              )
+              risk_horizons = payload.get("risk_rejected_horizons", {})
+              for horizon_ms in payload.get("forward_horizons_ms", []):
+                  item = risk_horizons.get(str(horizon_ms), {})
+                  admit = item.get("admit", {})
+                  block = item.get("block", {})
+                  print(
+                      "- risk-rejected {minutes}m stack admit/block mean: "
+                      "{admit_mean} / {block_mean}; by reason: {reasons}".format(
+                          minutes=horizon_ms // 60000,
+                          admit_mean=admit.get("mean_directional_return"),
+                          block_mean=block.get("mean_directional_return"),
+                          reasons=item.get("by_risk_reason", {}),
+                      )
+                  )
               horizons = payload.get("horizons", {})
               for horizon_ms in payload.get("forward_horizons_ms", []):
                   item = horizons.get(str(horizon_ms), {})
