@@ -3771,11 +3771,27 @@ class _RecordPump:
         self._record_dedup_size = 131_072
         self._lock = asyncio.Lock()
 
+    def _decision_boundary_ms(self) -> int | None:
+        activity = getattr(
+            self.pipeline,
+            "session_decision_activity",
+            None,
+        )
+        boundary_ms = getattr(
+            activity,
+            "last_decision_boundary_ms",
+            None,
+        )
+        if isinstance(boundary_ms, bool) or not isinstance(
+            boundary_ms,
+            int,
+        ):
+            return None
+        return boundary_ms
+
     async def process(self, record: ReplayRecord) -> None:
         async with self._lock:
-            previous_decision_boundary_ms = (
-                self.pipeline.session_decision_activity.last_decision_boundary_ms
-            )
+            previous_decision_boundary_ms = self._decision_boundary_ms()
             record_key = record.event_key
             if (
                 record_key is not None
@@ -3838,9 +3854,7 @@ class _RecordPump:
             self.last_available_at_ms = available
             self.processed_records += 1
             self.journal_observations += len(observations)
-            current_decision_boundary_ms = (
-                self.pipeline.session_decision_activity.last_decision_boundary_ms
-            )
+            current_decision_boundary_ms = self._decision_boundary_ms()
             if (
                 self._decision_epoch_wakeup is not None
                 and current_decision_boundary_ms is not None
