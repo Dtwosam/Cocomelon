@@ -4320,3 +4320,14 @@ The operational heartbeat now records the latest L2 exchange-time minus receive-
 The next runtime handoff will use this telemetry to distinguish venue/runner clock skew from genuinely stale or malformed L2 timestamps before any freshness semantics are changed.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Pre-recovery L2 supervisor snapshot — 2026-10-02
+
+The active paper worker repeatedly showed a decision epoch with 16 `stale_book` rejections while the post-recovery supervisor heartbeat showed both redundant websocket lanes fully connected, all 20 L2 markets ready, zero lane-level stale markets, zero reconnects, and sub-second exchange-to-receive age. Because that heartbeat was emitted after replacement promotion, it could not distinguish a genuinely unhealthy feed from a stale replay/pipeline view that triggered recovery while the live feeds were still healthy.
+
+The runtime now captures the exact redundant-supervisor health snapshot immediately before every guarded stale-L2 recovery. The operational heartbeat records whether the trigger came from supervisor health, decision-pipeline evidence, or both; the supervisor-unhealthy and pipeline-stale market counts; the decision boundary; fallback state; and the full per-lane connected/readiness/staleness/reconnect/server-age/exchange-age snapshot from before reseed or replacement.
+
+This is diagnostic-only. It does not change the 5-second L2 freshness ceiling, subscription topology, recovery trigger, REST reseed, websocket replacement, eligibility, strategy, risk, sizing, execution, readiness, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**

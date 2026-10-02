@@ -3898,6 +3898,7 @@ class _RecordPump:
         self.stale_l2_rest_reseed_failures = 0
         self.stale_l2_pipeline_recovery_triggers = 0
         self.stale_l2_pipeline_reason_fallback_triggers = 0
+        self.last_stale_l2_recovery_trigger: dict[str, object] | None = None
         self._recent_record_keys: deque[str] = deque()
         self._recent_record_key_set: set[str] = set()
         self._record_dedup_size = 131_072
@@ -6985,6 +6986,9 @@ def _operational_live_status_payload(
                 now_ms=timestamp_ms,
             )
         ),
+        "last_stale_l2_recovery_trigger": (
+            pump.last_stale_l2_recovery_trigger
+        ),
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
         "session_closed_trades": pump.session_closed_trades,
@@ -8266,6 +8270,37 @@ async def run_continuous_paper_session(
             if not systemically_unhealthy_l2:
                 return False
 
+            pump.last_stale_l2_recovery_trigger = {
+                "timestamp_ms": health_now_ms,
+                "supervisor_triggered": (
+                    supervisor_systemically_unhealthy_l2
+                ),
+                "pipeline_triggered": (
+                    pipeline_systemically_unhealthy_l2
+                ),
+                "supervisor_unhealthy_market_count": len(
+                    supervisor_unhealthy_market_keys
+                ),
+                "supervisor_unhealthy_markets": sorted(
+                    supervisor_unhealthy_market_keys
+                ),
+                "pipeline_stale_market_count": len(
+                    pipeline_stale_market_keys
+                ),
+                "pipeline_stale_markets": sorted(
+                    pipeline_stale_market_keys
+                ),
+                "pipeline_recovery_boundary_ms": (
+                    pipeline_recovery_boundary_ms
+                ),
+                "pipeline_reason_fallback": pipeline_reason_fallback,
+                "pre_recovery_supervisor_health": (
+                    _supervisor_group_health_payload(
+                        supervisor_group,
+                        now_ms=health_now_ms,
+                    )
+                ),
+            }
             if pipeline_systemically_unhealthy_l2:
                 pump.stale_l2_pipeline_recovery_triggers += 1
                 if pipeline_reason_fallback:
