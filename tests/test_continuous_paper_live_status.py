@@ -5186,6 +5186,18 @@ def test_capacity_reflow_renderer_exposes_observed_release_sensitivity() -> None
             "candidate_eligible_capacity_rejections": 3,
             "single_position_release_unblocked": 2,
             "single_position_release_options": 3,
+            "candidate_eligible_min_notional_rejections": 2,
+            "min_notional_notional_shortfall_sum": "8",
+            "min_notional_forced_risk_overage_sum": "0.4",
+            "min_notional_safe_round_up": 0,
+            "by_min_notional_limiting_factor": {
+                "target_trade_risk": 1,
+                "visible_depth_capacity": 1,
+            },
+            "by_min_notional_market": {
+                "SOL": 1,
+                "XRP": 1,
+            },
             "by_baseline_rejection_reason": {
                 "correlation_bucket_exhausted": 8,
                 "aggregate_risk_exhausted": 2,
@@ -5207,6 +5219,14 @@ def test_capacity_reflow_renderer_exposes_observed_release_sensitivity() -> None
     assert "`10 / 10`" in output
     assert "`4 / 6`" in output
     assert "`3 / 2`" in output
+    assert "candidate-eligible venue-minimum rejections / safe round-up" in output
+    assert "`2 / 0`" in output
+    assert "venue-minimum notional shortfall / forced-risk overage" in output
+    assert "`8 / 0.4`" in output
+    assert "target_trade_risk=1" in output
+    assert "visible_depth_capacity=1" in output
+    assert "SOL=1" in output
+    assert "XRP=1" in output
     assert "correlation_bucket_exhausted=8" in output
     assert "BTC=2" in output
     assert "replacement trades / PnL modeled: `false / false`" in output
