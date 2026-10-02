@@ -2022,6 +2022,13 @@ def _write_json_atomic(path: Path, payload: object) -> None:
     os.replace(temporary, path)
 
 
+def _write_json_payload_batch_atomic(
+    payloads: Sequence[tuple[Path, object]],
+) -> None:
+    for path, payload in payloads:
+        _write_json_atomic(path, payload)
+
+
 def _load_checkpoint(path: Path) -> tuple[
     tuple[OpenLifecycleCheckpoint, ...],
     tuple[tuple[int, int | None], ...],
@@ -3908,6 +3915,10 @@ class _RecordPump:
         self.record_pump_max_lock_wait_ms = 0
         self.record_pump_slow_record_count = 0
         self.record_pump_last_slow_record: dict[str, object] | None = None
+        self.checkpoint_max_snapshot_ms = 0
+        self.checkpoint_max_background_write_ms = 0
+        self.checkpoint_background_starts = 0
+        self.checkpoint_background_skips = 0
         self._recent_record_keys: deque[str] = deque()
         self._recent_record_key_set: set[str] = set()
         self._record_dedup_size = 131_072
@@ -6457,6 +6468,12 @@ def _live_status_payload(
         "record_pump_max_lock_wait_ms": pump.record_pump_max_lock_wait_ms,
         "record_pump_slow_record_count": pump.record_pump_slow_record_count,
         "record_pump_last_slow_record": pump.record_pump_last_slow_record,
+        "checkpoint_max_snapshot_ms": pump.checkpoint_max_snapshot_ms,
+        "checkpoint_max_background_write_ms": (
+            pump.checkpoint_max_background_write_ms
+        ),
+        "checkpoint_background_starts": pump.checkpoint_background_starts,
+        "checkpoint_background_skips": pump.checkpoint_background_skips,
         "shortlist_rotation_attempts": pump.shortlist_rotation_attempts,
         "shortlist_rotation_promotions": pump.shortlist_rotation_promotions,
         "shortlist_rotation_readiness_failures": (
@@ -6995,6 +7012,12 @@ def _operational_live_status_payload(
         "record_pump_max_lock_wait_ms": pump.record_pump_max_lock_wait_ms,
         "record_pump_slow_record_count": pump.record_pump_slow_record_count,
         "record_pump_last_slow_record": pump.record_pump_last_slow_record,
+        "checkpoint_max_snapshot_ms": pump.checkpoint_max_snapshot_ms,
+        "checkpoint_max_background_write_ms": (
+            pump.checkpoint_max_background_write_ms
+        ),
+        "checkpoint_background_starts": pump.checkpoint_background_starts,
+        "checkpoint_background_skips": pump.checkpoint_background_skips,
         "shortlist_rotation_attempts": pump.shortlist_rotation_attempts,
         "shortlist_rotation_promotions": pump.shortlist_rotation_promotions,
         "shortlist_rotation_readiness_failures": (
@@ -8040,113 +8063,189 @@ async def run_continuous_paper_session(
             now_ms=utc_now_ms()
         )
 
-        def persist_checkpoint() -> None:
+        def checkpoint_payloads() -> tuple[tuple[Path, object], ...]:
             checkpoint_timestamp_ms = utc_now_ms()
             drawdown_tracker.observe(
                 execution.account.equity,
                 timestamp_ms=checkpoint_timestamp_ms,
             )
-            trade_path_sink.checkpoint(pipeline.open_lifecycle_mark_paths)
-            _write_json_atomic(
-                checkpoint_path,
-                _checkpoint_payload(
-                    pipeline,
-                    last_available_at_ms=pump.last_available_at_ms,
-                    selected_markets=selected,
+            trade_path_sink.checkpoint(
+                pipeline.open_lifecycle_mark_paths
+            )
+            payloads: list[tuple[Path, object]] = [
+                (
+                    checkpoint_path,
+                    _checkpoint_payload(
+                        pipeline,
+                        last_available_at_ms=pump.last_available_at_ms,
+                        selected_markets=selected,
+                    ),
                 ),
-            )
-            _write_json_atomic(
-                root / CADENCE_SHADOW_FILENAME,
-                pump.cadence_shadow_payload(),
-            )
+                (
+                    root / CADENCE_SHADOW_FILENAME,
+                    pump.cadence_shadow_payload(),
+                ),
+            ]
             if pump.cadence_shadow is not None:
-                _write_json_atomic(
-                    root / CADENCE_SHADOW_STATE_FILENAME,
-                    pump.cadence_shadow.state_payload(),
+                payloads.append(
+                    (
+                        root / CADENCE_SHADOW_STATE_FILENAME,
+                        pump.cadence_shadow.state_payload(),
+                    )
                 )
             if profit_lock_execution_shadow.shadow is not None:
-                _write_json_atomic(
-                    root / PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME,
-                    profit_lock_execution_shadow.shadow.state_payload(),
+                payloads.append(
+                    (
+                        root / PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME,
+                        profit_lock_execution_shadow.shadow.state_payload(),
+                    )
                 )
             if delayed_entry_execution_shadow.shadow is not None:
-                _write_json_atomic(
-                    root / DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME,
-                    delayed_entry_execution_shadow.shadow.state_payload(),
+                payloads.append(
+                    (
+                        root / DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME,
+                        delayed_entry_execution_shadow.shadow.state_payload(),
+                    )
                 )
             if delayed_entry_120s_execution_shadow.shadow is not None:
-                _write_json_atomic(
-                    root / DELAYED_ENTRY_120S_EXECUTION_SHADOW_STATE_FILENAME,
-                    delayed_entry_120s_execution_shadow.shadow.state_payload(),
+                payloads.append(
+                    (
+                        root / DELAYED_ENTRY_120S_EXECUTION_SHADOW_STATE_FILENAME,
+                        delayed_entry_120s_execution_shadow.shadow.state_payload(),
+                    )
                 )
-            _write_json_atomic(
-                root / PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME,
-                prospective_entry_filter_state.payload(),
-            )
-            _write_json_atomic(
-                root / PROSPECTIVE_DELAYED_PRICE_CONFIRM_STATE_FILENAME,
-                prospective_delayed_price_confirmation_state.payload(),
-            )
-            _write_json_atomic(
-                root / PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME,
-                prospective_top10_rank_filter_state.payload(),
-            )
-            _write_json_atomic(
-                root / PROSPECTIVE_TRADE_QUALITY_STATE_FILENAME,
-                prospective_trade_quality_state.payload(),
-            )
-            _write_json_atomic(
-                root / PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME,
-                prospective_combined_entry_filter_state.payload(),
-            )
-            _write_json_atomic(
-                root
-                / PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_STATE_FILENAME,
-                prospective_consecutive_loss_cooldown_shadow_state.payload(),
-            )
-            _write_json_atomic(
-                root / PROSPECTIVE_BREAKEVEN_PROFIT_LOCK_STATE_FILENAME,
-                prospective_breakeven_profit_lock_state.payload(),
-            )
-            _write_json_atomic(
-                root / PROSPECTIVE_MOMENTUM_BAND_ENTRY_STATE_FILENAME,
-                prospective_momentum_band_entry_state.payload(),
-            )
-            _write_json_atomic(
-                root / PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME,
-                prospective_two_strike_stop_filter_state.payload(),
-            )
-            _write_json_atomic(
-                root / PROSPECTIVE_REPLACEMENT_EXIT_POLICY_STATE_FILENAME,
-                prospective_replacement_exit_policy_state.payload(),
-            )
-            _write_json_atomic(
-                root / PROSPECTIVE_SIDE_CONDITIONED_DELAY_STATE_FILENAME,
-                prospective_side_conditioned_delay_state.payload(),
-            )
-            _write_json_atomic(
-                root / ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME,
-                adaptive_delay_selector_state.payload(),
-            )
-            _write_json_atomic(
-                root / FILL_AWARE_DELAY_SELECTOR_STATE_FILENAME,
-                fill_aware_delay_selector_state.payload(),
-            )
-            _write_json_atomic(
-                root / DELAY_SELECTOR_COMPARISON_STATE_FILENAME,
-                delay_selector_comparison_state.payload(),
+            payloads.extend(
+                (
+                    (
+                        root / PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME,
+                        prospective_entry_filter_state.payload(),
+                    ),
+                    (
+                        root / PROSPECTIVE_DELAYED_PRICE_CONFIRM_STATE_FILENAME,
+                        prospective_delayed_price_confirmation_state.payload(),
+                    ),
+                    (
+                        root / PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME,
+                        prospective_top10_rank_filter_state.payload(),
+                    ),
+                    (
+                        root / PROSPECTIVE_TRADE_QUALITY_STATE_FILENAME,
+                        prospective_trade_quality_state.payload(),
+                    ),
+                    (
+                        root / PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME,
+                        prospective_combined_entry_filter_state.payload(),
+                    ),
+                    (
+                        root
+                        / PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_STATE_FILENAME,
+                        prospective_consecutive_loss_cooldown_shadow_state.payload(),
+                    ),
+                    (
+                        root / PROSPECTIVE_BREAKEVEN_PROFIT_LOCK_STATE_FILENAME,
+                        prospective_breakeven_profit_lock_state.payload(),
+                    ),
+                    (
+                        root / PROSPECTIVE_MOMENTUM_BAND_ENTRY_STATE_FILENAME,
+                        prospective_momentum_band_entry_state.payload(),
+                    ),
+                    (
+                        root / PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME,
+                        prospective_two_strike_stop_filter_state.payload(),
+                    ),
+                    (
+                        root / PROSPECTIVE_REPLACEMENT_EXIT_POLICY_STATE_FILENAME,
+                        prospective_replacement_exit_policy_state.payload(),
+                    ),
+                    (
+                        root / PROSPECTIVE_SIDE_CONDITIONED_DELAY_STATE_FILENAME,
+                        prospective_side_conditioned_delay_state.payload(),
+                    ),
+                    (
+                        root / ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME,
+                        adaptive_delay_selector_state.payload(),
+                    ),
+                    (
+                        root / FILL_AWARE_DELAY_SELECTOR_STATE_FILENAME,
+                        fill_aware_delay_selector_state.payload(),
+                    ),
+                    (
+                        root / DELAY_SELECTOR_COMPARISON_STATE_FILENAME,
+                        delay_selector_comparison_state.payload(),
+                    ),
+                )
             )
             if entry_mid_markout_shadow.shadow is not None:
-                _write_json_atomic(
-                    root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
-                    entry_mid_markout_shadow.shadow.state_payload(),
+                payloads.append(
+                    (
+                        root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
+                        entry_mid_markout_shadow.shadow.state_payload(),
+                    )
                 )
-            _write_json_atomic(
-                root / DRAWDOWN_STATE_FILENAME,
-                drawdown_tracker.state_payload(),
+            payloads.append(
+                (
+                    root / DRAWDOWN_STATE_FILENAME,
+                    drawdown_tracker.state_payload(),
+                )
+            )
+            return tuple(payloads)
+
+        def persist_checkpoint_sync() -> None:
+            _write_json_payload_batch_atomic(
+                checkpoint_payloads()
             )
 
-        persist_checkpoint()
+        checkpoint_write_task: asyncio.Task[None] | None = None
+
+        async def maybe_start_background_checkpoint() -> bool:
+            nonlocal checkpoint_write_task
+            if checkpoint_write_task is not None:
+                if not checkpoint_write_task.done():
+                    pump.checkpoint_background_skips += 1
+                    return False
+                await checkpoint_write_task
+                checkpoint_write_task = None
+
+            loop = asyncio.get_running_loop()
+            snapshot_started = loop.time()
+            payloads = checkpoint_payloads()
+            snapshot_ms = max(
+                0,
+                int((loop.time() - snapshot_started) * 1000),
+            )
+            pump.checkpoint_max_snapshot_ms = max(
+                pump.checkpoint_max_snapshot_ms,
+                snapshot_ms,
+            )
+
+            async def write_snapshot() -> None:
+                write_started = loop.time()
+                await asyncio.to_thread(
+                    _write_json_payload_batch_atomic,
+                    payloads,
+                )
+                write_ms = max(
+                    0,
+                    int((loop.time() - write_started) * 1000),
+                )
+                pump.checkpoint_max_background_write_ms = max(
+                    pump.checkpoint_max_background_write_ms,
+                    write_ms,
+                )
+
+            checkpoint_write_task = asyncio.create_task(
+                write_snapshot()
+            )
+            pump.checkpoint_background_starts += 1
+            return True
+
+        async def flush_background_checkpoint() -> None:
+            nonlocal checkpoint_write_task
+            if checkpoint_write_task is not None:
+                await checkpoint_write_task
+                checkpoint_write_task = None
+
+        persist_checkpoint_sync()
         if not _stop_requested(stop_path):
             _emit_operational_live_status(
                 execution,
@@ -8592,8 +8691,11 @@ async def run_continuous_paper_session(
                 )
 
                 if now_ms >= next_checkpoint_ms:
-                    persist_checkpoint()
-                    next_checkpoint_ms = now_ms + config.checkpoint_seconds * 1000
+                    await maybe_start_background_checkpoint()
+                    next_checkpoint_ms = (
+                        utc_now_ms()
+                        + config.checkpoint_seconds * 1000
+                    )
 
                 failed = tuple(
                     task
@@ -8612,7 +8714,8 @@ async def run_continuous_paper_session(
                 return_exceptions=True,
             )
 
-        persist_checkpoint()
+        await flush_background_checkpoint()
+        persist_checkpoint_sync()
         ended_at_ms = utc_now_ms()
         cooldown_shadow_summary = (
             _prospective_consecutive_loss_cooldown_shadow_payload(
