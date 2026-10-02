@@ -503,6 +503,7 @@ jobs:
               f"- stack admitted / blocked terminal: `{summary['stack_admitted_terminal']} / {summary['stack_blocked_terminal']}`",
               f"- risk reason counts: `{summary['risk_reason_counts']}`",
               f"- stack block layer counts: `{summary.get('stack_block_layer_counts', {})}`",
+              f"- combined block reason counts: `{summary.get('combined_block_reason_counts', {})}`",
               f"- rows SHA-256: `{ledger['rows_sha256']}`",
               f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
               "",
@@ -596,6 +597,31 @@ jobs:
                       "- {layer}: opportunities={opportunities}, "
                       "settled={settled}, mean={mean}, markets={markets}".format(
                           layer=layer,
+                          opportunities=values.get("opportunities", 0),
+                          settled=values.get("settled", 0),
+                          mean=values.get("mean_directional_return"),
+                          markets=values.get("market_count", 0),
+                      )
+                  )
+              lines.append("")
+              lines.append(
+                  f"**{horizon_ms // 60000}m by combined block reason**"
+              )
+              by_combined_reason = item.get(
+                  "by_combined_block_reason",
+                  {},
+              )
+              if not isinstance(by_combined_reason, dict):
+                  by_combined_reason = {}
+              for reason, values in sorted(
+                  by_combined_reason.items()
+              ):
+                  if not isinstance(values, dict):
+                      continue
+                  lines.append(
+                      "- {reason}: opportunities={opportunities}, "
+                      "settled={settled}, mean={mean}, markets={markets}".format(
+                          reason=reason,
                           opportunities=values.get("opportunities", 0),
                           settled=values.get("settled", 0),
                           mean=values.get("mean_directional_return"),

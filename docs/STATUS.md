@@ -4288,3 +4288,14 @@ The ledger summary now derives terminal block-layer counts and, at each fixed 5m
 This is descriptive entry-quality evidence only. It cannot relax risk, change entry-candidate readiness, alter sizing or execution, promote a strategy, or enable live trading.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Combined-filter block-reason attribution — 2026-10-02
+
+The risk-rejected stack attribution showed that the combined entry filter blocked five of the first eight terminal weekly-drawdown-locked opportunities, with positive mean directional returns at both 15m and 60m. That sample is too small to justify changing the filter, but it makes the combined layer the most important place to inspect for avoidable over-filtering.
+
+The risk-rejected fast-markout ledger now breaks combined-layer blocks into the frozen rule's exact reasons: `long_trend`, `rank_above_10`, and `long_trend_and_rank_above_10`. For each fixed 5m / 15m / 60m horizon it reports opportunity count, settled count, directional-return mean, sign counts, and market breadth by combined reason.
+
+Previously published immutable rows remain unchanged and older summaries remain valid. This is descriptive evidence only and cannot change the combined filter, risk limits, sizing, execution, readiness, promotion state, or live authority.
+
+**LIVE TRADING: DISABLED.**
