@@ -4116,3 +4116,14 @@ This closes a current learning blind spot without weakening risk:
 This cohort has no readiness, promotion, sizing, risk-relaxation, order, or live authority. Its purpose is to answer whether a risk lockout is protecting the account from poor signals or merely suppressing otherwise good setups before any proposal to change that guard is considered.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Systemic missing-deep L2 recovery — 2026-10-02
+
+The current paper worker exposed a cold-start L2 blind spot: 16 of 20 selected markets were rankable but reported `missing_deep_data`, leaving zero markets deep-ready after multiple context polls even though the redundant websocket supervisors had not raised stale-book recovery.
+
+The pipeline recovery planner now treats a systemic latest-epoch `missing_deep_data` count as an L2 recovery condition, using the same majority threshold already used for systemic stale books. A systemic missing-deep epoch recovers the full selected watchlist through the existing REST L2 reseed path and redundant websocket-group replacement; the replacement group is promoted only after every selected market has fresh L2 on every lane.
+
+Small/non-systemic missing-deep cohorts do not trigger recovery, and a decision boundary can trigger the fallback only once. This changes data recovery only; it does not relax deep-readiness, strategy, risk, sizing, or execution gates.
+
+**LIVE TRADING: DISABLED.**
