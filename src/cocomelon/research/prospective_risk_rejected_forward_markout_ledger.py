@@ -19,6 +19,10 @@ TERMINAL_STATUSES: Final = frozenset(
 )
 PENDING_STATUSES: Final = frozenset({"pending", "missing_path"})
 ZERO: Final = Decimal("0")
+MIN_REASON_STACK_ADMIT_SETTLED_PER_HORIZON: Final = 12
+MIN_REASON_MARKETS_PER_HORIZON: Final = 4
+MIN_REASON_LONG_SETTLED_PER_HORIZON: Final = 3
+MIN_REASON_SHORT_SETTLED_PER_HORIZON: Final = 3
 
 
 class ProspectiveRiskRejectedForwardMarkoutLedgerError(RuntimeError):
@@ -460,6 +464,186 @@ def _mean_robustness(
     }
 
 
+def _risk_reason_investigation_readiness(
+    rows: tuple[dict[str, object], ...],
+    *,
+    integrity_clean: bool,
+) -> dict[str, object]:
+    reasons = tuple(
+        sorted(
+            {
+                reason
+                for row in rows
+                for reason in cast(
+                    list[str],
+                    row["baseline_risk_reason_codes"],
+                )
+            }
+        )
+    )
+    by_reason: dict[str, dict[str, object]] = {}
+    ready_reasons: list[str] = []
+
+    for reason in reasons:
+        horizons: dict[str, dict[str, object]] = {}
+        all_horizons_ready = True
+        for horizon_ms in FORWARD_HORIZONS_MS:
+            key = str(horizon_ms)
+            settled: list[tuple[dict[str, object], Decimal]] = []
+            for row in rows:
+                if row["stack_decision"] != "ADMIT":
+                    continue
+                if reason not in cast(
+                    list[str],
+                    row["baseline_risk_reason_codes"],
+                ):
+                    continue
+                markouts = cast(
+                    dict[str, dict[str, object]],
+                    row["markouts"],
+                )
+                markout = markouts[key]
+                if markout["status"] != "settled":
+                    continue
+                settled.append(
+                    (
+                        row,
+                        Decimal(
+                            cast(
+                                str,
+                                markout["directional_return"],
+                            )
+                        ),
+                    )
+                )
+
+            market_values = tuple(
+                (cast(str, row["market"]), value)
+                for row, value in settled
+            )
+            robustness = _mean_robustness(market_values)
+            markets = {
+                cast(str, row["market"])
+                for row, _value in settled
+            }
+            long_count = sum(
+                row["direction"] == "long"
+                for row, _value in settled
+            )
+            short_count = sum(
+                row["direction"] == "short"
+                for row, _value in settled
+            )
+            settled_count = len(settled)
+            mean_raw = robustness["mean_directional_return"]
+            mean_positive = (
+                isinstance(mean_raw, str)
+                and Decimal(mean_raw) > ZERO
+            )
+            opportunity_robust = (
+                robustness[
+                    "positive_after_removing_any_one_opportunity"
+                ]
+                is True
+            )
+            market_robust = (
+                robustness[
+                    "positive_after_removing_any_one_market"
+                ]
+                is True
+            )
+            sample_complete = (
+                settled_count
+                >= MIN_REASON_STACK_ADMIT_SETTLED_PER_HORIZON
+                and len(markets) >= MIN_REASON_MARKETS_PER_HORIZON
+                and long_count
+                >= MIN_REASON_LONG_SETTLED_PER_HORIZON
+                and short_count
+                >= MIN_REASON_SHORT_SETTLED_PER_HORIZON
+            )
+            horizon_ready = (
+                integrity_clean
+                and sample_complete
+                and mean_positive
+                and opportunity_robust
+                and market_robust
+            )
+            all_horizons_ready = (
+                all_horizons_ready and horizon_ready
+            )
+            horizons[key] = {
+                "horizon_ms": horizon_ms,
+                "stack_admit_settled": settled_count,
+                "market_count": len(markets),
+                "long_settled": long_count,
+                "short_settled": short_count,
+                "mean_directional_return": mean_raw,
+                "leave_one_opportunity_min_mean": robustness[
+                    "leave_one_opportunity_min_mean"
+                ],
+                "leave_one_market_min_mean": robustness[
+                    "leave_one_market_min_mean"
+                ],
+                "sample_complete": sample_complete,
+                "mean_positive": mean_positive,
+                "single_opportunity_robust": opportunity_robust,
+                "single_market_robust": market_robust,
+                "integrity_clean": integrity_clean,
+                "ready_for_investigation": horizon_ready,
+                "missing_stack_admit_settled": max(
+                    0,
+                    MIN_REASON_STACK_ADMIT_SETTLED_PER_HORIZON
+                    - settled_count,
+                ),
+                "missing_markets": max(
+                    0,
+                    MIN_REASON_MARKETS_PER_HORIZON
+                    - len(markets),
+                ),
+                "missing_long_settled": max(
+                    0,
+                    MIN_REASON_LONG_SETTLED_PER_HORIZON
+                    - long_count,
+                ),
+                "missing_short_settled": max(
+                    0,
+                    MIN_REASON_SHORT_SETTLED_PER_HORIZON
+                    - short_count,
+                ),
+            }
+
+        if all_horizons_ready:
+            ready_reasons.append(reason)
+        by_reason[reason] = {
+            "ready_for_risk_budget_investigation": (
+                all_horizons_ready
+            ),
+            "horizons": horizons,
+        }
+
+    return {
+        "review_only": True,
+        "decision_scope": "risk_rejected_stack_admit_only",
+        "changes_risk_limits": False,
+        "changes_candidate_readiness": False,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "min_stack_admit_settled_per_horizon": (
+            MIN_REASON_STACK_ADMIT_SETTLED_PER_HORIZON
+        ),
+        "min_markets_per_horizon": MIN_REASON_MARKETS_PER_HORIZON,
+        "min_long_settled_per_horizon": (
+            MIN_REASON_LONG_SETTLED_PER_HORIZON
+        ),
+        "min_short_settled_per_horizon": (
+            MIN_REASON_SHORT_SETTLED_PER_HORIZON
+        ),
+        "integrity_clean": integrity_clean,
+        "ready_reasons": ready_reasons,
+        "by_reason": by_reason,
+    }
+
+
 def _horizon_summary(
     rows: tuple[dict[str, object], ...],
     *,
@@ -571,13 +755,14 @@ def _summary(
     *,
     pending_opportunity_count: int,
     integrity_clean: bool,
+    include_investigation_readiness: bool = True,
 ) -> dict[str, object]:
     reason_counts: Counter[str] = Counter()
     for row in rows:
         reason_counts.update(
             cast(list[str], row["baseline_risk_reason_codes"])
         )
-    return {
+    result: dict[str, object] = {
         "terminal_opportunity_count": len(rows),
         "pending_opportunity_count": pending_opportunity_count,
         "integrity_clean": integrity_clean,
@@ -596,6 +781,14 @@ def _summary(
             for horizon_ms in FORWARD_HORIZONS_MS
         },
     }
+    if include_investigation_readiness:
+        result["risk_budget_investigation_readiness"] = (
+            _risk_reason_investigation_readiness(
+                rows,
+                integrity_clean=integrity_clean,
+            )
+        )
+    return result
 
 
 def _validate_metadata(raw: dict[str, object]) -> None:
@@ -668,11 +861,18 @@ def validate_risk_rejected_forward_markout_ledger(
         and item.get("integrity_clean") is True
         for item in history
     )
-    if raw.get("summary") != _summary(
+    current_summary = _summary(
         rows,
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
-    ):
+    )
+    legacy_summary = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_investigation_readiness=False,
+    )
+    if raw.get("summary") not in (current_summary, legacy_summary):
         raise ProspectiveRiskRejectedForwardMarkoutLedgerError(
             "risk-rejected markout summary does not reconcile"
         )
