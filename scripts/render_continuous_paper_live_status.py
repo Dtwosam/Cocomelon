@@ -9730,6 +9730,13 @@ def _render_operational_live_status(
                 f"{payload.get('record_pump_last_slow_record')}"
             ),
             (
+                "- checkpoint max snapshot / background write / starts / skips: "
+                f"{payload.get('checkpoint_max_snapshot_ms', 0)}ms / "
+                f"{payload.get('checkpoint_max_background_write_ms', 0)}ms / "
+                f"{payload.get('checkpoint_background_starts', 0)} / "
+                f"{payload.get('checkpoint_background_skips', 0)}"
+            ),
+            (
                 "- shortlist rotations attempts / promoted / failed readiness: "
                 f"{payload.get('shortlist_rotation_attempts', 0)} / "
                 f"{payload.get('shortlist_rotation_promotions', 0)} / "
