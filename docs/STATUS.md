@@ -4214,3 +4214,16 @@ Startup now refreshes native mainnet market context during warmup whenever the n
 The existing 60-second stale-context rejection ceiling is unchanged. No eligibility threshold, L2 freshness limit, strategy rule, risk limit, sizing rule, stop, readiness gate, promotion state, or live-order authority is relaxed.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Decision-free startup bootstrap and heartbeat-independent handoff — 2026-10-02
+
+The first implementation of startup context refresh (#780) refreshed the full native context repeatedly during candle warmup. Although it preserved freshness, the successor worker remained in startup far longer than the preceding worker and did not publish its first heartbeat on the prior startup timescale. That implementation is therefore superseded rather than accepted as an operational tradeoff.
+
+Continuous paper startup now has an explicit decision-free bootstrap path. Initial selected-market snapshots and historical candle warmup records are applied to the replay state without scheduling or emitting strategy decision epochs. After warmup completes, the worker performs one fresh mainnet context refresh, updates rank lineage, feeds those fresh snapshots through the normal decision path, and only then starts the decision clock. This prevents a warmup-only stale-context epoch without repeated REST context polling during bootstrap.
+
+The runtime handoff watchdog also no longer requires a newer push-triggered paper run to still be queued or running: a completed newer main-branch paper push run is sufficient evidence that runtime code changed. Push-triggered guard runs now remain alive for a short rendezvous window when another paper worker is active, so an older worker can request graceful handoff even before its first heartbeat.
+
+Replay behavior is unchanged unless callers explicitly opt into decision-free bootstrap seeding. The 60-second context ceiling, book freshness, strategy rules, risk limits, sizing, stops, readiness, promotion state, and live-order authority remain unchanged.
+
+**LIVE TRADING: DISABLED.**
