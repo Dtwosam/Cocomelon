@@ -4162,6 +4162,7 @@ async def _monitor_event_loop_lag(
     loop = asyncio.get_running_loop()
     expected = loop.time() + interval_seconds
     while True:
+        scheduled_phase = pump.event_loop_phase
         await asyncio.sleep(interval_seconds)
         observed = loop.time()
         lag_ms = max(0, int((observed - expected) * 1_000))
@@ -4174,7 +4175,8 @@ async def _monitor_event_loop_lag(
             pump.event_loop_slow_wakeup_count += 1
             pump.event_loop_last_slow_wakeup = {
                 "lag_ms": lag_ms,
-                "phase": pump.event_loop_phase,
+                "phase": scheduled_phase,
+                "observed_phase": pump.event_loop_phase,
             }
         expected = observed + interval_seconds
 
@@ -8619,7 +8621,9 @@ async def run_continuous_paper_session(
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
+                pump.event_loop_phase = "path_observe_snapshots"
                 opening_opportunity_sink.observe_snapshots(refreshed)
+                pump.event_loop_phase = "exit_book_capture"
                 await capture_due_exit_books(
                     refreshed,
                     now_ms=refreshed_received_at_ms,
@@ -8627,6 +8631,7 @@ async def run_continuous_paper_session(
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
+                pump.event_loop_phase = "context_snapshot_pump"
                 for market in selected:
                     snapshot = refreshed.get(market.canonical)
                     if snapshot is not None:
@@ -8665,6 +8670,7 @@ async def run_continuous_paper_session(
                     not systemically_unhealthy_l2
                     and now_ms >= next_selection_refresh_ms
                 ):
+                    pump.event_loop_phase = "selection_refresh"
                     pinned = tuple(
                         position.market for position in execution.account.positions
                     )
@@ -8729,6 +8735,7 @@ async def run_continuous_paper_session(
                     next_selection_refresh_ms = (
                         now_ms + config.selection_refresh_seconds * 1000
                     )
+                    pump.event_loop_phase = "control_wait"
 
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
