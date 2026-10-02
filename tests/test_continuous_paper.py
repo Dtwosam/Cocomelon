@@ -948,6 +948,88 @@ def test_pipeline_l2_recovery_plan_falls_back_to_epoch_stale_count() -> None:
     assert fallback is True
 
 
+def test_pipeline_l2_recovery_plan_recovers_systemic_missing_deep() -> None:
+    activity = SessionDecisionActivity(
+        decision_epochs=1,
+        last_decision_boundary_ms=25_000,
+        last_decision_evaluated_at_ms=25_100,
+        long_decisions=0,
+        short_decisions=0,
+        no_trade_decisions=20,
+        decision_reason_counts=(("not_deep_ready", 16),),
+        eligibility_evaluations=20,
+        eligibility_rankable=16,
+        eligibility_deep_ready=0,
+        eligibility_reason_counts=(("missing_deep_data", 16),),
+        latest_epoch_market_count=20,
+        latest_epoch_rankable_count=16,
+        latest_epoch_deep_ready_count=0,
+        latest_epoch_eligibility_reason_counts=(
+            ("missing_deep_data", 16),
+        ),
+        latest_epoch_stale_book_age_ms=(),
+        risk_evaluations=0,
+        risk_approvals=0,
+        risk_rejections=0,
+        risk_reason_counts=(),
+        opening_execution_attempts=0,
+        opening_fills=0,
+    )
+    selected = frozenset(
+        f"selected-{index}" for index in range(20)
+    )
+
+    boundary, markets, fallback = _pipeline_l2_recovery_plan(
+        activity,
+        selected_market_keys=selected,
+        last_recovery_boundary_ms=None,
+        max_book_age_ms=5_000,
+    )
+
+    assert boundary == 25_000
+    assert markets == selected
+    assert fallback is True
+
+
+def test_pipeline_l2_recovery_plan_ignores_minor_missing_deep() -> None:
+    activity = SessionDecisionActivity(
+        decision_epochs=1,
+        last_decision_boundary_ms=26_000,
+        last_decision_evaluated_at_ms=26_100,
+        long_decisions=0,
+        short_decisions=0,
+        no_trade_decisions=20,
+        decision_reason_counts=(("not_deep_ready", 4),),
+        eligibility_evaluations=20,
+        eligibility_rankable=20,
+        eligibility_deep_ready=16,
+        eligibility_reason_counts=(("missing_deep_data", 4),),
+        latest_epoch_market_count=20,
+        latest_epoch_rankable_count=20,
+        latest_epoch_deep_ready_count=16,
+        latest_epoch_eligibility_reason_counts=(
+            ("missing_deep_data", 4),
+        ),
+        latest_epoch_stale_book_age_ms=(),
+        risk_evaluations=0,
+        risk_approvals=0,
+        risk_rejections=0,
+        risk_reason_counts=(),
+        opening_execution_attempts=0,
+        opening_fills=0,
+    )
+    selected = frozenset(
+        f"selected-{index}" for index in range(20)
+    )
+
+    assert _pipeline_l2_recovery_plan(
+        activity,
+        selected_market_keys=selected,
+        last_recovery_boundary_ms=None,
+        max_book_age_ms=5_000,
+    ) == (None, frozenset(), False)
+
+
 def test_pipeline_l2_recovery_plan_survives_watchlist_count_drift() -> None:
     stale_ages = tuple(
         (f"old-{index}", 42_598)

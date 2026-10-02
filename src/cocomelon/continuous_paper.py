@@ -1356,28 +1356,33 @@ def _pipeline_l2_recovery_plan(
     reason_counts = dict(
         activity.latest_epoch_eligibility_reason_counts
     )
-    raw_stale_reason_count = reason_counts.get("stale_book", 0)
-    stale_reason_count = (
-        raw_stale_reason_count
+
+    def positive_reason_count(reason: str) -> int:
+        raw = reason_counts.get(reason, 0)
         if (
-            isinstance(raw_stale_reason_count, int)
-            and not isinstance(raw_stale_reason_count, bool)
-            and raw_stale_reason_count > 0
-        )
-        else 0
-    )
+            isinstance(raw, int)
+            and not isinstance(raw, bool)
+            and raw > 0
+        ):
+            return raw
+        return 0
+
     epoch_market_count = activity.latest_epoch_market_count
-    systemic_reason_count = _is_systemic_l2_count(
+    systemic_stale = _is_systemic_l2_count(
         epoch_market_count,
-        stale_reason_count,
+        positive_reason_count("stale_book"),
     )
-    if not systemic_reason_count:
+    systemic_missing = _is_systemic_l2_count(
+        epoch_market_count,
+        positive_reason_count("missing_deep_data"),
+    )
+    if not (systemic_stale or systemic_missing):
         return None, frozenset(), False
 
     # Eligibility is authoritative for whether the latest decision epoch
-    # rejected a market for stale L2. If the per-market telemetry cannot be
-    # joined back to the current selected-key namespace, recover the whole
-    # selected set instead of leaving a systemically stale paper worker blind.
+    # was systemically blind to usable L2. If per-market stale telemetry is
+    # unavailable (including a cold-start missing_deep_data cohort), recover
+    # the whole selected set instead of leaving the paper worker blind.
     return boundary_ms, selected_market_keys, True
 
 
