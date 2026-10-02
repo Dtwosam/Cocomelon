@@ -382,6 +382,81 @@ def _horizon_summary(
     }
 
 
+def _risk_rejected_horizon_summary(
+    rows: tuple[dict[str, object], ...],
+    *,
+    horizon_ms: int,
+) -> dict[str, object]:
+    base = _horizon_summary(
+        rows,
+        horizon_ms=horizon_ms,
+        integrity_clean=True,
+    )
+    key = str(horizon_ms)
+    reason_values: dict[str, list[Decimal]] = {}
+    reason_opportunities: Counter[str] = Counter()
+    reason_settled: Counter[str] = Counter()
+    for row in rows:
+        reasons = row.get("baseline_risk_reason_codes")
+        if not isinstance(reasons, tuple):
+            raise ProspectiveFullStackForwardMarkoutError(
+                "risk-rejected row reasons must be a tuple"
+            )
+        for reason in reasons:
+            if not isinstance(reason, str):
+                raise ProspectiveFullStackForwardMarkoutError(
+                    "risk-rejected reason must be a string"
+                )
+            reason_opportunities[reason] += 1
+        markouts = row.get("markouts")
+        if not isinstance(markouts, dict):
+            continue
+        markout = markouts.get(key)
+        if not isinstance(markout, dict):
+            continue
+        raw_return = markout.get("directional_return")
+        if markout.get("status") != "settled" or not isinstance(
+            raw_return,
+            str,
+        ):
+            continue
+        value = Decimal(raw_return)
+        for reason in reasons:
+            reason_values.setdefault(reason, []).append(value)
+            reason_settled[reason] += 1
+
+    by_reason: dict[str, dict[str, object]] = {}
+    for reason in sorted(reason_opportunities):
+        values = tuple(reason_values.get(reason, ()))
+        mean_value = _mean(values)
+        by_reason[reason] = {
+            "opportunities": reason_opportunities[reason],
+            "settled": reason_settled[reason],
+            "positive": sum(value > ZERO for value in values),
+            "negative": sum(value < ZERO for value in values),
+            "flat": sum(value == ZERO for value in values),
+            "mean_directional_return": (
+                None if mean_value is None else str(mean_value)
+            ),
+            "sum_directional_return": str(sum(values, ZERO)),
+        }
+
+    return {
+        "horizon_ms": horizon_ms,
+        "admit": base["admit"],
+        "block": base["block"],
+        "settled_opportunities": base["settled_opportunities"],
+        "long_settled": base["long_settled"],
+        "short_settled": base["short_settled"],
+        "market_count": base["market_count"],
+        "spread_robustness": base["spread_robustness"],
+        "by_risk_reason": by_reason,
+        "descriptive_only": True,
+        "changes_readiness_gate": False,
+        "changes_closed_trade_readiness_gate": False,
+    }
+
+
 def prospective_full_stack_forward_markout_summary(
     opportunities: Sequence[
         ContinuousPaperOpeningOpportunityEvidence
@@ -419,19 +494,32 @@ def prospective_full_stack_forward_markout_summary(
     missing_rank = 0
     stale_rank = 0
     momentum_feature_integrity_misses = 0
+    risk_rejected_missing_rank = 0
+    risk_rejected_stale_rank = 0
+    risk_rejected_momentum_feature_integrity_misses = 0
+    risk_rejected_reason_counts: Counter[str] = Counter()
     block_layer_counts: Counter[str] = Counter()
     decision_counts: Counter[str] = Counter()
+    risk_rejected_block_layer_counts: Counter[str] = Counter()
+    risk_rejected_decision_counts: Counter[str] = Counter()
     rows: list[dict[str, object]] = []
+    risk_rejected_rows: list[dict[str, object]] = []
 
     for evidence in prospective:
-        if not evidence.baseline_risk_approved:
+        risk_approved = evidence.baseline_risk_approved
+        if not risk_approved:
             baseline_risk_rejected += 1
-            continue
+            risk_rejected_reason_counts.update(
+                evidence.baseline_risk_reason_codes
+            )
 
         observed_at = evidence.rank_observed_at_ms
         ordinal = evidence.rank_ordinal
         if observed_at is None or ordinal is None:
-            missing_rank += 1
+            if risk_approved:
+                missing_rank += 1
+            else:
+                risk_rejected_missing_rank += 1
             continue
         rank_age_ms = evidence.opportunity_timestamp_ms - observed_at
         if rank_age_ms < 0:
@@ -439,7 +527,10 @@ def prospective_full_stack_forward_markout_summary(
                 "opening opportunity rank is from the future"
             )
         if rank_age_ms > MAX_ACCEPTED_RANK_AGE_MS:
-            stale_rank += 1
+            if risk_approved:
+                stale_rank += 1
+            else:
+                risk_rejected_stale_rank += 1
             continue
 
         request = evidence.risk_request_object
@@ -493,7 +584,10 @@ def prospective_full_stack_forward_markout_summary(
             raw_reason = momentum_detail.get("reason")
             raw_decision = momentum_detail.get("decision")
             if raw_reason in MOMENTUM_INTEGRITY_REASONS:
-                momentum_feature_integrity_misses += 1
+                if risk_approved:
+                    momentum_feature_integrity_misses += 1
+                else:
+                    risk_rejected_momentum_feature_integrity_misses += 1
                 continue
             if raw_decision not in {"ADMIT", "BLOCK"}:
                 raise ProspectiveFullStackForwardMarkoutError(
@@ -512,8 +606,12 @@ def prospective_full_stack_forward_markout_summary(
                 stack_decision = "ADMIT"
                 block_layer = "none"
 
-        decision_counts[stack_decision] += 1
-        block_layer_counts[block_layer] += 1
+        if risk_approved:
+            decision_counts[stack_decision] += 1
+            block_layer_counts[block_layer] += 1
+        else:
+            risk_rejected_decision_counts[stack_decision] += 1
+            risk_rejected_block_layer_counts[block_layer] += 1
         path = path_by_id.get(evidence.opportunity_id)
         markouts = {
             str(horizon_ms): _markout(
@@ -523,41 +621,48 @@ def prospective_full_stack_forward_markout_summary(
             )
             for horizon_ms in FORWARD_HORIZONS_MS
         }
-        rows.append(
-            {
-                "opportunity_id": evidence.opportunity_id,
-                "timestamp_ms": evidence.opportunity_timestamp_ms,
-                "market": evidence.market,
-                "direction": evidence.direction,
-                "lead_strategy": evidence.lead_strategy,
-                "rank_ordinal": ordinal,
-                "rank_age_ms": rank_age_ms,
-                "combined_block_reason": combined_reason,
-                "two_strike_prior_strikes": prior_two_strikes,
-                "momentum_decision": momentum_decision,
-                "momentum_reason": momentum_reason,
-                "momentum_prior_strikes": (
-                    None
-                    if momentum_detail is None
-                    else momentum_detail.get("prior_strikes")
-                ),
-                "signed_return_1h": (
-                    None
-                    if momentum_detail is None
-                    else momentum_detail.get("signed_return_1h")
-                ),
-                "signed_day_return": (
-                    None
-                    if momentum_detail is None
-                    else momentum_detail.get("signed_day_return")
-                ),
-                "stack_decision": stack_decision,
-                "block_layer": block_layer,
-                "markouts": markouts,
-            }
-        )
+        row = {
+            "opportunity_id": evidence.opportunity_id,
+            "timestamp_ms": evidence.opportunity_timestamp_ms,
+            "market": evidence.market,
+            "direction": evidence.direction,
+            "lead_strategy": evidence.lead_strategy,
+            "rank_ordinal": ordinal,
+            "rank_age_ms": rank_age_ms,
+            "baseline_risk_approved": risk_approved,
+            "baseline_risk_reason_codes": (
+                evidence.baseline_risk_reason_codes
+            ),
+            "combined_block_reason": combined_reason,
+            "two_strike_prior_strikes": prior_two_strikes,
+            "momentum_decision": momentum_decision,
+            "momentum_reason": momentum_reason,
+            "momentum_prior_strikes": (
+                None
+                if momentum_detail is None
+                else momentum_detail.get("prior_strikes")
+            ),
+            "signed_return_1h": (
+                None
+                if momentum_detail is None
+                else momentum_detail.get("signed_return_1h")
+            ),
+            "signed_day_return": (
+                None
+                if momentum_detail is None
+                else momentum_detail.get("signed_day_return")
+            ),
+            "stack_decision": stack_decision,
+            "block_layer": block_layer,
+            "markouts": markouts,
+        }
+        if risk_approved:
+            rows.append(row)
+        else:
+            risk_rejected_rows.append(row)
 
     row_values = tuple(rows)
+    risk_rejected_row_values = tuple(risk_rejected_rows)
     integrity_clean = (
         missing_rank == 0
         and stale_rank == 0
@@ -568,6 +673,18 @@ def prospective_full_stack_forward_markout_summary(
             row_values,
             horizon_ms=horizon_ms,
             integrity_clean=integrity_clean,
+        )
+        for horizon_ms in FORWARD_HORIZONS_MS
+    }
+    risk_rejected_integrity_clean = (
+        risk_rejected_missing_rank == 0
+        and risk_rejected_stale_rank == 0
+        and risk_rejected_momentum_feature_integrity_misses == 0
+    )
+    risk_rejected_horizons = {
+        str(horizon_ms): _risk_rejected_horizon_summary(
+            risk_rejected_row_values,
+            horizon_ms=horizon_ms,
         )
         for horizon_ms in FORWARD_HORIZONS_MS
     }
@@ -589,6 +706,31 @@ def prospective_full_stack_forward_markout_summary(
         "max_mark_lag_ms": MAX_MARK_LAG_MS,
         "prospective_opportunities": len(prospective),
         "baseline_risk_rejected": baseline_risk_rejected,
+        "risk_rejected_stack_evaluated": len(
+            risk_rejected_row_values
+        ),
+        "risk_rejected_stack_admitted": (
+            risk_rejected_decision_counts["ADMIT"]
+        ),
+        "risk_rejected_stack_blocked": (
+            risk_rejected_decision_counts["BLOCK"]
+        ),
+        "risk_rejected_reason_counts": dict(
+            sorted(risk_rejected_reason_counts.items())
+        ),
+        "risk_rejected_block_layer_counts": dict(
+            sorted(risk_rejected_block_layer_counts.items())
+        ),
+        "risk_rejected_missing_rank": risk_rejected_missing_rank,
+        "risk_rejected_stale_rank": risk_rejected_stale_rank,
+        "risk_rejected_momentum_feature_integrity_misses": (
+            risk_rejected_momentum_feature_integrity_misses
+        ),
+        "risk_rejected_integrity_clean": (
+            risk_rejected_integrity_clean
+        ),
+        "risk_rejected_horizons": risk_rejected_horizons,
+        "risk_rejected_rows": list(risk_rejected_row_values),
         "missing_rank": missing_rank,
         "stale_rank": stale_rank,
         "momentum_feature_integrity_misses": (
