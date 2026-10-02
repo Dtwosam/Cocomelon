@@ -332,7 +332,7 @@ class WebSocketSupervisor:
                 ):
                     raise ConnectionError(
                         "websocket server message silence timeout"
-                    )
+                    ) from None
                 await self._open_l2_stale_gaps_if_needed(now_ms)
                 heartbeat_due = wake_ms == next_heartbeat_ms
                 if heartbeat_due or now_ms >= next_heartbeat_ms:
