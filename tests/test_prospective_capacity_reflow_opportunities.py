@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
 from cocomelon.domain.market import MarketId
@@ -124,10 +125,11 @@ def _evidence(
     *,
     rank_ordinal: int | None,
     rank_observed_at_ms: int | None,
+    expected_reason: str = "correlation_bucket_exhausted",
 ) -> ContinuousPaperOpeningOpportunityEvidence:
     decision = evaluate_risk(request)
     assert decision.approved is False
-    assert decision.reason_codes == ("correlation_bucket_exhausted",)
+    assert decision.reason_codes == (expected_reason,)
     return ContinuousPaperOpeningOpportunityEvidence(
         strategy_decision_id=request.strategy_decision_id,
         feature_snapshot_id=request.feature_snapshot_id,
@@ -296,3 +298,119 @@ def test_single_position_capacity_release_options_are_strategy_agnostic() -> Non
         ("SOL", "BTC", "majors"),
         ("SOL", "ETH", "majors"),
     )
+
+
+def test_capacity_reflow_attributes_minimum_notional_safety_caps() -> None:
+    liquidity_limited_base = _request(
+        market="SOL",
+        direction=Direction.SHORT,
+        lead_strategy="trend",
+        timestamp_ms=20_000,
+    )
+    liquidity_limited = replace(
+        liquidity_limited_base,
+        open_positions=(),
+        account_state=replace(
+            liquidity_limited_base.account_state,
+            gross_open_notional=Decimal("0"),
+        ),
+        liquidity_state=replace(
+            liquidity_limited_base.liquidity_state,
+            entry_side_visible_notional_25bps=Decimal("50"),
+            exit_side_visible_notional_25bps=Decimal("50"),
+        ),
+    )
+
+    risk_limited_base = _request(
+        market="XRP",
+        direction=Direction.SHORT,
+        lead_strategy="trend",
+        timestamp_ms=21_000,
+    )
+    low_equity = Decimal("100")
+    risk_limited = replace(
+        risk_limited_base,
+        open_positions=(),
+        account_state=replace(
+            risk_limited_base.account_state,
+            equity=low_equity,
+            day_start_equity=low_equity,
+            rolling_7d_peak_equity=low_equity,
+            available_margin=low_equity,
+            gross_open_notional=Decimal("0"),
+        ),
+    )
+
+    summary = prospective_capacity_reflow_opportunity_summary(
+        (
+            _evidence(
+                liquidity_limited,
+                rank_ordinal=4,
+                rank_observed_at_ms=19_900,
+                expected_reason="below_venue_min_notional",
+            ),
+            _evidence(
+                risk_limited,
+                rank_ordinal=5,
+                rank_observed_at_ms=20_900,
+                expected_reason="below_venue_min_notional",
+            ),
+        ),
+        ProspectiveCombinedEntryFilterState(started_at_ms=0),
+    )
+
+    assert summary["candidate_eligible_min_notional_rejections"] == 2
+    factors = summary["by_min_notional_limiting_factor"]
+    assert isinstance(factors, dict)
+    assert factors["visible_depth_capacity"] == 1
+    assert factors["target_trade_risk"] == 1
+    assert factors["aggregate_or_bucket_risk_capacity"] == 1
+
+    markets = summary["by_min_notional_market"]
+    assert isinstance(markets, dict)
+    assert markets == {"SOL": 1, "XRP": 1}
+    assert Decimal(
+        str(summary["min_notional_notional_shortfall_sum"])
+    ) > 0
+    assert Decimal(
+        str(summary["min_notional_forced_risk_overage_sum"])
+    ) > 0
+    assert summary["min_notional_safe_round_up"] == 0
+    assert summary["execution_authority"] is False
+    assert summary["promotion_authority"] is False
+
+
+def test_capacity_reflow_minimum_notional_rejects_are_not_release_options() -> None:
+    base = _request(
+        market="SOL",
+        direction=Direction.SHORT,
+        lead_strategy="trend",
+        timestamp_ms=22_000,
+    )
+    request = replace(
+        base,
+        open_positions=(),
+        account_state=replace(
+            base.account_state,
+            gross_open_notional=Decimal("0"),
+        ),
+        liquidity_state=replace(
+            base.liquidity_state,
+            entry_side_visible_notional_25bps=Decimal("50"),
+            exit_side_visible_notional_25bps=Decimal("50"),
+        ),
+    )
+    evidence = _evidence(
+        request,
+        rank_ordinal=3,
+        rank_observed_at_ms=21_900,
+        expected_reason="below_venue_min_notional",
+    )
+
+    assert single_position_capacity_release_options(evidence) == ()
+    summary = prospective_capacity_reflow_opportunity_summary(
+        (evidence,),
+        ProspectiveCombinedEntryFilterState(started_at_ms=0),
+    )
+    assert summary["candidate_eligible_capacity_rejections"] == 0
+    assert summary["candidate_eligible_min_notional_rejections"] == 1
