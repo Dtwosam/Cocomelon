@@ -4331,3 +4331,14 @@ The runtime now captures the exact redundant-supervisor health snapshot immediat
 This is diagnostic-only. It does not change the 5-second L2 freshness ceiling, subscription topology, recovery trigger, REST reseed, websocket replacement, eligibility, strategy, risk, sizing, execution, readiness, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Silent websocket self-reconnect — 2026-10-02
+
+Pre-recovery telemetry from worker `37063325586` resolved the repeated stale-L2 churn. Immediately before guarded recovery, both redundant lanes still reported `connected=true` and all 20 markets had previously reached readiness, but every L2 stream was stale and neither lane had received any server message for roughly 70 seconds. The exchange-vs-receive age on each lane's last observed L2 snapshot remained sub-second, so clock skew was not the cause. The sockets were silently wedged while still appearing connected.
+
+`WebSocketSupervisor` now supports an explicit server-message silence timeout. The continuous paper runtime pins that timeout to 15,000 ms. If a session receives no server message within that window, the supervisor treats the socket as failed, emits the existing disconnect gap semantics, closes it, reconnects with existing bounded backoff, and resubscribes. Each redundant lane can therefore heal independently before the 30-second outer paper control loop needs to rebuild the whole supervisor group.
+
+The existing 5,000 ms deep-book freshness ceiling remains unchanged. This does not weaken eligibility, fabricate freshness, change recovery evidence, alter strategy/risk/sizing/execution rules, promote any candidate, or enable live orders.
+
+**LIVE TRADING: DISABLED.**
