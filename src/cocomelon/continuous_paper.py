@@ -8069,9 +8069,7 @@ async def run_continuous_paper_session(
                 execution.account.equity,
                 timestamp_ms=checkpoint_timestamp_ms,
             )
-            trade_path_sink.checkpoint(
-                pipeline.open_lifecycle_mark_paths
-            )
+            trade_path_sink.checkpoint(pipeline.open_lifecycle_mark_paths)
             payloads: list[tuple[Path, object]] = [
                 (
                     checkpoint_path,
