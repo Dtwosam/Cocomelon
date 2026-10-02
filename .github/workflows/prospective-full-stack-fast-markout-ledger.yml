@@ -570,7 +570,7 @@ jobs:
         if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean == 'true' }}
         uses: actions/upload-artifact@v7
         with:
-          name: prospective-prospective-full-stack-fast-markout-ledger-${{ github.run_id }}-${{ github.run_attempt }}
+          name: prospective-full-stack-fast-markout-ledger-${{ github.run_id }}-${{ github.run_attempt }}
           path: prospective-full-stack-fast-markout-ledger.json
           if-no-files-found: error
           retention-days: 90
