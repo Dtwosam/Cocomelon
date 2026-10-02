@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from copy import deepcopy
 
 import pytest
@@ -257,3 +259,174 @@ def test_risk_rejected_ledger_keeps_candidate_readiness_authority_off() -> None:
         match="authority drift",
     ):
         validate_risk_rejected_forward_markout_ledger(tampered)
+
+
+def _ready_rows(
+    *,
+    reason: str = "weekly_drawdown_lockout",
+    decision: str = "ADMIT",
+    markets: tuple[str, ...] = ("SOL", "ETH", "BTC", "HYPE"),
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for index in range(12):
+        direction_suffix = "l" if index % 2 == 0 else "s"
+        rows.append(
+            _row(
+                f"ready-{index}-{direction_suffix}",
+                timestamp_ms=START + 10_000 + index * 1_000,
+                market=markets[index % len(markets)],
+                decision=decision,
+                reason=reason,
+                returns=("0.01", "0.012", "0.015"),
+            )
+        )
+    return rows
+
+
+def test_risk_rejected_investigation_readiness_requires_robust_stack_admits() -> None:
+    ledger = _update(_summary(_ready_rows()))
+
+    summary = ledger["summary"]
+    assert isinstance(summary, dict)
+    readiness = summary["risk_budget_investigation_readiness"]
+    assert isinstance(readiness, dict)
+    assert readiness["review_only"] is True
+    assert readiness["changes_risk_limits"] is False
+    assert readiness["execution_authority"] is False
+    assert readiness["ready_reasons"] == ["weekly_drawdown_lockout"]
+
+    by_reason = readiness["by_reason"]
+    assert isinstance(by_reason, dict)
+    weekly = by_reason["weekly_drawdown_lockout"]
+    assert weekly["ready_for_risk_budget_investigation"] is True
+    horizons = weekly["horizons"]
+    assert isinstance(horizons, dict)
+    for horizon in ("300000", "900000", "3600000"):
+        item = horizons[horizon]
+        assert item["stack_admit_settled"] == 12
+        assert item["market_count"] == 4
+        assert item["long_settled"] == 6
+        assert item["short_settled"] == 6
+        assert item["sample_complete"] is True
+        assert item["mean_positive"] is True
+        assert item["single_opportunity_robust"] is True
+        assert item["single_market_robust"] is True
+        assert item["ready_for_investigation"] is True
+
+
+def test_risk_rejected_investigation_readiness_ignores_stack_blocks() -> None:
+    rows = _ready_rows(decision="BLOCK")
+    ledger = _update(_summary(rows))
+
+    readiness = ledger["summary"]["risk_budget_investigation_readiness"]
+    weekly = readiness["by_reason"]["weekly_drawdown_lockout"]
+    assert weekly["ready_for_risk_budget_investigation"] is False
+    for item in weekly["horizons"].values():
+        assert item["stack_admit_settled"] == 0
+        assert item["missing_stack_admit_settled"] == 12
+        assert item["ready_for_investigation"] is False
+
+
+def test_risk_rejected_investigation_readiness_rejects_market_concentration() -> None:
+    rows = _ready_rows(markets=("SOL",))
+    ledger = _update(_summary(rows))
+
+    readiness = ledger["summary"]["risk_budget_investigation_readiness"]
+    weekly = readiness["by_reason"]["weekly_drawdown_lockout"]
+    assert weekly["ready_for_risk_budget_investigation"] is False
+    for item in weekly["horizons"].values():
+        assert item["market_count"] == 1
+        assert item["missing_markets"] == 3
+        assert item["single_market_robust"] is False
+        assert item["ready_for_investigation"] is False
+
+
+def test_risk_rejected_investigation_readiness_requires_clean_source() -> None:
+    source = _summary(_ready_rows())
+    source["risk_rejected_integrity_clean"] = False
+    ledger = _update(source)
+
+    readiness = ledger["summary"]["risk_budget_investigation_readiness"]
+    assert readiness["integrity_clean"] is False
+    assert readiness["ready_reasons"] == []
+    weekly = readiness["by_reason"]["weekly_drawdown_lockout"]
+    assert weekly["ready_for_risk_budget_investigation"] is False
+
+
+def test_risk_rejected_ledger_accepts_pre_readiness_summary() -> None:
+    ledger = _update(_summary(_ready_rows()))
+    legacy = deepcopy(ledger)
+    legacy_summary = legacy["summary"]
+    assert isinstance(legacy_summary, dict)
+    legacy_summary.pop("risk_budget_investigation_readiness")
+    digest_payload = {
+        key: value
+        for key, value in legacy.items()
+        if key != "ledger_sha256"
+    }
+    legacy["ledger_sha256"] = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    validated = validate_risk_rejected_forward_markout_ledger(
+        legacy
+    )
+    assert validated["row_count"] == 12
+    extended = _update(
+        _summary(_ready_rows()),
+        previous=legacy,
+        run_id=11,
+    )
+    assert (
+        extended["prior_ledger_sha256"]
+        == legacy["ledger_sha256"]
+    )
+    assert (
+        "risk_budget_investigation_readiness"
+        in extended["summary"]
+    )
+
+
+def test_risk_rejected_investigation_readiness_rejects_single_outlier_edge() -> None:
+    rows = _ready_rows()
+    for index, row in enumerate(rows):
+        markouts = row["markouts"]
+        assert isinstance(markouts, dict)
+        for markout in markouts.values():
+            assert isinstance(markout, dict)
+            markout["directional_return"] = (
+                "0.50" if index == 0 else "-0.01"
+            )
+
+    ledger = _update(_summary(rows))
+    readiness = ledger["summary"]["risk_budget_investigation_readiness"]
+    weekly = readiness["by_reason"]["weekly_drawdown_lockout"]
+
+    assert weekly["ready_for_risk_budget_investigation"] is False
+    for item in weekly["horizons"].values():
+        assert item["mean_positive"] is True
+        assert item["single_opportunity_robust"] is False
+        assert item["ready_for_investigation"] is False
+
+
+def test_risk_rejected_investigation_readiness_requires_both_directions() -> None:
+    rows = _ready_rows()
+    for row in rows:
+        row["direction"] = "long"
+
+    ledger = _update(_summary(rows))
+    readiness = ledger["summary"]["risk_budget_investigation_readiness"]
+    weekly = readiness["by_reason"]["weekly_drawdown_lockout"]
+
+    assert weekly["ready_for_risk_budget_investigation"] is False
+    for item in weekly["horizons"].values():
+        assert item["long_settled"] == 12
+        assert item["short_settled"] == 0
+        assert item["missing_short_settled"] == 3
+        assert item["sample_complete"] is False

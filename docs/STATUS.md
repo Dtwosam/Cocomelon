@@ -4169,3 +4169,26 @@ Older authenticated summaries publish a waiting-for-new-format status and receiv
 This changes evidence-source compatibility only. It cannot alter risk vetoes, candidate readiness, execution, sizing, promotion state, or live authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Risk-rejected risk-budget investigation gate — 2026-10-02
+
+The append-only risk-rejected fast-markout ledger now has a precommitted, review-only gate for deciding when a baseline risk reason has enough evidence to justify deeper risk-budget research.
+
+The gate counts only opportunities that baseline risk rejected but the frozen combined + two-strike + momentum entry stack would **ADMIT**. Strategy-blocked opportunities cannot make a risk veto look unnecessarily conservative.
+
+For each risk reason, all fixed 5m / 15m / 60m horizons must independently have:
+
+- at least 12 settled stack-admitted rejected opportunities;
+- at least 4 markets;
+- at least 3 LONG and 3 SHORT opportunities;
+- positive mean directional return;
+- positive mean remaining after removing any one opportunity;
+- positive mean remaining after removing any one market;
+- clean cumulative source integrity.
+
+Only then does that risk reason become `ready_for_risk_budget_investigation`. This is not permission to relax the risk rule. It only means there is enough diversified, robust forward evidence to investigate whether a safer alternative risk budget is worth designing and prospectively testing.
+
+The gate is review-only and cannot change risk limits, candidate readiness, order sizing, execution, promotion state, or live authority.
+
+**LIVE TRADING: DISABLED.**
