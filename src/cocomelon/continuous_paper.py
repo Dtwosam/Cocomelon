@@ -449,6 +449,7 @@ class ContinuousPaperConfig:
     duration_seconds: int = 19_800
     deep_limit: int = 20
     context_poll_seconds: int = 30
+    websocket_server_silence_timeout_ms: int = 15_000
     selection_refresh_seconds: int = 300
     checkpoint_seconds: int = 30
     warmup_5m_bars: int = 25
@@ -461,6 +462,10 @@ class ContinuousPaperConfig:
             raise ValueError("deep_limit must be positive")
         if self.context_poll_seconds <= 0:
             raise ValueError("context_poll_seconds must be positive")
+        if self.websocket_server_silence_timeout_ms <= 0:
+            raise ValueError(
+                "websocket_server_silence_timeout_ms must be positive"
+            )
         if self.selection_refresh_seconds < self.context_poll_seconds:
             raise ValueError("selection_refresh_seconds must be >= context_poll_seconds")
         if self.selection_refresh_seconds % self.context_poll_seconds:
@@ -8197,6 +8202,9 @@ async def run_continuous_paper_session(
                     utcnow=lambda: datetime.now(UTC),
                     stale_after_ms=(
                         replay_config.eligibility.max_book_age_ms
+                    ),
+                    server_silence_timeout_ms=(
+                        config.websocket_server_silence_timeout_ms
                     ),
                 )
                 supervisors.append(supervisor)

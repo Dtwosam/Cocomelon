@@ -27,6 +27,12 @@ class FakeConnection:
         self.closed = True
 
 
+class HangingConnection(FakeConnection):
+    async def recv_json(self) -> dict[str, object]:
+        await asyncio.Future()
+        raise AssertionError("unreachable")
+
+
 class TimeoutThenPongConnection(FakeConnection):
     def __init__(self) -> None:
         super().__init__([])
@@ -117,6 +123,73 @@ def test_reconnect_resubscribes_and_closes_gap_on_recovery() -> None:
         assert sleeps == [1.0]
 
     asyncio.run(run())
+
+
+def test_server_silence_forces_reconnect() -> None:
+    async def run() -> None:
+        first = HangingConnection([])
+        second = HangingConnection([])
+        pool = [first, second]
+        gaps: list[DataGap] = []
+        sleeps: list[float] = []
+        loop = asyncio.get_running_loop()
+
+        async def factory() -> HangingConnection:
+            return pool.pop(0)
+
+        async def event_sink(_event: StreamEvent) -> None:
+            raise AssertionError("silent connections must not emit events")
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        async def fake_sleep(value: float) -> None:
+            sleeps.append(value)
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "trades", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: int(loop.time() * 1_000),
+            utcnow=lambda: datetime.now(UTC),
+            sleep=fake_sleep,
+            heartbeat_seconds=1.0,
+            stale_after_ms=1_000,
+            server_silence_timeout_ms=20,
+        )
+        await supervisor.run(
+            max_sessions=2,
+            max_messages_per_session=1,
+        )
+
+        assert first.closed is True
+        assert second.closed is True
+        assert supervisor.health.reconnect_count == 1
+        assert sleeps == [1.0]
+        assert any(
+            gap.reason == "disconnect"
+            and gap.stream_id == "trades:BTC"
+            for gap in gaps
+        )
+
+    asyncio.run(run())
+
+
+def test_server_silence_timeout_must_be_positive() -> None:
+    with pytest.raises(
+        ValueError,
+        match="server_silence_timeout_ms",
+    ):
+        WebSocketSupervisor(
+            lambda: None,  # type: ignore[arg-type]
+            (),
+            event_sink=lambda _event: None,  # type: ignore[arg-type]
+            gap_sink=lambda _gap: None,  # type: ignore[arg-type]
+            clock_ms=lambda: 0,
+            utcnow=lambda: datetime.now(UTC),
+            server_silence_timeout_ms=0,
+        )
 
 
 def test_application_heartbeat_sends_ping_and_pong_is_control_only() -> None:
