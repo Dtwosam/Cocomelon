@@ -4203,3 +4203,14 @@ The continuous paper runtime now signals the control loop whenever a new decisio
 This changes data-plane liveness only. Book freshness limits, deep eligibility, strategy thresholds, risk vetoes, sizing, candidate readiness, execution semantics, promotion state, and live-order authority remain unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Startup context freshness through warmup — 2026-10-02
+
+The first heartbeat from fixed worker `37002459760` on `c4ae39f` showed that the stale-L2 race was no longer the immediate blocker, but startup had completed a decision epoch with `stale_context=20`. The initial mainnet context snapshot was fetched before per-market candle warmup, so a long warmup could consume the existing 60-second context freshness budget before live supervision began.
+
+Startup now refreshes native mainnet market context during warmup whenever the normal 30-second context-poll interval elapses, and performs one final unconditional context refresh immediately after warmup. Each refresh preserves response-time provenance, updates rank lineage, forwards fresh selected-market context into the replay pipeline, and captures any due exit-book context.
+
+The existing 60-second stale-context rejection ceiling is unchanged. No eligibility threshold, L2 freshness limit, strategy rule, risk limit, sizing rule, stop, readiness gate, promotion state, or live-order authority is relaxed.
+
+**LIVE TRADING: DISABLED.**
