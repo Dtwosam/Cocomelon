@@ -1198,21 +1198,34 @@ def test_rotation_promotes_replacement_before_retiring_previous() -> None:
     assert "_l2_event_fresh_for_promotion(" in source
     assert "required_market_keys <= ready" in source
 
-def test_runtime_rechecks_l2_after_async_rotation_before_heartbeat() -> None:
+def test_runtime_wakes_l2_recovery_on_completed_decision_epoch() -> None:
     source = Path("src/cocomelon/continuous_paper.py").read_text(
         encoding="utf-8"
     )
     helper_index = source.index(
         "async def recover_systemic_l2_if_needed()"
     )
-    first_check_index = source.index(
-        "await recover_systemic_l2_if_needed()",
+    wake_wait_index = source.index(
+        "await asyncio.wait_for(\n"
+        "                        decision_epoch_wakeup.wait()",
         helper_index,
+    )
+    wake_recovery_index = source.index(
+        "await recover_systemic_l2_if_needed()",
+        wake_wait_index,
+    )
+    context_refresh_index = source.index(
+        "await _refresh_native_market_snapshots(reader)",
+        wake_recovery_index,
+    )
+    first_poll_recovery_index = source.index(
+        "await recover_systemic_l2_if_needed()",
+        context_refresh_index,
     )
     rotation_index = source.index(
         "not systemically_unhealthy_l2\n"
         "                    and now_ms >= next_selection_refresh_ms",
-        first_check_index,
+        first_poll_recovery_index,
     )
     late_check_index = source.index(
         "await recover_systemic_l2_if_needed()",
@@ -1225,14 +1238,19 @@ def test_runtime_rechecks_l2_after_async_rotation_before_heartbeat() -> None:
 
     assert (
         helper_index
-        < first_check_index
+        < wake_wait_index
+        < wake_recovery_index
+        < context_refresh_index
+        < first_poll_recovery_index
         < rotation_index
         < late_check_index
         < heartbeat_index
     )
+    assert "decision_epoch_wakeup=decision_epoch_wakeup" in source
+    assert "self._decision_epoch_wakeup.set()" in source
     assert source.count(
         "await recover_systemic_l2_if_needed()"
-    ) == 2
+    ) == 3
 
 
 def test_stale_l2_gap_revokes_rotation_readiness() -> None:
