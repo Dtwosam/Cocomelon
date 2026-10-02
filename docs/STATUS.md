@@ -4277,3 +4277,12 @@ This changes scheduling correctness only. The 30-second context cadence, 60-seco
 
 **LIVE TRADING: DISABLED.**
 
+
+### Full-stack source-integrity diagnostics — 2026-10-02
+
+Issue #769 now surfaces the exact authenticated source summary counts behind the append-only full entry-stack fast-markout ledger: prospective opportunities, baseline risk rejections, risk-approved rows evaluated, stack ADMIT/BLOCK counts, and integrity misses from missing rank, stale rank, or missing momentum features.
+
+This removes ambiguity when the ledger reports `integrity_clean=False` or zero immutable rows. The diagnostics are read directly from the same compact paper source already bound by run ID, run attempt, and artifact digest; they do not alter ledger rows, readiness gates, strategy, risk, sizing, execution, promotion state, or live authority.
+
+**LIVE TRADING: DISABLED.**
+
