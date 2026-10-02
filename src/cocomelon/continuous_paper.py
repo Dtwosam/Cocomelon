@@ -1366,15 +1366,9 @@ def _pipeline_l2_recovery_plan(
         )
         else 0
     )
-    if (
-        activity.latest_epoch_market_count
-        != len(selected_market_keys)
-    ):
-        return None, frozenset(), False
-
-    required_count = len(selected_market_keys)
+    epoch_market_count = activity.latest_epoch_market_count
     systemic_reason_count = _is_systemic_l2_count(
-        required_count,
+        epoch_market_count,
         stale_reason_count,
     )
     if not systemic_reason_count:
