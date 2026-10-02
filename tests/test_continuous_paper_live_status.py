@@ -6051,6 +6051,58 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                 },
             ],
         },
+        "last_stale_l2_recovery_trigger": {
+            "timestamp_ms": 1_700_000_000_000,
+            "supervisor_triggered": False,
+            "pipeline_triggered": True,
+            "supervisor_unhealthy_market_count": 0,
+            "supervisor_unhealthy_markets": [],
+            "pipeline_stale_market_count": 16,
+            "pipeline_stale_markets": ["AAVE", "ADA"],
+            "pipeline_recovery_boundary_ms": 1_699_999_900_000,
+            "pipeline_reason_fallback": False,
+            "pre_recovery_supervisor_health": {
+                "required_market_count": 20,
+                "unhealthy_l2_market_count": 0,
+                "unhealthy_l2_markets": [],
+                "lanes": [
+                    {
+                        "lane": 0,
+                        "connected": True,
+                        "reconnect_count": 0,
+                        "duplicate_count": 1,
+                        "anomaly_count": 0,
+                        "last_server_message_age_ms": 90,
+                        "ready_l2_market_count": 20,
+                        "missing_ready_l2_market_count": 0,
+                        "missing_ready_l2_markets": [],
+                        "stale_l2_market_count": 0,
+                        "stale_l2_markets": [],
+                        "l2_exchange_age_observed_market_count": 20,
+                        "l2_exchange_age_negative_market_count": 0,
+                        "l2_exchange_age_min_ms": 600,
+                        "l2_exchange_age_max_ms": 700,
+                    },
+                    {
+                        "lane": 1,
+                        "connected": True,
+                        "reconnect_count": 0,
+                        "duplicate_count": 0,
+                        "anomaly_count": 0,
+                        "last_server_message_age_ms": 80,
+                        "ready_l2_market_count": 20,
+                        "missing_ready_l2_market_count": 0,
+                        "missing_ready_l2_markets": [],
+                        "stale_l2_market_count": 0,
+                        "stale_l2_markets": [],
+                        "l2_exchange_age_observed_market_count": 20,
+                        "l2_exchange_age_negative_market_count": 0,
+                        "l2_exchange_age_min_ms": 590,
+                        "l2_exchange_age_max_ms": 690,
+                    },
+                ],
+            },
+        },
         "journal_observations": 12,
         "session_decision_epochs": 2,
         "last_decision_boundary_ms": 1_699_999_900_000,
@@ -6181,6 +6233,24 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert (
         "L2-age-observed=20, negative-age=15, "
         "age-min/max=-510/120ms"
+        in rendered
+    )
+    assert (
+        "last stale-L2 recovery trigger supervisor / pipeline / "
+        "supervisor-unhealthy / pipeline-stale / boundary / fallback: "
+        "false / true / 0 / 16 / 1699999900000 / false"
+        in rendered
+    )
+    assert (
+        "pre-recovery L2 lane 0: connected=true, ready=20, stale=0, "
+        "missing-ready=0, reconnects=0, server-age=90ms, "
+        "age-min/max=600/700ms"
+        in rendered
+    )
+    assert (
+        "pre-recovery L2 lane 1: connected=true, ready=20, stale=0, "
+        "missing-ready=0, reconnects=0, server-age=80ms, "
+        "age-min/max=590/690ms"
         in rendered
     )
     assert "research telemetry deferred: true" in rendered
