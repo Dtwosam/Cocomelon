@@ -90,6 +90,7 @@ from cocomelon.continuous_paper import (
     _restore_prospective_two_strike_stop_filter,
     _revoke_stale_l2_readiness,
     _stop_requested,
+    _supervisor_group_health_payload,
     _SupervisorGroup,
     _wait_supervisor_group_ready,
 )
@@ -1417,6 +1418,79 @@ def test_l2_rotation_promotion_requires_fresh_exchange_timestamp() -> None:
         stale,
         max_book_age_ms=5_000,
     )
+
+
+def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
+    required = frozenset({"BTC", "ETH", "SOL"})
+
+    class Lane:
+        def __init__(
+            self,
+            stale: tuple[str, ...],
+            *,
+            connected: bool,
+            last_server_message_ms: int | None,
+            reconnect_count: int,
+        ) -> None:
+            self._stale = stale
+            self.health = SimpleNamespace(
+                connected=connected,
+                last_server_message_ms=last_server_message_ms,
+                reconnect_count=reconnect_count,
+                duplicate_count=2,
+                anomaly_count=1,
+            )
+
+        def stale_l2_streams(
+            self,
+            *,
+            now_ms: int,
+        ) -> tuple[str, ...]:
+            del now_ms
+            return self._stale
+
+    group = _SupervisorGroup(
+        supervisors=(
+            Lane(
+                ("l2Book:ETH", "l2Book:SOL"),
+                connected=True,
+                last_server_message_ms=9_900,
+                reconnect_count=3,
+            ),  # type: ignore[arg-type]
+            Lane(
+                ("l2Book:ETH",),
+                connected=False,
+                last_server_message_ms=9_000,
+                reconnect_count=5,
+            ),  # type: ignore[arg-type]
+        ),
+        tasks=(),
+        forward_gaps=asyncio.Event(),
+        required_market_keys=required,
+        ready_market_keys=(
+            {"BTC", "ETH", "SOL"},
+            {"BTC", "ETH"},
+        ),
+    )
+
+    payload = _supervisor_group_health_payload(
+        group,
+        now_ms=10_000,
+    )
+
+    assert payload["required_market_count"] == 3
+    assert payload["unhealthy_l2_market_count"] == 2
+    assert payload["unhealthy_l2_markets"] == ["ETH", "SOL"]
+    lanes = payload["lanes"]
+    assert isinstance(lanes, list)
+    assert lanes[0]["connected"] is True
+    assert lanes[0]["ready_l2_market_count"] == 3
+    assert lanes[0]["stale_l2_market_count"] == 2
+    assert lanes[0]["last_server_message_age_ms"] == 100
+    assert lanes[1]["connected"] is False
+    assert lanes[1]["missing_ready_l2_markets"] == ["SOL"]
+    assert lanes[1]["last_server_message_age_ms"] == 1_000
+    assert lanes[1]["reconnect_count"] == 5
 
 
 def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
