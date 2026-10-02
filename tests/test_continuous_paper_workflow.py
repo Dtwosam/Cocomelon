@@ -549,3 +549,6 @@ def test_full_stack_fast_markout_is_exported_and_runtime_watched() -> None:
     assert "Upload full-stack fast-markout research summary" in source
     assert "Render full-stack fast-markout research summary" in source
     assert "RESEARCH ONLY / NO EXECUTION / NO READINESS" in source
+    assert "risk-rejected opportunities / evaluated / stack admit" in source
+    assert "risk-rejected reasons" in source
+    assert "risk-rejected {minutes}m stack admit/block mean" in source
