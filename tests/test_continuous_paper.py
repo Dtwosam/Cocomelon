@@ -3842,7 +3842,7 @@ def test_runtime_hot_path_uses_only_operational_heartbeat() -> None:
     )
 
     assert '"heartbeat_scope": "operational"' in source
-    assert source.count("_emit_operational_live_status(") == 3
+    assert source.count("_emit_operational_live_status(") == 4
     assert source.count("_emit_live_status(") == 1
 
 
