@@ -214,6 +214,85 @@ def test_risk_rejected_ledger_appends_terminal_rows_and_summarizes_reason() -> N
     validate_risk_rejected_forward_markout_ledger(extended)
 
 
+def test_risk_rejected_ledger_attributes_combined_block_reason() -> None:
+    row = _row(
+        "combined-l",
+        timestamp_ms=START + 1_000,
+        market="SOL",
+        decision="BLOCK",
+        reason="weekly_drawdown_lockout",
+        returns=("0.01", "0.02", "0.03"),
+    )
+    row["block_layer"] = "combined"
+    row["combined_block_reason"] = "long_trend"
+    row["momentum_decision"] = None
+    row["momentum_reason"] = None
+    row["momentum_prior_strikes"] = None
+    row["signed_return_1h"] = None
+    row["signed_day_return"] = None
+
+    ledger = _update(_summary([row]))
+    summary = ledger["summary"]
+    assert summary["combined_block_reason_counts"] == {
+        "long_trend": 1
+    }
+    one_hour = summary["horizons"]["3600000"]
+    by_reason = one_hour["by_combined_block_reason"]
+    assert by_reason["long_trend"]["opportunities"] == 1
+    assert by_reason["long_trend"]["settled"] == 1
+    assert by_reason["long_trend"]["mean_directional_return"] == "0.03"
+    assert by_reason["long_trend"]["market_count"] == 1
+
+
+def test_risk_rejected_ledger_accepts_pre_combined_reason_summary() -> None:
+    row = _row(
+        "legacy-combined-l",
+        timestamp_ms=START + 1_000,
+        market="SOL",
+        decision="BLOCK",
+        reason="weekly_drawdown_lockout",
+        returns=("0.01", "0.02", "0.03"),
+    )
+    row["block_layer"] = "combined"
+    row["combined_block_reason"] = "rank_above_10"
+    row["momentum_decision"] = None
+    row["momentum_reason"] = None
+    row["momentum_prior_strikes"] = None
+    row["signed_return_1h"] = None
+    row["signed_day_return"] = None
+
+    ledger = _update(_summary([row]))
+    legacy = deepcopy(ledger)
+    summary = legacy["summary"]
+    assert isinstance(summary, dict)
+    summary.pop("combined_block_reason_counts")
+    horizons = summary["horizons"]
+    assert isinstance(horizons, dict)
+    for item in horizons.values():
+        assert isinstance(item, dict)
+        item.pop("by_combined_block_reason")
+
+    digest_payload = {
+        key: value
+        for key, value in legacy.items()
+        if key != "ledger_sha256"
+    }
+    legacy["ledger_sha256"] = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    validated = validate_risk_rejected_forward_markout_ledger(
+        legacy
+    )
+    assert validated["row_count"] == 1
+
+
 def test_risk_rejected_ledger_refuses_terminal_history_rewrite() -> None:
     row = _row(
         "fixed-l",
