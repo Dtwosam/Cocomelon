@@ -287,6 +287,47 @@ def test_state_replaces_only_with_later_evidence_and_does_not_fabricate_full_con
     assert state.latest_asset_ctx.payload["mark_px"] == Decimal("110")
 
 
+def test_micro_event_prune_preserves_events_without_reordering() -> None:
+    book = RecordedStateBook(microstructure_window_ms=60_000)
+    later = _record(
+        kind="trade",
+        available_at_ms=30_000,
+        exchange_time_ms=29_900,
+        key="later",
+        payload={
+            "side": "B",
+            "price": "100",
+            "size": "1",
+            "hash": "0xlater",
+            "tid": 2,
+            "users": ["0xa", "0xb"],
+        },
+    )
+    earlier = _record(
+        kind="trade",
+        available_at_ms=20_000,
+        exchange_time_ms=19_900,
+        key="earlier",
+        payload={
+            "side": "A",
+            "price": "101",
+            "size": "1",
+            "hash": "0xearlier",
+            "tid": 1,
+            "users": ["0xc", "0xd"],
+        },
+    )
+
+    book.apply(later, now_ms=30_000)
+    book.apply(earlier, now_ms=30_000)
+
+    state = book.state(MARKET)
+    assert tuple(event.event_key for event in state.micro_events) == (
+        "later",
+        "earlier",
+    )
+
+
 def test_state_rejects_future_evidence_and_prunes_micro_events_by_replay_clock() -> None:
     book = RecordedStateBook(microstructure_window_ms=60_000)
     first_trade = _record(
