@@ -4054,3 +4054,16 @@ The existing decision-boundary deduplication remains authoritative, so the same 
 This is market-data liveness hardening only. The 5-second deep-book eligibility threshold, strategy cadence, candidate rules, risk limits, execution model, and live-order authority are unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Stale-L2 recovery across watchlist drift — 2026-10-02
+
+The current paper worker exposed another stale-L2 recovery blind spot: the latest completed decision epoch can report a systemic stale-book majority while the selected watchlist changes before the control loop consumes that epoch.
+
+The reason-count fallback previously required the latest epoch market count to exactly equal the current selected-market count. That equality is not a safety property; it is only a join convenience. During a shortlist handoff it can suppress recovery even when the completed epoch itself shows a clear systemic stale-book majority.
+
+The recovery planner now evaluates the stale-book majority against the **completed decision epoch's own market count**. When that epoch is systemically stale but per-market stale keys cannot be joined safely to the current watchlist, the runtime conservatively recovers the current selected set. The existing decision-boundary deduplication, 5-second book-freshness ceiling, real REST L2 normalization, redundant websocket replacement readiness, strategy thresholds, risk limits, sizing, and execution semantics remain unchanged.
+
+This is data-plane liveness hardening only. It does not make stale books tradable and does not add live-order authority.
+
+**LIVE TRADING: DISABLED.**
