@@ -4249,3 +4249,16 @@ The operational heartbeat now includes the same stale-L2 recovery attempts, prom
 The next worker heartbeat can now distinguish “recovery never fired” from “recovery fired but did not keep books fresh through the next decision boundary.”
 
 **LIVE TRADING: DISABLED.**
+
+
+### Linear micro-event pruning on the live replay hot path — 2026-10-02
+
+The repaired operational counters showed that stale-L2 recovery itself was functioning: worker `37023957344` completed three recovery attempts, promoted all three replacement supervisor groups, and REST-reseeded 60/60 books before its first decision epoch. Repeated recovery therefore reflected renewed ingestion lag rather than a dead recovery trigger.
+
+Hyperliquid documents `l2Book` as a snapshot feed pushed on each block subject to a 0.5-second minimum interval. The continuous paper path processes those high-frequency books through the primary replay state and two cadence-shadow state books. `RecordedStateBook._prune_micro_events` previously sorted the entire retained 60-second micro-event window after every applied record, while the decision-time microstructure builder already performs its own canonical sort before computing features.
+
+Pruning now performs only the required linear age filter and preserves arrival order in storage. Canonical sorting remains at decision-time consumption, so feature and strategy semantics are unchanged while repeated per-event sort work is removed from all three replay state books.
+
+No data freshness threshold, strategy rule, risk control, sizing rule, execution behavior, promotion state, or live-order authority is changed.
+
+**LIVE TRADING: DISABLED.**
