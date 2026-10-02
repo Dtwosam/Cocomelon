@@ -122,3 +122,13 @@ def test_fast_markout_waiting_and_blocked_status_use_quoted_python_builders() ->
     assert "os.environ['RESOLUTION_MODE']" in waiting
     assert 'os.environ.get("ERROR_TEXT")' in blocked
     assert r"\`false\`" not in clean
+
+
+def test_fast_markout_source_skips_empty_successful_handoffs() -> None:
+    source = _source()
+
+    assert "artifact_for_run()" in source
+    assert "latest_successful_with_compact_artifact" in source
+    assert "selected source has no authenticated compact artifact" in source
+    assert "artifact_candidates" in source
+    assert 'EVENT_NAME" != "workflow_dispatch"' in source
