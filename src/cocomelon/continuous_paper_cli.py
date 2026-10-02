@@ -16,6 +16,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--duration-seconds", type=int, default=19_800)
     parser.add_argument("--deep-limit", type=int, default=20)
     parser.add_argument("--context-poll-seconds", type=int, default=30)
+    parser.add_argument(
+        "--websocket-server-silence-timeout-ms",
+        type=int,
+        default=15_000,
+    )
     parser.add_argument("--selection-refresh-seconds", type=int, default=300)
     parser.add_argument("--checkpoint-seconds", type=int, default=30)
     parser.add_argument("--stop-file", type=Path)
@@ -32,6 +37,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         duration_seconds=args.duration_seconds,
         deep_limit=args.deep_limit,
         context_poll_seconds=args.context_poll_seconds,
+        websocket_server_silence_timeout_ms=(
+            args.websocket_server_silence_timeout_ms
+        ),
         selection_refresh_seconds=args.selection_refresh_seconds,
         checkpoint_seconds=args.checkpoint_seconds,
     )
