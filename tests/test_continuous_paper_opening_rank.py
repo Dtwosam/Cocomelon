@@ -82,6 +82,77 @@ def test_tracker_exposes_point_in_time_rank_snapshot() -> None:
     assert tracker.snapshot_for_market(BTC, at_ms=999) is None
 
 
+def test_tracker_uses_latest_snapshot_that_existed_at_open() -> None:
+    tracker = LatestCoarseRankTracker()
+    tracker.update(
+        (
+            _rank(BTC, 1, "0.9"),
+            _rank(ETH, 2, "0.8"),
+        ),
+        observed_at_ms=1_000,
+    )
+    tracker.update(
+        (
+            _rank(ETH, 1, "0.95"),
+            _rank(BTC, 2, "0.85"),
+        ),
+        observed_at_ms=2_000,
+    )
+
+    old_snapshot = tracker.snapshot_for_market(
+        BTC,
+        at_ms=1_500,
+    )
+    assert old_snapshot is not None
+    old_observed, old_rank, old_pool = old_snapshot
+    assert old_observed == 1_000
+    assert old_rank.ordinal == 1
+    assert old_pool == 2
+
+    new_snapshot = tracker.snapshot_for_market(
+        BTC,
+        at_ms=2_500,
+    )
+    assert new_snapshot is not None
+    new_observed, new_rank, new_pool = new_snapshot
+    assert new_observed == 2_000
+    assert new_rank.ordinal == 2
+    assert new_pool == 2
+
+    evidence = tracker.evidence_for_opening(
+        opening_plan_id="plan-old",
+        market=BTC,
+        opened_at_ms=1_500,
+    )
+    assert evidence is not None
+    assert evidence.rank_observed_at_ms == 1_000
+    assert evidence.ordinal == 1
+    assert evidence.rank_age_ms == 500
+
+
+def test_tracker_does_not_resurrect_market_missing_from_latest_prior_snapshot() -> None:
+    tracker = LatestCoarseRankTracker()
+    tracker.update(
+        (
+            _rank(BTC, 1, "0.9"),
+            _rank(ETH, 2, "0.8"),
+        ),
+        observed_at_ms=1_000,
+    )
+    tracker.update(
+        (_rank(ETH, 1, "0.95"),),
+        observed_at_ms=2_000,
+    )
+
+    assert tracker.snapshot_for_market(
+        BTC,
+        at_ms=2_500,
+    ) is None
+    assert tracker.snapshot_for_market(
+        BTC,
+        at_ms=1_500,
+    ) is not None
+
 def test_tracker_never_uses_rank_observed_after_open() -> None:
     tracker = LatestCoarseRankTracker()
     tracker.update(
