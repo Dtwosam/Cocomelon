@@ -748,6 +748,63 @@ def test_record_pump_drops_duplicate_event_keys() -> None:
     assert pump.duplicate_records_dropped == 1
 
 
+def test_record_pump_wakes_on_new_decision_epoch() -> None:
+    async def scenario() -> None:
+        class Pipeline:
+            def __init__(self) -> None:
+                self.session_decision_activity = SimpleNamespace(
+                    last_decision_boundary_ms=None
+                )
+
+            def on_record(
+                self,
+                _record: ReplayRecord,
+                _now_ms: int,
+            ) -> tuple[object, ...]:
+                self.session_decision_activity = SimpleNamespace(
+                    last_decision_boundary_ms=30_000
+                )
+                return ()
+
+            def finalize(self, _end_ms: int) -> tuple[object, ...]:
+                return ()
+
+        class Journal:
+            def iter_trades(self) -> tuple[object, ...]:
+                return ()
+
+            def record_observation(self, _observation: object) -> None:
+                raise AssertionError("no observations expected")
+
+            def record_trade(self, _trade: object) -> None:
+                raise AssertionError("no trades expected")
+
+        wakeup = asyncio.Event()
+        pump = _RecordPump(
+            Pipeline(),  # type: ignore[arg-type]
+            Journal(),  # type: ignore[arg-type]
+            last_available_at_ms=0,
+            decision_epoch_wakeup=wakeup,
+        )
+        record = ReplayRecord(
+            record_kind=SourceRecordKind.NORMALIZED_EVENT,
+            available_at_ms=1,
+            source="hyperliquid-mainnet-ws",
+            schema_version=1,
+            market="BTC",
+            exchange_time_ms=1,
+            event_key="decision-epoch-wakeup",
+            payload_json='{"mark_px":"100"}',
+            event_kind="active_asset_ctx",
+        )
+
+        await pump.process(record)
+
+        assert wakeup.is_set() is True
+
+    asyncio.run(scenario())
+
+
 def test_rest_l2_reseed_accepts_only_fresh_real_books() -> None:
     class Reader:
         def l2_book(self, market: MarketId) -> object:
