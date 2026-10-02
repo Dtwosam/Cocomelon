@@ -4264,3 +4264,16 @@ A dedicated workflow now wakes from completed Continuous Mainnet Paper Trader ru
 This is research-only acceleration of entry-quality evidence. It changes no strategy threshold, risk veto, sizing, execution behavior, closed-trade readiness gate, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+### Context refresh cannot be starved by L2 recovery — 2026-10-02
+
+Worker `37023957344` demonstrated that the repaired L2 recovery path was active: 35 recovery attempts, 35 successful promotions, 700 fresh REST-reseeded books, and zero readiness failures. Its latest decision epoch nevertheless had `stale_context=20`, so fresh books were no longer the limiting input.
+
+The control loop used a timestamp captured before event-driven L2 recovery to decide whether the periodic 30-second market-context poll was due. A recovery that crossed the poll deadline could therefore return to a stale pre-recovery timestamp, incorrectly take the early `continue`, and postpone context refresh again.
+
+The loop now re-reads the clock immediately after L2 recovery before the context-due check. Recovery can no longer consume the remaining context freshness headroom while leaving the scheduler unaware that the refresh deadline has passed. Recovery heartbeats also use the refreshed post-recovery timestamp.
+
+This changes scheduling correctness only. The 30-second context cadence, 60-second context freshness ceiling, L2 freshness limit, eligibility rules, strategy, risk, sizing, execution, readiness, promotion state, and live-order authority remain unchanged.
+
+**LIVE TRADING: DISABLED.**
+

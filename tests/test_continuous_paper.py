@@ -1310,6 +1310,41 @@ def test_runtime_wakes_l2_recovery_on_completed_decision_epoch() -> None:
     ) == 3
 
 
+def test_runtime_refreshes_clock_after_l2_recovery_before_context_due_check() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    wake_wait_index = source.index(
+        "await asyncio.wait_for(\n"
+        "                        decision_epoch_wakeup.wait()"
+    )
+    wake_recovery_index = source.index(
+        "await recover_systemic_l2_if_needed()",
+        wake_wait_index,
+    )
+    refreshed_clock_index = source.index(
+        "now_ms = utc_now_ms()",
+        wake_recovery_index,
+    )
+    context_due_index = source.index(
+        "if now_ms < next_context_poll_ms:",
+        refreshed_clock_index,
+    )
+    context_refresh_index = source.index(
+        "await _refresh_native_market_snapshots(reader)",
+        context_due_index,
+    )
+
+    assert (
+        wake_recovery_index
+        < refreshed_clock_index
+        < context_due_index
+        < context_refresh_index
+    )
+    window = source[wake_recovery_index:context_due_index]
+    assert "recovery cannot starve" in window
+
+
 def test_stale_l2_gap_revokes_rotation_readiness() -> None:
     ready = {"BTC", "ETH"}
     required = frozenset({"BTC", "ETH"})

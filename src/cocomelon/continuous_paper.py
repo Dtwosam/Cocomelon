@@ -8194,14 +8194,20 @@ async def run_continuous_paper_session(
                     systemically_unhealthy_l2 = (
                         await recover_systemic_l2_if_needed()
                     )
-                    if systemically_unhealthy_l2:
-                        _emit_operational_live_status(
-                            execution,
-                            pump,
-                            selected,
-                            replay_config.risk_limits,
-                            timestamp_ms=now_ms,
-                        )
+
+                # L2 recovery can outlive the remaining context-poll
+                # headroom. Re-read the clock before deciding whether the
+                # periodic context refresh is due so recovery cannot starve
+                # fresh market context.
+                now_ms = utc_now_ms()
+                if systemically_unhealthy_l2:
+                    _emit_operational_live_status(
+                        execution,
+                        pump,
+                        selected,
+                        replay_config.risk_limits,
+                        timestamp_ms=now_ms,
+                    )
 
                 if now_ms < next_context_poll_ms:
                     continue
