@@ -5986,6 +5986,10 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "record_pump_max_process_ms": 82_000,
         "record_pump_max_lock_wait_ms": 81_500,
         "record_pump_slow_record_count": 3,
+        "checkpoint_max_snapshot_ms": 14,
+        "checkpoint_max_background_write_ms": 82_000,
+        "checkpoint_background_starts": 4,
+        "checkpoint_background_skips": 2,
         "record_pump_last_slow_record": {
             "record_kind": "normalized_event",
             "event_kind": "l2_book",
@@ -6220,6 +6224,11 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert "record pump max process / lock wait / slow>=1s: 82000ms / 81500ms / 3" in rendered
     assert "last slow record pump:" in rendered
     assert "l2_book" in rendered
+    assert (
+        "checkpoint max snapshot / background write / starts / skips: "
+        "14ms / 82000ms / 4 / 2"
+        in rendered
+    )
     assert "shortlist rotations attempts / promoted / failed readiness: 5 / 4 / 1" in rendered
     assert "L2 supervisor unhealthy markets: 16 / 20" in rendered
     assert (
