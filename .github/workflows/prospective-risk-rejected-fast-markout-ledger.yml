@@ -502,6 +502,7 @@ jobs:
               f"- cumulative source integrity clean: `{summary['integrity_clean']}`",
               f"- stack admitted / blocked terminal: `{summary['stack_admitted_terminal']} / {summary['stack_blocked_terminal']}`",
               f"- risk reason counts: `{summary['risk_reason_counts']}`",
+              f"- stack block layer counts: `{summary.get('stack_block_layer_counts', {})}`",
               f"- rows SHA-256: `{ledger['rows_sha256']}`",
               f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
               "",
@@ -579,6 +580,26 @@ jobs:
                           admit_mean=values[
                               "stack_admit_mean_directional_return"
                           ],
+                      )
+                  )
+              lines.append("")
+              lines.append(
+                  f"**{horizon_ms // 60000}m by stack block layer**"
+              )
+              by_layer = item.get("by_block_layer", {})
+              if not isinstance(by_layer, dict):
+                  by_layer = {}
+              for layer, values in sorted(by_layer.items()):
+                  if not isinstance(values, dict):
+                      continue
+                  lines.append(
+                      "- {layer}: opportunities={opportunities}, "
+                      "settled={settled}, mean={mean}, markets={markets}".format(
+                          layer=layer,
+                          opportunities=values.get("opportunities", 0),
+                          settled=values.get("settled", 0),
+                          mean=values.get("mean_directional_return"),
+                          markets=values.get("market_count", 0),
                       )
                   )
           reason_readiness = investigation.get("by_reason", {})
