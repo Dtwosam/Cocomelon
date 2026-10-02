@@ -4238,3 +4238,14 @@ The opening engine now keeps the candidate pending when its cached market book i
 This does not widen book freshness, context freshness, risk budgets, sizing, stops, eligibility, strategy thresholds, or live authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Operational L2 recovery telemetry repair — 2026-10-02
+
+Issue #469 repeatedly displayed zero stale-L2 recovery/reseed counters while the continuous paper worker alternated between healthy deep coverage and systemic `stale_book` epochs. The detailed end-of-run heartbeat already carried the recovery counters, but the lightweight operational heartbeat used for the live issue omitted them. The renderer therefore displayed missing fields as zero.
+
+The operational heartbeat now includes the same stale-L2 recovery attempts, promotions, readiness failures, REST reseed attempts/books/failures, and pipeline-trigger/fallback counters as the durable heartbeat. This repairs live observability only; it does not alter recovery behavior, market data thresholds, strategy, risk, sizing, execution, or live authority.
+
+The next worker heartbeat can now distinguish “recovery never fired” from “recovery fired but did not keep books fresh through the next decision boundary.”
+
+**LIVE TRADING: DISABLED.**
