@@ -6820,6 +6820,30 @@ def _operational_live_status_payload(
         "shortlist_rotation_readiness_failures": (
             pump.shortlist_rotation_readiness_failures
         ),
+        "stale_l2_recovery_attempts": (
+            pump.stale_l2_recovery_attempts
+        ),
+        "stale_l2_recovery_promotions": (
+            pump.stale_l2_recovery_promotions
+        ),
+        "stale_l2_recovery_readiness_failures": (
+            pump.stale_l2_recovery_readiness_failures
+        ),
+        "stale_l2_rest_reseed_attempts": (
+            pump.stale_l2_rest_reseed_attempts
+        ),
+        "stale_l2_rest_reseed_books": (
+            pump.stale_l2_rest_reseed_books
+        ),
+        "stale_l2_rest_reseed_failures": (
+            pump.stale_l2_rest_reseed_failures
+        ),
+        "stale_l2_pipeline_recovery_triggers": (
+            pump.stale_l2_pipeline_recovery_triggers
+        ),
+        "stale_l2_pipeline_reason_fallback_triggers": (
+            pump.stale_l2_pipeline_reason_fallback_triggers
+        ),
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
         "session_closed_trades": pump.session_closed_trades,
