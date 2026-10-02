@@ -148,6 +148,80 @@ def test_forward_path_rejects_conflicting_same_timestamp_mark(
             source="metaAndAssetCtxs",
         )
 
+def test_forward_path_observe_uses_market_index_not_full_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ContinuousPaperOpeningOpportunityPathStore(
+        tmp_path / "paths",
+        max_path_age_ms=1_000,
+        max_completion_lag_ms=200,
+    )
+    store.register(
+        opportunity_id="btc-1",
+        market="BTC",
+        direction="long",
+        opportunity_timestamp_ms=10_000,
+    )
+    store.register(
+        opportunity_id="eth-1",
+        market="ETH",
+        direction="short",
+        opportunity_timestamp_ms=10_000,
+    )
+
+    def fail_full_scan() -> tuple[object, ...]:
+        raise AssertionError("observe must not scan every persisted path")
+
+    monkeypatch.setattr(store, "iter_paths", fail_full_scan)
+
+    assert store.observe(
+        market="BTC",
+        observed_at_ms=10_100,
+        mark_px=Decimal("101"),
+        source="metaAndAssetCtxs",
+    ) == 1
+
+    btc = store.load("btc-1")
+    eth = store.load("eth-1")
+    assert btc is not None
+    assert eth is not None
+    assert tuple(mark.observed_at_ms for mark in btc.marks) == (10_100,)
+    assert eth.marks == ()
+
+
+def test_forward_path_restores_active_market_index(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "paths"
+    first = ContinuousPaperOpeningOpportunityPathStore(
+        root,
+        max_path_age_ms=1_000,
+        max_completion_lag_ms=200,
+    )
+    first.register(
+        opportunity_id="btc-1",
+        market="BTC",
+        direction="long",
+        opportunity_timestamp_ms=10_000,
+    )
+
+    restored = ContinuousPaperOpeningOpportunityPathStore(
+        root,
+        max_path_age_ms=1_000,
+        max_completion_lag_ms=200,
+    )
+    assert restored.observe(
+        market="BTC",
+        observed_at_ms=10_200,
+        mark_px=Decimal("102"),
+        source="metaAndAssetCtxs",
+    ) == 1
+    path = restored.load("btc-1")
+    assert path is not None
+    assert tuple(mark.observed_at_ms for mark in path.marks) == (10_200,)
+
+
 def test_forward_path_does_not_impute_after_completion_deadline(
     tmp_path: Path,
 ) -> None:
