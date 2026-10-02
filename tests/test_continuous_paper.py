@@ -3872,7 +3872,27 @@ def test_runtime_hot_path_uses_only_operational_heartbeat() -> None:
         encoding="utf-8"
     )
 
-    assert '"heartbeat_scope": "operational"' in source
+    operational_at = source.index(
+        "def _operational_live_status_payload("
+    )
+    operational_end = source.index(
+        "def _emit_operational_live_status(",
+        operational_at,
+    )
+    operational = source[operational_at:operational_end]
+
+    assert '"heartbeat_scope": "operational"' in operational
+    for field in (
+        "stale_l2_recovery_attempts",
+        "stale_l2_recovery_promotions",
+        "stale_l2_recovery_readiness_failures",
+        "stale_l2_rest_reseed_attempts",
+        "stale_l2_rest_reseed_books",
+        "stale_l2_rest_reseed_failures",
+        "stale_l2_pipeline_recovery_triggers",
+        "stale_l2_pipeline_reason_fallback_triggers",
+    ):
+        assert f'"{field}"' in operational
     assert source.count("_emit_operational_live_status(") == 4
     assert source.count("_emit_live_status(") == 1
 
