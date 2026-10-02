@@ -1471,6 +1471,10 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
             {"BTC", "ETH", "SOL"},
             {"BTC", "ETH"},
         ),
+        l2_exchange_age_ms_by_market=(
+            {"BTC": -250, "ETH": 80, "SOL": 120},
+            {"BTC": -300, "ETH": 90, "SOL": 140},
+        ),
     )
 
     payload = _supervisor_group_health_payload(
@@ -1487,6 +1491,16 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
     assert lanes[0]["ready_l2_market_count"] == 3
     assert lanes[0]["stale_l2_market_count"] == 2
     assert lanes[0]["last_server_message_age_ms"] == 100
+    assert lanes[0]["l2_exchange_age_observed_market_count"] == 3
+    assert lanes[0]["l2_exchange_age_negative_market_count"] == 1
+    assert lanes[0]["l2_exchange_age_min_ms"] == -250
+    assert lanes[0]["l2_exchange_age_max_ms"] == 120
+    assert lanes[0]["l2_negative_exchange_age_markets"] == ["BTC"]
+    assert lanes[0]["l2_exchange_age_ms_by_market"] == {
+        "BTC": -250,
+        "ETH": 80,
+        "SOL": 120,
+    }
     assert lanes[1]["connected"] is False
     assert lanes[1]["missing_ready_l2_markets"] == ["SOL"]
     assert lanes[1]["last_server_message_age_ms"] == 1_000
