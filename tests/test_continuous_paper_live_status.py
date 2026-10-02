@@ -5990,6 +5990,14 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "checkpoint_max_background_write_ms": 82_000,
         "checkpoint_background_starts": 4,
         "checkpoint_background_skips": 2,
+        "event_loop_phase": "rank_refresh",
+        "event_loop_lag_samples": 88,
+        "event_loop_max_lag_ms": 91_234,
+        "event_loop_slow_wakeup_count": 2,
+        "event_loop_last_slow_wakeup": {
+            "lag_ms": 91_234,
+            "phase": "rank_refresh",
+        },
         "record_pump_last_slow_record": {
             "record_kind": "normalized_event",
             "event_kind": "l2_book",
@@ -6229,6 +6237,13 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "14ms / 82000ms / 4 / 2"
         in rendered
     )
+    assert (
+        "event-loop phase / max lag / slow>=1s / samples: "
+        "rank_refresh / 91234ms / 2 / 88"
+        in rendered
+    )
+    assert "last slow event-loop wakeup:" in rendered
+    assert "rank_refresh" in rendered
     assert "shortlist rotations attempts / promoted / failed readiness: 5 / 4 / 1" in rendered
     assert "L2 supervisor unhealthy markets: 16 / 20" in rendered
     assert (

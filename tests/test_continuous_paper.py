@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -51,6 +52,7 @@ from cocomelon.continuous_paper import (
     _l2_event_fresh_for_promotion,
     _latest_epoch_stale_l2_market_keys,
     _load_checkpoint,
+    _monitor_event_loop_lag,
     _opening_fill_liquidity_payload,
     _opening_rank_attribution_payload,
     _pipeline_l2_recovery_plan,
@@ -802,6 +804,39 @@ def test_record_pump_wakes_on_new_decision_epoch() -> None:
         await pump.process(record)
 
         assert wakeup.is_set() is True
+
+    asyncio.run(scenario())
+
+
+def test_event_loop_lag_monitor_records_blocking_phase() -> None:
+    async def scenario() -> None:
+        pump = SimpleNamespace(
+            event_loop_phase="unit_test_block",
+            event_loop_lag_samples=0,
+            event_loop_max_lag_ms=0,
+            event_loop_slow_wakeup_count=0,
+            event_loop_last_slow_wakeup=None,
+        )
+        task = asyncio.create_task(
+            _monitor_event_loop_lag(
+                pump,
+                interval_seconds=0.005,
+                slow_lag_ms=5,
+            )
+        )
+        await asyncio.sleep(0.01)
+        time.sleep(0.03)
+        await asyncio.sleep(0.01)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+        assert pump.event_loop_lag_samples > 0
+        assert pump.event_loop_max_lag_ms >= 10
+        assert pump.event_loop_slow_wakeup_count >= 1
+        assert pump.event_loop_last_slow_wakeup["phase"] == (
+            "unit_test_block"
+        )
+        assert pump.event_loop_last_slow_wakeup["lag_ms"] >= 10
 
     asyncio.run(scenario())
 

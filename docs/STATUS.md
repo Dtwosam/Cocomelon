@@ -4368,3 +4368,14 @@ Operational telemetry now reports maximum snapshot-build time, maximum backgroun
 No market-data freshness limit, strategy rule, risk limit, sizing rule, execution behavior, readiness gate, promotion state, or live-order authority changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Event-loop stall attribution for L2 freezes — 2026-10-02
+
+The latest continuous-paper diagnostics showed both redundant websocket lanes remaining logically connected and fully subscribed while receiving no server message for roughly 83–91 seconds. Exchange-vs-receive L2 age stayed normal when messages were present, record-pump processing stayed below 125ms, and the configured 15-second server-silence reconnect did not fire during the freeze. This demonstrates that the asyncio event loop itself is being blocked outside the record pump.
+
+The runtime now runs a 250ms event-loop watchdog. It records total samples, maximum scheduling lag, count of wakeups delayed by at least one second, the last slow wakeup, and the coarse control-loop phase active during that delay. The operational heartbeat and Issue #469 render these values alongside record-pump, checkpoint, and per-lane websocket health.
+
+This is diagnostic-only. It changes no market-data freshness threshold, strategy rule, risk limit, sizing rule, execution behavior, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**

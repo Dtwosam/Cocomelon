@@ -3919,6 +3919,11 @@ class _RecordPump:
         self.checkpoint_max_background_write_ms = 0
         self.checkpoint_background_starts = 0
         self.checkpoint_background_skips = 0
+        self.event_loop_phase = "startup"
+        self.event_loop_lag_samples = 0
+        self.event_loop_max_lag_ms = 0
+        self.event_loop_slow_wakeup_count = 0
+        self.event_loop_last_slow_wakeup: dict[str, object] | None = None
         self._recent_record_keys: deque[str] = deque()
         self._recent_record_key_set: set[str] = set()
         self._record_dedup_size = 131_072
@@ -4142,6 +4147,36 @@ class _RecordPump:
                 f"{type(exc).__name__}: {exc}"
             )
             self.cadence_shadow = None
+
+
+async def _monitor_event_loop_lag(
+    pump: _RecordPump,
+    *,
+    interval_seconds: float = 0.25,
+    slow_lag_ms: int = 1_000,
+) -> None:
+    if interval_seconds <= 0:
+        raise ValueError("interval_seconds must be positive")
+    if slow_lag_ms <= 0:
+        raise ValueError("slow_lag_ms must be positive")
+    loop = asyncio.get_running_loop()
+    expected = loop.time() + interval_seconds
+    while True:
+        await asyncio.sleep(interval_seconds)
+        observed = loop.time()
+        lag_ms = max(0, int((observed - expected) * 1_000))
+        pump.event_loop_lag_samples += 1
+        pump.event_loop_max_lag_ms = max(
+            pump.event_loop_max_lag_ms,
+            lag_ms,
+        )
+        if lag_ms >= slow_lag_ms:
+            pump.event_loop_slow_wakeup_count += 1
+            pump.event_loop_last_slow_wakeup = {
+                "lag_ms": lag_ms,
+                "phase": pump.event_loop_phase,
+            }
+        expected = observed + interval_seconds
 
 
 async def _reseed_l2_books_via_rest(
@@ -6474,6 +6509,11 @@ def _live_status_payload(
         ),
         "checkpoint_background_starts": pump.checkpoint_background_starts,
         "checkpoint_background_skips": pump.checkpoint_background_skips,
+        "event_loop_phase": pump.event_loop_phase,
+        "event_loop_lag_samples": pump.event_loop_lag_samples,
+        "event_loop_max_lag_ms": pump.event_loop_max_lag_ms,
+        "event_loop_slow_wakeup_count": pump.event_loop_slow_wakeup_count,
+        "event_loop_last_slow_wakeup": pump.event_loop_last_slow_wakeup,
         "shortlist_rotation_attempts": pump.shortlist_rotation_attempts,
         "shortlist_rotation_promotions": pump.shortlist_rotation_promotions,
         "shortlist_rotation_readiness_failures": (
@@ -7018,6 +7058,11 @@ def _operational_live_status_payload(
         ),
         "checkpoint_background_starts": pump.checkpoint_background_starts,
         "checkpoint_background_skips": pump.checkpoint_background_skips,
+        "event_loop_phase": pump.event_loop_phase,
+        "event_loop_lag_samples": pump.event_loop_lag_samples,
+        "event_loop_max_lag_ms": pump.event_loop_max_lag_ms,
+        "event_loop_slow_wakeup_count": pump.event_loop_slow_wakeup_count,
+        "event_loop_last_slow_wakeup": pump.event_loop_last_slow_wakeup,
         "shortlist_rotation_attempts": pump.shortlist_rotation_attempts,
         "shortlist_rotation_promotions": pump.shortlist_rotation_promotions,
         "shortlist_rotation_readiness_failures": (
@@ -7884,6 +7929,7 @@ async def run_continuous_paper_session(
         started_at_ms=started_at_ms,
     )
 
+    event_loop_lag_task: asyncio.Task[None] | None = None
     try:
         if not execution.health.healthy_for_new_exposure:
             raise RuntimeError(
@@ -7971,6 +8017,9 @@ async def run_continuous_paper_session(
             entry_mid_markout_shadow=entry_mid_markout_shadow,
             position_provider=lambda: execution.account.positions,
             decision_epoch_wakeup=decision_epoch_wakeup,
+        )
+        event_loop_lag_task = asyncio.create_task(
+            _monitor_event_loop_lag(pump)
         )
 
         selected_keys = {market.canonical for market in selected}
@@ -8364,6 +8413,7 @@ async def run_continuous_paper_session(
             selected,
             forward_gaps=True,
         )
+        pump.event_loop_phase = "control_wait"
         replacement_funding_oracle_task = asyncio.create_task(
             capture_replacement_funding_oracles()
         )
@@ -8533,9 +8583,11 @@ async def run_continuous_paper_session(
 
                 systemically_unhealthy_l2 = False
                 if woke_for_decision_epoch:
+                    pump.event_loop_phase = "l2_recovery"
                     systemically_unhealthy_l2 = (
                         await recover_systemic_l2_if_needed()
                     )
+                    pump.event_loop_phase = "control_wait"
 
                 # L2 recovery can outlive the remaining context-poll
                 # headroom. Re-read the clock before deciding whether the
@@ -8558,10 +8610,12 @@ async def run_continuous_paper_session(
                     now_ms + config.context_poll_seconds * 1000
                 )
 
+                pump.event_loop_phase = "context_refresh"
                 (
                     refreshed,
                     refreshed_received_at_ms,
                 ) = await _refresh_native_market_snapshots(reader)
+                pump.event_loop_phase = "context_postprocess"
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
@@ -8580,26 +8634,32 @@ async def run_continuous_paper_session(
                             _record_from_public(market_snapshot_record_event(snapshot))
                         )
                 rank_observed_at_ms = utc_now_ms()
+                pump.event_loop_phase = "rank_refresh"
                 _refreshed_features, refreshed_ranks = _startup_ranks(
                     refreshed,
                     as_of_ms=rank_observed_at_ms,
                 )
+                pump.event_loop_phase = "context_postprocess"
                 rank_tracker.update(
                     refreshed_ranks,
                     observed_at_ms=rank_observed_at_ms,
                 )
+                pump.event_loop_phase = "funding_refresh"
                 await refresh_funding()
                 await capture_due_replacement_funding(
                     now_ms=utc_now_ms()
                 )
+                pump.event_loop_phase = "control_wait"
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
 
                 if not systemically_unhealthy_l2:
+                    pump.event_loop_phase = "l2_recovery"
                     systemically_unhealthy_l2 = (
                         await recover_systemic_l2_if_needed()
                     )
+                    pump.event_loop_phase = "control_wait"
 
                 if (
                     not systemically_unhealthy_l2
@@ -8679,6 +8739,7 @@ async def run_continuous_paper_session(
                         await recover_systemic_l2_if_needed()
                     )
 
+                pump.event_loop_phase = "heartbeat"
                 _emit_operational_live_status(
                     execution,
                     pump,
@@ -8688,8 +8749,11 @@ async def run_continuous_paper_session(
                     l2_supervisor_group=supervisor_group,
                 )
 
+                pump.event_loop_phase = "control_wait"
                 if now_ms >= next_checkpoint_ms:
+                    pump.event_loop_phase = "checkpoint_snapshot"
                     await maybe_start_background_checkpoint()
+                    pump.event_loop_phase = "control_wait"
                     next_checkpoint_ms = (
                         utc_now_ms()
                         + config.checkpoint_seconds * 1000
@@ -9008,6 +9072,12 @@ async def run_continuous_paper_session(
         _write_json_atomic(root / SUMMARY_FILENAME, summary.payload())
         return summary
     finally:
+        if event_loop_lag_task is not None:
+            event_loop_lag_task.cancel()
+            await asyncio.gather(
+                event_loop_lag_task,
+                return_exceptions=True,
+            )
         facts.close()
         journal.close()
         execution.close()
