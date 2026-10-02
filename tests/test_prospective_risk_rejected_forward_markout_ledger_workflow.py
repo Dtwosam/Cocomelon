@@ -106,6 +106,16 @@ def test_risk_rejected_ledger_surfaces_stack_block_layers() -> None:
     assert 'values.get("market_count", 0)' in source
 
 
+def test_risk_rejected_ledger_surfaces_combined_block_reasons() -> None:
+    source = _source()
+
+    assert "combined block reason counts" in source
+    assert "by combined block reason" in source
+    assert 'item.get(' in source
+    assert '"by_combined_block_reason"' in source
+    assert 'values.get("mean_directional_return")' in source
+
+
 def test_risk_rejected_ledger_non_success_wake_falls_back() -> None:
     source = _source()
 
