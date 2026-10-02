@@ -480,6 +480,7 @@ jobs:
           SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
           RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
           PREVIOUS_WORKFLOW_RUN_ID: ${{ steps.previous.outputs.previous_workflow_run_id }}
+          SUMMARY_PATH: ${{ steps.compact.outputs.summary_path }}
         run: |
           python - <<'PY'
           import json
@@ -493,6 +494,11 @@ jobs:
               )
           )
           summary = ledger["summary"]
+          source = json.loads(
+              Path(os.environ["SUMMARY_PATH"]).read_text(
+                  encoding="utf-8"
+              )
+          )
 
           def stamp(value):
               return datetime.fromtimestamp(
@@ -513,6 +519,24 @@ jobs:
               f"- previous ledger workflow run: `{previous}`",
               f"- terminal / previous / new / pending: `{ledger['row_count']} / {ledger['previous_row_count']} / {ledger['new_row_count']} / {ledger['pending_opportunity_count']}`",
               f"- cumulative source integrity clean: `{summary['integrity_clean']}`",
+              (
+                  "- source prospective / risk-rejected / risk-approved evaluated: "
+                  f"`{source.get('prospective_opportunities', 0)} / "
+                  f"{source.get('baseline_risk_rejected', 0)} / "
+                  f"{source.get('stack_risk_approved_evaluated', 0)}`"
+              ),
+              (
+                  "- source stack admitted / blocked / integrity clean: "
+                  f"`{source.get('stack_admitted', 0)} / "
+                  f"{source.get('stack_blocked', 0)} / "
+                  f"{source.get('integrity_clean', False)}`"
+              ),
+              (
+                  "- source integrity misses rank-missing / rank-stale / momentum-feature: "
+                  f"`{source.get('missing_rank', 0)} / "
+                  f"{source.get('stale_rank', 0)} / "
+                  f"{source.get('momentum_feature_integrity_misses', 0)}`"
+              ),
               f"- rows SHA-256: `{ledger['rows_sha256']}`",
               f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
               "",
