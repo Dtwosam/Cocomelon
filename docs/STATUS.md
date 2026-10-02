@@ -4249,3 +4249,18 @@ The operational heartbeat now includes the same stale-L2 recovery attempts, prom
 The next worker heartbeat can now distinguish “recovery never fired” from “recovery fired but did not keep books fresh through the next decision boundary.”
 
 **LIVE TRADING: DISABLED.**
+
+
+### Full entry-stack fast-markout append-only ledger — 2026-10-02
+
+Issue #769 previously had only a placeholder status and no durable workflow, so the frozen combined + two-strike + momentum entry stack could emit 5m / 15m / 60m forward-markout summaries without accumulating immutable cross-run evidence.
+
+The research path now has an append-only full-stack fast-markout ledger bound to authenticated compact paper artifacts. It accepts only baseline-risk-approved opportunity rows, validates the frozen combined / two-strike / momentum layer ordering from the persisted candidate states, freezes only rows whose fixed horizons are terminal, and preserves every previously published terminal row byte-for-byte.
+
+Terminal horizons may be settled, stale beyond the fixed mark-lag ceiling, or explicitly unsupported by the persisted opportunity path. Pending and missing-path horizons remain unfrozen. Per-horizon review still requires at least 20 settled opportunities, 5 ADMIT, 5 BLOCK, 5 LONG, 5 SHORT, 4 markets, positive admitted mean, negative blocked mean, positive ADMIT-minus-BLOCK spread, and positive leave-one-opportunity / leave-one-market robustness.
+
+A dedicated workflow now wakes from completed Continuous Mainnet Paper Trader runs, binds the exact source run / attempt / artifact digest, restores the previous immutable ledger, updates Issue #769, and uploads the next ledger artifact. Legacy compact sources that predate risk-approved full-stack row lineage wait without credit instead of failing or fabricating evidence.
+
+This is research-only acceleration of entry-quality evidence. It changes no strategy threshold, risk veto, sizing, execution behavior, closed-trade readiness gate, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
