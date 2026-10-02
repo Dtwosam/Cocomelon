@@ -1684,7 +1684,9 @@ def test_continuous_context_poll_has_freshness_headroom() -> None:
 
     assert config.context_poll_seconds == 30
     assert config.context_poll_seconds * 1000 < 60_000
+    assert config.websocket_server_silence_timeout_ms == 15_000
     assert "--context-poll-seconds 30" in workflow
+    assert "--websocket-server-silence-timeout-ms 15000" in workflow
     assert "--context-poll-seconds 60" not in workflow
 
 
@@ -1717,6 +1719,13 @@ def test_startup_warmup_seeds_before_fresh_context_starts_decisions() -> None:
         < fresh_context_index
         < funding_index
     )
+
+
+def test_continuous_config_requires_positive_websocket_silence_timeout() -> None:
+    with pytest.raises(ValueError, match="websocket_server_silence_timeout_ms"):
+        ContinuousPaperConfig(
+            websocket_server_silence_timeout_ms=0,
+        )
 
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:
