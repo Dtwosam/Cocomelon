@@ -40,8 +40,8 @@ def test_fast_markout_ledger_binds_exact_compact_source() -> None:
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
     assert (
-        'artifact_name="continuous-paper-learning-source-'
-        '$run_id-$run_attempt"'
+        'expected_name="continuous-paper-learning-source-'
+        '$candidate_run_id-$candidate_attempt"'
         in source
     )
     assert "source artifact digest is missing or invalid" in source
