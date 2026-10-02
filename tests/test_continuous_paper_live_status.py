@@ -5983,6 +5983,16 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "selected_market_count": 20,
         "processed_records": 99,
         "duplicate_records_dropped": 7,
+        "record_pump_max_process_ms": 82_000,
+        "record_pump_max_lock_wait_ms": 81_500,
+        "record_pump_slow_record_count": 3,
+        "record_pump_last_slow_record": {
+            "record_kind": "normalized_event",
+            "event_kind": "l2_book",
+            "market": "BTC",
+            "process_ms": 82_000,
+            "lock_wait_ms": 0,
+        },
         "shortlist_rotation_attempts": 5,
         "shortlist_rotation_promotions": 4,
         "shortlist_rotation_readiness_failures": 1,
@@ -6207,6 +6217,9 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         in rendered
     )
     assert "duplicate records dropped: 7" in rendered
+    assert "record pump max process / lock wait / slow>=1s: 82000ms / 81500ms / 3" in rendered
+    assert "last slow record pump:" in rendered
+    assert "l2_book" in rendered
     assert "shortlist rotations attempts / promoted / failed readiness: 5 / 4 / 1" in rendered
     assert "L2 supervisor unhealthy markets: 16 / 20" in rendered
     assert (

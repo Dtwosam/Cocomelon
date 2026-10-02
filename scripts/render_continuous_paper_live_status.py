@@ -9720,6 +9720,16 @@ def _render_operational_live_status(
                 f"{payload.get('duplicate_records_dropped', 0)}"
             ),
             (
+                "- record pump max process / lock wait / slow>=1s: "
+                f"{payload.get('record_pump_max_process_ms', 0)}ms / "
+                f"{payload.get('record_pump_max_lock_wait_ms', 0)}ms / "
+                f"{payload.get('record_pump_slow_record_count', 0)}"
+            ),
+            (
+                "- last slow record pump: "
+                f"{payload.get('record_pump_last_slow_record')}"
+            ),
+            (
                 "- shortlist rotations attempts / promoted / failed readiness: "
                 f"{payload.get('shortlist_rotation_attempts', 0)} / "
                 f"{payload.get('shortlist_rotation_promotions', 0)} / "

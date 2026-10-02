@@ -3904,6 +3904,10 @@ class _RecordPump:
         self.stale_l2_pipeline_recovery_triggers = 0
         self.stale_l2_pipeline_reason_fallback_triggers = 0
         self.last_stale_l2_recovery_trigger: dict[str, object] | None = None
+        self.record_pump_max_process_ms = 0
+        self.record_pump_max_lock_wait_ms = 0
+        self.record_pump_slow_record_count = 0
+        self.record_pump_last_slow_record: dict[str, object] | None = None
         self._recent_record_keys: deque[str] = deque()
         self._recent_record_key_set: set[str] = set()
         self._record_dedup_size = 131_072
@@ -3933,7 +3937,19 @@ class _RecordPump:
         *,
         evaluate_decisions: bool = True,
     ) -> None:
+        loop = asyncio.get_running_loop()
+        lock_wait_started = loop.time()
         async with self._lock:
+            lock_acquired = loop.time()
+            lock_wait_ms = max(
+                0,
+                int((lock_acquired - lock_wait_started) * 1000),
+            )
+            self.record_pump_max_lock_wait_ms = max(
+                self.record_pump_max_lock_wait_ms,
+                lock_wait_ms,
+            )
+            process_started = lock_acquired
             previous_decision_boundary_ms = self._decision_boundary_ms()
             record_key = record.event_key
             if (
@@ -4021,6 +4037,23 @@ class _RecordPump:
                 ):
                     oldest = self._recent_record_keys.popleft()
                     self._recent_record_key_set.discard(oldest)
+            process_ms = max(
+                0,
+                int((loop.time() - process_started) * 1000),
+            )
+            self.record_pump_max_process_ms = max(
+                self.record_pump_max_process_ms,
+                process_ms,
+            )
+            if process_ms >= 1_000:
+                self.record_pump_slow_record_count += 1
+                self.record_pump_last_slow_record = {
+                    "record_kind": record.record_kind.value,
+                    "event_kind": record.event_kind,
+                    "market": record.market,
+                    "process_ms": process_ms,
+                    "lock_wait_ms": lock_wait_ms,
+                }
 
     @property
     def recent_closed_trades(self) -> tuple[TradeJournalEntry, ...]:
@@ -6420,6 +6453,10 @@ def _live_status_payload(
         ],
         "processed_records": pump.processed_records,
         "duplicate_records_dropped": pump.duplicate_records_dropped,
+        "record_pump_max_process_ms": pump.record_pump_max_process_ms,
+        "record_pump_max_lock_wait_ms": pump.record_pump_max_lock_wait_ms,
+        "record_pump_slow_record_count": pump.record_pump_slow_record_count,
+        "record_pump_last_slow_record": pump.record_pump_last_slow_record,
         "shortlist_rotation_attempts": pump.shortlist_rotation_attempts,
         "shortlist_rotation_promotions": pump.shortlist_rotation_promotions,
         "shortlist_rotation_readiness_failures": (
@@ -6954,6 +6991,10 @@ def _operational_live_status_payload(
         ],
         "processed_records": pump.processed_records,
         "duplicate_records_dropped": pump.duplicate_records_dropped,
+        "record_pump_max_process_ms": pump.record_pump_max_process_ms,
+        "record_pump_max_lock_wait_ms": pump.record_pump_max_lock_wait_ms,
+        "record_pump_slow_record_count": pump.record_pump_slow_record_count,
+        "record_pump_last_slow_record": pump.record_pump_last_slow_record,
         "shortlist_rotation_attempts": pump.shortlist_rotation_attempts,
         "shortlist_rotation_promotions": pump.shortlist_rotation_promotions,
         "shortlist_rotation_readiness_failures": (
