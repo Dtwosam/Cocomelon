@@ -230,10 +230,35 @@ jobs:
           )"
           if [ -z "$summary_path" ]; then
             echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "reason=compact source predates the full-stack fast-markout export" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           test -s "$summary_path"
+          format_check="$(
+            SUMMARY_PATH="$summary_path" python -c '
+          import json, os
+          from pathlib import Path
+          payload = json.loads(Path(os.environ["SUMMARY_PATH"]).read_text(encoding="utf-8"))
+          rows = payload.get("risk_rejected_rows") if isinstance(payload, dict) else None
+          evaluated = payload.get("risk_rejected_stack_evaluated") if isinstance(payload, dict) else None
+          integrity = payload.get("risk_rejected_integrity_clean") if isinstance(payload, dict) else None
+          current = (
+              isinstance(rows, list)
+              and isinstance(evaluated, int)
+              and not isinstance(evaluated, bool)
+              and evaluated == len(rows)
+              and isinstance(integrity, bool)
+          )
+          print("current" if current else "legacy")
+          '
+          )"
+          if [ "$format_check" != "current" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "reason=compact source predates the risk-rejected row export" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           echo "eligible=true" >> "$GITHUB_OUTPUT"
+          echo "reason=current risk-rejected source format" >> "$GITHUB_OUTPUT"
           echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
 
       - name: Publish waiting-for-source status
@@ -243,6 +268,7 @@ jobs:
           SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
           SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
           RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          WAIT_REASON: ${{ steps.compact.outputs.reason }}
         run: |
           python - <<'PY'
           import os
@@ -262,7 +288,7 @@ jobs:
                   "- source resolution: "
                   f"`{os.environ['RESOLUTION_MODE']}`"
               ),
-              "- reason: compact source predates the full-stack fast-markout export",
+              f"- reason: {os.environ['WAIT_REASON']}",
               "",
               "No risk-rejected fast-markout row is credited from this run.",
               "",

@@ -48,6 +48,9 @@ def test_risk_rejected_ledger_binds_exact_compact_source() -> None:
     )
     assert "source artifact digest is missing or invalid" in source
     assert "prospective-full-stack-forward-markout-summary.json" in source
+    assert 'payload.get("risk_rejected_rows")' in source
+    assert 'payload.get("risk_rejected_stack_evaluated")' in source
+    assert 'payload.get("risk_rejected_integrity_clean")' in source
 
 
 def test_risk_rejected_ledger_restores_append_only_evidence() -> None:
@@ -135,6 +138,7 @@ def test_risk_rejected_waiting_and_blocked_status_use_quoted_builders() -> None:
     assert "os.environ['SOURCE_RUN_ID']" in waiting
     assert "os.environ['SOURCE_RUN_ATTEMPT']" in waiting
     assert "os.environ['RESOLUTION_MODE']" in waiting
+    assert "os.environ['WAIT_REASON']" in waiting
     assert 'os.environ.get("ERROR_TEXT")' in blocked
 
 
@@ -146,3 +150,23 @@ def test_risk_rejected_source_skips_empty_successful_handoffs() -> None:
     assert "selected source has no authenticated compact artifact" in source
     assert "artifact_candidates" in source
     assert 'EVENT_NAME" != "workflow_dispatch"' in source
+
+
+def test_risk_rejected_legacy_compact_source_waits_instead_of_blocking() -> None:
+    source = _source()
+    compact = source.split(
+        "      - name: Download compact paper source",
+        1,
+    )[1].split(
+        "      - name: Publish waiting-for-source status",
+        1,
+    )[0]
+
+    assert 'print("current" if current else "legacy")' in compact
+    assert 'if [ "$format_check" != "current" ]; then' in compact
+    assert (
+        "compact source predates the risk-rejected row export"
+        in compact
+    )
+    assert 'echo "eligible=false"' in compact
+    assert "Fail closed on ledger drift" not in compact
