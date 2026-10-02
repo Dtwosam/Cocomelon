@@ -4067,3 +4067,22 @@ The recovery planner now evaluates the stale-book majority against the **complet
 This is data-plane liveness hardening only. It does not make stale books tradable and does not add live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Venue-minimum rejection attribution — 2026-10-02
+
+The paper capacity diagnostic now decomposes candidate-eligible `below_venue_min_notional` risk rejections instead of treating every sub-minimum order as one opaque failure.
+
+For each observed opportunity that passes the frozen combined entry screen but is rejected because its safe notional is below the venue minimum, the audit recomputes the exact frozen risk and market caps from the captured decision-time request. It reports which safety ceiling is already below the venue minimum:
+
+- target per-trade risk;
+- aggregate/correlation-bucket risk capacity;
+- gross-leverage capacity;
+- available-margin capacity;
+- visible-depth capacity.
+
+It also reports total safe-notional shortfall and the extra planned risk that forcing the venue minimum would require. A minimum-notional rejection is never converted into an approval and the diagnostic exposes zero safe round-ups by construction: if every frozen cap could support the venue minimum, the baseline risk engine would not have emitted `below_venue_min_notional`.
+
+This is attribution only. It does not raise order size, change risk-per-trade, loosen aggregate or bucket risk, widen leverage/margin/liquidity limits, alter candidate readiness, or add live-order authority.
+
+**LIVE TRADING: DISABLED.**
