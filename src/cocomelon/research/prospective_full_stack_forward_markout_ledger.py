@@ -38,7 +38,9 @@ from cocomelon.research.prospective_two_strike_stop_filter import (
 LEDGER_SCHEMA_VERSION: Final = 1
 LEDGER_KIND: Final = "prospective-full-stack-forward-markout-ledger-v1"
 STACK_ID: Final = "combined+two_strike+momentum"
-TERMINAL_STATUSES: Final = frozenset({"settled", "stale"})
+TERMINAL_STATUSES: Final = frozenset(
+    {"settled", "stale", "unsupported_horizon"}
+)
 PENDING_STATUSES: Final = frozenset({"pending", "missing_path"})
 ZERO: Final = Decimal("0")
 
@@ -177,7 +179,7 @@ def _canonical_markout(
     mark_px = raw.get("mark_px")
     directional_return = raw.get("directional_return")
 
-    if status in PENDING_STATUSES:
+    if status in PENDING_STATUSES or status == "unsupported_horizon":
         if any(
             value is not None
             for value in (
@@ -188,7 +190,7 @@ def _canonical_markout(
             )
         ):
             raise ProspectiveFullStackForwardMarkoutLedgerError(
-                "pending markout contains terminal evidence"
+                "non-observed markout contains terminal evidence"
             )
         return {
             "status": status,
@@ -325,6 +327,18 @@ def _canonical_row(
     if rank_ordinal <= 0 or rank_age_ms < 0:
         raise ProspectiveFullStackForwardMarkoutLedgerError(
             "rank evidence is invalid"
+        )
+    if raw.get("baseline_risk_approved") is not True:
+        raise ProspectiveFullStackForwardMarkoutLedgerError(
+            "full-stack row must be baseline-risk approved"
+        )
+    risk_reasons = raw.get("baseline_risk_reason_codes")
+    if (
+        not isinstance(risk_reasons, (list, tuple))
+        or len(risk_reasons) != 0
+    ):
+        raise ProspectiveFullStackForwardMarkoutLedgerError(
+            "risk-approved full-stack row must have no risk reasons"
         )
     combined_reason = _optional_string(
         raw.get("combined_block_reason"),
@@ -469,6 +483,8 @@ def _canonical_row(
         "lead_strategy": lead_strategy,
         "rank_ordinal": rank_ordinal,
         "rank_age_ms": rank_age_ms,
+        "baseline_risk_approved": True,
+        "baseline_risk_reason_codes": [],
         "combined_block_reason": combined_reason,
         "two_strike_prior_strikes": two_strike_prior_strikes,
         "momentum_decision": momentum_decision,
@@ -540,12 +556,13 @@ def _horizon_summary(
 ) -> dict[str, object]:
     key = str(horizon_ms)
     settled: list[tuple[str, str, str, Decimal]] = []
-    stale = 0
+    status_counts: Counter[str] = Counter()
     for row in rows:
         markouts = cast(dict[str, dict[str, object]], row["markouts"])
         markout = markouts[key]
-        if markout["status"] == "stale":
-            stale += 1
+        status = cast(str, markout["status"])
+        status_counts[status] += 1
+        if status != "settled":
             continue
         value = Decimal(cast(str, markout["directional_return"]))
         settled.append(
@@ -626,7 +643,11 @@ def _horizon_summary(
         "horizon_ms": horizon_ms,
         "terminal_opportunities": len(rows),
         "settled_opportunities": len(settled),
-        "stale_opportunities": stale,
+        "stale_opportunities": status_counts["stale"],
+        "unsupported_horizon_opportunities": (
+            status_counts["unsupported_horizon"]
+        ),
+        "status_counts": dict(sorted(status_counts.items())),
         "admit_settled": len(admits),
         "block_settled": len(blocks),
         "long_settled": long_count,
