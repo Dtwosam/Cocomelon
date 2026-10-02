@@ -4309,3 +4309,14 @@ Operational heartbeats now include a diagnostic snapshot for each redundant webs
 This is observability only. It does not change L2 freshness limits, websocket subscriptions, recovery thresholds, REST reseeding, strategy decisions, risk limits, sizing, execution behavior, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### L2 exchange-vs-receive skew telemetry — 2026-10-02
+
+Per-lane L2 supervisor telemetry on worker `37053031783` showed both redundant WebSocket lanes connected with near-zero server-message age and no reconnect churn, yet both lanes reported `ready=0`, `stale=0`, and all 20 required markets missing readiness. This isolates the repeated stale-book recovery churn away from basic socket connectivity.
+
+The operational heartbeat now records the latest L2 exchange-time minus receive-time relationship per required market and lane, including observed-market count, negative-age count, minimum/maximum exchange age, and the exact markets whose exchange timestamp is ahead of local receive time. This is diagnostic only: the existing freshness gate still rejects future-dated exchange timestamps, and no strategy, eligibility, risk, sizing, execution, promotion, or live-order rule changes.
+
+The next runtime handoff will use this telemetry to distinguish venue/runner clock skew from genuinely stale or malformed L2 timestamps before any freshness semantics are changed.
+
+**LIVE TRADING: DISABLED.**

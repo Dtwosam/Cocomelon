@@ -9336,7 +9336,8 @@ def _render_operational_live_status(
             "- L2 lane {lane}: connected={connected}, ready={ready}, "
             "stale={stale}, missing-ready={missing}, reconnects={reconnects}, "
             "server-age={server_age}ms, duplicates={duplicates}, "
-            "anomalies={anomalies}".format(
+            "anomalies={anomalies}, L2-age-observed={age_observed}, "
+            "negative-age={negative_age}, age-min/max={age_min}/{age_max}ms".format(
                 lane=raw_lane.get("lane", "?"),
                 connected=str(
                     bool(raw_lane.get("connected"))
@@ -9368,6 +9369,16 @@ def _render_operational_live_status(
                     "anomaly_count",
                     0,
                 ),
+                age_observed=raw_lane.get(
+                    "l2_exchange_age_observed_market_count",
+                    0,
+                ),
+                negative_age=raw_lane.get(
+                    "l2_exchange_age_negative_market_count",
+                    0,
+                ),
+                age_min=raw_lane.get("l2_exchange_age_min_ms"),
+                age_max=raw_lane.get("l2_exchange_age_max_ms"),
             )
         )
         if stale_markets:
@@ -9385,6 +9396,22 @@ def _render_operational_live_status(
                     lane=raw_lane.get("lane", "?"),
                     markets=", ".join(
                         str(value) for value in missing_ready
+                    ),
+                )
+            )
+        negative_age_markets = raw_lane.get(
+            "l2_negative_exchange_age_markets",
+            [],
+        )
+        if not isinstance(negative_age_markets, list):
+            negative_age_markets = []
+        if negative_age_markets:
+            l2_lane_lines.append(
+                "- L2 lane {lane} future-dated exchange markets: "
+                "{markets}".format(
+                    lane=raw_lane.get("lane", "?"),
+                    markets=", ".join(
+                        str(value) for value in negative_age_markets
                     ),
                 )
             )

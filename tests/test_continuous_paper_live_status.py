@@ -6008,6 +6008,18 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "missing_ready_l2_markets": [],
                     "stale_l2_market_count": 16,
                     "stale_l2_markets": ["AAVE", "ADA"],
+                    "l2_exchange_age_observed_market_count": 20,
+                    "l2_exchange_age_negative_market_count": 16,
+                    "l2_exchange_age_min_ms": -420,
+                    "l2_exchange_age_max_ms": 85,
+                    "l2_negative_exchange_age_markets": [
+                        "AAVE",
+                        "ADA",
+                    ],
+                    "l2_exchange_age_ms_by_market": {
+                        "AAVE": -420,
+                        "ADA": -210,
+                    },
                 },
                 {
                     "lane": 1,
@@ -6022,6 +6034,20 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "missing_ready_l2_markets": ["DOGE", "ENA"],
                     "stale_l2_market_count": 15,
                     "stale_l2_markets": ["AAVE", "ADA", "DOGE"],
+                    "l2_exchange_age_observed_market_count": 20,
+                    "l2_exchange_age_negative_market_count": 15,
+                    "l2_exchange_age_min_ms": -510,
+                    "l2_exchange_age_max_ms": 120,
+                    "l2_negative_exchange_age_markets": [
+                        "AAVE",
+                        "ADA",
+                        "DOGE",
+                    ],
+                    "l2_exchange_age_ms_by_market": {
+                        "AAVE": -510,
+                        "ADA": -300,
+                        "DOGE": -100,
+                    },
                 },
             ],
         },
@@ -6138,11 +6164,25 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     )
     assert "L2 lane 0 stale markets: AAVE, ADA" in rendered
     assert (
+        "L2-age-observed=20, negative-age=16, "
+        "age-min/max=-420/85ms"
+        in rendered
+    )
+    assert (
+        "L2 lane 0 future-dated exchange markets: AAVE, ADA"
+        in rendered
+    )
+    assert (
         "L2 lane 1: connected=false, ready=18, stale=15, "
         "missing-ready=2, reconnects=11, server-age=2000ms"
         in rendered
     )
     assert "L2 lane 1 missing-ready markets: DOGE, ENA" in rendered
+    assert (
+        "L2-age-observed=20, negative-age=15, "
+        "age-min/max=-510/120ms"
+        in rendered
+    )
     assert "research telemetry deferred: true" in rendered
     assert "Cadence opportunity learning" not in rendered
     assert "Fixed profit-lock counterfactual" not in rendered

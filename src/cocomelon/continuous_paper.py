@@ -1393,6 +1393,7 @@ class _SupervisorGroup:
     forward_gaps: asyncio.Event
     required_market_keys: frozenset[str]
     ready_market_keys: tuple[set[str], ...]
+    l2_exchange_age_ms_by_market: tuple[dict[str, int], ...] = ()
 
     def stale_l2_market_keys(
         self,
@@ -1457,6 +1458,14 @@ def _supervisor_group_health_payload(
         raise RuntimeError(
             "supervisor and L2 readiness lane counts differ"
         )
+    if (
+        group.l2_exchange_age_ms_by_market
+        and len(group.l2_exchange_age_ms_by_market)
+        != len(group.supervisors)
+    ):
+        raise RuntimeError(
+            "supervisor and L2 exchange-age lane counts differ"
+        )
     lanes: list[dict[str, object]] = []
     for lane, (supervisor, ready) in enumerate(
         zip(
@@ -1477,6 +1486,26 @@ def _supervisor_group_health_payload(
         )
         missing_ready = tuple(
             sorted(group.required_market_keys - ready)
+        )
+        exchange_age_by_market = (
+            group.l2_exchange_age_ms_by_market[lane]
+            if group.l2_exchange_age_ms_by_market
+            else {}
+        )
+        observed_exchange_ages = tuple(
+            exchange_age_by_market[market]
+            for market in sorted(exchange_age_by_market)
+            if market in group.required_market_keys
+        )
+        negative_exchange_age_markets = tuple(
+            sorted(
+                market
+                for market, age_ms in exchange_age_by_market.items()
+                if (
+                    market in group.required_market_keys
+                    and age_ms < 0
+                )
+            )
         )
         lanes.append(
             {
@@ -1507,6 +1536,37 @@ def _supervisor_group_health_payload(
                 ),
                 "stale_l2_market_count": len(stale_markets),
                 "stale_l2_markets": list(stale_markets),
+                "l2_exchange_age_observed_market_count": len(
+                    observed_exchange_ages
+                ),
+                "l2_exchange_age_negative_market_count": len(
+                    negative_exchange_age_markets
+                ),
+                "l2_exchange_age_min_ms": (
+                    None
+                    if not observed_exchange_ages
+                    else min(observed_exchange_ages)
+                ),
+                "l2_exchange_age_max_ms": (
+                    None
+                    if not observed_exchange_ages
+                    else max(observed_exchange_ages)
+                ),
+                "l2_negative_exchange_age_markets": list(
+                    negative_exchange_age_markets
+                ),
+                "l2_exchange_age_ms_by_market": dict(
+                    sorted(
+                        (
+                            market,
+                            age_ms,
+                        )
+                        for market, age_ms in (
+                            exchange_age_by_market.items()
+                        )
+                        if market in group.required_market_keys
+                    )
+                ),
             }
         )
     unhealthy = tuple(
@@ -8064,6 +8124,9 @@ async def run_continuous_paper_session(
             ready_market_keys: tuple[set[str], ...] = tuple(
                 set() for _ in range(2)
             )
+            l2_exchange_age_ms_by_market: tuple[
+                dict[str, int], ...
+            ] = tuple({} for _ in range(2))
 
             async def event_sink(event: StreamEvent) -> None:
                 await pump.process(_record_from_stream(event))
@@ -8083,8 +8146,20 @@ async def run_continuous_paper_session(
                     event: StreamEvent,
                     lane: int = lane,
                 ) -> None:
+                    market_key = event.market.canonical
                     if (
-                        event.market.canonical
+                        event.kind is StreamKind.L2_BOOK
+                        and market_key in required_market_keys
+                        and event.exchange_time_ms is not None
+                    ):
+                        received_at_ms = int(
+                            event.receive_time.timestamp() * 1000
+                        )
+                        l2_exchange_age_ms_by_market[lane][
+                            market_key
+                        ] = received_at_ms - event.exchange_time_ms
+                    if (
+                        market_key
                         in required_market_keys
                         and _l2_event_fresh_for_promotion(
                             event,
@@ -8094,7 +8169,7 @@ async def run_continuous_paper_session(
                         )
                     ):
                         ready_market_keys[lane].add(
-                            event.market.canonical
+                            market_key
                         )
                     await mux.on_event(lane, event)
 
@@ -8130,6 +8205,9 @@ async def run_continuous_paper_session(
                 forward_gaps=gap_gate,
                 required_market_keys=required_market_keys,
                 ready_market_keys=ready_market_keys,
+                l2_exchange_age_ms_by_market=(
+                    l2_exchange_age_ms_by_market
+                ),
             )
 
         supervisor_group = await start_supervisors(
