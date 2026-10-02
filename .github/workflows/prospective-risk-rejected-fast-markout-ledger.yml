@@ -360,7 +360,8 @@ jobs:
               "",
               "**Execution authority:** `false`",
               "**Promotion authority:** `false`",
-              "**Changes risk limits:** `false`\n              **Changes candidate readiness:** `false`",
+              "**Changes risk limits:** `false`",
+              "**Changes candidate readiness:** `false`",
               "**LIVE TRADING: DISABLED.**",
           ]
           Path("/tmp/risk-rejected-fast-status.md").write_text(
