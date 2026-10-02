@@ -4392,3 +4392,14 @@ Durable JSON files remain authoritative across process restarts: a new store reb
 This is a performance/data-plane reliability change only. It changes no strategy threshold, risk rule, sizing rule, execution semantics, readiness gate, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Race-safe event-loop stall phase attribution — 2026-10-02
+
+The first watchdog-enabled worker measured genuine event-loop freezes above 80 seconds, but the reported phase could be changed by a different task immediately after the loop resumed and before the watchdog itself was scheduled. Phase attribution is now captured at the moment each watchdog sleep is scheduled, so a delayed wake reports the phase that was active before the stall. The heartbeat also preserves the phase observed after resumption for comparison.
+
+The live control loop now labels context-path observation, exit-book capture, selected-context replay pumping, rank refresh, funding refresh, L2 recovery, selection refresh, heartbeat rendering, and checkpoint snapshot creation separately. This provides enough resolution to identify the synchronous section responsible for a future long stall.
+
+This is diagnostic-only. It changes no market-data threshold, strategy logic, risk rule, sizing, execution behavior, readiness gate, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
