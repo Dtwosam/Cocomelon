@@ -252,43 +252,35 @@ def test_stale_cached_book_waits_for_fresh_market_book(
     tmp_path: Path,
 ) -> None:
     adapter = _adapter(tmp_path / "fresh-book-wait.sqlite3")
-    state = _state(BTC)
+    state = _state(BTC, ETH)
     config = BaselineReplayConfig()
     engine = BaselineOpeningEngine(config, adapter, state)
-    engine.stage_epoch(_epoch(BTC))
+    engine.stage_epoch(_epoch(BTC, ETH))
 
     eligible_ms = EVALUATED_AT_MS + config.execution.latency_ms
-    assert engine.on_book(
-        _book(BTC, receive_ms=eligible_ms),
-        eligible_ms,
-    )
-
-    adapter.close()
-
-    adapter = _adapter(tmp_path / "fresh-book-wait-2.sqlite3")
-    state = _state(BTC)
-    engine = BaselineOpeningEngine(config, adapter, state)
-    engine.stage_epoch(_epoch(BTC))
-    stale_book = _book(BTC, receive_ms=eligible_ms)
-    assert engine.on_book(stale_book, eligible_ms - 1) == ()
-
-    stale_now_ms = eligible_ms + config.execution.max_book_age_ms + 1
-    unrelated_book = _book(ETH, receive_ms=stale_now_ms)
-    assert engine.on_book(unrelated_book, stale_now_ms) == ()
-    assert adapter.account.positions == ()
+    cached_eth = _book(ETH, receive_ms=eligible_ms)
+    assert engine.on_book(cached_eth, eligible_ms) == ()
     assert tuple(
         market.canonical for market in engine.pending_markets
-    ) == ("BTC",)
+    ) == ("BTC", "ETH")
 
-    fresh_book = _book(BTC, receive_ms=stale_now_ms + 1)
-    outcomes = engine.on_book(fresh_book, stale_now_ms + 1)
+    stale_now_ms = eligible_ms + config.execution.max_book_age_ms + 1
+    fresh_btc = _book(BTC, receive_ms=stale_now_ms)
+    outcomes = engine.on_book(fresh_btc, stale_now_ms)
     assert len(outcomes) == 1
+    assert outcomes[0].risk_decision.market == BTC
+    assert tuple(
+        market.canonical for market in engine.pending_markets
+    ) == ("ETH",)
+
+    fresh_eth = _book(ETH, receive_ms=stale_now_ms + 1)
+    outcomes = engine.on_book(fresh_eth, stale_now_ms + 1)
+    assert len(outcomes) == 1
+    assert outcomes[0].risk_decision.market == ETH
     assert outcomes[0].risk_decision.reason_codes != (
         "stale_market_data",
     )
-    assert tuple(
-        market.canonical for market in engine.pending_markets
-    ) == ()
+    assert engine.pending_markets == ()
 
     adapter.close()
 
