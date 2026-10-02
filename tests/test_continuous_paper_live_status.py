@@ -5986,6 +5986,45 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "shortlist_rotation_attempts": 5,
         "shortlist_rotation_promotions": 4,
         "shortlist_rotation_readiness_failures": 1,
+        "l2_supervisor_health": {
+            "required_market_count": 20,
+            "unhealthy_l2_market_count": 16,
+            "unhealthy_l2_markets": [
+                "AAVE",
+                "ADA",
+                "DOGE",
+            ],
+            "lanes": [
+                {
+                    "lane": 0,
+                    "connected": True,
+                    "reconnect_count": 7,
+                    "duplicate_count": 5,
+                    "anomaly_count": 1,
+                    "last_server_message_ms": 1_699_999_999_900,
+                    "last_server_message_age_ms": 100,
+                    "ready_l2_market_count": 20,
+                    "missing_ready_l2_market_count": 0,
+                    "missing_ready_l2_markets": [],
+                    "stale_l2_market_count": 16,
+                    "stale_l2_markets": ["AAVE", "ADA"],
+                },
+                {
+                    "lane": 1,
+                    "connected": False,
+                    "reconnect_count": 11,
+                    "duplicate_count": 9,
+                    "anomaly_count": 0,
+                    "last_server_message_ms": 1_699_999_998_000,
+                    "last_server_message_age_ms": 2_000,
+                    "ready_l2_market_count": 18,
+                    "missing_ready_l2_market_count": 2,
+                    "missing_ready_l2_markets": ["DOGE", "ENA"],
+                    "stale_l2_market_count": 15,
+                    "stale_l2_markets": ["AAVE", "ADA", "DOGE"],
+                },
+            ],
+        },
         "journal_observations": 12,
         "session_decision_epochs": 2,
         "last_decision_boundary_ms": 1_699_999_900_000,
@@ -6091,6 +6130,19 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     )
     assert "duplicate records dropped: 7" in rendered
     assert "shortlist rotations attempts / promoted / failed readiness: 5 / 4 / 1" in rendered
+    assert "L2 supervisor unhealthy markets: 16 / 20" in rendered
+    assert (
+        "L2 lane 0: connected=true, ready=20, stale=16, "
+        "missing-ready=0, reconnects=7, server-age=100ms"
+        in rendered
+    )
+    assert "L2 lane 0 stale markets: AAVE, ADA" in rendered
+    assert (
+        "L2 lane 1: connected=false, ready=18, stale=15, "
+        "missing-ready=2, reconnects=11, server-age=2000ms"
+        in rendered
+    )
+    assert "L2 lane 1 missing-ready markets: DOGE, ENA" in rendered
     assert "research telemetry deferred: true" in rendered
     assert "Cadence opportunity learning" not in rendered
     assert "Fixed profit-lock counterfactual" not in rendered
