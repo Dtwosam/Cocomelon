@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
-from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Final, cast
