@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -499,9 +500,13 @@ def test_full_stack_markout_reports_integrity_and_risk_exclusions(
         approved=False,
     )
 
+    risk_rejected = replace(
+        risk_rejected,
+        baseline_risk_reason_codes=("weekly_drawdown_lockout",),
+    )
     result = prospective_full_stack_forward_markout_summary(
         (risk_rejected,),
-        (),
+        (_path(risk_rejected, returns=("0.01", "0.02", "0.03")),),
         (),
         store,
         combined,
@@ -513,3 +518,91 @@ def test_full_stack_markout_reports_integrity_and_risk_exclusions(
     assert result["baseline_risk_rejected"] == 1
     assert result["stack_risk_approved_evaluated"] == 0
     assert result["integrity_clean"] is True
+    assert result["risk_rejected_stack_evaluated"] == 1
+    assert result["risk_rejected_stack_admitted"] == 1
+    assert result["risk_rejected_stack_blocked"] == 0
+    assert result["risk_rejected_reason_counts"] == {
+        "weekly_drawdown_lockout": 1
+    }
+    assert result["risk_rejected_integrity_clean"] is True
+    rejected_horizons = result["risk_rejected_horizons"]
+    assert isinstance(rejected_horizons, dict)
+    one_hour = rejected_horizons["3600000"]
+    assert isinstance(one_hour, dict)
+    admit = one_hour["admit"]
+    assert isinstance(admit, dict)
+    assert admit["settled"] == 1
+    assert admit["mean_directional_return"] == "0.03"
+    by_reason = one_hour["by_risk_reason"]
+    assert isinstance(by_reason, dict)
+    weekly = by_reason["weekly_drawdown_lockout"]
+    assert weekly["settled"] == 1
+    assert weekly["mean_directional_return"] == "0.03"
+    assert one_hour["changes_readiness_gate"] is False
+
+
+def test_risk_rejected_integrity_is_isolated_from_candidate_readiness(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    combined, two_strike, momentum = _states()
+    approved_feature = _record_feature(
+        store,
+        market="BTC",
+        timestamp_ms=START + 900,
+        return_1h="-0.03",
+        day_return="-0.05",
+    )
+    rejected_feature = _record_feature(
+        store,
+        market="ETH",
+        timestamp_ms=START + 1_900,
+        return_1h="-0.03",
+        day_return="-0.05",
+    )
+    approved = _opportunity(
+        suffix="approved-integrity",
+        market="BTC",
+        direction=Direction.SHORT,
+        timestamp_ms=START + 1_000,
+        feature_snapshot_id=approved_feature,
+    )
+    rejected = _opportunity(
+        suffix="rejected-integrity",
+        market="ETH",
+        direction=Direction.SHORT,
+        timestamp_ms=START + 2_000,
+        feature_snapshot_id=rejected_feature,
+        approved=False,
+    )
+    rejected = replace(
+        rejected,
+        rank_observed_at_ms=None,
+        rank_ordinal=None,
+        rank_score=None,
+        rank_pool_size=None,
+        rank_reason_codes=(),
+    )
+
+    result = prospective_full_stack_forward_markout_summary(
+        (approved, rejected),
+        (_path(approved, returns=("0.01", "0.02", "0.03")),),
+        (),
+        store,
+        combined,
+        two_strike,
+        momentum,
+    )
+
+    assert result["stack_risk_approved_evaluated"] == 1
+    assert result["integrity_clean"] is True
+    assert result["risk_rejected_stack_evaluated"] == 0
+    assert result["risk_rejected_missing_rank"] == 1
+    assert result["risk_rejected_integrity_clean"] is False
+    horizons = result["horizons"]
+    assert isinstance(horizons, dict)
+    one_hour = horizons["3600000"]
+    assert isinstance(one_hour, dict)
+    readiness = one_hour["review_readiness"]
+    assert isinstance(readiness, dict)
+    assert readiness["integrity_clean"] is True
