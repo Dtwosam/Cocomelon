@@ -4353,3 +4353,18 @@ The continuous paper heartbeat now records the maximum shared record-pump proces
 No data-freshness threshold, strategy rule, risk limit, sizing rule, execution behavior, readiness gate, promotion state, or live-order authority changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Non-blocking continuous-paper checkpoint writes — 2026-10-02
+
+Live telemetry on worker `37069124243` ruled out the shared record pump as the cause of repeated redundant-WebSocket stalls: the maximum record processing time remained below 10ms with zero lock wait, while both websocket lanes still stopped receiving server messages for roughly 85 seconds at the same time.
+
+The runtime was still performing its full checkpoint synchronously on the asyncio event loop every 30 seconds. The predecessor's durable state artifact is approximately 1.3GB, so JSON serialization and atomic file replacement can monopolize the event loop long enough to prevent both socket lanes, the 15-second server-silence watchdog, and the 30-second context refresher from running.
+
+Periodic runtime checkpoints now capture their state payloads on the event loop and hand JSON serialization / disk writes to a single background worker thread. Only one background checkpoint may be in flight; if the next cadence arrives while a write is still running, it is skipped rather than queued. The next checkpoint deadline is based on the current clock after scheduling, preventing catch-up checkpoint storms. Startup and final persistence remain synchronous because no live feed needs servicing at those boundaries.
+
+Operational telemetry now reports maximum snapshot-build time, maximum background-write time, background checkpoint starts, and overlapping checkpoint skips. This preserves atomic per-file writes and exact final persistence while keeping live market-data servicing responsive.
+
+No market-data freshness limit, strategy rule, risk limit, sizing rule, execution behavior, readiness gate, promotion state, or live-order authority changes.
+
+**LIVE TRADING: DISABLED.**
