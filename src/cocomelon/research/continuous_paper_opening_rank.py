@@ -14,6 +14,7 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 
 OPENING_RANK_SCHEMA_VERSION: Final = 1
+MAX_TRACKED_RANK_SNAPSHOTS: Final = 64
 ZERO: Final = Decimal("0")
 
 
@@ -284,6 +285,9 @@ class LatestCoarseRankTracker:
         self._observed_at_ms: int | None = None
         self._ranks: dict[str, OpportunityRank] = {}
         self._pool_size = 0
+        self._history: list[
+            tuple[int, dict[str, OpportunityRank], int]
+        ] = []
 
     def update(
         self,
@@ -299,12 +303,37 @@ class LatestCoarseRankTracker:
             raise ValueError("coarse rank snapshot contains duplicate markets")
         if any(rank.ordinal != index for index, rank in enumerate(resolved, 1)):
             raise ValueError("coarse rank snapshot ordinals must be contiguous")
-        self._observed_at_ms = observed_at_ms
-        self._ranks = {
+        rank_map = {
             rank.market.canonical: rank
             for rank in resolved
         }
-        self._pool_size = len(resolved)
+        self._history = [
+            snapshot
+            for snapshot in self._history
+            if snapshot[0] != observed_at_ms
+        ]
+        self._history.append(
+            (observed_at_ms, rank_map, len(resolved))
+        )
+        self._history.sort(key=lambda snapshot: snapshot[0])
+        if len(self._history) > MAX_TRACKED_RANK_SNAPSHOTS:
+            self._history = self._history[
+                -MAX_TRACKED_RANK_SNAPSHOTS:
+            ]
+        (
+            self._observed_at_ms,
+            self._ranks,
+            self._pool_size,
+        ) = self._history[-1]
+
+    def _snapshot_at(
+        self,
+        at_ms: int,
+    ) -> tuple[int, dict[str, OpportunityRank], int] | None:
+        for snapshot in reversed(self._history):
+            if snapshot[0] <= at_ms:
+                return snapshot
+        return None
 
     def snapshot_for_market(
         self,
@@ -314,13 +343,14 @@ class LatestCoarseRankTracker:
     ) -> tuple[int, OpportunityRank, int] | None:
         if at_ms < 0:
             raise ValueError("at_ms must be non-negative")
-        observed_at_ms = self._observed_at_ms
-        if observed_at_ms is None or observed_at_ms > at_ms:
+        snapshot = self._snapshot_at(at_ms)
+        if snapshot is None:
             return None
-        rank = self._ranks.get(market.canonical)
+        observed_at_ms, ranks, pool_size = snapshot
+        rank = ranks.get(market.canonical)
         if rank is None:
             return None
-        return observed_at_ms, rank, self._pool_size
+        return observed_at_ms, rank, pool_size
 
     def evidence_for_opening(
         self,
@@ -329,10 +359,11 @@ class LatestCoarseRankTracker:
         market: MarketId,
         opened_at_ms: int,
     ) -> ContinuousPaperOpeningRankEvidence | None:
-        observed_at_ms = self._observed_at_ms
-        if observed_at_ms is None or observed_at_ms > opened_at_ms:
+        snapshot = self._snapshot_at(opened_at_ms)
+        if snapshot is None:
             return None
-        rank = self._ranks.get(market.canonical)
+        observed_at_ms, ranks, pool_size = snapshot
+        rank = ranks.get(market.canonical)
         if rank is None:
             return None
         return ContinuousPaperOpeningRankEvidence(
@@ -343,7 +374,7 @@ class LatestCoarseRankTracker:
             rank_age_ms=opened_at_ms - observed_at_ms,
             ordinal=rank.ordinal,
             score=rank.score,
-            rank_pool_size=self._pool_size,
+            rank_pool_size=pool_size,
             reason_codes=tuple(rank.reason_codes),
         )
 
