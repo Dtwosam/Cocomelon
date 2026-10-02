@@ -453,11 +453,13 @@ def test_risk_rejected_ledger_accepts_pre_layer_summary() -> None:
     summary = legacy["summary"]
     assert isinstance(summary, dict)
     summary.pop("stack_block_layer_counts")
+    summary.pop("combined_block_reason_counts")
     horizons = summary["horizons"]
     assert isinstance(horizons, dict)
     for item in horizons.values():
         assert isinstance(item, dict)
         item.pop("by_block_layer")
+        item.pop("by_combined_block_reason")
 
     digest_payload = {
         key: value
