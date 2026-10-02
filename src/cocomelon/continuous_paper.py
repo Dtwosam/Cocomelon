@@ -7729,7 +7729,47 @@ async def run_continuous_paper_session(
                     "selected market missing from native registry: "
                     f"{market.canonical}"
                 )
-            await pump.process(_record_from_public(market_snapshot_record_event(snapshot)))
+            await pump.process(
+                _record_from_public(
+                    market_snapshot_record_event(snapshot)
+                )
+            )
+
+        async def refresh_startup_context() -> int:
+            nonlocal snapshots
+            (
+                snapshots,
+                received_at_ms,
+            ) = await _refresh_native_market_snapshots(reader)
+            opening_opportunity_sink.observe_snapshots(snapshots)
+            await capture_due_exit_books(
+                snapshots,
+                now_ms=received_at_ms,
+            )
+            rank_observed_at_ms = utc_now_ms()
+            _features, ranks = _startup_ranks(
+                snapshots,
+                as_of_ms=rank_observed_at_ms,
+            )
+            rank_tracker.update(
+                ranks,
+                observed_at_ms=rank_observed_at_ms,
+            )
+            for selected_market in selected:
+                snapshot = snapshots.get(
+                    selected_market.canonical
+                )
+                if snapshot is not None:
+                    await pump.process(
+                        _record_from_public(
+                            market_snapshot_record_event(
+                                snapshot
+                            )
+                        )
+                    )
+            return received_at_ms
+
+        startup_context_refreshed_at_ms = initial_received_at_ms
         for market in _iter_until_stop(selected, stop_path):
             for candle in await _warmup_market(
                 reader,
@@ -7742,6 +7782,19 @@ async def run_continuous_paper_session(
                 await pump.process(
                     _record_from_public(candle_record_event(candle))
                 )
+            if (
+                not _stop_requested(stop_path)
+                and utc_now_ms() - startup_context_refreshed_at_ms
+                >= config.context_poll_seconds * 1000
+            ):
+                startup_context_refreshed_at_ms = (
+                    await refresh_startup_context()
+                )
+
+        if not _stop_requested(stop_path):
+            startup_context_refreshed_at_ms = (
+                await refresh_startup_context()
+            )
 
         async def refresh_funding() -> None:
             now_ms = utc_now_ms()
