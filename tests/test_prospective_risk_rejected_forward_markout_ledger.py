@@ -202,8 +202,15 @@ def test_risk_rejected_ledger_appends_terminal_rows_and_summarizes_reason() -> N
     assert extended["previous_row_count"] == 1
     assert extended["new_row_count"] == 1
     assert extended["pending_opportunity_count"] == 0
-    one_hour = extended["summary"]["horizons"]["3600000"]
+    extended_summary = extended["summary"]
+    assert extended_summary["stack_block_layer_counts"] == {"momentum": 1}
+    one_hour = extended_summary["horizons"]["3600000"]
     assert one_hour["stack_block_mean_directional_return"] == "-0.03"
+    by_layer = one_hour["by_block_layer"]
+    assert by_layer["momentum"]["opportunities"] == 1
+    assert by_layer["momentum"]["settled"] == 1
+    assert by_layer["momentum"]["mean_directional_return"] == "-0.03"
+    assert by_layer["momentum"]["market_count"] == 1
     validate_risk_rejected_forward_markout_ledger(extended)
 
 
@@ -351,6 +358,47 @@ def test_risk_rejected_investigation_readiness_requires_clean_source() -> None:
     assert readiness["ready_reasons"] == []
     weekly = readiness["by_reason"]["weekly_drawdown_lockout"]
     assert weekly["ready_for_risk_budget_investigation"] is False
+
+
+def test_risk_rejected_ledger_accepts_pre_layer_summary() -> None:
+    row = _row(
+        "legacy-layer-l",
+        timestamp_ms=START + 1_000,
+        market="SOL",
+        decision="BLOCK",
+        reason="weekly_drawdown_lockout",
+        returns=("0.01", "0.02", "0.03"),
+    )
+    ledger = _update(_summary([row]))
+    legacy = deepcopy(ledger)
+    summary = legacy["summary"]
+    assert isinstance(summary, dict)
+    summary.pop("stack_block_layer_counts")
+    horizons = summary["horizons"]
+    assert isinstance(horizons, dict)
+    for item in horizons.values():
+        assert isinstance(item, dict)
+        item.pop("by_block_layer")
+
+    digest_payload = {
+        key: value
+        for key, value in legacy.items()
+        if key != "ledger_sha256"
+    }
+    legacy["ledger_sha256"] = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    validated = validate_risk_rejected_forward_markout_ledger(
+        legacy
+    )
+    assert validated["row_count"] == 1
 
 
 def test_risk_rejected_ledger_accepts_pre_readiness_summary() -> None:
