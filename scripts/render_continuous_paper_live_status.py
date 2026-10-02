@@ -9316,6 +9316,12 @@ def _render_operational_live_status(
     l2_health = payload.get("l2_supervisor_health", {})
     if not isinstance(l2_health, dict):
         l2_health = {}
+    recovery_trigger = payload.get(
+        "last_stale_l2_recovery_trigger",
+        {},
+    )
+    if not isinstance(recovery_trigger, dict):
+        recovery_trigger = {}
     raw_lanes = l2_health.get("lanes", [])
     if not isinstance(raw_lanes, list):
         raw_lanes = []
@@ -9415,6 +9421,54 @@ def _render_operational_live_status(
                     ),
                 )
             )
+
+    pre_recovery_lane_lines: list[str] = []
+    pre_recovery_health = recovery_trigger.get(
+        "pre_recovery_supervisor_health",
+        {},
+    )
+    if isinstance(pre_recovery_health, dict):
+        pre_lanes = pre_recovery_health.get("lanes", [])
+        if isinstance(pre_lanes, list):
+            for raw_lane in pre_lanes:
+                if not isinstance(raw_lane, dict):
+                    continue
+                pre_recovery_lane_lines.append(
+                    "- pre-recovery L2 lane {lane}: connected={connected}, "
+                    "ready={ready}, stale={stale}, missing-ready={missing}, "
+                    "reconnects={reconnects}, server-age={server_age}ms, "
+                    "age-min/max={age_min}/{age_max}ms".format(
+                        lane=raw_lane.get("lane", "?"),
+                        connected=str(
+                            bool(raw_lane.get("connected"))
+                        ).lower(),
+                        ready=raw_lane.get(
+                            "ready_l2_market_count",
+                            0,
+                        ),
+                        stale=raw_lane.get(
+                            "stale_l2_market_count",
+                            0,
+                        ),
+                        missing=raw_lane.get(
+                            "missing_ready_l2_market_count",
+                            0,
+                        ),
+                        reconnects=raw_lane.get(
+                            "reconnect_count",
+                            0,
+                        ),
+                        server_age=raw_lane.get(
+                            "last_server_message_age_ms"
+                        ),
+                        age_min=raw_lane.get(
+                            "l2_exchange_age_min_ms"
+                        ),
+                        age_max=raw_lane.get(
+                            "l2_exchange_age_max_ms"
+                        ),
+                    )
+                )
 
     lines = [
         "## Continuous paper runtime live status",
@@ -9689,6 +9743,17 @@ def _render_operational_live_status(
                 f"{payload.get('stale_l2_pipeline_recovery_triggers', 0)} / "
                 f"{payload.get('stale_l2_pipeline_reason_fallback_triggers', 0)}"
             ),
+            (
+                "- last stale-L2 recovery trigger supervisor / pipeline / "
+                "supervisor-unhealthy / pipeline-stale / boundary / fallback: "
+                f"{str(bool(recovery_trigger.get('supervisor_triggered'))).lower()} / "
+                f"{str(bool(recovery_trigger.get('pipeline_triggered'))).lower()} / "
+                f"{recovery_trigger.get('supervisor_unhealthy_market_count', 0)} / "
+                f"{recovery_trigger.get('pipeline_stale_market_count', 0)} / "
+                f"{recovery_trigger.get('pipeline_recovery_boundary_ms')} / "
+                f"{str(bool(recovery_trigger.get('pipeline_reason_fallback'))).lower()}"
+            ),
+            *pre_recovery_lane_lines,
             (
                 "- L2 supervisor unhealthy markets: "
                 f"{l2_health.get('unhealthy_l2_market_count', 0)} / "
