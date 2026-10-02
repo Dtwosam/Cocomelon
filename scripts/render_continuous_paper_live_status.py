@@ -5201,6 +5201,24 @@ def _prospective_capacity_reflow_opportunity_lines(
                 f"`{raw.get('single_position_release_options', 0)}`"
             ),
             (
+                "- candidate-eligible venue-minimum rejections / safe round-up: "
+                f"`{raw.get('candidate_eligible_min_notional_rejections', 0)} / "
+                f"{raw.get('min_notional_safe_round_up', 0)}`"
+            ),
+            (
+                "- venue-minimum notional shortfall / forced-risk overage: "
+                f"`{raw.get('min_notional_notional_shortfall_sum', '0')} / "
+                f"{raw.get('min_notional_forced_risk_overage_sum', '0')}`"
+            ),
+            (
+                "- venue-minimum limiting factors: "
+                f"`{counts(raw.get('by_min_notional_limiting_factor'))}`"
+            ),
+            (
+                "- venue-minimum markets: "
+                f"`{counts(raw.get('by_min_notional_market'))}`"
+            ),
+            (
                 "- baseline rejection reasons: "
                 f"`{counts(raw.get('by_baseline_rejection_reason'))}`"
             ),
@@ -5226,8 +5244,10 @@ def _prospective_capacity_reflow_opportunity_lines(
                 "_This uses only opportunities actually observed at decision time. "
                 "The release test asks whether removing one existing position would "
                 "restore aggregate/bucket risk capacity for a candidate-eligible "
-                "rejection. It does not yet claim that the released position would "
-                "have been filtered, that the replacement would fill, or that its "
+                "rejection. Venue-minimum attribution separately shows which frozen "
+                "safety cap made an otherwise wanted order too small; it never rounds "
+                "exposure upward. This does not yet claim that the released position "
+                "would have been filtered, that a replacement would fill, or that its "
                 "PnL would be positive._"
             ),
         ]
