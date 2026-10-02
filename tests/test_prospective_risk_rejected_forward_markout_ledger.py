@@ -4,6 +4,9 @@ from copy import deepcopy
 
 import pytest
 
+from cocomelon.research.prospective_momentum_band_forward_markout import (
+    MAX_MARK_LAG_MS,
+)
 from cocomelon.research.prospective_risk_rejected_forward_markout_ledger import (
     ProspectiveRiskRejectedForwardMarkoutLedgerError,
     update_risk_rejected_forward_markout_ledger,
@@ -30,7 +33,7 @@ def _markout(
             "mark_px": None,
             "directional_return": None,
         }
-    lag = 0 if status == "settled" else 61_000
+    lag = 0 if status == "settled" else MAX_MARK_LAG_MS + 1
     return {
         "status": status,
         "target_at_ms": target,
@@ -115,7 +118,7 @@ def _summary(rows: list[dict[str, object]]) -> dict[str, object]:
         "two_strike_started_at_ms": START - 1_000,
         "momentum_started_at_ms": START,
         "forward_horizons_ms": [300_000, 900_000, 3_600_000],
-        "max_mark_lag_ms": 60_000,
+        "max_mark_lag_ms": MAX_MARK_LAG_MS,
         "risk_rejected_stack_evaluated": len(rows),
         "risk_rejected_integrity_clean": True,
         "risk_rejected_rows": rows,
