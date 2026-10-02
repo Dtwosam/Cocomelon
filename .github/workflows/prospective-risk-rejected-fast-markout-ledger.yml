@@ -475,6 +475,12 @@ jobs:
               ).read_text(encoding="utf-8")
           )
           summary = ledger["summary"]
+          investigation = summary.get(
+              "risk_budget_investigation_readiness",
+              {},
+          )
+          if not isinstance(investigation, dict):
+              investigation = {}
 
           def stamp(value):
               return datetime.fromtimestamp(
@@ -498,6 +504,29 @@ jobs:
               f"- risk reason counts: `{summary['risk_reason_counts']}`",
               f"- rows SHA-256: `{ledger['rows_sha256']}`",
               f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
+              "",
+              "### Risk-budget investigation gate",
+              "",
+              (
+                  "- scope: `"
+                  f"{investigation.get('decision_scope', 'unknown')}`"
+              ),
+              (
+                  "- ready reasons: `"
+                  f"{investigation.get('ready_reasons', [])}`"
+              ),
+              (
+                  "- minimum settled / markets / LONG / SHORT per horizon: "
+                  f"`{investigation.get('min_stack_admit_settled_per_horizon', 0)} / "
+                  f"{investigation.get('min_markets_per_horizon', 0)} / "
+                  f"{investigation.get('min_long_settled_per_horizon', 0)} / "
+                  f"{investigation.get('min_short_settled_per_horizon', 0)}`"
+              ),
+              (
+                  "- changes risk limits / execution authority: "
+                  f"`{investigation.get('changes_risk_limits', False)} / "
+                  f"{investigation.get('execution_authority', False)}`"
+              ),
               "",
               "### Fixed forward horizons",
               "",
@@ -552,6 +581,59 @@ jobs:
                           ],
                       )
                   )
+          reason_readiness = investigation.get("by_reason", {})
+          if not isinstance(reason_readiness, dict):
+              reason_readiness = {}
+          if reason_readiness:
+              lines.extend(
+                  [
+                      "",
+                      "### Investigation readiness by risk reason",
+                      "",
+                  ]
+              )
+              for reason, values in sorted(reason_readiness.items()):
+                  if not isinstance(values, dict):
+                      continue
+                  lines.append(
+                      "- {reason}: ready={ready}".format(
+                          reason=reason,
+                          ready=values.get(
+                              "ready_for_risk_budget_investigation",
+                              False,
+                          ),
+                      )
+                  )
+                  horizons = values.get("horizons", {})
+                  if not isinstance(horizons, dict):
+                      continue
+                  for horizon_ms in ledger["forward_horizons_ms"]:
+                      item = horizons.get(str(horizon_ms), {})
+                      if not isinstance(item, dict):
+                          continue
+                      lines.append(
+                          "  - {minutes}m: settled={settled}, markets={markets}, "
+                          "LONG={long}, SHORT={short}, mean={mean}, "
+                          "LOO-opp={loo_opp}, LOO-market={loo_market}, "
+                          "ready={ready}".format(
+                              minutes=horizon_ms // 60000,
+                              settled=item.get("stack_admit_settled", 0),
+                              markets=item.get("market_count", 0),
+                              long=item.get("long_settled", 0),
+                              short=item.get("short_settled", 0),
+                              mean=item.get("mean_directional_return"),
+                              loo_opp=item.get(
+                                  "leave_one_opportunity_min_mean"
+                              ),
+                              loo_market=item.get(
+                                  "leave_one_market_min_mean"
+                              ),
+                              ready=item.get(
+                                  "ready_for_investigation",
+                                  False,
+                              ),
+                          )
+                      )
           lines.extend(
               [
                   "",
