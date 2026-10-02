@@ -9737,6 +9737,17 @@ def _render_operational_live_status(
                 f"{payload.get('checkpoint_background_skips', 0)}"
             ),
             (
+                "- event-loop phase / max lag / slow>=1s / samples: "
+                f"{payload.get('event_loop_phase', 'unknown')} / "
+                f"{payload.get('event_loop_max_lag_ms', 0)}ms / "
+                f"{payload.get('event_loop_slow_wakeup_count', 0)} / "
+                f"{payload.get('event_loop_lag_samples', 0)}"
+            ),
+            (
+                "- last slow event-loop wakeup: "
+                f"{payload.get('event_loop_last_slow_wakeup')}"
+            ),
+            (
                 "- shortlist rotations attempts / promoted / failed readiness: "
                 f"{payload.get('shortlist_rotation_attempts', 0)} / "
                 f"{payload.get('shortlist_rotation_promotions', 0)} / "
