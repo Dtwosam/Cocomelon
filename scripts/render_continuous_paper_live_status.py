@@ -9341,6 +9341,7 @@ def _render_operational_live_status(
         l2_lane_lines.append(
             "- L2 lane {lane}: connected={connected}, ready={ready}, "
             "stale={stale}, missing-ready={missing}, reconnects={reconnects}, "
+            "l2-targeted-resubscribes={l2_targeted_resubscribes}, "
             "l2-stale-reconnects={l2_stale_reconnects}, "
             "server-age={server_age}ms, duplicates={duplicates}, "
             "anomalies={anomalies}, L2-age-observed={age_observed}, "
@@ -9363,6 +9364,10 @@ def _render_operational_live_status(
                 ),
                 reconnects=raw_lane.get(
                     "reconnect_count",
+                    0,
+                ),
+                l2_targeted_resubscribes=raw_lane.get(
+                    "systemic_l2_targeted_resubscribe_count",
                     0,
                 ),
                 l2_stale_reconnects=raw_lane.get(
@@ -9442,6 +9447,7 @@ def _render_operational_live_status(
                     "- pre-recovery L2 lane {lane}: connected={connected}, "
                     "ready={ready}, stale={stale}, missing-ready={missing}, "
                     "reconnects={reconnects}, "
+                    "l2-targeted-resubscribes={l2_targeted_resubscribes}, "
                     "l2-stale-reconnects={l2_stale_reconnects}, "
                     "server-age={server_age}ms, "
                     "age-min/max={age_min}/{age_max}ms".format(
@@ -9463,6 +9469,10 @@ def _render_operational_live_status(
                         ),
                         reconnects=raw_lane.get(
                             "reconnect_count",
+                            0,
+                        ),
+                        l2_targeted_resubscribes=raw_lane.get(
+                            "systemic_l2_targeted_resubscribe_count",
                             0,
                         ),
                         l2_stale_reconnects=raw_lane.get(
