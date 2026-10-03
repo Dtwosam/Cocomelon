@@ -67,3 +67,13 @@ def test_conjunctive_dossier_wakes_from_both_component_workflows() -> None:
     assert '"Prospective Risk-Rejected Stop-Path Ledger"' in source
     assert "types:" in source
     assert "- completed" in source
+
+
+def test_conjunctive_dossier_surfaces_post_integrity_scope() -> None:
+    source = _source()
+
+    assert "effective integrity clean" in source
+    assert "integrity scope" in source
+    assert "post-integrity source aligned / start" in source
+    assert "same post-integrity-miss boundary" in source
+    assert "pass both independent gates from scratch" in source
