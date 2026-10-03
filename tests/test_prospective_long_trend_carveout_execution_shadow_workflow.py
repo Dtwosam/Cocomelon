@@ -69,6 +69,17 @@ def test_long_trend_execution_shadow_legacy_source_waits() -> None:
     assert 'if [ "$format_check" != "current" ]; then' in compact
     assert 'echo "eligible=false"' in compact
     assert "incompatible execution-shadow format" in compact
+    assert "legacy_v1" in compact
+    assert "config_v2" in compact
+    assert "execution_config_sha256" in compact
+    assert (
+        "prospective-long-trend-carveout-execution-shadow-source-v1"
+        in compact
+    )
+    assert (
+        "prospective-long-trend-carveout-execution-shadow-source-v2"
+        in compact
+    )
 
 
 def test_long_trend_execution_shadow_wait_status_preserves_metadata() -> None:
@@ -89,6 +100,60 @@ def test_long_trend_execution_shadow_wait_status_preserves_metadata() -> None:
     assert "<<EOF" not in waiting
 
 
+def test_long_trend_execution_shadow_requires_durable_gate() -> None:
+    source = _source()
+
+    assert (
+        '      - "Prospective LONG+Trend Carveout Fast-Markout Ledger"'
+        in source
+    )
+    assert "EVENT_WORKFLOW_NAME" in source
+    assert "latest_successful_after_gate_ledger_wake" in source
+
+    gate = source.split(
+        "      - name: Resolve durable execution-shadow gate",
+        1,
+    )[1].split(
+        "      - name: Publish waiting-for-gate status",
+        1,
+    )[0]
+    assert (
+        "prospective-long-trend-carveout-fast-markout-ledger.yml/runs"
+        in gate
+    )
+    assert (
+        "prospective-long-trend-carveout-fast-markout-ledger.json"
+        in gate
+    )
+    assert 'run.get("head_branch") == "main"' in gate
+    assert (
+        '(run.get("head_repository") or {}).get("full_name")'
+        in gate
+    )
+    assert "durable gate artifact digest mismatch" in gate
+    assert "durable gate ledger digest mismatch" in gate
+    assert "durable gate candidate lineage mismatch" in gate
+    assert (
+        "all_horizons_ready_for_execution_shadow_investigation"
+        in gate
+    )
+
+    evaluate = source.split(
+        "      - name: Evaluate captured execution shadow",
+        1,
+    )[1].split(
+        "      - name: Publish execution-shadow status",
+        1,
+    )[0]
+    assert "steps.gate.outputs.ready == 'true'" in evaluate
+    assert "waiting for durable execution-shadow gate" in source
+    assert (
+        "No counterfactual fill or PnL evidence is credited until "
+        "the durable fast-markout investigation gate passes."
+        in source
+    )
+
+
 def test_long_trend_execution_shadow_reuses_frozen_execution_path() -> None:
     source = _source()
 
@@ -99,6 +164,8 @@ def test_long_trend_execution_shadow_reuses_frozen_execution_path() -> None:
     assert "Fee-adjusted forward markouts" in source
     assert "visible-book IOC" in source
     assert "Other risk vetoes remain active" in source
+    assert "execution config source" in source
+    assert "execution config digest" in source
 
 
 def test_long_trend_execution_shadow_uploads_deterministic_summary() -> None:
@@ -111,3 +178,8 @@ def test_long_trend_execution_shadow_uploads_deterministic_summary() -> None:
         in source
     )
     assert "retention-days: 90" in source
+    upload = source.split(
+        "      - uses: actions/upload-artifact@v7",
+        1,
+    )[1]
+    assert "steps.gate.outputs.ready == 'true'" in upload

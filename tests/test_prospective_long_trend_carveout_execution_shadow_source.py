@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
     ProspectiveLongTrendExecutionShadowSourceError,
     prospective_long_trend_execution_shadow_source,
@@ -98,8 +99,13 @@ def test_source_exports_only_reopened_weekly_long_trend() -> None:
         _summary(),
         (_Evidence("op-1"),),  # type: ignore[arg-type]
         (_Path("op-1"),),  # type: ignore[arg-type]
+        PaperExecutionConfig(),
     )
 
+    assert payload["schema_version"] == 2
+    assert payload["kind"].endswith("-v2")
+    assert payload["execution_config"]["config_version"] == "phase7-v1"
+    assert isinstance(payload["execution_config_sha256"], str)
     assert payload["source_opportunity_count"] == 1
     assert payload["missing_opportunity_evidence"] == 0
     assert payload["missing_forward_paths"] == 0
@@ -118,6 +124,7 @@ def test_source_skips_non_pure_long_trend_blocks() -> None:
         _summary(reason="long_trend_and_rank_above_10"),
         (_Evidence("op-1"),),  # type: ignore[arg-type]
         (_Path("op-1"),),  # type: ignore[arg-type]
+        PaperExecutionConfig(),
     )
 
     assert payload["source_opportunity_count"] == 0
@@ -133,6 +140,7 @@ def test_source_rejects_non_weekly_lineage() -> None:
         summary,
         (_Evidence("op-1"),),  # type: ignore[arg-type]
         (_Path("op-1"),),  # type: ignore[arg-type]
+        PaperExecutionConfig(),
     )
 
     assert payload["source_opportunity_count"] == 0
@@ -152,6 +160,7 @@ def test_source_fails_closed_on_opportunity_lineage_drift() -> None:
                 ),
             ),  # type: ignore[arg-type]
             (),  # type: ignore[arg-type]
+            PaperExecutionConfig(),
         )
 
 
@@ -164,4 +173,5 @@ def test_source_fails_closed_when_reopened_opportunity_is_missing() -> None:
             _summary(),
             (),  # type: ignore[arg-type]
             (),  # type: ignore[arg-type]
+            PaperExecutionConfig(),
         )

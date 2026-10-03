@@ -9036,6 +9036,7 @@ async def run_continuous_paper_session(
                     full_stack_forward_markout,
                     opening_opportunity_store.iter_records(),
                     opening_opportunity_path_store.iter_paths(),
+                    replay_config.execution,
                 )
             )
         except Exception as exc:

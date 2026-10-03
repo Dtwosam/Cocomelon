@@ -22,11 +22,13 @@ from cocomelon.research.prospective_full_stack_forward_markout import (
     LONG_TREND_CARVEOUT_CANDIDATE_ID,
 )
 from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
-    SCHEMA_VERSION as SOURCE_SCHEMA_VERSION,
-)
-from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
+    LEGACY_SOURCE_KIND,
     SOURCE_KIND,
     WEEKLY_DRAWDOWN_REASON,
+    execution_config_payload,
+)
+from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
+    SCHEMA_VERSION as SOURCE_SCHEMA_VERSION,
 )
 from cocomelon.risk.engine import evaluate_risk
 
@@ -59,19 +61,130 @@ def _sha256(value: object) -> str:
     ).hexdigest()
 
 
-def _validate_source(raw: object) -> tuple[dict[str, object], ...]:
+def _execution_config_from_payload(
+    raw: object,
+) -> PaperExecutionConfig:
+    if not isinstance(raw, dict):
+        raise ProspectiveLongTrendExecutionShadowError(
+            "captured execution config must be an object"
+        )
+
+    def required_int(key: str) -> int:
+        value = raw.get(key)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ProspectiveLongTrendExecutionShadowError(
+                f"captured execution config {key} is invalid"
+            )
+        return value
+
+    def required_string(key: str) -> str:
+        value = raw.get(key)
+        if not isinstance(value, str) or not value:
+            raise ProspectiveLongTrendExecutionShadowError(
+                f"captured execution config {key} is invalid"
+            )
+        return value
+
+    raw_max_position_age_ms = raw.get("max_position_age_ms")
+    max_position_age_ms: int | None
+    if raw_max_position_age_ms is None:
+        max_position_age_ms = None
+    elif (
+        isinstance(raw_max_position_age_ms, bool)
+        or not isinstance(raw_max_position_age_ms, int)
+    ):
+        raise ProspectiveLongTrendExecutionShadowError(
+            "captured execution config max_position_age_ms is invalid"
+        )
+    else:
+        max_position_age_ms = raw_max_position_age_ms
+    try:
+        return PaperExecutionConfig(
+            config_version=required_string("config_version"),
+            latency_ms=required_int("latency_ms"),
+            max_book_age_ms=required_int("max_book_age_ms"),
+            max_asset_ctx_age_ms=required_int(
+                "max_asset_ctx_age_ms"
+            ),
+            max_position_age_ms=max_position_age_ms,
+            funding_reconciliation_grace_ms=required_int(
+                "funding_reconciliation_grace_ms"
+            ),
+            max_ioc_slippage_bps=Decimal(
+                required_string("max_ioc_slippage_bps")
+            ),
+            taker_fee_rate=Decimal(
+                required_string("taker_fee_rate")
+            ),
+            fee_schedule_id=required_string("fee_schedule_id"),
+            native_perp_min_notional=Decimal(
+                required_string("native_perp_min_notional")
+            ),
+            paper_max_gross_leverage=Decimal(
+                required_string("paper_max_gross_leverage")
+            ),
+        )
+    except (ValueError, ArithmeticError) as exc:
+        raise ProspectiveLongTrendExecutionShadowError(
+            "captured execution config is invalid"
+        ) from exc
+
+
+def _validate_source(
+    raw: object,
+    *,
+    legacy_config: PaperExecutionConfig | None,
+) -> tuple[
+    tuple[dict[str, object], ...],
+    PaperExecutionConfig,
+    str,
+    int,
+]:
     if not isinstance(raw, dict):
         raise ProspectiveLongTrendExecutionShadowError(
             "execution-shadow source must be an object"
         )
-    if raw.get("schema_version") != SOURCE_SCHEMA_VERSION:
+    schema_version = raw.get("schema_version")
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+    ):
         raise ProspectiveLongTrendExecutionShadowError(
             "execution-shadow source schema is unsupported"
         )
-    if raw.get("kind") != SOURCE_KIND:
+    if schema_version == SOURCE_SCHEMA_VERSION:
+        if raw.get("kind") != SOURCE_KIND:
+            raise ProspectiveLongTrendExecutionShadowError(
+                "execution-shadow source kind is unsupported"
+            )
+        config_payload = raw.get("execution_config")
+        config_sha256 = raw.get("execution_config_sha256")
+        if (
+            not isinstance(config_sha256, str)
+            or len(config_sha256) != 64
+            or _sha256(config_payload) != config_sha256
+        ):
+            raise ProspectiveLongTrendExecutionShadowError(
+                "captured execution config digest mismatch"
+            )
+        config = _execution_config_from_payload(config_payload)
+        config_source = "captured_source_v2"
+    elif schema_version == 1:
+        if raw.get("kind") != LEGACY_SOURCE_KIND:
+            raise ProspectiveLongTrendExecutionShadowError(
+                "execution-shadow source kind is unsupported"
+            )
+        if legacy_config is None:
+            raise ProspectiveLongTrendExecutionShadowError(
+                "legacy execution-shadow source requires fallback config"
+            )
+        config = legacy_config
+        config_source = "legacy_evaluator_fallback_v1"
+    else:
         raise ProspectiveLongTrendExecutionShadowError(
-            "execution-shadow source kind is unsupported"
+            "execution-shadow source schema is unsupported"
         )
+
     if raw.get("candidate_id") != LONG_TREND_CARVEOUT_CANDIDATE_ID:
         raise ProspectiveLongTrendExecutionShadowError(
             "execution-shadow candidate drift"
@@ -140,8 +253,7 @@ def _validate_source(raw: object) -> tuple[dict[str, object], ...]:
             )
         seen.add(opportunity_id)
         rows.append(item)
-    return tuple(rows)
-
+    return tuple(rows), config, config_source, schema_version
 
 def _execution_config_compatible(
     evidence: ContinuousPaperOpeningOpportunityEvidence,
@@ -409,9 +521,14 @@ def _horizon_summary(
 
 def prospective_long_trend_execution_shadow_summary(
     source: object,
-    config: PaperExecutionConfig,
+    config: PaperExecutionConfig | None = None,
 ) -> dict[str, object]:
-    rows = _validate_source(source)
+    rows, active_config, config_source, source_schema_version = (
+        _validate_source(
+            source,
+            legacy_config=config,
+        )
+    )
     results: list[dict[str, object]] = []
     risk_rejections: Counter[str] = Counter()
     planning_rejections: Counter[str] = Counter()
@@ -457,7 +574,7 @@ def prospective_long_trend_execution_shadow_summary(
                     "execution-shadow forward path is invalid"
                 ) from exc
 
-        _execution_config_compatible(evidence, config)
+        _execution_config_compatible(evidence, active_config)
         adjusted_request = _neutralize_weekly_drawdown(evidence)
         risk = evaluate_risk(adjusted_request)
 
@@ -492,7 +609,7 @@ def prospective_long_trend_execution_shadow_summary(
         plan = plan_opening_order(
             risk,
             evidence.instrument_object,
-            config,
+            active_config,
             adjusted_request.entry_reference_price,
             adjusted_request.strategy_decision.timestamp_ms,
         )
@@ -507,7 +624,7 @@ def prospective_long_trend_execution_shadow_summary(
             plan,
             evidence.book_event,
             evidence.instrument_object,
-            config,
+            active_config,
             attempt_timestamp_ms=adjusted_request.timestamp_ms,
         )
         attempt = simulation.attempt
@@ -564,6 +681,14 @@ def prospective_long_trend_execution_shadow_summary(
         "changes_candidate_readiness": False,
         "candidate_id": LONG_TREND_CARVEOUT_CANDIDATE_ID,
         "baseline_risk_reason": WEEKLY_DRAWDOWN_REASON,
+        "source_schema_version": source_schema_version,
+        "execution_config_source": config_source,
+        "execution_config": execution_config_payload(
+            active_config
+        ),
+        "execution_config_sha256": _sha256(
+            execution_config_payload(active_config)
+        ),
         "execution_model": (
             "captured_request_plus_decision_time_visible_book_ioc"
         ),
