@@ -675,11 +675,11 @@ def prospective_weekly_drawdown_5m_exit_summary(
             ),
             ZERO,
         )
-        exact = gross - entry_fee - exit_attempt.fee + funding_cash
+        exact_pnl = gross - entry_fee - exit_attempt.fee + funding_cash
         result["funding_cash_pnl"] = str(funding_cash)
-        result["exact_realized_pnl"] = str(exact)
+        result["exact_realized_pnl"] = str(exact_pnl)
         result["exact_realized_return_fraction"] = str(
-            exact / (entry_price * quantity)
+            exact_pnl / (entry_price * quantity)
         )
         results.append(result)
 
@@ -693,13 +693,19 @@ def prospective_weekly_drawdown_5m_exit_summary(
             ),
         )
     )
-    exact = tuple(
+    exact_pnls = tuple(
         Decimal(cast(str, item["exact_realized_pnl"]))
         for item in result_tuple
         if item["exact_realized_pnl"] is not None
     )
-    gross_profit = sum((value for value in exact if value > ZERO), ZERO)
-    gross_loss_abs = -sum((value for value in exact if value < ZERO), ZERO)
+    gross_profit = sum(
+        (value for value in exact_pnls if value > ZERO),
+        ZERO,
+    )
+    gross_loss_abs = -sum(
+        (value for value in exact_pnls if value < ZERO),
+        ZERO,
+    )
     config_payload = execution_config_payload(config)
 
     return {
@@ -753,10 +759,10 @@ def prospective_weekly_drawdown_5m_exit_summary(
             item["complete_close"] is True
             for item in result_tuple
         ),
-        "exact_realized_pnl_options": len(exact),
-        "wins": sum(value > ZERO for value in exact),
-        "losses": sum(value < ZERO for value in exact),
-        "breakeven": sum(value == ZERO for value in exact),
+        "exact_realized_pnl_options": len(exact_pnls),
+        "wins": sum(value > ZERO for value in exact_pnls),
+        "losses": sum(value < ZERO for value in exact_pnls),
+        "breakeven": sum(value == ZERO for value in exact_pnls),
         "gross_profit": str(gross_profit),
         "gross_loss_abs": str(gross_loss_abs),
         "profit_factor": (
@@ -764,11 +770,13 @@ def prospective_weekly_drawdown_5m_exit_summary(
             if gross_loss_abs == ZERO
             else str(gross_profit / gross_loss_abs)
         ),
-        "total_exact_realized_pnl": str(sum(exact, ZERO)),
+        "total_exact_realized_pnl": str(sum(exact_pnls, ZERO)),
         "mean_exact_realized_pnl": (
             None
-            if not exact
-            else str(sum(exact, ZERO) / Decimal(len(exact)))
+            if not exact_pnls
+            else str(
+                sum(exact_pnls, ZERO) / Decimal(len(exact_pnls))
+            )
         ),
         "option_results": list(result_tuple),
     }
