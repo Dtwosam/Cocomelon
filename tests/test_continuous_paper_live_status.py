@@ -6043,6 +6043,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "connected": True,
                     "reconnect_count": 7,
                     "systemic_l2_stale_reconnect_count": 6,
+                    "systemic_l2_targeted_resubscribe_count": 12,
                     "duplicate_count": 5,
                     "anomaly_count": 1,
                     "last_server_message_ms": 1_699_999_999_900,
@@ -6070,6 +6071,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "connected": False,
                     "reconnect_count": 11,
                     "systemic_l2_stale_reconnect_count": 8,
+                    "systemic_l2_targeted_resubscribe_count": 15,
                     "duplicate_count": 9,
                     "anomaly_count": 0,
                     "last_server_message_ms": 1_699_999_998_000,
@@ -6338,6 +6340,8 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "age-min/max=590/690ms"
         in rendered
     )
+    assert "l2-targeted-resubscribes=12" in rendered
+    assert "l2-targeted-resubscribes=15" in rendered
     assert "research telemetry deferred: true" in rendered
     assert "Cadence opportunity learning" not in rendered
     assert "Fixed profit-lock counterfactual" not in rendered
