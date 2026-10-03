@@ -1602,6 +1602,7 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
                 connected=connected,
                 last_server_message_ms=last_server_message_ms,
                 reconnect_count=reconnect_count,
+                systemic_l2_stale_reconnect_count=0,
                 duplicate_count=2,
                 anomaly_count=1,
             )
