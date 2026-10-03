@@ -656,7 +656,7 @@ def _canonical_row(
         for horizon_ms in FORWARD_HORIZONS_MS
     }
 
-    return {
+    row = {
         "opportunity_id": _required_string(raw, "opportunity_id"),
         "timestamp_ms": timestamp_ms,
         "market": _required_string(raw, "market"),
@@ -694,6 +694,15 @@ def _canonical_row(
         ),
         "markouts": markouts,
     }
+    raw_stop_path = raw.get("long_trend_carveout_stop_path")
+    if raw_stop_path is None and "stop_path" in raw:
+        raw_stop_path = raw.get("stop_path")
+    if raw_stop_path is not None:
+        row["stop_path"] = _canonical_stop_path(
+            raw_stop_path,
+            timestamp_ms=timestamp_ms,
+        )
+    return row
 
 
 def _row_identity(row: dict[str, object]) -> tuple[int, str]:
