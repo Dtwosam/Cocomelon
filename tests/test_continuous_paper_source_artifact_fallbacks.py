@@ -17,6 +17,20 @@ CADENCE_SOURCE_WORKFLOWS = (
 )
 
 
+CADENCE_LEDGER_WORKFLOWS = (
+    (
+        ".github/workflows/prospective-cadence-prediction-ledger.yml",
+        "latest_success_with_prospective_artifact",
+        "cadence-microstructure-prospective-",
+    ),
+    (
+        ".github/workflows/prospective-cadence-comparison-ledger.yml",
+        "latest_success_with_comparison_artifact",
+        "cadence-model-comparison-",
+    ),
+)
+
+
 def _source(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
@@ -74,6 +88,20 @@ def test_cadence_producers_require_compact_artifacts_at_resolution() -> None:
         assert "latest_success_with_cadence_artifacts" in resolver
 
 
+def test_cadence_ledgers_skip_artifactless_producer_runs() -> None:
+    for path, fallback, prefix in CADENCE_LEDGER_WORKFLOWS:
+        source = _source(path)
+        resolver = source.split(
+            "      - name: Resolve source ",
+            1,
+        )[1].split("\n      - name:", 1)[0]
+
+        assert "source_has_artifact()" in resolver
+        assert prefix in resolver
+        assert fallback in resolver
+        assert "Manual source run is missing its required artifact." in resolver
+
+
 def test_side_conditioned_timing_requires_artifact_at_resolution() -> None:
     source = _source(
         ".github/workflows/prospective-side-conditioned-timing.yml"
@@ -86,6 +114,10 @@ def test_side_conditioned_timing_requires_artifact_at_resolution() -> None:
     assert "timing_artifact_for_run()" in resolver
     assert "continuous-paper-side-conditioned-timing-" in resolver
     assert "latest_success_with_timing_artifact" in resolver
+    assert (
+        "No successful continuous-paper run has the compact timing artifact."
+        in resolver
+    )
 
 
 def test_long_trend_gate_artifact_parser_avoids_shell_quote_collision() -> None:
