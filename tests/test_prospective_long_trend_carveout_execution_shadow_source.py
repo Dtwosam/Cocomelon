@@ -153,3 +153,15 @@ def test_source_fails_closed_on_opportunity_lineage_drift() -> None:
             ),  # type: ignore[arg-type]
             (),  # type: ignore[arg-type]
         )
+
+
+def test_source_fails_closed_when_reopened_opportunity_is_missing() -> None:
+    with pytest.raises(
+        ProspectiveLongTrendExecutionShadowSourceError,
+        match="opportunity evidence is missing",
+    ):
+        prospective_long_trend_execution_shadow_source(
+            _summary(),
+            (),  # type: ignore[arg-type]
+            (),  # type: ignore[arg-type]
+        )
