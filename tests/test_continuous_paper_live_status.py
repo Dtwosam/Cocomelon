@@ -6022,6 +6022,13 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "shortlist_rotation_attempts": 5,
         "shortlist_rotation_promotions": 4,
         "shortlist_rotation_readiness_failures": 1,
+        "context_refresh_attempts": 12,
+        "context_refresh_successes": 10,
+        "context_refresh_failures": 2,
+        "context_refresh_consecutive_failures": 1,
+        "context_refresh_last_error": (
+            "InfoHttpError: Hyperliquid info HTTP 502: Bad Gateway"
+        ),
         "l2_supervisor_health": {
             "required_market_count": 20,
             "unhealthy_l2_market_count": 16,
@@ -6268,6 +6275,16 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert "'rank_refresh': 91234" in rendered
     assert "last slow event-loop wakeup:" in rendered
     assert "shortlist rotations attempts / promoted / failed readiness: 5 / 4 / 1" in rendered
+    assert (
+        "context refresh attempts / success / failures / consecutive: "
+        "12 / 10 / 2 / 1"
+        in rendered
+    )
+    assert (
+        "last context refresh error: InfoHttpError: "
+        "Hyperliquid info HTTP 502: Bad Gateway"
+        in rendered
+    )
     assert "L2 supervisor unhealthy markets: 16 / 20" in rendered
     assert (
         "L2 lane 0: connected=true, ready=20, stale=16, "

@@ -226,8 +226,13 @@ jobs:
           status = run.get("status")
           if status not in {"in_progress", "completed"}:
               raise SystemExit("predecessor run status is not resumable")
-          if status == "completed" and run.get("conclusion") != "success":
-              raise SystemExit("completed predecessor run must be successful")
+          if (
+              status == "completed"
+              and run.get("conclusion") not in {"success", "failure"}
+          ):
+              raise SystemExit(
+                  "completed predecessor run must be success or failure"
+              )
           head_sha = run.get("head_sha")
           if not isinstance(head_sha, str) or len(head_sha) != 40:
               raise SystemExit("predecessor head sha is invalid")
@@ -356,7 +361,7 @@ jobs:
               if (
                   run.get("path") == ".github/workflows/continuous-paper.yml"
                   and run.get("status") == "completed"
-                  and run.get("conclusion") == "success"
+                  and run.get("conclusion") in {"success", "failure"}
                   and run.get("head_branch") == "main"
                   and (run.get("head_repository") or {}).get("full_name")
                   == os.environ["GITHUB_REPOSITORY"]
@@ -523,7 +528,7 @@ jobs:
 
       - name: Queue exact successor from fast resume
         id: fast_resume_dispatch
-        if: ${{ success() && steps.guard.outputs.skip != 'true' && steps.fast_resume_upload.outcome == 'success' }}
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.fast_resume_upload.outcome == 'success' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -992,6 +997,7 @@ jobs:
           test -s continuous-paper-state.tar
 
       - name: Upload durable continuous paper state
+        id: durable_state_upload
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
         timeout-minutes: 20
         uses: actions/upload-artifact@v7
@@ -1136,7 +1142,7 @@ jobs:
           PY
 
       - name: Queue fallback exact successor continuous paper worker
-        if: ${{ success() && steps.guard.outputs.skip != 'true' && steps.fast_resume_dispatch.outcome != 'success' }}
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.fast_resume_dispatch.outcome != 'success' && steps.durable_state_upload.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
