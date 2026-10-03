@@ -4575,3 +4575,18 @@ The websocket supervisor now yields to the asyncio scheduler after every receive
 No market-data threshold, strategy rule, risk budget, sizing rule, stop, readiness gate, promotion state, or live-order authority changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Buffered L2 drain before stale reconnect — 2026-10-03
+
+After the websocket scheduler-fairness fix (#815), startup event-loop lag fell from 5.3 seconds to single-digit milliseconds, but the successor still showed occasional 2.4-second scheduler lag and repeated systemic L2 reconnects. Lane telemetry showed both redundant lanes receiving fresh books with sub-second exchange lag, then being declared stale after the event loop woke past the existing 15-second freshness deadline.
+
+The supervisor previously handled an already-overdue freshness deadline by evaluating stale/disconnect logic before attempting another socket receive. If fresh websocket frames were already buffered locally during scheduler delay, the supervisor could therefore disconnect both lanes without consuming the fresh data that would have cleared the stale condition.
+
+At an overdue freshness deadline, the supervisor now gives an already-buffered receive task one scheduler turn to complete before evaluating stale/disconnect logic. If a message is immediately available it is processed normally, and its exchange timestamp remains subject to the unchanged freshness rules. If no message is buffered, the existing stale-gap, server-silence, heartbeat, and systemic-reconnect behavior runs unchanged.
+
+Lane health telemetry now also publishes the cumulative count of stale-deadline buffered-message drains so production behavior is directly observable.
+
+This changes no L2 age ceiling, strategy rule, risk budget, sizing rule, stop, execution semantics, readiness gate, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
