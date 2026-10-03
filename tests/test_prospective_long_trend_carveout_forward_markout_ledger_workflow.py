@@ -130,6 +130,22 @@ def test_long_trend_carveout_gate_cannot_authorize_trading() -> None:
     assert ">=10 reopened pure LONG+trend opportunities" in source
 
 
+def test_long_trend_carveout_status_surfaces_post_integrity_gate() -> None:
+    source = _source()
+
+    assert "post-integrity boundary known" in source
+    assert "post-integrity last miss / start" in source
+    assert "post-integrity terminal opportunities" in source
+    assert "post-integrity all horizons ready" in source
+    assert "effective integrity scope" in source
+    assert (
+        "effective all horizons ready for execution-shadow investigation"
+        in source
+    )
+    assert "candidate-specific post-integrity suffix" in source
+    assert "satisfy every threshold from scratch" in source
+
+
 def test_long_trend_carveout_status_surfaces_exit_timing() -> None:
     source = _source()
 
