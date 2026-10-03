@@ -4550,3 +4550,16 @@ The outer supervisor-group health check now escalates only when the same markets
 No freshness ceiling, eligibility threshold, strategy rule, risk limit, sizing rule, stop, promotion state, or live-order authority is relaxed.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Target stale L2 subscriptions before socket reconnect — 2026-10-03
+
+Worker `37121973406` on `d7729ea` confirmed that reconnect freshness grace materially reduced the prior full-group recovery loop: the first live decision recovered to 14 deep-ready markets and full-group REST/replacement recovery fell from dozens of cycles to one. Both redundant lanes still experienced one systemic L2-silent episode, however.
+
+The websocket supervisor now uses a bounded recovery ladder for systemic L2 staleness while other server traffic remains active. It first sends official unsubscribe/subscribe messages only for the stale `l2Book` subscriptions, resets freshness only for those streams, clears only their lane-local dedup state, and waits for real fresh L2 snapshots. A targeted recovery streak is cleared only when every targeted L2 stream actually supplies new L2 evidence.
+
+If the targeted path fails repeatedly, the existing full socket reconnect remains the fallback. Continuous-paper outer REST reseed and redundant-group replacement also remain unchanged as a further fail-closed fallback. Lane telemetry now reports targeted L2 resubscribe counts separately from full websocket reconnects.
+
+This reduces recovery blast radius and websocket message churn without widening the 15-second book freshness ceiling, manufacturing readiness, or changing strategy, risk, sizing, stops, promotion, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
