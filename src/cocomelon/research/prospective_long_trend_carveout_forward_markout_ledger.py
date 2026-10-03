@@ -244,6 +244,172 @@ def _canonical_markout(
     }
 
 
+def _canonical_stop_path(
+    raw: object,
+    *,
+    timestamp_ms: int,
+) -> dict[str, object]:
+    if not isinstance(raw, dict):
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout stop path must be an object"
+        )
+    if raw.get("claim_scope") != "observed_mark_stop_crossing_only":
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout stop path claim scope drift"
+        )
+    stop = _optional_decimal_string(
+        raw.get("original_stop_price"),
+        field="original_stop_price",
+    )
+    entry = _optional_decimal_string(
+        raw.get("entry_reference_price"),
+        field="entry_reference_price",
+    )
+    if entry is None or Decimal(entry) <= ZERO:
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout stop path entry reference must be positive"
+        )
+    if stop is not None and Decimal(stop) <= ZERO:
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout stop path stop must be positive"
+        )
+    if (
+        raw.get("changes_execution") is not False
+        or raw.get("changes_risk_limits") is not False
+        or raw.get("changes_candidate_readiness") is not False
+    ):
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout stop path authority drift"
+        )
+
+    raw_horizons = raw.get("horizons")
+    if not isinstance(raw_horizons, dict):
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout stop path horizons must be an object"
+        )
+    expected = {str(value) for value in FORWARD_HORIZONS_MS}
+    if set(raw_horizons) != expected:
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout stop path horizon drift"
+        )
+    unresolved = {
+        "missing_stop",
+        "missing_path",
+        "unsupported_horizon",
+        "markout_pending",
+        "markout_stale",
+        "markout_missing_path",
+        "markout_unsupported_horizon",
+        "no_causal_marks",
+    }
+    horizons: dict[str, dict[str, object]] = {}
+    for horizon_ms in FORWARD_HORIZONS_MS:
+        key = str(horizon_ms)
+        item = raw_horizons[key]
+        if not isinstance(item, dict):
+            raise ProspectiveLongTrendCarveoutLedgerError(
+                "carveout stop path horizon must be an object"
+            )
+        status = _required_string(item, "status")
+        target = _required_int(item, "target_at_ms")
+        if target != timestamp_ms + horizon_ms:
+            raise ProspectiveLongTrendCarveoutLedgerError(
+                "carveout stop path target drift"
+            )
+        count = _required_int(item, "observed_mark_count")
+        if count < 0:
+            raise ProspectiveLongTrendCarveoutLedgerError(
+                "carveout stop path mark count is invalid"
+            )
+        crossed = item.get("stop_crossed")
+        survived = item.get("survived_observed_marks_to_horizon")
+        first_at = item.get("first_stop_cross_at_ms")
+        first_px = item.get("first_stop_cross_mark_px")
+        time_to_stop = item.get("time_to_stop_ms")
+
+        if status == "observed_stop_crossing":
+            if crossed is not True or survived is not False or count <= 0:
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "carveout stop crossing flags are invalid"
+                )
+            if (
+                isinstance(first_at, bool)
+                or not isinstance(first_at, int)
+                or first_at <= timestamp_ms
+                or first_at > target
+            ):
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "carveout stop crossing timestamp is invalid"
+                )
+            parsed_px = _optional_decimal_string(
+                first_px,
+                field="first_stop_cross_mark_px",
+            )
+            if parsed_px is None or Decimal(parsed_px) <= ZERO:
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "carveout stop crossing mark is invalid"
+                )
+            if (
+                isinstance(time_to_stop, bool)
+                or not isinstance(time_to_stop, int)
+                or time_to_stop != first_at - timestamp_ms
+            ):
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "carveout stop crossing duration is invalid"
+                )
+        elif status == "observed_path_survivor":
+            if crossed is not False or survived is not True or count <= 0:
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "carveout stop survivor flags are invalid"
+                )
+            if any(
+                value is not None
+                for value in (first_at, first_px, time_to_stop)
+            ):
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "carveout stop survivor contains crossing evidence"
+                )
+            parsed_px = None
+        elif status in unresolved:
+            if crossed is not None or survived is not None:
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "unresolved carveout stop path has resolved flags"
+                )
+            if any(
+                value is not None
+                for value in (first_at, first_px, time_to_stop)
+            ):
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "unresolved carveout stop path has crossing evidence"
+                )
+            parsed_px = None
+        else:
+            raise ProspectiveLongTrendCarveoutLedgerError(
+                f"unsupported carveout stop path status: {status}"
+            )
+
+        horizons[key] = {
+            "status": status,
+            "target_at_ms": target,
+            "observed_mark_count": count,
+            "stop_crossed": crossed,
+            "first_stop_cross_at_ms": first_at,
+            "first_stop_cross_mark_px": parsed_px,
+            "time_to_stop_ms": time_to_stop,
+            "survived_observed_marks_to_horizon": survived,
+        }
+
+    return {
+        "claim_scope": "observed_mark_stop_crossing_only",
+        "original_stop_price": stop,
+        "entry_reference_price": entry,
+        "horizons": horizons,
+        "changes_execution": False,
+        "changes_risk_limits": False,
+        "changes_candidate_readiness": False,
+    }
+
+
 def _validate_transition(
     *,
     combined_reason: str | None,
