@@ -1,0 +1,613 @@
+name: Prospective Risk-Rejected Stop-Path Ledger
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-risk-rejected-stop-path-ledger.yml"
+  workflow_run:
+    workflows:
+      - "Continuous Mainnet Paper Trader"
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed Continuous Mainnet Paper Trader run ID
+        required: true
+        type: string
+      source_run_attempt:
+        description: Exact source run attempt
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: prospective-risk-rejected-stop-path-ledger
+  cancel-in-progress: false
+
+jobs:
+  ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LEDGER_ISSUE: "805"
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e .
+
+      - name: Resolve exact source paper run
+        id: source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
+          EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt || '' }}
+          INPUT_RUN_ID: ${{ inputs.source_run_id || '' }}
+          INPUT_RUN_ATTEMPT: ${{ inputs.source_run_attempt || '' }}
+        run: |
+          set -euo pipefail
+          echo "source_eligible=true" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "workflow_run" ] && [ "$EVENT_CONCLUSION" = "success" ]; then
+            run_id="$EVENT_RUN_ID"
+            run_attempt="$EVENT_RUN_ATTEMPT"
+            resolution_mode="successful_event"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_id="$INPUT_RUN_ID"
+            run_attempt="$INPUT_RUN_ATTEMPT"
+            resolution_mode="manual_exact"
+          else
+            runs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=50"
+            )"
+            read -r run_id run_attempt <<< "$(
+              printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in payload.get("workflow_runs", []):
+              if (
+                  run.get("path") == ".github/workflows/continuous-paper.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and (run.get("head_repository") or {}).get("full_name") == repo
+                  and isinstance(run.get("id"), int)
+                  and isinstance(run.get("run_attempt"), int)
+              ):
+                  print(run["id"], run["run_attempt"])
+                  break
+          '
+            )"
+            if [ "$EVENT_NAME" = "workflow_run" ]; then
+              resolution_mode="latest_successful_after_non_success_wake"
+            else
+              resolution_mode="latest_successful_push"
+            fi
+          fi
+          if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
+            echo "source paper run identity is invalid" >&2
+            exit 1
+          fi
+
+          artifact_for_run() {
+            local candidate_run_id="$1"
+            local candidate_attempt="$2"
+            local expected_name="continuous-paper-learning-source-$candidate_run_id-$candidate_attempt"
+            local artifacts_json
+            artifacts_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/artifacts?per_page=100"
+            )"
+            printf '%s' "$artifacts_json" |
+            ARTIFACT_NAME="$expected_name" python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          name = os.environ["ARTIFACT_NAME"]
+          matches = [
+              item for item in payload.get("artifacts", [])
+              if item.get("name") == name and item.get("expired") is False
+          ]
+          if not matches:
+              raise SystemExit(0)
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected at most one non-expired source artifact named {name}"
+              )
+          item = matches[0]
+          digest = item.get("digest")
+          if not isinstance(digest, str) or not digest.startswith("sha256:"):
+              raise SystemExit("source artifact digest is missing or invalid")
+          print(item["id"], item["name"], digest, sep="\t")
+          '
+          }
+
+          artifact_line="$(artifact_for_run "$run_id" "$run_attempt")"
+          if [ -z "$artifact_line" ] && [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            runs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=50"
+            )"
+            mapfile -t artifact_candidates < <(
+              printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in payload.get("workflow_runs", []):
+              if (
+                  run.get("path") == ".github/workflows/continuous-paper.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and (run.get("head_repository") or {}).get("full_name") == repo
+                  and isinstance(run.get("id"), int)
+                  and isinstance(run.get("run_attempt"), int)
+              ):
+                  print(run["id"], run["run_attempt"], sep="\t")
+          '
+            )
+            for candidate in "${artifact_candidates[@]}"; do
+              IFS=$'\t' read -r candidate_run_id candidate_attempt <<<"$candidate"
+              if [ "$candidate_run_id" = "$run_id" ] && [ "$candidate_attempt" = "$run_attempt" ]; then
+                continue
+              fi
+              candidate_artifact_line="$(
+                artifact_for_run "$candidate_run_id" "$candidate_attempt"
+              )"
+              if [ -n "$candidate_artifact_line" ]; then
+                run_id="$candidate_run_id"
+                run_attempt="$candidate_attempt"
+                artifact_line="$candidate_artifact_line"
+                resolution_mode="latest_successful_with_compact_artifact"
+                break
+              fi
+            done
+          fi
+          if [ -z "$artifact_line" ]; then
+            echo "selected source has no authenticated compact artifact" >&2
+            exit 1
+          fi
+
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+          head_sha="$(
+            printf '%s' "$run_json" |
+            SOURCE_ATTEMPT="$run_attempt" python -c '
+          import json, os, sys
+          run = json.load(sys.stdin)
+          if run.get("path") != ".github/workflows/continuous-paper.yml":
+              raise SystemExit("source workflow path mismatch")
+          if run.get("head_branch") != "main":
+              raise SystemExit("source run must be from main")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("source run must be completed successfully")
+          if str(run.get("run_attempt")) != os.environ["SOURCE_ATTEMPT"]:
+              raise SystemExit("source run attempt mismatch")
+          if (run.get("head_repository") or {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("source repository mismatch")
+          sha = run.get("head_sha")
+          if not isinstance(sha, str) or len(sha) != 40:
+              raise SystemExit("source head sha is invalid")
+          print(sha)
+          '
+          )"
+          IFS=$'\t' read -r artifact_id artifact_name artifact_digest <<<"$artifact_line"
+
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$artifact_digest" >> "$GITHUB_OUTPUT"
+          echo "resolution_mode=$resolution_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Download compact paper source
+        id: compact
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.source.outputs.artifact_id }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/risk-rejected-stop-path-source
+          mkdir -p /tmp/risk-rejected-stop-path-source
+          gh api             "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/risk-rejected-stop-path-source.zip
+          unzip -q /tmp/risk-rejected-stop-path-source.zip -d /tmp/risk-rejected-stop-path-source
+
+          summary_path="$(
+            find /tmp/risk-rejected-stop-path-source               -type f               -name prospective-full-stack-forward-markout-summary.json               -print -quit
+          )"
+          if [ -z "$summary_path" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "reason=compact source predates full-stack forward-markout export" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          test -s "$summary_path"
+          format_check="$(
+            SUMMARY_PATH="$summary_path" python -c '
+          import json, os
+          from pathlib import Path
+          candidate_id = "prospective-top10-two-strike-momentum-no-long-trend-v1"
+          payload = json.loads(Path(os.environ["SUMMARY_PATH"]).read_text(encoding="utf-8"))
+          candidate = payload.get("risk_rejected_long_trend_carveout") if isinstance(payload, dict) else None
+          rows = payload.get("risk_rejected_rows") if isinstance(payload, dict) else None
+          stop_overlay = (
+              candidate.get("stop_path_overlay")
+              if isinstance(candidate, dict)
+              else None
+          )
+          current = (
+              isinstance(candidate, dict)
+              and candidate.get("candidate_id") == candidate_id
+              and candidate.get("research_only") is True
+              and candidate.get("execution_authority") is False
+              and candidate.get("promotion_authority") is False
+              and candidate.get("changes_readiness_gate") is False
+              and candidate.get("changes_closed_trade_readiness_gate") is False
+              and isinstance(stop_overlay, dict)
+              and stop_overlay.get("enabled") is True
+              and stop_overlay.get("claim_scope") == "observed_mark_stop_crossing_only"
+              and stop_overlay.get("changes_execution") is False
+              and stop_overlay.get("changes_risk_limits") is False
+              and stop_overlay.get("changes_candidate_readiness") is False
+              and isinstance(rows, list)
+              and all(
+                  isinstance(row, dict)
+                  and row.get("long_trend_carveout_candidate_id") == candidate_id
+                  and isinstance(
+                      row.get("long_trend_carveout_stop_path"),
+                      dict,
+                  )
+                  for row in rows
+              )
+          )
+          print("current" if current else "legacy")
+          '
+          )"
+          if [ "$format_check" != "current" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "reason=compact source predates observed stop-path lineage" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+          echo "reason=current observed stop-path source format" >> "$GITHUB_OUTPUT"
+          echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
+
+      - name: Publish waiting-for-source status
+        if: ${{ steps.compact.outputs.eligible != 'true' }}
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          WAIT_REASON: ${{ steps.compact.outputs.reason }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          lines = [
+              "## Risk-rejected observed stop-path ledger",
+              "",
+              "**Status:** waiting for new-format compact source",
+              "",
+              (
+                  "- source paper run / attempt: "
+                  f"`{os.environ['SOURCE_RUN_ID']} / "
+                  f"{os.environ['SOURCE_RUN_ATTEMPT']}`"
+              ),
+              (
+                  "- source resolution: "
+                  f"`{os.environ['RESOLUTION_MODE']}`"
+              ),
+              f"- reason: {os.environ.get('WAIT_REASON') or 'compact source is not yet eligible'}",
+              "",
+              "No risk-rejected stop-path row is credited from this run.",
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**Changes candidate readiness:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/risk-rejected-stop-path-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/risk-rejected-stop-path-status.md)"
+
+      - name: Restore previous fast-markout ledger
+        if: ${{ steps.compact.outputs.eligible == 'true' }}
+        id: previous
+        shell: bash
+        env:
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          previous_path=""
+          previous_workflow_run_id=""
+          runs_json="$(
+            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-risk-rejected-stop-path-ledger.yml/runs?status=success&per_page=100"
+          )"
+          mapfile -t prior_runs < <(
+            jq -r               --arg current "$CURRENT_RUN_ID"               '.workflow_runs
+               | map(select((.id | tostring) != $current))
+               | sort_by(.updated_at)
+               | reverse
+               | .[].id'               <<<"$runs_json"
+          )
+          for run_id in "${prior_runs[@]}"; do
+            artifacts_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+            )"
+            artifact_line="$(
+              jq -r '
+                .artifacts
+                | map(
+                    select(
+                      (.expired | not)
+                      and (
+                        .name
+                        | startswith("prospective-risk-rejected-stop-path-ledger-")
+                      )
+                    )
+                  )
+                | if length > 0
+                  then [.[0].id, .[0].name] | @tsv
+                  else ""
+                  end
+              ' <<<"$artifacts_json"
+            )"
+            if [ -z "$artifact_line" ]; then
+              continue
+            fi
+            IFS=$'\t' read -r artifact_id artifact_name <<<"$artifact_line"
+            rm -rf /tmp/previous-long-trend-carveout-ledger
+            mkdir -p /tmp/previous-long-trend-carveout-ledger
+            gh api               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > /tmp/previous-long-trend-carveout-ledger.zip
+            unzip -q               /tmp/previous-long-trend-carveout-ledger.zip               -d /tmp/previous-long-trend-carveout-ledger
+            candidate="$(
+              find /tmp/previous-long-trend-carveout-ledger                 -type f                 -name prospective-risk-rejected-stop-path-ledger.json                 -print -quit
+            )"
+            if [ -n "$candidate" ] && [ -s "$candidate" ]; then
+              previous_path="$candidate"
+              previous_workflow_run_id="$run_id"
+              break
+            fi
+          done
+          echo "previous_path=$previous_path" >> "$GITHUB_OUTPUT"
+          echo "previous_workflow_run_id=$previous_workflow_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Extend append-only fast-markout ledger
+        if: ${{ steps.compact.outputs.eligible == 'true' }}
+        id: ledger
+        continue-on-error: true
+        shell: bash
+        env:
+          SUMMARY_PATH: ${{ steps.compact.outputs.summary_path }}
+          PREVIOUS_LEDGER_PATH: ${{ steps.previous.outputs.previous_path }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          SOURCE_ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
+          SOURCE_ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
+        run: |
+          set +e
+          args=(
+            "$SUMMARY_PATH"
+            --source-paper-run-id "$SOURCE_RUN_ID"
+            --source-paper-run-attempt "$SOURCE_RUN_ATTEMPT"
+            --source-artifact-name "$SOURCE_ARTIFACT_NAME"
+            --source-artifact-digest "$SOURCE_ARTIFACT_DIGEST"
+            --json-out prospective-risk-rejected-stop-path-ledger.json
+          )
+          if [ -n "$PREVIOUS_LEDGER_PATH" ]; then
+            args+=(--previous "$PREVIOUS_LEDGER_PATH")
+          fi
+          python scripts/update_prospective_risk_rejected_stop_path_ledger.py             "${args[@]}"             > /tmp/risk-rejected-stop-path-ledger.stdout.json             2> /tmp/risk-rejected-stop-path-ledger.error
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            test -s prospective-risk-rejected-stop-path-ledger.json
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "error<<EOF"
+              cat /tmp/risk-rejected-stop-path-ledger.error
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish blocked ledger status
+        if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean != 'true' }}
+        shell: bash
+        env:
+          ERROR_TEXT: ${{ steps.ledger.outputs.error }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          error = os.environ.get("ERROR_TEXT") or "unknown error"
+          lines = [
+              "## Risk-rejected observed stop-path ledger",
+              "",
+              "**Status:** BLOCKED — append-only invariant failure",
+              "",
+              (
+                  "- source paper run / attempt: "
+                  f"`{os.environ['SOURCE_RUN_ID']} / "
+                  f"{os.environ['SOURCE_RUN_ATTEMPT']}`"
+              ),
+              f"- error: `{error}`",
+              "",
+              "No risk-rejected stop-path evidence is published from this run.",
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**Changes candidate readiness:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/risk-rejected-stop-path-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/risk-rejected-stop-path-status.md)"
+
+      - name: Fail closed on ledger drift
+        if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean != 'true' }}
+        shell: bash
+        run: |
+          echo "Risk-rejected stop-path append-only ledger is blocked." >&2
+          exit 1
+
+      - name: Publish clean ledger status
+        if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean == 'true' }}
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          PREVIOUS_WORKFLOW_RUN_ID: ${{ steps.previous.outputs.previous_workflow_run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          ledger = json.loads(
+              Path("prospective-risk-rejected-stop-path-ledger.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          summary = ledger["summary"]
+
+          def stamp(value):
+              return datetime.fromtimestamp(
+                  int(value) / 1000,
+                  tz=UTC,
+              ).isoformat()
+
+          previous = os.environ["PREVIOUS_WORKFLOW_RUN_ID"] or "none"
+          lines = [
+              "## Risk-rejected observed stop-path ledger",
+              "",
+              "**Status:** append-only clean",
+              "",
+              f"- common stack start: `{stamp(ledger['overlap_started_at_ms'])}`",
+              f"- source paper run / attempt: `{os.environ['SOURCE_RUN_ID']} / {os.environ['SOURCE_RUN_ATTEMPT']}`",
+              f"- source resolution: `{os.environ['RESOLUTION_MODE']}`",
+              f"- previous ledger workflow run: `{previous}`",
+              f"- terminal / previous / new / pending: `{ledger['row_count']} / {ledger['previous_row_count']} / {ledger['new_row_count']} / {ledger['pending_opportunity_count']}`",
+              f"- cumulative source integrity clean: `{summary['integrity_clean']}`",
+              f"- block layer counts: `{summary['block_layer_counts']}`",
+              f"- risk reason counts: `{summary['risk_reason_counts']}`",
+              f"- rows SHA-256: `{ledger['rows_sha256']}`",
+              f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
+              "",
+              "### Fixed stop-path horizons",
+              "",
+              "| Horizon | Terminal | Evaluable | Crossed | Survived | Cross frac | Median TTS |",
+              "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+          ]
+          for horizon_ms in ledger["forward_horizons_ms"]:
+              item = summary["horizons"][str(horizon_ms)]
+              overall = item["overall"]
+              lines.append(
+                  "| {minutes}m | {terminal} | {evaluable} | {crossed} | "
+                  "{survived} | {fraction} | {median} |".format(
+                      minutes=horizon_ms // 60000,
+                      terminal=item["terminal_opportunities"],
+                      evaluable=overall["evaluable"],
+                      crossed=overall["crossings"],
+                      survived=overall["survivors"],
+                      fraction=overall["crossing_fraction"],
+                      median=overall["median_time_to_stop_ms"],
+                  )
+              )
+              lines.append("")
+              lines.append(f"**{horizon_ms // 60000}m by stack block layer**")
+              for layer, values in sorted(item["by_block_layer"].items()):
+                  lines.append(
+                      "- {layer}: eval={evaluable}, crossed={crossings}, "
+                      "survived={survivors}, cross_frac={fraction}, "
+                      "median_tts={median}, markets={markets}".format(
+                          layer=layer,
+                          evaluable=values["evaluable"],
+                          crossings=values["crossings"],
+                          survivors=values["survivors"],
+                          fraction=values["crossing_fraction"],
+                          median=values["median_time_to_stop_ms"],
+                          markets=values["market_count"],
+                      )
+                  )
+              reasons = item["by_combined_reason"]
+              if reasons:
+                  lines.append("")
+                  lines.append(
+                      f"**{horizon_ms // 60000}m by combined-filter reason**"
+                  )
+                  for reason, values in sorted(reasons.items()):
+                      lines.append(
+                          "- {reason}: eval={evaluable}, crossed={crossings}, "
+                          "survived={survivors}, cross_frac={fraction}, "
+                          "median_tts={median}, markets={markets}".format(
+                              reason=reason,
+                              evaluable=values["evaluable"],
+                              crossings=values["crossings"],
+                              survivors=values["survivors"],
+                              fraction=values["crossing_fraction"],
+                              median=values["median_time_to_stop_ms"],
+                              markets=values["market_count"],
+                          )
+                      )
+              lines.append("")
+
+          lines.extend(
+              [
+                  "Claim scope is deliberately narrow: this ledger reports only observed causal mark crossings against the original decision-time stop.",
+                  "A survivor means no captured causal mark crossed the stop before that horizon. It does not prove the unseen intrablock path stayed clear.",
+                  "The overlay does not simulate stop fill price, slippage, funding, sizing, portfolio capacity, or a complete counterfactual trade lifecycle.",
+                  "Pending or missing-path opportunities remain unfrozen. Every previously published terminal overlay row must remain byte-for-byte equivalent after canonicalization.",
+                  "",
+                  "**Execution authority:** `false`",
+                  "**Promotion authority:** `false`",
+                  "**Changes risk limits:** `false`",
+                  "**Changes candidate readiness:** `false`",
+                  "**LIVE TRADING: DISABLED.**",
+              ]
+          )
+          Path("/tmp/risk-rejected-stop-path-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE" \
+            -f body="$(cat /tmp/risk-rejected-stop-path-status.md)"
+
+      - name: Upload fast-markout ledger
+        if: ${{ steps.compact.outputs.eligible == 'true' && steps.ledger.outputs.clean == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-risk-rejected-stop-path-ledger-${{ github.run_id }}-${{ github.run_attempt }}
+          path: prospective-risk-rejected-stop-path-ledger.json
+          if-no-files-found: error
+          retention-days: 90
