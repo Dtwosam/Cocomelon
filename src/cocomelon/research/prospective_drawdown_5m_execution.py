@@ -39,11 +39,13 @@ from cocomelon.research.prospective_drawdown_5m_execution_source import (
     SOURCE_KIND,
     SOURCE_SCHEMA_VERSION,
     WEEKLY_DRAWDOWN_REASON,
-    execution_config_payload,
 )
 from cocomelon.research.prospective_long_trend_carveout_execution_shadow import (
     _execution_config_compatible,
     _execution_config_from_payload,
+)
+from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
+    execution_config_payload,
 )
 from cocomelon.risk.engine import evaluate_risk
 
@@ -293,12 +295,12 @@ def _validate_source(
     ] = {}
     for item in raw_funding:
         evidence = ReplacementFundingBoundaryEvidence.from_dict(item)
-        key = (evidence.market, evidence.boundary_ms)
-        if key in funding:
+        funding_key = (evidence.market, evidence.boundary_ms)
+        if funding_key in funding:
             raise ProspectiveDrawdown5mExecutionError(
                 "duplicate drawdown 5m funding evidence"
             )
-        funding[key] = evidence
+        funding[funding_key] = evidence
 
     return tuple(rows), funding, config
 
@@ -759,7 +761,7 @@ def prospective_drawdown_5m_execution_summary(
             cast(str, item["market"]),
             cast(str, item["direction"]),
             cast(int, item["timestamp_ms"]),
-            Decimal(cast(str, item["exact_realized_pnl"])),
+            Decimal(item["exact_realized_pnl"]),
         )
         for item in result_tuple
         if item["status"] == "exact"
