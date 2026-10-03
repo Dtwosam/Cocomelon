@@ -599,6 +599,7 @@ jobs:
             continuous-paper-state/prospective-full-stack-entry-exit-summary.json
             continuous-paper-state/prospective-full-stack-forward-markout-summary.json
             continuous-paper-state/prospective-long-trend-execution-shadow-source.json
+            continuous-paper-state/prospective-weekly-drawdown-5m-exit-source.json
             continuous-paper-state/prospective-full-stack-capacity-reflow-summary.json
             continuous-paper-state/prospective-full-stack-exit-capacity-reflow-summary.json
             continuous-paper-state/prospective-two-strike-stop-filter-state.json
