@@ -18,8 +18,10 @@ from cocomelon.research.continuous_paper_opening_opportunity import (
 from cocomelon.research.continuous_paper_opening_opportunity_paths import (
     ContinuousPaperOpeningOpportunityPath,
 )
-from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
+from cocomelon.research.prospective_full_stack_forward_markout import (
     LONG_TREND_CARVEOUT_CANDIDATE_ID,
+)
+from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
     SOURCE_KIND,
     WEEKLY_DRAWDOWN_REASON,
 )
