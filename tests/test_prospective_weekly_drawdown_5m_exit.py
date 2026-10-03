@@ -29,6 +29,9 @@ from cocomelon.research.continuous_paper_opening_opportunity import (
 from cocomelon.research.continuous_paper_opening_opportunity_exit_books import (
     OpeningOpportunityExitBookEvidence,
 )
+from cocomelon.research.continuous_paper_replacement_funding import (
+    ReplacementFundingBoundaryEvidence,
+)
 from cocomelon.research.prospective_weekly_drawdown_5m_exit import (
     ProspectiveWeeklyDrawdown5mExitError,
     prospective_weekly_drawdown_5m_exit_summary,
@@ -51,6 +54,7 @@ def _evidence(
     timestamp_ms: int,
     direction: Direction = Direction.LONG,
     cooldown_active: bool = False,
+    cost_estimate: Decimal | None = None,
 ) -> ContinuousPaperOpeningOpportunityEvidence:
     config = PaperExecutionConfig()
     market = _market()
@@ -96,7 +100,11 @@ def _evidence(
             state_consistent=True,
             as_of_ms=timestamp_ms,
         ),
-        cost_estimate=conservative_cost_estimate(config),
+        cost_estimate=(
+            conservative_cost_estimate(config)
+            if cost_estimate is None
+            else cost_estimate
+        ),
         liquidity_state=LiquidityRiskState(
             entry_side_visible_notional_25bps=Decimal("1000000"),
             exit_side_visible_notional_25bps=Decimal("1000000"),
@@ -214,6 +222,29 @@ def _exit_book(
     )
 
 
+def _funding_evidence(
+    evidence: ContinuousPaperOpeningOpportunityEvidence,
+    *,
+    boundary_ms: int,
+    funding_rate: str = "0.001",
+) -> ReplacementFundingBoundaryEvidence:
+    return ReplacementFundingBoundaryEvidence(
+        market=evidence.market,
+        boundary_ms=boundary_ms,
+        oracle_px=Decimal("100"),
+        oracle_observed_at_ms=boundary_ms - 100,
+        oracle_age_ms=100,
+        oracle_source="fixture",
+        oracle_schema_version=1,
+        funding_rate=Decimal(funding_rate),
+        premium=Decimal("0"),
+        funding_time_ms=boundary_ms,
+        funding_received_at_ms=boundary_ms + 100,
+        funding_source="fixture",
+        funding_schema_version=1,
+    )
+
+
 def _full_stack_summary(
     evidence: ContinuousPaperOpeningOpportunityEvidence,
     *,
@@ -315,6 +346,9 @@ def _source(
     state: ProspectiveWeeklyDrawdown5mExitState,
     exit_book: OpeningOpportunityExitBookEvidence | None,
     stop_status: str = "observed_path_survivor",
+    funding_records: tuple[
+        ReplacementFundingBoundaryEvidence, ...
+    ] = (),
 ) -> dict[str, object]:
     return prospective_weekly_drawdown_5m_exit_source(
         _full_stack_summary(
@@ -324,7 +358,7 @@ def _source(
         ),
         (evidence,),
         (() if exit_book is None else (exit_book,)),
-        (),
+        funding_records,
         PaperExecutionConfig(),
         state,
     )
@@ -542,6 +576,78 @@ def test_shadow_keeps_unobserved_stop_path_incomplete() -> None:
     assert option["stop_path_status"] == "no_causal_marks"
     assert option["exact_realized_pnl"] is None
     assert option["incomplete_reason"] == "stop_path_not_evaluable"
+
+
+def test_shadow_includes_exact_funding_boundary_inside_five_minutes() -> None:
+    evidence = _evidence(timestamp_ms=3_599_000)
+    state = ProspectiveWeeklyDrawdown5mExitState(
+        started_at_ms=3_595_000
+    )
+    funding = _funding_evidence(
+        evidence,
+        boundary_ms=3_600_000,
+    )
+
+    result = prospective_weekly_drawdown_5m_exit_summary(
+        _source(
+            evidence,
+            state=state,
+            exit_book=_exit_book(evidence),
+            funding_records=(funding,),
+        )
+    )
+
+    option = result["option_results"][0]
+    assert option["funding_boundary_count"] == 1
+    assert option["funding_evidence_count"] == 1
+    assert Decimal(option["funding_cash_pnl"]) != 0
+    assert option["exact_realized_pnl"] is not None
+
+
+def test_shadow_requires_funding_evidence_for_crossed_boundary() -> None:
+    evidence = _evidence(timestamp_ms=3_599_000)
+    state = ProspectiveWeeklyDrawdown5mExitState(
+        started_at_ms=3_595_000
+    )
+
+    result = prospective_weekly_drawdown_5m_exit_summary(
+        _source(
+            evidence,
+            state=state,
+            exit_book=_exit_book(evidence),
+        )
+    )
+
+    option = result["option_results"][0]
+    assert option["funding_boundary_count"] == 1
+    assert option["funding_evidence_count"] == 0
+    assert option["exact_realized_pnl"] is None
+    assert option["incomplete_reason"] == "funding_evidence_required"
+
+
+def test_shadow_rejects_execution_cost_estimate_drift() -> None:
+    config = PaperExecutionConfig()
+    evidence = _evidence(
+        timestamp_ms=37_000_000,
+        cost_estimate=(
+            conservative_cost_estimate(config) + Decimal("0.0001")
+        ),
+    )
+    state = ProspectiveWeeklyDrawdown5mExitState(
+        started_at_ms=36_995_000
+    )
+
+    with pytest.raises(
+        ProspectiveWeeklyDrawdown5mExitError,
+        match="execution cost estimate drift",
+    ):
+        prospective_weekly_drawdown_5m_exit_summary(
+            _source(
+                evidence,
+                state=state,
+                exit_book=_exit_book(evidence),
+            )
+        )
 
 
 def test_shadow_rejects_tampered_source_digest() -> None:
