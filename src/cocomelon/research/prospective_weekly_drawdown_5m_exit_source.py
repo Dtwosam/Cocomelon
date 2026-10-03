@@ -217,7 +217,7 @@ def _validated_integrity_boundary(
         raise ProspectiveWeeklyDrawdown5mExitSourceError(
             "dirty risk-rejected source lacks integrity boundary"
         )
-    return cast(int | None, raw_last_miss)
+    return raw_last_miss
 
 
 def prospective_weekly_drawdown_5m_exit_source(
