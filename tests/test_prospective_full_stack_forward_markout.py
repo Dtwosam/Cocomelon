@@ -625,7 +625,8 @@ def test_risk_rejected_long_trend_carveout_runs_downstream_stack(
     one_hour = carveout["horizons"]["3600000"]
     assert one_hour["admit"]["settled"] == 1
     assert one_hour["admit"]["mean_directional_return"] == "0.03"
-    assert one_hour["changes_closed_trade_readiness_gate"] is False
+    readiness = one_hour["review_readiness"]
+    assert readiness["changes_closed_trade_readiness_gate"] is False
 
 
 def test_risk_rejected_integrity_is_isolated_from_candidate_readiness(
