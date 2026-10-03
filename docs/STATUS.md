@@ -4586,3 +4586,14 @@ The redundant lanes now keep the existing 15-second L2 freshness ceiling but no 
 Server-silence recovery, outer REST reseeding, full-group replacement recovery, stale-data fail-closed behavior, strategy thresholds, risk limits, sizing, stops, readiness, promotion, and live-order authority are unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Grace lane reconnects before full-group L2 recovery — 2026-10-03
+
+Worker `37129134583` on the staggered-lane runtime showed the intended redundancy behavior: one lane could be fully stale/reconnecting while the other held 20/20 fresh L2 markets, leaving zero supervisor-unhealthy markets. Pre-recovery telemetry also showed a remaining race: proactive full-group recovery could fire as soon as both lanes crossed the 15-second stale threshold, before the slower lane's configured staggered self-reconnect grace had elapsed.
+
+Supervisor-only full-group recovery now evaluates systemic staleness with an additional grace equal to one reconnect-stagger window per redundant lane. With the current two lanes and 5-second stagger, lane-local recovery gets up to 10 extra seconds before the runtime replaces the entire websocket group. Decision-epoch pipeline recovery is deliberately not graced: if stale or missing L2 actually makes a decision epoch systemically blind, the existing REST reseed and guarded full-group recovery still trigger immediately.
+
+The 15-second decision-time book freshness ceiling is unchanged. No market eligibility, strategy, risk, sizing, stop, readiness, promotion, or live-order authority is relaxed.
+
+**LIVE TRADING: DISABLED.**
