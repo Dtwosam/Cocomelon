@@ -5993,10 +5993,24 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "event_loop_phase": "rank_refresh",
         "event_loop_lag_samples": 88,
         "event_loop_max_lag_ms": 91_234,
-        "event_loop_slow_wakeup_count": 2,
-        "event_loop_last_slow_wakeup": {
+        "event_loop_max_lag_wakeup": {
             "lag_ms": 91_234,
             "phase": "rank_refresh",
+            "observed_phase": "context_postprocess",
+        },
+        "event_loop_slow_wakeup_count": 2,
+        "event_loop_last_slow_wakeup": {
+            "lag_ms": 8_000,
+            "phase": "control_wait",
+            "observed_phase": "control_wait",
+        },
+        "event_loop_slow_wakeup_count_by_phase": {
+            "control_wait": 1,
+            "rank_refresh": 1,
+        },
+        "event_loop_max_lag_ms_by_phase": {
+            "control_wait": 8_000,
+            "rank_refresh": 91_234,
         },
         "record_pump_last_slow_record": {
             "record_kind": "normalized_event",
@@ -6242,8 +6256,17 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "rank_refresh / 91234ms / 2 / 88"
         in rendered
     )
+    assert "max-lag event-loop wakeup:" in rendered
+    assert "'lag_ms': 91234" in rendered
+    assert "'phase': 'rank_refresh'" in rendered
+    assert "'observed_phase': 'context_postprocess'" in rendered
+    assert "event-loop slow wakeups by phase:" in rendered
+    assert "'control_wait': 1" in rendered
+    assert "'rank_refresh': 1" in rendered
+    assert "event-loop max lag by phase:" in rendered
+    assert "'control_wait': 8000" in rendered
+    assert "'rank_refresh': 91234" in rendered
     assert "last slow event-loop wakeup:" in rendered
-    assert "rank_refresh" in rendered
     assert "shortlist rotations attempts / promoted / failed readiness: 5 / 4 / 1" in rendered
     assert "L2 supervisor unhealthy markets: 16 / 20" in rendered
     assert (

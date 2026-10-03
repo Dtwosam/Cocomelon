@@ -9744,6 +9744,18 @@ def _render_operational_live_status(
                 f"{payload.get('event_loop_lag_samples', 0)}"
             ),
             (
+                "- max-lag event-loop wakeup: "
+                f"{payload.get('event_loop_max_lag_wakeup')}"
+            ),
+            (
+                "- event-loop slow wakeups by phase: "
+                f"{payload.get('event_loop_slow_wakeup_count_by_phase', {})}"
+            ),
+            (
+                "- event-loop max lag by phase: "
+                f"{payload.get('event_loop_max_lag_ms_by_phase', {})}"
+            ),
+            (
                 "- last slow event-loop wakeup: "
                 f"{payload.get('event_loop_last_slow_wakeup')}"
             ),

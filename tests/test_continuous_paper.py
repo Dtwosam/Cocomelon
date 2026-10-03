@@ -814,8 +814,11 @@ def test_event_loop_lag_monitor_records_blocking_phase() -> None:
             event_loop_phase="unit_test_block",
             event_loop_lag_samples=0,
             event_loop_max_lag_ms=0,
+            event_loop_max_lag_wakeup=None,
             event_loop_slow_wakeup_count=0,
             event_loop_last_slow_wakeup=None,
+            event_loop_slow_wakeup_count_by_phase={},
+            event_loop_max_lag_ms_by_phase={},
         )
         task = asyncio.create_task(
             _monitor_event_loop_lag(
@@ -833,7 +836,26 @@ def test_event_loop_lag_monitor_records_blocking_phase() -> None:
 
         assert pump.event_loop_lag_samples > 0
         assert pump.event_loop_max_lag_ms >= 10
+        assert pump.event_loop_max_lag_wakeup["lag_ms"] == (
+            pump.event_loop_max_lag_ms
+        )
+        assert pump.event_loop_max_lag_wakeup["phase"] == (
+            "unit_test_block"
+        )
+        assert pump.event_loop_max_lag_wakeup["observed_phase"] == (
+            "after_block"
+        )
+        assert (
+            pump.event_loop_max_lag_ms_by_phase["unit_test_block"]
+            >= 10
+        )
         assert pump.event_loop_slow_wakeup_count >= 1
+        assert (
+            pump.event_loop_slow_wakeup_count_by_phase[
+                "unit_test_block"
+            ]
+            >= 1
+        )
         assert pump.event_loop_last_slow_wakeup["phase"] == (
             "unit_test_block"
         )

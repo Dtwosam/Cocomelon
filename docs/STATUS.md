@@ -4403,3 +4403,14 @@ The live control loop now labels context-path observation, exit-book capture, se
 This is diagnostic-only. It changes no market-data threshold, strategy logic, risk rule, sizing, execution behavior, readiness gate, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Event-loop max-stall phase attribution — 2026-10-03
+
+The active continuous-paper worker is currently producing healthy decision epochs, but repeated systemic L2 recovery remains excessive. Hyperliquid documents `l2Book` as a snapshot feed pushed on blocks, while the paper eligibility ceiling remains 5 seconds. Runtime telemetry has observed event-loop lag approaching that same ceiling, making it necessary to identify the exact blocking phase rather than relax book freshness or continue restarting otherwise healthy feeds.
+
+The event-loop watchdog now preserves the exact wakeup that established the lifetime maximum lag, plus per-phase slow-wakeup counts and per-phase maximum lag. The operational heartbeat and Issue #469 render those diagnostics alongside the existing last-slow-wakeup, record-pump, checkpoint, and redundant-L2 health telemetry.
+
+This change is diagnostic only. It does not alter market-data freshness limits, websocket subscriptions, L2 recovery behavior, strategy thresholds, risk vetoes, sizing, execution, readiness, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
