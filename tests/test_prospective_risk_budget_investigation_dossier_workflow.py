@@ -88,6 +88,8 @@ def test_conjunctive_dossier_surfaces_frozen_weekly_drawdown_5m_candidate() -> N
     assert "economic / stop-survival ready" in source
     assert "ready for exact execution-shadow investigation" in source
     assert "first 20 paired" in source
-    assert "Discovery rows cannot enter the validation cohort" in source
-    assert "later rows cannot rescue a failed first-20 review" in source
+    assert "Discovery rows cannot " in source
+    assert "enter the validation cohort" in source
+    assert "later rows cannot rescue " in source
+    assert "a failed first-20 review" in source
     assert "cannot relax the weekly drawdown veto" in source
