@@ -102,6 +102,71 @@ jobs:
             echo "Missing prospective comparison run identity." >&2
             exit 1
           fi
+
+          source_has_artifact() {
+            local run_id="$1"
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" |
+            ARTIFACT_PREFIX="cadence-model-comparison-" python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          prefix = os.environ["ARTIFACT_PREFIX"]
+          matches = [
+              item for item in payload.get("artifacts", [])
+              if (
+                  item.get("expired") is False
+                  and isinstance(item.get("name"), str)
+                  and item["name"].startswith(prefix)
+              )
+          ]
+          if len(matches) > 1:
+              raise SystemExit(
+                  f"multiple non-expired source artifacts with prefix {prefix}"
+              )
+          raise SystemExit(0 if matches else 1)
+          '
+          }
+
+          if ! source_has_artifact "$comparison_run_id"; then
+            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+              echo "Manual source run is missing its required artifact." >&2
+              exit 1
+            fi
+            runs_json="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-cadence-comparison.yml/runs?status=success&per_page=100"
+            )"
+            mapfile -t candidates < <(
+              jq -r '
+                .workflow_runs
+                | sort_by(.updated_at)
+                | reverse
+                | .[]
+                | [.id, .run_attempt] | @tsv
+              ' <<<"$runs_json"
+            )
+            found=false
+            for candidate in "${candidates[@]}"; do
+              IFS=$'\t' read -r candidate_run_id candidate_attempt <<<"$candidate"
+              if [ "$candidate_run_id" = "$comparison_run_id" ]; then
+                continue
+              fi
+              if source_has_artifact "$candidate_run_id"; then
+                comparison_run_id="$candidate_run_id"
+                comparison_run_attempt="$candidate_attempt"
+                resolution_mode="latest_success_with_comparison_artifact"
+                found=true
+                break
+              fi
+            done
+            if [ "$found" != "true" ]; then
+              echo "No successful producer run has the required artifact." >&2
+              exit 1
+            fi
+          fi
+
           echo "comparison_run_id=$comparison_run_id" >> "$GITHUB_OUTPUT"
           echo "comparison_run_attempt=$comparison_run_attempt" >> "$GITHUB_OUTPUT"
           echo "resolution_mode=$resolution_mode" >> "$GITHUB_OUTPUT"
