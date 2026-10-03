@@ -143,7 +143,8 @@ def test_long_trend_carveout_status_surfaces_stop_path_survival() -> None:
         in source
     )
     assert "does not model unseen intramillisecond prices" in source
-    assert "is not part of the existing investigation gate" in source
+    assert "is not part of the existing investigation gate" not in source
+    assert "complete observed stop-path coverage" in source
 
 
 def test_long_trend_carveout_non_success_wake_falls_back() -> None:
