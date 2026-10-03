@@ -1753,12 +1753,61 @@ def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
     )
 
 
+def test_supervisor_group_grace_defers_proactive_group_recovery() -> None:
+    required = frozenset({"BTC", "ETH"})
+
+    class TimedLane:
+        def stale_l2_streams(
+            self,
+            *,
+            now_ms: int,
+        ) -> tuple[str, ...]:
+            if now_ms < 15_000:
+                return ()
+            return ("l2Book:BTC", "l2Book:ETH")
+
+    group = _SupervisorGroup(
+        supervisors=(
+            TimedLane(),  # type: ignore[arg-type]
+            TimedLane(),  # type: ignore[arg-type]
+        ),
+        tasks=(),
+        forward_gaps=asyncio.Event(),
+        required_market_keys=required,
+        ready_market_keys=(
+            {"BTC", "ETH"},
+            {"BTC", "ETH"},
+        ),
+    )
+
+    assert group.unhealthy_l2_market_keys(
+        now_ms=20_000,
+    ) == required
+    assert group.unhealthy_l2_market_keys(
+        now_ms=20_000,
+        additional_stale_grace_ms=10_000,
+    ) == frozenset()
+    assert group.unhealthy_l2_market_keys(
+        now_ms=26_000,
+        additional_stale_grace_ms=10_000,
+    ) == required
+    with pytest.raises(
+        ValueError,
+        match="additional_stale_grace_ms",
+    ):
+        group.unhealthy_l2_market_keys(
+            now_ms=20_000,
+            additional_stale_grace_ms=-1,
+        )
+
+
 def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
     source = Path("src/cocomelon/continuous_paper.py").read_text(
         encoding="utf-8"
     )
 
-    assert "supervisor.stale_l2_streams(now_ms=now_ms)" in source
+    assert "additional_stale_grace_ms" in source
+    assert "now_ms - additional_stale_grace_ms" in source
     assert "market not in self.ready_market_keys[lane]" not in source[
         source.index("def unhealthy_l2_market_keys("):
         source.index("def systemically_stale_l2(")
