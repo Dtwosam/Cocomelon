@@ -4660,3 +4660,18 @@ The source explicitly requires the durable LONG+trend fast-markout gate before a
 The compact learning artifact now includes `prospective-long-trend-execution-shadow-source.json`, and changes to the source exporter participate in continuous-paper runtime handoff detection.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Gated LONG+trend entry execution shadow — 2026-10-03
+
+A separate research-only execution shadow now models the next stage of the pure LONG+trend carveout without changing the continuous paper strategy or its weekly drawdown protection.
+
+The shadow is hard-gated by the durable LONG+trend fast-markout ledger. While `all_horizons_ready_for_execution_shadow_investigation` is false, the workflow remains dormant and does not even download the underlying paper source. If the durable gate later becomes true, the workflow resolves the exact paper run / attempt / compact artifact name / SHA-256 digest from the ledger's immutable source history and refuses substitute evidence.
+
+For each gated source opportunity, the counterfactual changes only the captured `rolling_7d_peak_equity` reference to current equity, thereby neutralizing only the historical `weekly_drawdown_lockout` veto. The original risk request is re-evaluated by the normal risk engine; all other account state, open positions, health state, liquidity state, risk limits, cost assumptions, planner constraints, IOC rules, fees, slippage, venue minimums, and captured decision-time L2 book remain unchanged.
+
+The current shadow scope is intentionally limited to entry execution plus fixed 5m / 15m / 60m forward mark-to-market. It does not model replacement exits and does not claim realized PnL. Issue #826 is the dedicated status surface.
+
+This shadow has no execution, promotion, readiness, risk-limit, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
