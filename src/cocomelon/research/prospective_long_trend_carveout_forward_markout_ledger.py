@@ -1488,53 +1488,79 @@ def validate_long_trend_carveout_ledger(
         and item.get("integrity_clean") is True
         for item in history
     )
-    current_summary = _summary(
-        rows,
-        pending_opportunity_count=pending,
-        integrity_clean=integrity_clean,
-    )
-    pre_exit_timing_summary = _summary(
-        rows,
-        pending_opportunity_count=pending,
-        integrity_clean=integrity_clean,
-        include_exit_timing=False,
-    )
-    pre_stop_readiness_with_timing_summary = _summary(
-        rows,
-        pending_opportunity_count=pending,
-        integrity_clean=integrity_clean,
-        include_stop_readiness=False,
-    )
-    pre_stop_readiness_summary = _summary(
-        rows,
-        pending_opportunity_count=pending,
-        integrity_clean=integrity_clean,
-        include_stop_readiness=False,
-        include_exit_timing=False,
-    )
-    pre_stop_path_with_timing_summary = _summary(
-        rows,
-        pending_opportunity_count=pending,
-        integrity_clean=integrity_clean,
-        include_stop_path=False,
-        include_stop_readiness=False,
-    )
-    legacy_summary = _summary(
-        rows,
-        pending_opportunity_count=pending,
-        integrity_clean=integrity_clean,
-        include_stop_path=False,
-        include_stop_readiness=False,
-        include_exit_timing=False,
-    )
-    if raw.get("summary") not in (
-        current_summary,
-        pre_exit_timing_summary,
-        pre_stop_readiness_with_timing_summary,
-        pre_stop_readiness_summary,
-        pre_stop_path_with_timing_summary,
-        legacy_summary,
-    ):
+
+    latest_boundary_known = False
+    latest_last_miss: int | None = None
+    if history:
+        latest_history = history[-1]
+        if not isinstance(latest_history, dict):
+            raise ProspectiveLongTrendCarveoutLedgerError(
+                "latest source history entry is invalid"
+            )
+        latest_boundary_known = (
+            latest_history.get("integrity_boundary_known") is True
+            or (
+                "integrity_boundary_known" not in latest_history
+                and latest_history.get("integrity_clean") is True
+            )
+        )
+        raw_last_miss = latest_history.get("integrity_last_miss_at_ms")
+        if raw_last_miss is not None and (
+            isinstance(raw_last_miss, bool)
+            or not isinstance(raw_last_miss, int)
+        ):
+            raise ProspectiveLongTrendCarveoutLedgerError(
+                "latest integrity miss boundary is invalid"
+            )
+        latest_last_miss = cast(int | None, raw_last_miss)
+
+    summary_variants: list[dict[str, object]] = []
+    for include_post_integrity_readiness in (True, False):
+        common = {
+            "pending_opportunity_count": pending,
+            "integrity_clean": integrity_clean,
+            "include_post_integrity_readiness": (
+                include_post_integrity_readiness
+            ),
+            "overlap_started_at_ms": overlap,
+            "integrity_boundary_known": latest_boundary_known,
+            "integrity_last_miss_at_ms": latest_last_miss,
+        }
+        summary_variants.extend(
+            (
+                _summary(rows, **common),
+                _summary(
+                    rows,
+                    include_exit_timing=False,
+                    **common,
+                ),
+                _summary(
+                    rows,
+                    include_stop_readiness=False,
+                    **common,
+                ),
+                _summary(
+                    rows,
+                    include_stop_readiness=False,
+                    include_exit_timing=False,
+                    **common,
+                ),
+                _summary(
+                    rows,
+                    include_stop_path=False,
+                    include_stop_readiness=False,
+                    **common,
+                ),
+                _summary(
+                    rows,
+                    include_stop_path=False,
+                    include_stop_readiness=False,
+                    include_exit_timing=False,
+                    **common,
+                ),
+            )
+        )
+    if raw.get("summary") not in summary_variants:
         raise ProspectiveLongTrendCarveoutLedgerError(
             "carveout summary does not reconcile"
         )
@@ -1720,9 +1746,15 @@ def update_long_trend_carveout_ledger(
     if not source_artifact_digest.startswith("sha256:"):
         raise ValueError("source artifact digest must be sha256")
 
-    source_rows, pending, unevaluable, overlap, source_integrity = (
-        _source_rows(summary)
-    )
+    (
+        source_rows,
+        pending,
+        unevaluable,
+        overlap,
+        source_integrity,
+        source_integrity_boundary_known,
+        source_integrity_last_miss_at_ms,
+    ) = _source_rows(summary)
     previous_rows: tuple[dict[str, object], ...] = ()
     history: list[object] = []
     prior_ledger_sha256: str | None = None
@@ -1799,6 +1831,12 @@ def update_long_trend_carveout_ledger(
             "pending_opportunity_count": pending,
             "unevaluable_opportunity_count": unevaluable,
             "integrity_clean": source_integrity,
+            "integrity_boundary_known": (
+                source_integrity_boundary_known
+            ),
+            "integrity_last_miss_at_ms": (
+                source_integrity_last_miss_at_ms
+            ),
             "rows_sha256": _rows_sha256(rows),
         }
     )
@@ -1807,6 +1845,26 @@ def update_long_trend_carveout_ledger(
         and item.get("integrity_clean") is True
         for item in history
     )
+    latest_history = history[-1]
+    if not isinstance(latest_history, dict):
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "latest source history entry is invalid"
+        )
+    latest_boundary_known = (
+        latest_history.get("integrity_boundary_known") is True
+        or (
+            "integrity_boundary_known" not in latest_history
+            and latest_history.get("integrity_clean") is True
+        )
+    )
+    latest_last_miss = latest_history.get("integrity_last_miss_at_ms")
+    if latest_last_miss is not None and (
+        isinstance(latest_last_miss, bool)
+        or not isinstance(latest_last_miss, int)
+    ):
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "latest integrity miss boundary is invalid"
+        )
 
     payload: dict[str, object] = {
         "schema_version": LEDGER_SCHEMA_VERSION,
@@ -1832,6 +1890,12 @@ def update_long_trend_carveout_ledger(
             rows,
             pending_opportunity_count=pending,
             integrity_clean=cumulative_integrity,
+            overlap_started_at_ms=overlap,
+            integrity_boundary_known=latest_boundary_known,
+            integrity_last_miss_at_ms=cast(
+                int | None,
+                latest_last_miss,
+            ),
         ),
         "rows": rows,
     }
