@@ -5,6 +5,16 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+from cocomelon.research.prospective_weekly_drawdown_5m_exit import (
+    ProspectiveWeeklyDrawdown5mExitError,
+    prospective_weekly_drawdown_5m_exit_summary,
+)
+from cocomelon.research.prospective_weekly_drawdown_5m_exit_source import (
+    EXIT_HORIZON_MS,
+    ProspectiveWeeklyDrawdown5mExitSourceError,
+    ProspectiveWeeklyDrawdown5mExitState,
+    prospective_weekly_drawdown_5m_exit_source,
+)
 
 from cocomelon.domain.execution import (
     InstrumentExecutionSpec,
@@ -32,16 +42,6 @@ from cocomelon.research.continuous_paper_opening_opportunity_exit_books import (
 )
 from cocomelon.research.continuous_paper_replacement_funding import (
     ReplacementFundingBoundaryEvidence,
-)
-from cocomelon.research.prospective_weekly_drawdown_5m_exit import (
-    ProspectiveWeeklyDrawdown5mExitError,
-    prospective_weekly_drawdown_5m_exit_summary,
-)
-from cocomelon.research.prospective_weekly_drawdown_5m_exit_source import (
-    EXIT_HORIZON_MS,
-    ProspectiveWeeklyDrawdown5mExitSourceError,
-    ProspectiveWeeklyDrawdown5mExitState,
-    prospective_weekly_drawdown_5m_exit_source,
 )
 from cocomelon.risk.engine import evaluate_risk
 
