@@ -854,6 +854,7 @@ def prospective_weekly_drawdown_5m_exit_summary(
         ZERO,
     )
     config_payload = execution_config_payload(config)
+    robustness = _exact_pnl_robustness(result_tuple)
 
     return {
         "research_only": True,
@@ -946,9 +947,9 @@ def prospective_weekly_drawdown_5m_exit_summary(
                 sum(exact_pnls, ZERO) / Decimal(len(exact_pnls))
             )
         ),
-        "robustness": _exact_pnl_robustness(result_tuple),
-        "candidate_investigation_ready": (
-            _exact_pnl_robustness(result_tuple)["investigation_ready"]
-        ),
+        "robustness": robustness,
+        "candidate_investigation_ready": robustness[
+            "investigation_ready"
+        ],
         "option_results": list(result_tuple),
     }
