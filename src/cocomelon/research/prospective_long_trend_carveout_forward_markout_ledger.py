@@ -1267,6 +1267,65 @@ def _horizon_summary(
     return result
 
 
+def _post_integrity_miss_summary(
+    rows: Sequence[dict[str, object]],
+    *,
+    overlap_started_at_ms: int,
+    boundary_known: bool,
+    last_miss_at_ms: int | None,
+    include_stop_path: bool,
+    include_stop_readiness: bool,
+    include_exit_timing: bool,
+) -> dict[str, object]:
+    if not boundary_known:
+        return {
+            "boundary_known": False,
+            "last_miss_at_ms": None,
+            "started_at_ms": None,
+            "terminal_opportunity_count": 0,
+            "all_horizons_ready_for_execution_shadow_investigation": False,
+            "horizons": {},
+            "changes_execution": False,
+            "changes_risk_limits": False,
+            "changes_candidate_readiness": False,
+        }
+
+    started_at_ms = (
+        overlap_started_at_ms
+        if last_miss_at_ms is None
+        else last_miss_at_ms + 1
+    )
+    clean_rows = tuple(
+        row
+        for row in rows
+        if cast(int, row["timestamp_ms"]) >= started_at_ms
+    )
+    clean_summary = _summary(
+        clean_rows,
+        pending_opportunity_count=0,
+        integrity_clean=True,
+        include_stop_path=include_stop_path,
+        include_stop_readiness=include_stop_readiness,
+        include_exit_timing=include_exit_timing,
+        include_post_integrity_readiness=False,
+    )
+    return {
+        "boundary_known": True,
+        "last_miss_at_ms": last_miss_at_ms,
+        "started_at_ms": started_at_ms,
+        "terminal_opportunity_count": len(clean_rows),
+        "all_horizons_ready_for_execution_shadow_investigation": (
+            clean_summary[
+                "all_horizons_ready_for_execution_shadow_investigation"
+            ]
+        ),
+        "horizons": clean_summary["horizons"],
+        "changes_execution": False,
+        "changes_risk_limits": False,
+        "changes_candidate_readiness": False,
+    }
+
+
 def _summary(
     rows: Sequence[dict[str, object]],
     *,
@@ -1275,6 +1334,10 @@ def _summary(
     include_stop_path: bool = True,
     include_stop_readiness: bool = True,
     include_exit_timing: bool = True,
+    include_post_integrity_readiness: bool = True,
+    overlap_started_at_ms: int | None = None,
+    integrity_boundary_known: bool = False,
+    integrity_last_miss_at_ms: int | None = None,
 ) -> dict[str, object]:
     row_values = tuple(rows)
     decisions = Counter(
@@ -1305,6 +1368,13 @@ def _summary(
         )
         for horizon_ms in FORWARD_HORIZONS_MS
     }
+    cumulative_ready = all(
+        cast(dict[str, object], item["investigation_readiness"])[
+            "ready_for_execution_shadow_investigation"
+        ]
+        is True
+        for item in horizons.values()
+    )
     result: dict[str, object] = {
         "terminal_opportunity_count": len(row_values),
         "pending_opportunity_count": pending_opportunity_count,
@@ -1314,12 +1384,8 @@ def _summary(
         "carveout_block_layer_counts": dict(sorted(layers.items())),
         "changed_decision_or_layer_terminal": changed,
         "reopened_long_trend_terminal": reopened,
-        "all_horizons_ready_for_execution_shadow_investigation": all(
-            cast(dict[str, object], item["investigation_readiness"])[
-                "ready_for_execution_shadow_investigation"
-            ]
-            is True
-            for item in horizons.values()
+        "all_horizons_ready_for_execution_shadow_investigation": (
+            cumulative_ready
         ),
         "horizons": horizons,
     }
@@ -1327,6 +1393,38 @@ def _summary(
         result["reopened_long_trend_exit_timing"] = (
             _reopened_exit_timing_summary(row_values)
         )
+    if include_post_integrity_readiness:
+        if overlap_started_at_ms is None:
+            raise ProspectiveLongTrendCarveoutLedgerError(
+                "post-integrity cohort requires overlap start"
+            )
+        post_integrity = _post_integrity_miss_summary(
+            row_values,
+            overlap_started_at_ms=overlap_started_at_ms,
+            boundary_known=integrity_boundary_known,
+            last_miss_at_ms=integrity_last_miss_at_ms,
+            include_stop_path=include_stop_path,
+            include_stop_readiness=include_stop_readiness,
+            include_exit_timing=include_exit_timing,
+        )
+        post_ready = (
+            post_integrity[
+                "all_horizons_ready_for_execution_shadow_investigation"
+            ]
+            is True
+        )
+        effective_ready = cumulative_ready or post_ready
+        if cumulative_ready:
+            effective_scope = "cumulative"
+        elif post_ready:
+            effective_scope = "post_integrity_miss"
+        else:
+            effective_scope = "none"
+        result["post_integrity_miss"] = post_integrity
+        result[
+            "effective_all_horizons_ready_for_execution_shadow_investigation"
+        ] = effective_ready
+        result["effective_integrity_scope"] = effective_scope
     return result
 
 
@@ -1478,6 +1576,8 @@ def _source_rows(
     int,
     int,
     bool,
+    bool,
+    int | None,
 ]:
     if not isinstance(summary, dict):
         raise ProspectiveLongTrendCarveoutLedgerError(
@@ -1523,6 +1623,18 @@ def _source_rows(
     if not isinstance(integrity, bool):
         raise ProspectiveLongTrendCarveoutLedgerError(
             "source carveout integrity flag is invalid"
+        )
+    boundary_key = (
+        "risk_rejected_long_trend_carveout_integrity_last_miss_at_ms"
+    )
+    boundary_known = boundary_key in summary or integrity is True
+    raw_last_miss = summary.get(boundary_key)
+    if raw_last_miss is not None and (
+        isinstance(raw_last_miss, bool)
+        or not isinstance(raw_last_miss, int)
+    ):
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "source carveout integrity boundary is invalid"
         )
 
     raw_rows = summary.get("risk_rejected_rows")
@@ -1587,6 +1699,8 @@ def _source_rows(
         unevaluable,
         overlap,
         integrity,
+        boundary_known,
+        cast(int | None, raw_last_miss),
     )
 
 
