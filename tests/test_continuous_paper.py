@@ -50,6 +50,7 @@ from cocomelon.continuous_paper import (
     _is_systemic_l2_failure,
     _iter_until_stop,
     _l2_event_fresh_for_promotion,
+    _l2_supervisor_stale_after_ms,
     _latest_epoch_stale_l2_market_keys,
     _load_checkpoint,
     _monitor_event_loop_lag,
