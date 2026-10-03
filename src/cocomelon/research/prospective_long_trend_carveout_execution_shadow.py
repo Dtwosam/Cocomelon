@@ -20,9 +20,11 @@ from cocomelon.research.continuous_paper_opening_opportunity_paths import (
 )
 from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
     LONG_TREND_CARVEOUT_CANDIDATE_ID,
-    SCHEMA_VERSION as SOURCE_SCHEMA_VERSION,
     SOURCE_KIND,
     WEEKLY_DRAWDOWN_REASON,
+)
+from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
+    SCHEMA_VERSION as SOURCE_SCHEMA_VERSION,
 )
 from cocomelon.risk.engine import evaluate_risk
 
