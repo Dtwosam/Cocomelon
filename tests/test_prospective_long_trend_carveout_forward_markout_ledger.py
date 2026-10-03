@@ -344,6 +344,95 @@ def test_carveout_ledger_reports_stop_path_crossing() -> None:
     assert stop["median_time_to_stop_ms"] == 60_000
 
 
+def test_carveout_ledger_reports_reopened_exit_timing() -> None:
+    first = _row(
+        "timing-sol",
+        timestamp_ms=START + 1_000,
+        market="SOL",
+        direction="long",
+        combined_reason="long_trend",
+        carveout_decision="ADMIT",
+        returns=("0.03", "0.04", "0.01"),
+    )
+    second = _row(
+        "timing-eth",
+        timestamp_ms=START + 2_000,
+        market="ETH",
+        direction="long",
+        combined_reason="long_trend",
+        carveout_decision="ADMIT",
+        returns=("0.02", "0.03", "0.00"),
+    )
+
+    ledger = _update(_summary([first, second]))
+    timing = ledger["summary"]["reopened_long_trend_exit_timing"]
+
+    assert timing["claim_scope"] == "fixed_markout_exit_timing_only"
+    assert timing["evaluable_opportunities"] == 2
+    assert timing["market_count"] == 2
+    assert timing["best_horizon_counts"] == {"900000": 2}
+    assert timing["best_horizon_ties"] == 0
+    assert timing["early_exit_preferred_count"] == 2
+    assert timing["sixty_min_preferred_count"] == 0
+    assert timing["early_vs_sixty_tie_count"] == 0
+    assert (
+        timing["five_min_minus_sixty_min"][
+            "mean_directional_return"
+        ]
+        == "0.02"
+    )
+    assert (
+        timing["fifteen_min_minus_sixty_min"][
+            "mean_directional_return"
+        ]
+        == "0.03"
+    )
+    assert (
+        timing["five_min_minus_fifteen_min"][
+            "mean_directional_return"
+        ]
+        == "-0.01"
+    )
+    assert timing["changes_execution"] is False
+    assert timing["changes_risk_limits"] is False
+    assert timing["changes_candidate_readiness"] is False
+
+
+def test_carveout_ledger_accepts_pre_exit_timing_summary() -> None:
+    row = _row(
+        "legacy-timing",
+        timestamp_ms=START + 1_000,
+        market="SOL",
+        direction="long",
+        combined_reason="long_trend",
+        carveout_decision="ADMIT",
+        returns=("0.01", "0.02", "0.03"),
+    )
+    ledger = _update(_summary([row]))
+    legacy = deepcopy(ledger)
+    summary = legacy["summary"]
+    assert isinstance(summary, dict)
+    summary.pop("reopened_long_trend_exit_timing")
+
+    digest_payload = {
+        key: value
+        for key, value in legacy.items()
+        if key != "ledger_sha256"
+    }
+    legacy["ledger_sha256"] = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    validated = validate_long_trend_carveout_ledger(legacy)
+    assert validated["row_count"] == 1
+
+
 def test_carveout_ledger_accepts_pre_stop_path_summary() -> None:
     row = _row(
         "legacy-stop",
