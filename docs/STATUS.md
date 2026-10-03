@@ -4440,3 +4440,18 @@ Both risk-approved and risk-rejected summaries now carry challenger decision cou
 This creates the evidence needed to test whether removing only the blanket LONG+trend veto can improve opportunity selection without weakening the rest of the entry stack.
 
 **LIVE TRADING: DISABLED.**
+
+
+### LONG+trend carveout append-only fast-markout ledger — 2026-10-03
+
+The no-blanket-LONG+trend-veto downstream shadow introduced in #801 now has a dedicated evidence family instead of relying on one worker's compact summary.
+
+Issue #802 is the append-only status surface. Its ledger accepts only naturally acquired risk-rejected opportunities carrying the exact #801 carveout candidate identity. The original frozen stack decision and the challenger decision are both preserved. Pure LONG+trend combined blocks may continue through the unchanged two-strike and momentum layers; rank-above-10 blocks must remain blocked, and non-combined decisions must remain unchanged.
+
+Only opportunities whose fixed 5m / 15m / 60m outcomes are terminal become immutable. Pending and missing-path outcomes remain unfrozen. Every prior terminal row must remain byte-for-byte equivalent after canonicalization, and each source is bound to its exact paper run, run attempt, compact artifact name, and SHA-256 digest.
+
+The review gate can authorize only a deeper paper execution-shadow investigation. Every horizon requires at least 20 settled opportunities, 5 ADMIT, 5 BLOCK, 5 LONG, 5 SHORT, 4 markets, positive admitted mean, negative blocked mean, positive and leave-one robust ADMIT-minus-BLOCK separation, plus at least 10 reopened pure LONG+trend opportunities across 4 markets with positive leave-one-opportunity and leave-one-market robustness.
+
+Passing this gate cannot alter the frozen entry stack, risk limits, sizing, candidate readiness, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
