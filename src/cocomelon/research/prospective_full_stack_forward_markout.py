@@ -664,6 +664,13 @@ def _long_trend_carveout_summary(
             "preserve_two_strike_filter": True,
             "preserve_momentum_filter": True,
         },
+        "stop_path_overlay": {
+            "enabled": True,
+            "claim_scope": "observed_mark_stop_crossing_only",
+            "changes_execution": False,
+            "changes_risk_limits": False,
+            "changes_candidate_readiness": False,
+        },
         "evaluated": len(projected),
         "admitted": decisions["ADMIT"],
         "blocked": decisions["BLOCK"],
