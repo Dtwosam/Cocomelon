@@ -9806,6 +9806,19 @@ def _render_operational_live_status(
                 f"{payload.get('stale_l2_pipeline_reason_fallback_triggers', 0)}"
             ),
             (
+                "- predecision L2 REST refresh attempts / fresh books / "
+                "failures / late completions: "
+                f"{payload.get('predecision_l2_refresh_attempts', 0)} / "
+                f"{payload.get('predecision_l2_refresh_books', 0)} / "
+                f"{payload.get('predecision_l2_refresh_failures', 0)} / "
+                f"{payload.get('predecision_l2_refresh_late_completions', 0)}"
+            ),
+            (
+                "- predecision L2 last duration / decision headroom: "
+                f"{payload.get('predecision_l2_refresh_last_duration_ms')}ms / "
+                f"{payload.get('predecision_l2_refresh_last_headroom_ms')}ms"
+            ),
+            (
                 "- last stale-L2 recovery trigger supervisor / pipeline / "
                 "supervisor-unhealthy / pipeline-stale / boundary / fallback: "
                 f"{str(bool(recovery_trigger.get('supervisor_triggered'))).lower()} / "
@@ -10677,6 +10690,19 @@ def render_live_status(
                 "reason-count fallbacks: "
                 f"`{payload.get('stale_l2_pipeline_recovery_triggers', 0)} / "
                 f"{payload.get('stale_l2_pipeline_reason_fallback_triggers', 0)}`"
+            ),
+            (
+                "- predecision L2 REST refresh attempts / fresh books / "
+                "failures / late completions: "
+                f"`{payload.get('predecision_l2_refresh_attempts', 0)} / "
+                f"{payload.get('predecision_l2_refresh_books', 0)} / "
+                f"{payload.get('predecision_l2_refresh_failures', 0)} / "
+                f"{payload.get('predecision_l2_refresh_late_completions', 0)}`"
+            ),
+            (
+                "- predecision L2 last duration / decision headroom: "
+                f"`{payload.get('predecision_l2_refresh_last_duration_ms')}ms / "
+                f"{payload.get('predecision_l2_refresh_last_headroom_ms')}ms`"
             ),
             f"- journal observations: `{payload['journal_observations']}`",
             "",
