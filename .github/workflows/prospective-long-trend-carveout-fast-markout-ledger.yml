@@ -573,6 +573,54 @@ jobs:
                       ready=ready["ready_for_execution_shadow_investigation"],
                   )
               )
+          timing = summary.get("reopened_long_trend_exit_timing", {})
+          if not isinstance(timing, dict):
+              timing = {}
+          lines.extend(
+              [
+                  "",
+                  "### Reopened LONG+trend exit timing",
+                  "",
+                  (
+                      "- evaluable / markets: "
+                      f"`{timing.get('evaluable_opportunities', 0)} / "
+                      f"{timing.get('market_count', 0)}`"
+                  ),
+                  (
+                      "- best fixed horizon counts / ties: "
+                      f"`{timing.get('best_horizon_counts', {})} / "
+                      f"{timing.get('best_horizon_ties', 0)}`"
+                  ),
+                  (
+                      "- early exit preferred / 60m preferred / tied: "
+                      f"`{timing.get('early_exit_preferred_count', 0)} / "
+                      f"{timing.get('sixty_min_preferred_count', 0)} / "
+                      f"{timing.get('early_vs_sixty_tie_count', 0)}`"
+                  ),
+              ]
+          )
+          for label, key in (
+              ("5m - 60m", "five_min_minus_sixty_min"),
+              ("15m - 60m", "fifteen_min_minus_sixty_min"),
+              ("5m - 15m", "five_min_minus_fifteen_min"),
+          ):
+              values = timing.get(key, {})
+              if not isinstance(values, dict):
+                  values = {}
+              lines.append(
+                  "- {label}: mean={mean}, LOO-opp={loo_opp}, "
+                  "LOO-market={loo_market}".format(
+                      label=label,
+                      mean=values.get("mean_directional_return"),
+                      loo_opp=values.get(
+                          "leave_one_opportunity_min_mean"
+                      ),
+                      loo_market=values.get(
+                          "leave_one_market_min_mean"
+                      ),
+                  )
+              )
+
           lines.extend(
               [
                   "",
