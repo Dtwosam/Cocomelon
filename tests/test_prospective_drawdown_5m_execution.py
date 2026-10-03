@@ -148,7 +148,11 @@ def _evidence(
             entry_side_visible_notional_25bps=Decimal("1000000"),
             exit_side_visible_notional_25bps=Decimal("1000000"),
             venue_max_leverage=Decimal("5"),
-            liquidation_price=Decimal("50"),
+            liquidation_price=(
+                Decimal("50")
+                if direction is Direction.LONG
+                else Decimal("150")
+            ),
             venue_min_notional=Decimal("10"),
             as_of_ms=timestamp_ms,
         ),
