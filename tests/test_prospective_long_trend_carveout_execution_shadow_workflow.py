@@ -125,6 +125,11 @@ def test_long_trend_execution_shadow_requires_durable_gate() -> None:
         "prospective-long-trend-carveout-fast-markout-ledger.json"
         in gate
     )
+    assert 'run.get("head_branch") == "main"' in gate
+    assert (
+        '(run.get("head_repository") or {}).get("full_name")'
+        in gate
+    )
     assert "durable gate artifact digest mismatch" in gate
     assert "durable gate ledger digest mismatch" in gate
     assert "durable gate candidate lineage mismatch" in gate
