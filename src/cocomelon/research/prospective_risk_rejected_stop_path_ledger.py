@@ -739,12 +739,61 @@ def _risk_budget_stop_readiness(
     }
 
 
+def _post_integrity_miss_readiness(
+    rows: Sequence[dict[str, object]],
+    *,
+    overlap_started_at_ms: int,
+    boundary_known: bool,
+    last_miss_at_ms: int | None,
+) -> dict[str, object]:
+    if not boundary_known:
+        return {
+            "boundary_known": False,
+            "last_miss_at_ms": None,
+            "started_at_ms": None,
+            "terminal_opportunity_count": 0,
+            "risk_budget_stop_investigation": None,
+            "changes_risk_limits": False,
+            "changes_execution": False,
+            "changes_candidate_readiness": False,
+        }
+    started_at_ms = (
+        overlap_started_at_ms
+        if last_miss_at_ms is None
+        else last_miss_at_ms + 1
+    )
+    clean_rows = tuple(
+        row
+        for row in rows
+        if cast(int, row["timestamp_ms"]) >= started_at_ms
+    )
+    return {
+        "boundary_known": True,
+        "last_miss_at_ms": last_miss_at_ms,
+        "started_at_ms": started_at_ms,
+        "terminal_opportunity_count": len(clean_rows),
+        "risk_budget_stop_investigation": (
+            _risk_budget_stop_readiness(
+                clean_rows,
+                integrity_clean=True,
+            )
+        ),
+        "changes_risk_limits": False,
+        "changes_execution": False,
+        "changes_candidate_readiness": False,
+    }
+
+
 def _summary(
     rows: Sequence[dict[str, object]],
     *,
     pending_opportunity_count: int,
     integrity_clean: bool,
     include_risk_budget_stop_readiness: bool = True,
+    include_post_integrity_readiness: bool = True,
+    overlap_started_at_ms: int | None = None,
+    integrity_boundary_known: bool = False,
+    integrity_last_miss_at_ms: int | None = None,
 ) -> dict[str, object]:
     row_values = tuple(rows)
     block_layers = Counter(
@@ -779,6 +828,17 @@ def _summary(
                 row_values,
                 integrity_clean=integrity_clean,
             )
+        )
+    if include_post_integrity_readiness:
+        if overlap_started_at_ms is None:
+            raise RiskRejectedStopPathLedgerError(
+                "post-integrity cohort requires overlap start"
+            )
+        result["post_integrity_miss"] = _post_integrity_miss_readiness(
+            row_values,
+            overlap_started_at_ms=overlap_started_at_ms,
+            boundary_known=integrity_boundary_known,
+            last_miss_at_ms=integrity_last_miss_at_ms,
         )
     return result
 
@@ -839,18 +899,59 @@ def validate_risk_rejected_stop_path_ledger(
         and item.get("integrity_clean") is True
         for item in history
     )
+    latest_history = history[-1] if history else None
+    latest_boundary_known = (
+        isinstance(latest_history, dict)
+        and (
+            latest_history.get("integrity_boundary_known") is True
+            or (
+                "integrity_boundary_known" not in latest_history
+                and latest_history.get("integrity_clean") is True
+            )
+        )
+    )
+    latest_last_miss = (
+        latest_history.get("integrity_last_miss_at_ms")
+        if isinstance(latest_history, dict)
+        else None
+    )
+    if latest_last_miss is not None and (
+        isinstance(latest_last_miss, bool)
+        or not isinstance(latest_last_miss, int)
+        or latest_last_miss < overlap
+    ):
+        raise RiskRejectedStopPathLedgerError(
+            "risk-rejected integrity miss boundary is invalid"
+        )
     current_summary = _summary(
         rows,
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
+        overlap_started_at_ms=overlap,
+        integrity_boundary_known=latest_boundary_known,
+        integrity_last_miss_at_ms=cast(
+            int | None,
+            latest_last_miss,
+        ),
+    )
+    pre_post_integrity_summary = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_post_integrity_readiness=False,
     )
     legacy_summary = _summary(
         rows,
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
         include_risk_budget_stop_readiness=False,
+        include_post_integrity_readiness=False,
     )
-    if raw.get("summary") not in (current_summary, legacy_summary):
+    if raw.get("summary") not in (
+        current_summary,
+        pre_post_integrity_summary,
+        legacy_summary,
+    ):
         raise RiskRejectedStopPathLedgerError(
             "stop-path summary does not reconcile"
         )
@@ -891,6 +992,8 @@ def _source_rows(
     int,
     int,
     bool,
+    bool,
+    int | None,
 ]:
     if not isinstance(summary, dict):
         raise RiskRejectedStopPathLedgerError(
@@ -976,7 +1079,33 @@ def _source_rows(
         overlap_started_at_ms=overlap,
     )
     integrity_clean = summary.get("risk_rejected_integrity_clean") is True
-    return rows, pending, overlap, integrity_clean
+    has_boundary_field = (
+        "risk_rejected_integrity_last_miss_at_ms" in summary
+    )
+    raw_last_miss = summary.get(
+        "risk_rejected_integrity_last_miss_at_ms"
+    )
+    if raw_last_miss is not None and (
+        isinstance(raw_last_miss, bool)
+        or not isinstance(raw_last_miss, int)
+        or raw_last_miss < overlap
+    ):
+        raise RiskRejectedStopPathLedgerError(
+            "risk-rejected integrity miss boundary is invalid"
+        )
+    if has_boundary_field and not integrity_clean and raw_last_miss is None:
+        raise RiskRejectedStopPathLedgerError(
+            "dirty risk-rejected source is missing its last integrity miss"
+        )
+    boundary_known = has_boundary_field or integrity_clean
+    return (
+        rows,
+        pending,
+        overlap,
+        integrity_clean,
+        boundary_known,
+        cast(int | None, raw_last_miss),
+    )
 
 
 def update_risk_rejected_stop_path_ledger(
@@ -995,7 +1124,14 @@ def update_risk_rejected_stop_path_ledger(
     if not source_artifact_digest.startswith("sha256:"):
         raise ValueError("source artifact digest must be sha256")
 
-    source_rows, pending, overlap, source_integrity = _source_rows(summary)
+    (
+        source_rows,
+        pending,
+        overlap,
+        source_integrity,
+        source_integrity_boundary_known,
+        source_integrity_last_miss_at_ms,
+    ) = _source_rows(summary)
     previous_rows: tuple[dict[str, object], ...] = ()
     history: list[object] = []
     prior_ledger_sha256: str | None = None
@@ -1071,6 +1207,12 @@ def update_risk_rejected_stop_path_ledger(
             "new_terminal_row_count": len(new_rows),
             "pending_opportunity_count": pending,
             "integrity_clean": source_integrity,
+            "integrity_boundary_known": (
+                source_integrity_boundary_known
+            ),
+            "integrity_last_miss_at_ms": (
+                source_integrity_last_miss_at_ms
+            ),
             "rows_sha256": _rows_sha256(rows),
         }
     )
@@ -1079,6 +1221,26 @@ def update_risk_rejected_stop_path_ledger(
         and item.get("integrity_clean") is True
         for item in history
     )
+    latest_history = history[-1]
+    if not isinstance(latest_history, dict):
+        raise RiskRejectedStopPathLedgerError(
+            "latest stop-path source history is invalid"
+        )
+    latest_boundary_known = (
+        latest_history.get("integrity_boundary_known") is True
+        or (
+            "integrity_boundary_known" not in latest_history
+            and latest_history.get("integrity_clean") is True
+        )
+    )
+    latest_last_miss = latest_history.get("integrity_last_miss_at_ms")
+    if latest_last_miss is not None and (
+        isinstance(latest_last_miss, bool)
+        or not isinstance(latest_last_miss, int)
+    ):
+        raise RiskRejectedStopPathLedgerError(
+            "latest integrity miss boundary is invalid"
+        )
 
     payload: dict[str, object] = {
         "schema_version": LEDGER_SCHEMA_VERSION,
@@ -1102,6 +1264,12 @@ def update_risk_rejected_stop_path_ledger(
             rows,
             pending_opportunity_count=pending,
             integrity_clean=cumulative_integrity,
+            overlap_started_at_ms=overlap,
+            integrity_boundary_known=latest_boundary_known,
+            integrity_last_miss_at_ms=cast(
+                int | None,
+                latest_last_miss,
+            ),
         ),
         "rows": rows,
     }

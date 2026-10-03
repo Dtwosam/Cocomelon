@@ -204,3 +204,13 @@ def test_risk_rejected_ledger_surfaces_investigation_gate() -> None:
     assert "leave_one_market_min_mean" in source
     assert "changes_risk_limits" in source
     assert "execution_authority" in source
+
+
+def test_risk_rejected_ledger_surfaces_post_integrity_cohort() -> None:
+    source = _source()
+
+    assert "post-integrity boundary known" in source
+    assert "post-integrity last miss / start" in source
+    assert "post-integrity terminal opportunities" in source
+    assert "post-integrity ready reasons" in source
+    assert "starts strictly after the last known rank/momentum lineage miss" in source

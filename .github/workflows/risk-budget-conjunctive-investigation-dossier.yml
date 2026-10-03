@@ -234,6 +234,9 @@ jobs:
               f"- source aligned: `{report['source_aligned']}`",
               f"- current gate formats: `{report['gates_current']}`",
               f"- cumulative integrity clean: `{report['integrity_clean']}`",
+              f"- effective integrity clean: `{report['effective_integrity_clean']}`",
+              f"- integrity scope: `{report['integrity_scope']}`",
+              f"- post-integrity source aligned / start: `{report['post_integrity_source_aligned']} / {report['post_integrity_started_at_ms']}`",
               f"- conjunctively ready reasons: `{report['ready_reasons']}`",
               (
                   "- return ledger workflow / artifact: "
@@ -275,9 +278,10 @@ jobs:
                   "",
                   (
                       "A reason is conjunctively ready only when both component "
-                      "ledgers are current, integrity-clean, derived from the "
-                      "same authenticated paper run/attempt/artifact digest, "
-                      "and that reason passes both independent gates."
+                      "ledgers are current and derived from the same authenticated paper run/attempt/artifact digest. "
+                      "Cumulative integrity must be clean, or both ledgers must agree on "
+                      "the same post-integrity-miss boundary and that clean "
+                      "suffix must pass both independent gates from scratch."
                   ),
                   (
                       "Conjunctive readiness authorizes only deeper research "

@@ -481,6 +481,15 @@ jobs:
           )
           if not isinstance(investigation, dict):
               investigation = {}
+          post_integrity = summary.get("post_integrity_miss", {})
+          if not isinstance(post_integrity, dict):
+              post_integrity = {}
+          post_investigation = post_integrity.get(
+              "risk_budget_investigation_readiness",
+              {},
+          )
+          if not isinstance(post_investigation, dict):
+              post_investigation = {}
 
           def stamp(value):
               return datetime.fromtimestamp(
@@ -500,6 +509,10 @@ jobs:
               f"- previous ledger workflow run: `{previous}`",
               f"- terminal / previous / new / pending: `{ledger['row_count']} / {ledger['previous_row_count']} / {ledger['new_row_count']} / {ledger['pending_opportunity_count']}`",
               f"- cumulative source integrity clean: `{summary['integrity_clean']}`",
+              f"- post-integrity boundary known: `{post_integrity.get('boundary_known', False)}`",
+              f"- post-integrity last miss / start: `{post_integrity.get('last_miss_at_ms')} / {post_integrity.get('started_at_ms')}`",
+              f"- post-integrity terminal opportunities: `{post_integrity.get('terminal_opportunity_count', 0)}`",
+              f"- post-integrity ready reasons: `{post_investigation.get('ready_reasons', [])}`",
               f"- stack admitted / blocked terminal: `{summary['stack_admitted_terminal']} / {summary['stack_blocked_terminal']}`",
               f"- risk reason counts: `{summary['risk_reason_counts']}`",
               f"- stack block layer counts: `{summary.get('stack_block_layer_counts', {})}`",
@@ -686,6 +699,7 @@ jobs:
                   "",
                   "Only rows with all fixed horizons terminal become immutable; pending and missing-path rows remain unfrozen.",
                   "Every previously published terminal row must remain byte-for-byte equivalent after canonicalization.",
+                  "Cumulative integrity remains an immutable audit fact. The post-integrity cohort starts strictly after the last known rank/momentum lineage miss and must satisfy the same investigation gate from scratch.",
                   "This ledger is descriptive only. It cannot relax a risk veto or change any entry-candidate readiness gate.",
                   "",
                   "**Execution authority:** `false`",

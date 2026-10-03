@@ -831,6 +831,51 @@ def _horizon_summary(
     return result
 
 
+def _post_integrity_miss_readiness(
+    rows: tuple[dict[str, object], ...],
+    *,
+    overlap_started_at_ms: int,
+    boundary_known: bool,
+    last_miss_at_ms: int | None,
+) -> dict[str, object]:
+    if not boundary_known:
+        return {
+            "boundary_known": False,
+            "last_miss_at_ms": None,
+            "started_at_ms": None,
+            "terminal_opportunity_count": 0,
+            "risk_budget_investigation_readiness": None,
+            "changes_risk_limits": False,
+            "changes_execution": False,
+            "changes_candidate_readiness": False,
+        }
+    started_at_ms = (
+        overlap_started_at_ms
+        if last_miss_at_ms is None
+        else last_miss_at_ms + 1
+    )
+    clean_rows = tuple(
+        row
+        for row in rows
+        if cast(int, row["timestamp_ms"]) >= started_at_ms
+    )
+    return {
+        "boundary_known": True,
+        "last_miss_at_ms": last_miss_at_ms,
+        "started_at_ms": started_at_ms,
+        "terminal_opportunity_count": len(clean_rows),
+        "risk_budget_investigation_readiness": (
+            _risk_reason_investigation_readiness(
+                clean_rows,
+                integrity_clean=True,
+            )
+        ),
+        "changes_risk_limits": False,
+        "changes_execution": False,
+        "changes_candidate_readiness": False,
+    }
+
+
 def _summary(
     rows: tuple[dict[str, object], ...],
     *,
@@ -839,6 +884,10 @@ def _summary(
     include_investigation_readiness: bool = True,
     include_block_layer_attribution: bool = True,
     include_combined_reason_attribution: bool = True,
+    include_post_integrity_readiness: bool = True,
+    overlap_started_at_ms: int | None = None,
+    integrity_boundary_known: bool = False,
+    integrity_last_miss_at_ms: int | None = None,
 ) -> dict[str, object]:
     reason_counts: Counter[str] = Counter()
     for row in rows:
@@ -899,6 +948,17 @@ def _summary(
                 rows,
                 integrity_clean=integrity_clean,
             )
+        )
+    if include_post_integrity_readiness:
+        if overlap_started_at_ms is None:
+            raise ProspectiveRiskRejectedForwardMarkoutLedgerError(
+                "post-integrity cohort requires overlap start"
+            )
+        result["post_integrity_miss"] = _post_integrity_miss_readiness(
+            rows,
+            overlap_started_at_ms=overlap_started_at_ms,
+            boundary_known=integrity_boundary_known,
+            last_miss_at_ms=integrity_last_miss_at_ms,
         )
     return result
 
@@ -973,16 +1033,53 @@ def validate_risk_rejected_forward_markout_ledger(
         and item.get("integrity_clean") is True
         for item in history
     )
+    latest_history = history[-1] if history else None
+    latest_boundary_known = (
+        isinstance(latest_history, dict)
+        and (
+            latest_history.get("integrity_boundary_known") is True
+            or (
+                "integrity_boundary_known" not in latest_history
+                and latest_history.get("integrity_clean") is True
+            )
+        )
+    )
+    latest_last_miss = (
+        latest_history.get("integrity_last_miss_at_ms")
+        if isinstance(latest_history, dict)
+        else None
+    )
+    if latest_last_miss is not None and (
+        isinstance(latest_last_miss, bool)
+        or not isinstance(latest_last_miss, int)
+        or latest_last_miss < overlap
+    ):
+        raise ProspectiveRiskRejectedForwardMarkoutLedgerError(
+            "risk-rejected integrity miss boundary is invalid"
+        )
     current_summary = _summary(
         rows,
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
+        overlap_started_at_ms=overlap,
+        integrity_boundary_known=latest_boundary_known,
+        integrity_last_miss_at_ms=cast(
+            int | None,
+            latest_last_miss,
+        ),
+    )
+    pre_post_integrity_summary = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_post_integrity_readiness=False,
     )
     pre_combined_reason_summary = _summary(
         rows,
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
         include_combined_reason_attribution=False,
+        include_post_integrity_readiness=False,
     )
     pre_layer_summary = _summary(
         rows,
@@ -990,12 +1087,14 @@ def validate_risk_rejected_forward_markout_ledger(
         integrity_clean=integrity_clean,
         include_block_layer_attribution=False,
         include_combined_reason_attribution=False,
+        include_post_integrity_readiness=False,
     )
     pre_readiness_summary = _summary(
         rows,
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
         include_investigation_readiness=False,
+        include_post_integrity_readiness=False,
     )
     pre_readiness_pre_reason_summary = _summary(
         rows,
@@ -1003,6 +1102,7 @@ def validate_risk_rejected_forward_markout_ledger(
         integrity_clean=integrity_clean,
         include_investigation_readiness=False,
         include_combined_reason_attribution=False,
+        include_post_integrity_readiness=False,
     )
     legacy_summary = _summary(
         rows,
@@ -1011,9 +1111,11 @@ def validate_risk_rejected_forward_markout_ledger(
         include_investigation_readiness=False,
         include_block_layer_attribution=False,
         include_combined_reason_attribution=False,
+        include_post_integrity_readiness=False,
     )
     if raw.get("summary") not in (
         current_summary,
+        pre_post_integrity_summary,
         pre_combined_reason_summary,
         pre_layer_summary,
         pre_readiness_summary,
@@ -1062,6 +1164,8 @@ def _source_rows(
     int,
     tuple[int, int, int, int],
     bool,
+    bool,
+    int | None,
 ]:
     if not isinstance(summary, dict):
         raise ProspectiveRiskRejectedForwardMarkoutLedgerError(
@@ -1138,6 +1242,26 @@ def _source_rows(
         else:
             pending += 1
     integrity_clean = summary.get("risk_rejected_integrity_clean") is True
+    has_boundary_field = (
+        "risk_rejected_integrity_last_miss_at_ms" in summary
+    )
+    raw_last_miss = summary.get(
+        "risk_rejected_integrity_last_miss_at_ms"
+    )
+    if raw_last_miss is not None and (
+        isinstance(raw_last_miss, bool)
+        or not isinstance(raw_last_miss, int)
+        or raw_last_miss < metadata[0]
+    ):
+        raise ProspectiveRiskRejectedForwardMarkoutLedgerError(
+            "risk-rejected integrity miss boundary is invalid"
+        )
+    if has_boundary_field and not integrity_clean and raw_last_miss is None:
+        raise ProspectiveRiskRejectedForwardMarkoutLedgerError(
+            "dirty risk-rejected source is missing its last integrity miss"
+        )
+    integrity_boundary_known = has_boundary_field or integrity_clean
+    integrity_last_miss_at_ms = cast(int | None, raw_last_miss)
     return (
         _canonical_rows(
             terminal,
@@ -1147,6 +1271,8 @@ def _source_rows(
         pending,
         metadata,
         integrity_clean,
+        integrity_boundary_known,
+        integrity_last_miss_at_ms,
     )
 
 
@@ -1166,9 +1292,14 @@ def update_risk_rejected_forward_markout_ledger(
     if not source_artifact_digest.startswith("sha256:"):
         raise ValueError("source artifact digest must be sha256")
 
-    source_rows, pending, metadata, source_integrity = _source_rows(
-        summary
-    )
+    (
+        source_rows,
+        pending,
+        metadata,
+        source_integrity,
+        source_integrity_boundary_known,
+        source_integrity_last_miss_at_ms,
+    ) = _source_rows(summary)
     (
         overlap_started_at_ms,
         combined_started_at_ms,
@@ -1263,6 +1394,12 @@ def update_risk_rejected_forward_markout_ledger(
             "new_terminal_row_count": len(new_rows),
             "pending_opportunity_count": pending,
             "integrity_clean": source_integrity,
+            "integrity_boundary_known": (
+                source_integrity_boundary_known
+            ),
+            "integrity_last_miss_at_ms": (
+                source_integrity_last_miss_at_ms
+            ),
             "rows_sha256": _rows_sha256(rows),
         }
     )
@@ -1271,6 +1408,26 @@ def update_risk_rejected_forward_markout_ledger(
         and item.get("integrity_clean") is True
         for item in history
     )
+    latest_history = history[-1]
+    if not isinstance(latest_history, dict):
+        raise ProspectiveRiskRejectedForwardMarkoutLedgerError(
+            "latest risk-rejected source history is invalid"
+        )
+    latest_boundary_known = (
+        latest_history.get("integrity_boundary_known") is True
+        or (
+            "integrity_boundary_known" not in latest_history
+            and latest_history.get("integrity_clean") is True
+        )
+    )
+    latest_last_miss = latest_history.get("integrity_last_miss_at_ms")
+    if latest_last_miss is not None and (
+        isinstance(latest_last_miss, bool)
+        or not isinstance(latest_last_miss, int)
+    ):
+        raise ProspectiveRiskRejectedForwardMarkoutLedgerError(
+            "latest integrity miss boundary is invalid"
+        )
 
     payload: dict[str, object] = {
         "schema_version": LEDGER_SCHEMA_VERSION,
@@ -1298,6 +1455,12 @@ def update_risk_rejected_forward_markout_ledger(
             rows,
             pending_opportunity_count=pending,
             integrity_clean=cumulative_integrity,
+            overlap_started_at_ms=overlap_started_at_ms,
+            integrity_boundary_known=latest_boundary_known,
+            integrity_last_miss_at_ms=cast(
+                int | None,
+                latest_last_miss,
+            ),
         ),
         "rows": rows,
     }

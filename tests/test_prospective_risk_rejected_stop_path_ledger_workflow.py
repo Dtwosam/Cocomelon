@@ -126,3 +126,13 @@ def test_stop_path_non_success_wake_falls_back() -> None:
         in source
     )
     assert "latest_successful_with_compact_artifact" in source
+
+
+def test_stop_path_workflow_surfaces_post_integrity_cohort() -> None:
+    source = _source()
+
+    assert "post-integrity boundary known" in source
+    assert "post-integrity last miss / start" in source
+    assert "post-integrity terminal opportunities" in source
+    assert "post-integrity ready reasons" in source
+    assert "starts strictly after the last known rank/momentum lineage miss" in source

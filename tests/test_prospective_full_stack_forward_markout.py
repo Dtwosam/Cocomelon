@@ -764,6 +764,9 @@ def test_risk_rejected_integrity_is_isolated_from_candidate_readiness(
     assert result["risk_rejected_stack_evaluated"] == 0
     assert result["risk_rejected_missing_rank"] == 1
     assert result["risk_rejected_integrity_clean"] is False
+    assert result["risk_rejected_integrity_last_miss_at_ms"] == (
+        rejected.opportunity_timestamp_ms
+    )
     horizons = result["horizons"]
     assert isinstance(horizons, dict)
     one_hour = horizons["3600000"]
