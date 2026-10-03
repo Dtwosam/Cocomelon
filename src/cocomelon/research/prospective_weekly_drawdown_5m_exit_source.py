@@ -529,6 +529,8 @@ def prospective_weekly_drawdown_5m_exit_source(
         "baseline_risk_reason": WEEKLY_DRAWDOWN_REASON,
         "full_stack_overlap_started_at_ms": overlap,
         "pre_candidate_integrity_last_miss_at_ms": last_integrity_miss,
+        "enabled": True,
+        "error": None,
         "research_only": True,
         "execution_authority": False,
         "promotion_authority": False,
