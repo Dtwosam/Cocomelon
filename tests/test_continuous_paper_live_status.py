@@ -6294,7 +6294,8 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert "L2 supervisor unhealthy markets: 16 / 20" in rendered
     assert (
         "L2 lane 0: connected=true, ready=20, stale=16, "
-        "missing-ready=0, reconnects=7, l2-stale-reconnects=6, "
+        "missing-ready=0, reconnects=7, "
+        "l2-targeted-resubscribes=12, l2-stale-reconnects=6, "
         "server-age=100ms"
         in rendered
     )
@@ -6310,7 +6311,8 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     )
     assert (
         "L2 lane 1: connected=false, ready=18, stale=15, "
-        "missing-ready=2, reconnects=11, l2-stale-reconnects=8, "
+        "missing-ready=2, reconnects=11, "
+        "l2-targeted-resubscribes=15, l2-stale-reconnects=8, "
         "server-age=2000ms"
         in rendered
     )
