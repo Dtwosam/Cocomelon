@@ -98,6 +98,7 @@ class StreamHealth:
     last_server_message_ms: int | None
     reconnect_count: int = 0
     systemic_l2_stale_reconnect_count: int = 0
+    systemic_l2_targeted_resubscribe_count: int = 0
     duplicate_count: int = 0
     anomaly_count: int = 0
 
@@ -109,6 +110,10 @@ class StreamHealth:
         if self.systemic_l2_stale_reconnect_count < 0:
             raise ValueError(
                 "systemic_l2_stale_reconnect_count must be non-negative"
+            )
+        if self.systemic_l2_targeted_resubscribe_count < 0:
+            raise ValueError(
+                "systemic_l2_targeted_resubscribe_count must be non-negative"
             )
         if self.duplicate_count < 0:
             raise ValueError("duplicate_count must be non-negative")
