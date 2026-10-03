@@ -21,6 +21,19 @@ def test_prospective_readiness_workflow_is_fail_closed() -> None:
     assert 'if [[ "$conclusion" != "success" ]]' in source
     assert "Expected exactly one current $key ledger artifact." in source
     assert "**Status:** BLOCKED" in source
+    blocked = source.split(
+        "      - name: Publish blocked readiness status",
+        1,
+    )[1].split(
+        "      - name: Fail closed on readiness integrity",
+        1,
+    )[0]
+    assert "python - <<'PY'" in blocked
+    assert "LEDGER_OUTCOME" in blocked
+    assert "EVALUATE_OUTCOME" in blocked
+    assert "**Execution authority:** `false`" in blocked
+    assert "**Promotion authority:** `false`" in blocked
+    assert "<<EOF" not in blocked
     assert "Fail closed on readiness integrity" in source
     assert "prospective-trade-quality-readiness.json" in source
     assert "paper " in source
