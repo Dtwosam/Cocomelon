@@ -103,8 +103,10 @@ def _source(
     rows: list[dict[str, object]],
     *,
     integrity_clean: bool = True,
+    last_miss_at_ms: int | None = None,
+    include_integrity_boundary: bool = True,
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "enabled": True,
         "error": None,
         "research_only": True,
@@ -127,6 +129,13 @@ def _source(
         },
         "risk_rejected_rows": rows,
     }
+    if include_integrity_boundary:
+        payload["risk_rejected_integrity_last_miss_at_ms"] = (
+            last_miss_at_ms
+            if integrity_clean or last_miss_at_ms is not None
+            else START
+        )
+    return payload
 
 
 def _update(
@@ -189,14 +198,18 @@ def test_stop_path_ledger_freezes_resolved_and_keeps_pending() -> None:
     validate_risk_rejected_stop_path_ledger(ledger)
 
 
-def _ready_stop_rows(*, crossings: int) -> list[dict[str, object]]:
+def _ready_stop_rows(
+    *,
+    crossings: int,
+    start_offset_ms: int = 1,
+) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     markets = ("SOL", "ETH", "BTC", "HYPE")
     for index in range(12):
         rows.append(
             _row(
                 f"ready-{index}",
-                timestamp_ms=START + index + 1,
+                timestamp_ms=START + start_offset_ms + index,
                 market=markets[index % len(markets)],
                 layer="none",
                 combined_reason=None,
@@ -256,6 +269,58 @@ def test_stop_path_ledger_rejects_tied_survival_for_risk_review() -> None:
             item["ready_for_risk_budget_stop_investigation"]
             is False
         )
+
+
+def test_stop_path_post_integrity_cohort_starts_after_last_miss() -> None:
+    old_row = _row(
+        "pre-miss",
+        timestamp_ms=START + 4_000,
+        market="SOL",
+        layer="none",
+        combined_reason=None,
+        crossed=False,
+    )
+    clean_rows = _ready_stop_rows(
+        crossings=4,
+        start_offset_ms=10_000,
+    )
+    source = _source(
+        [old_row, *clean_rows],
+        integrity_clean=False,
+        last_miss_at_ms=START + 5_000,
+    )
+
+    ledger = _update(source)
+    summary = ledger["summary"]
+
+    assert summary["integrity_clean"] is False
+    assert summary["risk_budget_stop_investigation"][
+        "ready_reasons"
+    ] == []
+    post = summary["post_integrity_miss"]
+    assert post["boundary_known"] is True
+    assert post["last_miss_at_ms"] == START + 5_000
+    assert post["started_at_ms"] == START + 5_001
+    assert post["terminal_opportunity_count"] == 12
+    readiness = post["risk_budget_stop_investigation"]
+    assert readiness["ready_reasons"] == ["weekly_drawdown_lockout"]
+    assert readiness["changes_risk_limits"] is False
+    assert readiness["changes_execution"] is False
+
+
+def test_stop_path_legacy_dirty_source_has_no_clean_boundary() -> None:
+    source = _source(
+        _ready_stop_rows(crossings=4),
+        integrity_clean=False,
+        include_integrity_boundary=False,
+    )
+
+    ledger = _update(source)
+    post = ledger["summary"]["post_integrity_miss"]
+
+    assert post["boundary_known"] is False
+    assert post["started_at_ms"] is None
+    assert post["risk_budget_stop_investigation"] is None
 
 
 def test_stop_path_ledger_accepts_pre_stop_gate_summary() -> None:
