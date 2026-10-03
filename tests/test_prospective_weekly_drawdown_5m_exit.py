@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -627,10 +628,15 @@ def test_shadow_requires_funding_evidence_for_crossed_boundary() -> None:
 
 def test_shadow_rejects_execution_cost_estimate_drift() -> None:
     config = PaperExecutionConfig()
+    baseline_cost = conservative_cost_estimate(config)
     evidence = _evidence(
         timestamp_ms=37_000_000,
-        cost_estimate=(
-            conservative_cost_estimate(config) + Decimal("0.0001")
+        cost_estimate=replace(
+            baseline_cost,
+            entry_slippage_fraction=(
+                baseline_cost.entry_slippage_fraction
+                + Decimal("0.0001")
+            ),
         ),
     )
     state = ProspectiveWeeklyDrawdown5mExitState(
