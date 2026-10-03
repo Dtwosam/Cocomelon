@@ -5,6 +5,7 @@ import json
 from collections.abc import Sequence
 from typing import Final, cast
 
+from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityEvidence,
 )
@@ -15,8 +16,11 @@ from cocomelon.research.prospective_full_stack_forward_markout import (
     LONG_TREND_CARVEOUT_CANDIDATE_ID,
 )
 
-SCHEMA_VERSION: Final = 1
+SCHEMA_VERSION: Final = 2
 SOURCE_KIND: Final = (
+    "prospective-long-trend-carveout-execution-shadow-source-v2"
+)
+LEGACY_SOURCE_KIND: Final = (
     "prospective-long-trend-carveout-execution-shadow-source-v1"
 )
 WEEKLY_DRAWDOWN_REASON: Final = "weekly_drawdown_lockout"
@@ -40,6 +44,30 @@ def _sha256(value: object) -> str:
     return hashlib.sha256(
         _canonical_json(value).encode("utf-8")
     ).hexdigest()
+
+
+def execution_config_payload(
+    config: PaperExecutionConfig,
+) -> dict[str, object]:
+    return {
+        "config_version": config.config_version,
+        "latency_ms": config.latency_ms,
+        "max_book_age_ms": config.max_book_age_ms,
+        "max_asset_ctx_age_ms": config.max_asset_ctx_age_ms,
+        "max_position_age_ms": config.max_position_age_ms,
+        "funding_reconciliation_grace_ms": (
+            config.funding_reconciliation_grace_ms
+        ),
+        "max_ioc_slippage_bps": str(config.max_ioc_slippage_bps),
+        "taker_fee_rate": str(config.taker_fee_rate),
+        "fee_schedule_id": config.fee_schedule_id,
+        "native_perp_min_notional": str(
+            config.native_perp_min_notional
+        ),
+        "paper_max_gross_leverage": str(
+            config.paper_max_gross_leverage
+        ),
+    }
 
 
 def _path_by_id(
@@ -89,6 +117,7 @@ def prospective_long_trend_execution_shadow_source(
     full_stack_summary: object,
     opportunities: Sequence[ContinuousPaperOpeningOpportunityEvidence],
     paths: Sequence[ContinuousPaperOpeningOpportunityPath],
+    execution_config: PaperExecutionConfig,
 ) -> dict[str, object]:
     if not isinstance(full_stack_summary, dict):
         raise ProspectiveLongTrendExecutionShadowSourceError(
@@ -240,6 +269,7 @@ def prospective_long_trend_execution_shadow_source(
             "duplicate execution-shadow source opportunity id"
         )
 
+    config_payload = execution_config_payload(execution_config)
     payload: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
         "kind": SOURCE_KIND,
@@ -256,6 +286,8 @@ def prospective_long_trend_execution_shadow_source(
         "durable_gate_source": (
             "prospective-long-trend-carveout-fast-markout-ledger"
         ),
+        "execution_config": config_payload,
+        "execution_config_sha256": _sha256(config_payload),
         "source_opportunity_count": len(exported),
         "missing_opportunity_evidence": missing_opportunities,
         "missing_forward_paths": missing_paths,
