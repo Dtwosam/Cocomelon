@@ -21,6 +21,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=15_000,
     )
+    parser.add_argument(
+        "--websocket-redundant-lane-reconnect-stagger-ms",
+        type=int,
+        default=5_000,
+    )
     parser.add_argument("--selection-refresh-seconds", type=int, default=300)
     parser.add_argument("--checkpoint-seconds", type=int, default=30)
     parser.add_argument("--stop-file", type=Path)
@@ -39,6 +44,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         context_poll_seconds=args.context_poll_seconds,
         websocket_server_silence_timeout_ms=(
             args.websocket_server_silence_timeout_ms
+        ),
+        websocket_redundant_lane_reconnect_stagger_ms=(
+            args.websocket_redundant_lane_reconnect_stagger_ms
         ),
         selection_refresh_seconds=args.selection_refresh_seconds,
         checkpoint_seconds=args.checkpoint_seconds,
