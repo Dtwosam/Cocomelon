@@ -1465,16 +1465,19 @@ class _SupervisorGroup:
                     in stale_by_lane[lane]
                 )
                 and (
-                    (
-                        overage_ms := self.supervisors[
-                            lane
-                        ].l2_stale_overage_ms(
-                            stream_id,
-                            now_ms=now_ms,
+                    grace_by_lane[lane] == 0
+                    or (
+                        (
+                            overage_ms := self.supervisors[
+                                lane
+                            ].l2_stale_overage_ms(
+                                stream_id,
+                                now_ms=now_ms,
+                            )
                         )
+                        is not None
+                        and overage_ms >= grace_by_lane[lane]
                     )
-                    is not None
-                    and overage_ms >= grace_by_lane[lane]
                 )
                 for lane in range(len(self.supervisors))
             )
