@@ -52,6 +52,47 @@ def _markout(
     }
 
 
+def _stop_path(
+    *,
+    timestamp_ms: int,
+    crossed: bool,
+) -> dict[str, object]:
+    horizons: dict[str, dict[str, object]] = {}
+    for horizon in HORIZONS:
+        target = timestamp_ms + horizon
+        if crossed:
+            horizons[str(horizon)] = {
+                "status": "observed_stop_crossing",
+                "target_at_ms": target,
+                "observed_mark_count": 2,
+                "stop_crossed": True,
+                "first_stop_cross_at_ms": timestamp_ms + 60_000,
+                "first_stop_cross_mark_px": "89",
+                "time_to_stop_ms": 60_000,
+                "survived_observed_marks_to_horizon": False,
+            }
+        else:
+            horizons[str(horizon)] = {
+                "status": "observed_path_survivor",
+                "target_at_ms": target,
+                "observed_mark_count": 2,
+                "stop_crossed": False,
+                "first_stop_cross_at_ms": None,
+                "first_stop_cross_mark_px": None,
+                "time_to_stop_ms": None,
+                "survived_observed_marks_to_horizon": True,
+            }
+    return {
+        "claim_scope": "observed_mark_stop_crossing_only",
+        "original_stop_price": "90",
+        "entry_reference_price": "100",
+        "horizons": horizons,
+        "changes_execution": False,
+        "changes_risk_limits": False,
+        "changes_candidate_readiness": False,
+    }
+
+
 def _row(
     suffix: str,
     *,
@@ -166,6 +207,13 @@ def _summary(rows: list[dict[str, object]]) -> dict[str, object]:
             "changes_readiness_gate": False,
             "changes_closed_trade_readiness_gate": False,
             "candidate_id": LONG_TREND_CARVEOUT_CANDIDATE_ID,
+            "stop_path_overlay": {
+                "enabled": True,
+                "claim_scope": "observed_mark_stop_crossing_only",
+                "changes_execution": False,
+                "changes_risk_limits": False,
+                "changes_candidate_readiness": False,
+            },
             "evaluated": len(rows),
             "admitted": sum(
                 row["long_trend_carveout_decision"] == "ADMIT"
@@ -236,6 +284,103 @@ def test_carveout_ledger_appends_terminal_and_keeps_pending_unfrozen() -> None:
         is False
     )
     validate_long_trend_carveout_ledger(ledger)
+
+
+def test_carveout_ledger_reports_stop_path_survival() -> None:
+    row = _row(
+        "stop-survivor",
+        timestamp_ms=START + 1_000,
+        market="SOL",
+        direction="long",
+        combined_reason="long_trend",
+        carveout_decision="ADMIT",
+        returns=("0.01", "0.02", "0.03"),
+    )
+    row["long_trend_carveout_stop_path"] = _stop_path(
+        timestamp_ms=START + 1_000,
+        crossed=False,
+    )
+
+    ledger = _update(_summary([row]))
+    one_hour = ledger["summary"]["horizons"]["3600000"]
+    stop = one_hour["reopened_long_trend_stop_path"]
+    assert stop["claim_scope"] == "observed_mark_stop_crossing_only"
+    assert stop["evaluable"] == 1
+    assert stop["crossings"] == 0
+    assert stop["survivors"] == 1
+    assert stop["crossing_fraction"] == "0"
+    assert stop["median_time_to_stop_ms"] is None
+    assert (
+        one_hour["investigation_readiness"][
+            "ready_for_execution_shadow_investigation"
+        ]
+        is False
+    )
+    validate_long_trend_carveout_ledger(ledger)
+
+
+def test_carveout_ledger_reports_stop_path_crossing() -> None:
+    row = _row(
+        "stop-cross",
+        timestamp_ms=START + 1_000,
+        market="SOL",
+        direction="long",
+        combined_reason="long_trend",
+        carveout_decision="ADMIT",
+        returns=("0.01", "0.02", "0.03"),
+    )
+    row["long_trend_carveout_stop_path"] = _stop_path(
+        timestamp_ms=START + 1_000,
+        crossed=True,
+    )
+
+    ledger = _update(_summary([row]))
+    five_minute = ledger["summary"]["horizons"]["300000"]
+    stop = five_minute["reopened_long_trend_stop_path"]
+    assert stop["evaluable"] == 1
+    assert stop["crossings"] == 1
+    assert stop["survivors"] == 0
+    assert stop["crossing_fraction"] == "1"
+    assert stop["median_time_to_stop_ms"] == 60_000
+
+
+def test_carveout_ledger_accepts_pre_stop_path_summary() -> None:
+    row = _row(
+        "legacy-stop",
+        timestamp_ms=START + 1_000,
+        market="SOL",
+        direction="long",
+        combined_reason="long_trend",
+        carveout_decision="ADMIT",
+        returns=("0.01", "0.02", "0.03"),
+    )
+    ledger = _update(_summary([row]))
+    legacy = deepcopy(ledger)
+    summary = legacy["summary"]
+    assert isinstance(summary, dict)
+    horizons = summary["horizons"]
+    assert isinstance(horizons, dict)
+    for item in horizons.values():
+        assert isinstance(item, dict)
+        item.pop("reopened_long_trend_stop_path")
+
+    digest_payload = {
+        key: value
+        for key, value in legacy.items()
+        if key != "ledger_sha256"
+    }
+    legacy["ledger_sha256"] = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    validated = validate_long_trend_carveout_ledger(legacy)
+    assert validated["row_count"] == 1
 
 
 def test_carveout_ledger_refuses_terminal_history_rewrite() -> None:
