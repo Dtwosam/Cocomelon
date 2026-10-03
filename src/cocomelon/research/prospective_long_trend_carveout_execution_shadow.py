@@ -22,11 +22,11 @@ from cocomelon.research.prospective_full_stack_forward_markout import (
     LONG_TREND_CARVEOUT_CANDIDATE_ID,
 )
 from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
-    SOURCE_KIND,
-    WEEKLY_DRAWDOWN_REASON,
+    SCHEMA_VERSION as SOURCE_SCHEMA_VERSION,
 )
 from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
-    SCHEMA_VERSION as SOURCE_SCHEMA_VERSION,
+    SOURCE_KIND,
+    WEEKLY_DRAWDOWN_REASON,
 )
 from cocomelon.risk.engine import evaluate_risk
 
