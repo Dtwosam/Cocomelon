@@ -449,6 +449,23 @@ def prospective_weekly_drawdown_5m_exit_summary(
                 "full-stack candidate lineage mismatch"
             )
 
+        raw_stop_path = row.get("stop_path")
+        if not isinstance(raw_stop_path, dict):
+            raise ProspectiveWeeklyDrawdown5mExitError(
+                "five-minute stop-path evidence is missing"
+            )
+        stop_status = raw_stop_path.get("status")
+        if not isinstance(stop_status, str):
+            raise ProspectiveWeeklyDrawdown5mExitError(
+                "five-minute stop-path status is invalid"
+            )
+        if raw_stop_path.get("claim_scope") != (
+            "observed_mark_stop_crossing_only"
+        ):
+            raise ProspectiveWeeklyDrawdown5mExitError(
+                "five-minute stop-path claim scope drift"
+            )
+
         _execution_config_compatible(evidence, config)
         adjusted_request = _neutralize_weekly_drawdown(evidence)
         risk = evaluate_risk(adjusted_request)
@@ -465,6 +482,14 @@ def prospective_weekly_drawdown_5m_exit_summary(
             "entry_filled_quantity": None,
             "entry_average_fill_price": None,
             "entry_fee": None,
+            "stop_path_status": stop_status,
+            "stop_path_observed_mark_count": raw_stop_path.get(
+                "observed_mark_count"
+            ),
+            "stop_path_stop_crossed": raw_stop_path.get("stop_crossed"),
+            "stop_path_survived_to_5m": raw_stop_path.get(
+                "survived_observed_marks_to_horizon"
+            ),
             "exit_execution_result": None,
             "complete_close": False,
             "gross_realized_pnl": None,
@@ -554,6 +579,27 @@ def prospective_weekly_drawdown_5m_exit_summary(
         result["entry_filled_quantity"] = str(quantity)
         result["entry_average_fill_price"] = str(entry_price)
         result["entry_fee"] = str(entry_fee)
+
+        if stop_status == "observed_stop_crossing":
+            result["incomplete_reason"] = (
+                "observed_stop_crossing_before_5m"
+            )
+            results.append(result)
+            continue
+        if stop_status != "observed_path_survivor":
+            result["incomplete_reason"] = "stop_path_not_evaluable"
+            results.append(result)
+            continue
+        if (
+            raw_stop_path.get("stop_crossed") is not False
+            or raw_stop_path.get(
+                "survived_observed_marks_to_horizon"
+            )
+            is not True
+        ):
+            raise ProspectiveWeeklyDrawdown5mExitError(
+                "observed stop survivor flags are inconsistent"
+            )
 
         raw_exit = row.get("exit_book")
         if raw_exit is None:
@@ -730,7 +776,28 @@ def prospective_weekly_drawdown_5m_exit_summary(
             "captured_real_l2_reduce_only_ioc_at_fixed_5m"
         ),
         "funding_model": "exact_captured_hourly_boundaries",
+        "claim_scope": (
+            "observed_stop_survivor_exact_5m_entry_exit_funding_pnl"
+        ),
+        "observed_stop_path_claim_scope": (
+            "observed_mark_stop_crossing_only"
+        ),
+        "unseen_intraperiod_stop_path_complete": False,
+        "portfolio_counterfactual_complete": False,
         "source_opportunities": len(rows),
+        "observed_stop_survivor_options": sum(
+            item["stop_path_status"] == "observed_path_survivor"
+            for item in result_tuple
+        ),
+        "observed_stop_crossing_options": sum(
+            item["stop_path_status"] == "observed_stop_crossing"
+            for item in result_tuple
+        ),
+        "observed_stop_path_incomplete_options": sum(
+            item["stop_path_status"]
+            not in {"observed_path_survivor", "observed_stop_crossing"}
+            for item in result_tuple
+        ),
         "counterfactual_risk_approvals": sum(
             item["counterfactual_risk_approved"] is True
             for item in result_tuple
