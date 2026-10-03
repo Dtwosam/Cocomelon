@@ -42,9 +42,11 @@ def test_cooldown_ledger_binds_exact_compact_source() -> None:
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
     assert (
-        'artifact_name="continuous-paper-learning-source-$run_id-$run_attempt"'
+        'local expected_name="continuous-paper-learning-source-'
+        '$candidate_run_id-$candidate_attempt"'
         in source
     )
+    assert "latest_successful_with_compact_artifact" in source
     assert "source artifact digest is missing or invalid" in source
     assert (
         "prospective-consecutive-loss-cooldown-shadow-summary.json"
