@@ -34,6 +34,7 @@ from cocomelon.domain.risk import RiskLimits
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.contracts import BaselineReplayConfig
+from cocomelon.evidence.epochs import DECISION_INTERVAL_MS
 from cocomelon.evidence.lifecycle import (
     BaselineReplayPipeline,
     OpeningResearchObserver,
@@ -456,6 +457,7 @@ class ContinuousPaperConfig:
     context_poll_seconds: int = 30
     websocket_server_silence_timeout_ms: int = 15_000
     websocket_redundant_lane_reconnect_stagger_ms: int = 5_000
+    predecision_l2_refresh_lead_ms: int = 10_000
     selection_refresh_seconds: int = 300
     checkpoint_seconds: int = 30
     warmup_5m_bars: int = 25
@@ -476,6 +478,10 @@ class ContinuousPaperConfig:
             raise ValueError(
                 "websocket_redundant_lane_reconnect_stagger_ms "
                 "must be non-negative"
+            )
+        if self.predecision_l2_refresh_lead_ms <= 0:
+            raise ValueError(
+                "predecision_l2_refresh_lead_ms must be positive"
             )
         if self.selection_refresh_seconds < self.context_poll_seconds:
             raise ValueError("selection_refresh_seconds must be >= context_poll_seconds")
@@ -3927,6 +3933,12 @@ class _RecordPump:
         self.stale_l2_pipeline_recovery_triggers = 0
         self.stale_l2_pipeline_reason_fallback_triggers = 0
         self.last_stale_l2_recovery_trigger: dict[str, object] | None = None
+        self.predecision_l2_refresh_attempts = 0
+        self.predecision_l2_refresh_books = 0
+        self.predecision_l2_refresh_failures = 0
+        self.predecision_l2_refresh_late_completions = 0
+        self.predecision_l2_refresh_last_duration_ms: int | None = None
+        self.predecision_l2_refresh_last_headroom_ms: int | None = None
         self.record_pump_max_process_ms = 0
         self.record_pump_max_lock_wait_ms = 0
         self.record_pump_slow_record_count = 0
@@ -4218,6 +4230,33 @@ async def _monitor_event_loop_lag(
                 "observed_phase": pump.event_loop_phase,
             }
         expected = observed + interval_seconds
+
+
+def _next_predecision_l2_refresh(
+    now_ms: int,
+    *,
+    decision_grace_ms: int,
+    lead_ms: int,
+) -> tuple[int, int]:
+    if now_ms < 0:
+        raise ValueError("now_ms must be non-negative")
+    if decision_grace_ms <= 0:
+        raise ValueError("decision_grace_ms must be positive")
+    if lead_ms <= 0 or lead_ms >= decision_grace_ms:
+        raise ValueError(
+            "lead_ms must be positive and smaller than decision grace"
+        )
+
+    boundary_ms = (
+        now_ms // DECISION_INTERVAL_MS * DECISION_INTERVAL_MS
+    )
+    evaluated_at_ms = boundary_ms + decision_grace_ms
+    if now_ms >= evaluated_at_ms:
+        evaluated_at_ms += DECISION_INTERVAL_MS
+    refresh_at_ms = evaluated_at_ms - lead_ms
+    if refresh_at_ms < now_ms:
+        refresh_at_ms = now_ms
+    return refresh_at_ms, evaluated_at_ms
 
 
 async def _reseed_l2_books_via_rest(
@@ -6598,6 +6637,24 @@ def _live_status_payload(
         "stale_l2_pipeline_reason_fallback_triggers": (
             pump.stale_l2_pipeline_reason_fallback_triggers
         ),
+        "predecision_l2_refresh_attempts": (
+            pump.predecision_l2_refresh_attempts
+        ),
+        "predecision_l2_refresh_books": (
+            pump.predecision_l2_refresh_books
+        ),
+        "predecision_l2_refresh_failures": (
+            pump.predecision_l2_refresh_failures
+        ),
+        "predecision_l2_refresh_late_completions": (
+            pump.predecision_l2_refresh_late_completions
+        ),
+        "predecision_l2_refresh_last_duration_ms": (
+            pump.predecision_l2_refresh_last_duration_ms
+        ),
+        "predecision_l2_refresh_last_headroom_ms": (
+            pump.predecision_l2_refresh_last_headroom_ms
+        ),
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
         "session_closed_trades": pump.session_closed_trades,
@@ -7161,6 +7218,24 @@ def _operational_live_status_payload(
         "stale_l2_pipeline_reason_fallback_triggers": (
             pump.stale_l2_pipeline_reason_fallback_triggers
         ),
+        "predecision_l2_refresh_attempts": (
+            pump.predecision_l2_refresh_attempts
+        ),
+        "predecision_l2_refresh_books": (
+            pump.predecision_l2_refresh_books
+        ),
+        "predecision_l2_refresh_failures": (
+            pump.predecision_l2_refresh_failures
+        ),
+        "predecision_l2_refresh_late_completions": (
+            pump.predecision_l2_refresh_late_completions
+        ),
+        "predecision_l2_refresh_last_duration_ms": (
+            pump.predecision_l2_refresh_last_duration_ms
+        ),
+        "predecision_l2_refresh_last_headroom_ms": (
+            pump.predecision_l2_refresh_last_headroom_ms
+        ),
         "l2_supervisor_health": (
             None
             if l2_supervisor_group is None
@@ -7563,6 +7638,22 @@ async def run_continuous_paper_session(
 
     reader = InfoClient(settings)
     replay_config = BaselineReplayConfig()
+    if (
+        config.predecision_l2_refresh_lead_ms
+        >= replay_config.decision_grace_ms
+    ):
+        raise ValueError(
+            "predecision L2 refresh lead must be smaller than "
+            "decision grace"
+        )
+    if (
+        config.predecision_l2_refresh_lead_ms
+        >= replay_config.eligibility.max_book_age_ms
+    ):
+        raise ValueError(
+            "predecision L2 refresh lead must be smaller than "
+            "max book age"
+        )
     execution = PaperExecutionAdapter(
         root / "paper.sqlite3",
         replay_config.execution,
@@ -8495,6 +8586,14 @@ async def run_continuous_paper_session(
         next_context_poll_ms = (
             utc_now_ms() + config.context_poll_seconds * 1000
         )
+        (
+            next_predecision_l2_refresh_ms,
+            next_predecision_evaluated_at_ms,
+        ) = _next_predecision_l2_refresh(
+            utc_now_ms(),
+            decision_grace_ms=replay_config.decision_grace_ms,
+            lead_ms=config.predecision_l2_refresh_lead_ms,
+        )
         next_selection_refresh_ms = started_at_ms + config.selection_refresh_seconds * 1000
         next_checkpoint_ms = started_at_ms + config.checkpoint_seconds * 1000
         last_pipeline_stale_recovery_boundary_ms: int | None = None
@@ -8633,6 +8732,7 @@ async def run_continuous_paper_session(
                 wake_deadline_ms = min(
                     deadline_ms,
                     next_context_poll_ms,
+                    next_predecision_l2_refresh_ms,
                 )
                 wait_seconds = max(
                     0.1,
@@ -8654,6 +8754,63 @@ async def run_continuous_paper_session(
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
+
+                if woke_for_decision_epoch:
+                    while next_predecision_l2_refresh_ms <= now_ms:
+                        next_predecision_l2_refresh_ms += (
+                            DECISION_INTERVAL_MS
+                        )
+                        next_predecision_evaluated_at_ms += (
+                            DECISION_INTERVAL_MS
+                        )
+                elif now_ms >= next_predecision_l2_refresh_ms:
+                    pump.event_loop_phase = "predecision_l2_refresh"
+                    refresh_started_at_ms = utc_now_ms()
+                    pump.predecision_l2_refresh_attempts += 1
+                    (
+                        refreshed_books,
+                        refresh_failures,
+                    ) = await _reseed_l2_books_via_rest(
+                        reader,
+                        selected,
+                        pump,
+                        max_book_age_ms=(
+                            replay_config.eligibility.max_book_age_ms
+                        ),
+                    )
+                    refresh_completed_at_ms = utc_now_ms()
+                    pump.predecision_l2_refresh_books += refreshed_books
+                    pump.predecision_l2_refresh_failures += (
+                        refresh_failures
+                    )
+                    pump.predecision_l2_refresh_last_duration_ms = max(
+                        0,
+                        refresh_completed_at_ms - refresh_started_at_ms,
+                    )
+                    refresh_headroom_ms = (
+                        next_predecision_evaluated_at_ms
+                        - refresh_completed_at_ms
+                    )
+                    pump.predecision_l2_refresh_last_headroom_ms = (
+                        refresh_headroom_ms
+                    )
+                    if refresh_headroom_ms <= 0:
+                        pump.predecision_l2_refresh_late_completions += 1
+                    while (
+                        next_predecision_l2_refresh_ms
+                        <= refresh_completed_at_ms
+                    ):
+                        next_predecision_l2_refresh_ms += (
+                            DECISION_INTERVAL_MS
+                        )
+                        next_predecision_evaluated_at_ms += (
+                            DECISION_INTERVAL_MS
+                        )
+                    pump.event_loop_phase = "control_wait"
+                    now_ms = refresh_completed_at_ms
+                    if _stop_requested(stop_path):
+                        exit_reason = "upgrade_requested"
+                        break
 
                 systemically_unhealthy_l2 = False
                 if woke_for_decision_epoch:
