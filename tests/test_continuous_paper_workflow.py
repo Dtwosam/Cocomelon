@@ -606,6 +606,7 @@ def test_full_stack_fast_markout_is_exported_and_runtime_watched() -> None:
     assert "risk-rejected reasons" in source
     assert "risk-rejected {minutes}m stack admit/block mean" in source
 
+
 def test_long_trend_execution_shadow_source_is_compact_and_watched() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
