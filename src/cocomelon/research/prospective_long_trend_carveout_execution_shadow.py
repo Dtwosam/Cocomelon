@@ -85,17 +85,19 @@ def _execution_config_from_payload(
             )
         return value
 
-    max_position_age_ms = raw.get("max_position_age_ms")
-    if (
-        max_position_age_ms is not None
-        and (
-            isinstance(max_position_age_ms, bool)
-            or not isinstance(max_position_age_ms, int)
-        )
+    raw_max_position_age_ms = raw.get("max_position_age_ms")
+    max_position_age_ms: int | None
+    if raw_max_position_age_ms is None:
+        max_position_age_ms = None
+    elif (
+        isinstance(raw_max_position_age_ms, bool)
+        or not isinstance(raw_max_position_age_ms, int)
     ):
         raise ProspectiveLongTrendExecutionShadowError(
             "captured execution config max_position_age_ms is invalid"
         )
+    else:
+        max_position_age_ms = raw_max_position_age_ms
     try:
         return PaperExecutionConfig(
             config_version=required_string("config_version"),
@@ -143,6 +145,13 @@ def _validate_source(
             "execution-shadow source must be an object"
         )
     schema_version = raw.get("schema_version")
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+    ):
+        raise ProspectiveLongTrendExecutionShadowError(
+            "execution-shadow source schema is unsupported"
+        )
     if schema_version == SOURCE_SCHEMA_VERSION:
         if raw.get("kind") != SOURCE_KIND:
             raise ProspectiveLongTrendExecutionShadowError(
