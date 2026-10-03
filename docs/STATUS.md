@@ -4468,3 +4468,18 @@ The append-only LONG+trend carveout ledger preserves the new stop-path lineage o
 This stop-path overlay is descriptive only and is deliberately excluded from the existing execution-shadow investigation readiness gate. It does not simulate stop fills, slippage, position sizing, funding, replacement capacity, or a complete counterfactual lifecycle. It changes no strategy threshold, risk veto, sizing rule, execution behavior, readiness gate, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Risk-rejected observed stop-path overlay ledger — 2026-10-03
+
+Issue #774 already contains immutable fixed-horizon markout evidence for risk-rejected opportunities. Those rows cannot be retroactively enriched with newly introduced stop-path fields without violating the append-only contract. A separate Issue #805 evidence family now preserves observed stop-path outcomes keyed to the same opportunity IDs.
+
+The overlay accepts only risk-rejected full-stack opportunities from stop-aware compact paper sources. It binds the exact source paper run, attempt, artifact name, and digest; preserves stack decision, block layer, combined-filter reason, and hard-risk reasons; and freezes a row only after every fixed stop-path horizon is resolved. Missing or still-pending paths remain unfrozen.
+
+At 5m / 15m / 60m the ledger reports observed stop crossings, observed-path survivors, crossing fraction, median time-to-stop, and market breadth. The same metrics are broken down by frozen stack block layer and combined-filter subreason so later price recoveries can be distinguished from setups that actually survived their original stop.
+
+The claim is deliberately narrow: a survivor means no captured causal mark crossed the original decision-time stop before that horizon. It does not infer the unseen intrablock path and does not simulate stop fill price, slippage, funding, sizing, portfolio capacity, or a complete counterfactual trade lifecycle.
+
+This overlay changes no strategy threshold, risk veto, risk limit, sizing rule, execution behavior, candidate readiness, promotion state, or live-order authority. Existing Issue #774 rows remain untouched.
+
+**LIVE TRADING: DISABLED.**
