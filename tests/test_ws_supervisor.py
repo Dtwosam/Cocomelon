@@ -275,7 +275,7 @@ def test_systemic_l2_stale_on_active_socket_forces_reconnect() -> None:
         )
 
 
-def test_duplicate_l2_snapshot_refreshes_subscription_liveness() -> None:
+def test_duplicate_l2_snapshot_does_not_mask_stale_payload_reconnect() -> None:
     async def run() -> None:
         now = [1_000]
         same_book = {
@@ -334,14 +334,15 @@ def test_duplicate_l2_snapshot_refreshes_subscription_liveness() -> None:
             stale_after_ms=5_000,
             systemic_l2_stale_reconnect_fraction=0.5,
         )
+
         await supervisor.run(
             max_sessions=1,
             max_messages_per_session=3,
         )
 
         assert supervisor.health.duplicate_count == 1
-        assert supervisor.health.reconnect_count == 0
-        assert supervisor.health.systemic_l2_stale_reconnect_count == 0
+        assert supervisor.health.systemic_l2_stale_reconnect_count == 1
+        assert connection.closed is True
         assert any(
             gap.reason == "stale"
             and gap.stream_id == "l2Book:BTC"

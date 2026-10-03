@@ -197,12 +197,23 @@ class WebSocketSupervisor:
             )
             for stream_id in stream_ids
         )
+        stale_payload_count = sum(
+            (
+                (exchange_time_ms := self._last_exchange_time.get(stream_id))
+                is not None
+                and now_ms - exchange_time_ms >= reconnect_after_ms
+            )
+            for stream_id in stream_ids
+        )
         minimum_stale = (
             1
             if len(stream_ids) == 1
             else max(2, math.ceil(len(stream_ids) * fraction))
         )
-        return silent_count >= minimum_stale
+        return (
+            silent_count >= minimum_stale
+            or stale_payload_count >= minimum_stale
+        )
 
     def _raise_if_systemic_l2_stale(
         self,
