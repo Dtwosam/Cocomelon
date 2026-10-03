@@ -13,6 +13,7 @@ from cocomelon.hyperliquid.ws_protocol import (
     normalize_ws_message,
     subscribe_message,
     subscription_id,
+    unsubscribe_message,
 )
 
 ConnectionFactory = Callable[[], Awaitable[WsConnection]]
@@ -60,6 +61,7 @@ class WebSocketSupervisor:
         stale_after_ms: int = 15_000,
         server_silence_timeout_ms: int | None = None,
         systemic_l2_stale_reconnect_fraction: float | None = None,
+        max_systemic_l2_targeted_resubscribes: int = 2,
         dedup_size: int = 2048,
     ) -> None:
         if heartbeat_seconds <= 0:
@@ -80,6 +82,10 @@ class WebSocketSupervisor:
             raise ValueError(
                 "systemic_l2_stale_reconnect_fraction must be in (0, 1]"
             )
+        if max_systemic_l2_targeted_resubscribes <= 0:
+            raise ValueError(
+                "max_systemic_l2_targeted_resubscribes must be positive"
+            )
         if dedup_size <= 0:
             raise ValueError("dedup_size must be positive")
         self._connection_factory = connection_factory
@@ -95,6 +101,9 @@ class WebSocketSupervisor:
         self._systemic_l2_stale_reconnect_fraction = (
             systemic_l2_stale_reconnect_fraction
         )
+        self._max_systemic_l2_targeted_resubscribes = (
+            max_systemic_l2_targeted_resubscribes
+        )
         self._dedup_size = dedup_size
         self._recent_keys: dict[str, deque[str]] = defaultdict(deque)
         self._recent_key_sets: dict[str, set[str]] = defaultdict(set)
@@ -105,6 +114,8 @@ class WebSocketSupervisor:
         self._last_server_message_ms: int | None = None
         self._reconnect_count = 0
         self._systemic_l2_stale_reconnect_count = 0
+        self._systemic_l2_targeted_resubscribe_count = 0
+        self._systemic_l2_targeted_resubscribe_streak = 0
         self._duplicate_count = 0
         self._anomaly_count = 0
 
@@ -116,6 +127,9 @@ class WebSocketSupervisor:
             reconnect_count=self._reconnect_count,
             systemic_l2_stale_reconnect_count=(
                 self._systemic_l2_stale_reconnect_count
+            ),
+            systemic_l2_targeted_resubscribe_count=(
+                self._systemic_l2_targeted_resubscribe_count
             ),
             duplicate_count=self._duplicate_count,
             anomaly_count=self._anomaly_count,
@@ -188,18 +202,55 @@ class WebSocketSupervisor:
         )
         return stale_count >= minimum_stale
 
-    def _raise_if_systemic_l2_stale(
+    def _clear_l2_dedup_state(self, stream_id: str) -> None:
+        self._recent_keys.pop(stream_id, None)
+        self._recent_key_sets.pop(stream_id, None)
+
+    async def _recover_systemic_l2_stale(
         self,
+        connection: WsConnection,
         *,
         now_ms: int,
     ) -> None:
         if not self._systemic_l2_stale_while_server_active(
             now_ms=now_ms
         ):
+            self._systemic_l2_targeted_resubscribe_streak = 0
+            return
+        stale_subscriptions = tuple(
+            subscription
+            for subscription in sorted(
+                self._subscriptions,
+                key=subscription_id,
+            )
+            if subscription.get("type") == "l2Book"
+            and self._l2_stream_is_stale(
+                subscription_id(subscription),
+                now_ms=now_ms,
+            )
+        )
+        if (
+            self._systemic_l2_targeted_resubscribe_streak
+            < self._max_systemic_l2_targeted_resubscribes
+        ):
+            for subscription in stale_subscriptions:
+                stream_id = subscription_id(subscription)
+                await connection.send_json(
+                    unsubscribe_message(subscription)
+                )
+                await connection.send_json(
+                    subscribe_message(subscription)
+                )
+                self._last_exchange_time.pop(stream_id, None)
+                self._last_stream_message[stream_id] = now_ms
+                self._clear_l2_dedup_state(stream_id)
+            self._systemic_l2_targeted_resubscribe_count += 1
+            self._systemic_l2_targeted_resubscribe_streak += 1
             return
         self._systemic_l2_stale_reconnect_count += 1
+        self._systemic_l2_targeted_resubscribe_streak = 0
         raise ConnectionError(
-            "systemic l2 subscription staleness on active websocket"
+            "systemic l2 subscription staleness after targeted resubscribe"
         )
 
     async def _open_l2_stale_gaps_if_needed(
@@ -336,6 +387,8 @@ class WebSocketSupervisor:
         for stream_id in self._l2_stream_ids():
             self._last_exchange_time.pop(stream_id, None)
             self._last_stream_message[stream_id] = session_started_ms
+            self._clear_l2_dedup_state(stream_id)
+        self._systemic_l2_targeted_resubscribe_streak = 0
 
     async def _session(
         self,
@@ -383,7 +436,10 @@ class WebSocketSupervisor:
                         "websocket server message silence timeout"
                     )
                 await self._open_l2_stale_gaps_if_needed(now_ms)
-                self._raise_if_systemic_l2_stale(now_ms=now_ms)
+                await self._recover_systemic_l2_stale(
+                    connection,
+                    now_ms=now_ms,
+                )
                 if now_ms >= next_heartbeat_ms:
                     await connection.send_json({"method": "ping"})
                     next_heartbeat_ms = (
@@ -405,7 +461,10 @@ class WebSocketSupervisor:
                         "websocket server message silence timeout"
                     ) from None
                 await self._open_l2_stale_gaps_if_needed(now_ms)
-                self._raise_if_systemic_l2_stale(now_ms=now_ms)
+                await self._recover_systemic_l2_stale(
+                    connection,
+                    now_ms=now_ms,
+                )
                 heartbeat_due = wake_ms == next_heartbeat_ms
                 if heartbeat_due or now_ms >= next_heartbeat_ms:
                     await connection.send_json({"method": "ping"})
@@ -420,7 +479,10 @@ class WebSocketSupervisor:
             received += 1
             now_ms = self._clock_ms()
             await self._open_l2_stale_gaps_if_needed(now_ms)
-            self._raise_if_systemic_l2_stale(now_ms=now_ms)
+            await self._recover_systemic_l2_stale(
+                    connection,
+                    now_ms=now_ms,
+                )
             if now_ms >= next_heartbeat_ms:
                 await connection.send_json({"method": "ping"})
                 next_heartbeat_ms = (
