@@ -1753,6 +1753,78 @@ def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
     )
 
 
+def test_supervisor_group_waits_for_lane_reconnect_grace() -> None:
+    required = frozenset({"BTC", "ETH", "SOL", "ENA"})
+
+    class Lane:
+        def __init__(
+            self,
+            stale: tuple[str, ...],
+            overage_ms: int,
+        ) -> None:
+            self._stale = stale
+            self._overage_ms = overage_ms
+
+        def stale_l2_streams(
+            self,
+            *,
+            now_ms: int,
+        ) -> tuple[str, ...]:
+            del now_ms
+            return self._stale
+
+        def l2_stale_overage_ms(
+            self,
+            stream_id: str,
+            *,
+            now_ms: int,
+        ) -> int | None:
+            del stream_id, now_ms
+            return self._overage_ms
+
+    before_second_lane_grace = _SupervisorGroup(
+        supervisors=(
+            Lane(("l2Book:BTC", "l2Book:ETH"), 6_000),  # type: ignore[arg-type]
+            Lane(("l2Book:BTC", "l2Book:ETH"), 6_000),  # type: ignore[arg-type]
+        ),
+        tasks=(),
+        forward_gaps=asyncio.Event(),
+        required_market_keys=required,
+        ready_market_keys=(
+            {"SOL", "ENA"},
+            {"SOL", "ENA"},
+        ),
+        l2_group_recovery_grace_ms_by_lane=(5_000, 10_000),
+    )
+    after_both_lane_graces = _SupervisorGroup(
+        supervisors=(
+            Lane(("l2Book:BTC", "l2Book:ETH"), 11_000),  # type: ignore[arg-type]
+            Lane(("l2Book:BTC", "l2Book:ETH"), 11_000),  # type: ignore[arg-type]
+        ),
+        tasks=(),
+        forward_gaps=asyncio.Event(),
+        required_market_keys=required,
+        ready_market_keys=(
+            {"SOL", "ENA"},
+            {"SOL", "ENA"},
+        ),
+        l2_group_recovery_grace_ms_by_lane=(5_000, 10_000),
+    )
+
+    assert (
+        before_second_lane_grace.systemically_stale_l2(
+            now_ms=20_000
+        )
+        is False
+    )
+    assert (
+        after_both_lane_graces.systemically_stale_l2(
+            now_ms=25_000
+        )
+        is True
+    )
+
+
 def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
     source = Path("src/cocomelon/continuous_paper.py").read_text(
         encoding="utf-8"
