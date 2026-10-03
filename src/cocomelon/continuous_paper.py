@@ -1468,8 +1468,10 @@ class _SupervisorGroup:
         ):
             if task.done():
                 continue
-            last_reconnect_ms = (
-                supervisor.health.last_systemic_l2_stale_reconnect_ms
+            last_reconnect_ms = getattr(
+                supervisor.health,
+                "last_systemic_l2_stale_reconnect_ms",
+                None,
             )
             if (
                 last_reconnect_ms is not None
@@ -1515,6 +1517,11 @@ def _supervisor_group_health_payload(
         )
     ):
         health = supervisor.health
+        last_systemic_reconnect_ms = getattr(
+            health,
+            "last_systemic_l2_stale_reconnect_ms",
+            None,
+        )
         stale_markets = tuple(
             sorted(
                 stream_id.removeprefix("l2Book:")
@@ -1556,14 +1563,14 @@ def _supervisor_group_health_payload(
                     health.systemic_l2_stale_reconnect_count
                 ),
                 "last_systemic_l2_stale_reconnect_ms": (
-                    health.last_systemic_l2_stale_reconnect_ms
+                    last_systemic_reconnect_ms
                 ),
                 "systemic_l2_stale_reconnect_age_ms": (
                     None
-                    if health.last_systemic_l2_stale_reconnect_ms is None
+                    if last_systemic_reconnect_ms is None
                     else max(
                         0,
-                        now_ms - health.last_systemic_l2_stale_reconnect_ms,
+                        now_ms - last_systemic_reconnect_ms,
                     )
                 ),
                 "duplicate_count": health.duplicate_count,
@@ -8605,6 +8612,11 @@ async def run_continuous_paper_session(
                         supervisor_unhealthy_market_keys,
                     )
                 )
+                if (
+                    not supervisor_systemically_unhealthy_l2
+                    and not pipeline_systemically_unhealthy_l2
+                ):
+                    return False
 
             pump.last_stale_l2_recovery_trigger = {
                 "timestamp_ms": health_now_ms,
