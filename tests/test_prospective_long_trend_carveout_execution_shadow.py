@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+from copy import deepcopy
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -241,6 +244,7 @@ def _source(
         _full_stack_summary(evidence),
         (evidence,),
         (() if path is None else (path,)),
+        PaperExecutionConfig(),
     )
 
 
@@ -253,6 +257,10 @@ def test_execution_shadow_replays_weekly_lockout_fill() -> None:
         PaperExecutionConfig(),
     )
 
+    assert result["source_schema_version"] == 2
+    assert result["execution_config_source"] == "captured_source_v2"
+    assert result["execution_config"]["config_version"] == "phase7-v1"
+    assert isinstance(result["execution_config_sha256"], str)
     assert result["source_opportunities"] == 1
     assert result["counterfactual_risk_approvals"] == 1
     assert result["counterfactual_risk_rejections"] == {}
@@ -305,6 +313,72 @@ def test_execution_shadow_reports_missing_path_after_fill() -> None:
     option = result["option_results"][0]
     for horizon in ("300000", "900000", "3600000"):
         assert option["markouts"][horizon]["status"] == "missing_path"
+
+
+def test_execution_shadow_accepts_legacy_v1_with_explicit_fallback() -> None:
+    evidence = _evidence(timestamp_ms=35_000_000)
+    legacy = deepcopy(_source(evidence, path=_path(evidence)))
+    legacy["schema_version"] = 1
+    legacy["kind"] = (
+        "prospective-long-trend-carveout-execution-shadow-source-v1"
+    )
+    legacy.pop("execution_config")
+    legacy.pop("execution_config_sha256")
+    digest_payload = {
+        key: value
+        for key, value in legacy.items()
+        if key != "source_sha256"
+    }
+    legacy["source_sha256"] = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    result = prospective_long_trend_execution_shadow_summary(
+        legacy,
+        PaperExecutionConfig(),
+    )
+
+    assert result["source_schema_version"] == 1
+    assert (
+        result["execution_config_source"]
+        == "legacy_evaluator_fallback_v1"
+    )
+    assert result["fillable_opportunities"] == 1
+
+
+def test_execution_shadow_rejects_captured_config_digest_drift() -> None:
+    evidence = _evidence(timestamp_ms=36_000_000)
+    source = deepcopy(_source(evidence, path=_path(evidence)))
+    source["execution_config_sha256"] = "0" * 64
+    digest_payload = {
+        key: value
+        for key, value in source.items()
+        if key != "source_sha256"
+    }
+    source["source_sha256"] = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    with pytest.raises(
+        ProspectiveLongTrendExecutionShadowError,
+        match="execution config digest mismatch",
+    ):
+        prospective_long_trend_execution_shadow_summary(
+            source,
+            PaperExecutionConfig(),
+        )
 
 
 def test_execution_shadow_rejects_tampered_source_digest() -> None:
