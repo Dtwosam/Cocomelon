@@ -1514,49 +1514,70 @@ def validate_long_trend_carveout_ledger(
             )
         latest_last_miss = cast(int | None, raw_last_miss)
 
-    summary_variants: list[dict[str, object]] = []
-    for include_post_integrity_readiness in (True, False):
-        common = {
-            "pending_opportunity_count": pending,
-            "integrity_clean": integrity_clean,
-            "include_post_integrity_readiness": (
+    def expected_summary(
+        *,
+        include_post_integrity_readiness: bool,
+        include_stop_path: bool = True,
+        include_stop_readiness: bool = True,
+        include_exit_timing: bool = True,
+    ) -> dict[str, object]:
+        return _summary(
+            rows,
+            pending_opportunity_count=pending,
+            integrity_clean=integrity_clean,
+            include_stop_path=include_stop_path,
+            include_stop_readiness=include_stop_readiness,
+            include_exit_timing=include_exit_timing,
+            include_post_integrity_readiness=(
                 include_post_integrity_readiness
             ),
-            "overlap_started_at_ms": overlap,
-            "integrity_boundary_known": latest_boundary_known,
-            "integrity_last_miss_at_ms": latest_last_miss,
-        }
+            overlap_started_at_ms=overlap,
+            integrity_boundary_known=latest_boundary_known,
+            integrity_last_miss_at_ms=latest_last_miss,
+        )
+
+    summary_variants: list[dict[str, object]] = []
+    for include_post_integrity_readiness in (True, False):
         summary_variants.extend(
             (
-                _summary(rows, **common),
-                _summary(
-                    rows,
+                expected_summary(
+                    include_post_integrity_readiness=(
+                        include_post_integrity_readiness
+                    )
+                ),
+                expected_summary(
+                    include_post_integrity_readiness=(
+                        include_post_integrity_readiness
+                    ),
                     include_exit_timing=False,
-                    **common,
                 ),
-                _summary(
-                    rows,
+                expected_summary(
+                    include_post_integrity_readiness=(
+                        include_post_integrity_readiness
+                    ),
                     include_stop_readiness=False,
-                    **common,
                 ),
-                _summary(
-                    rows,
+                expected_summary(
+                    include_post_integrity_readiness=(
+                        include_post_integrity_readiness
+                    ),
                     include_stop_readiness=False,
                     include_exit_timing=False,
-                    **common,
                 ),
-                _summary(
-                    rows,
+                expected_summary(
+                    include_post_integrity_readiness=(
+                        include_post_integrity_readiness
+                    ),
                     include_stop_path=False,
                     include_stop_readiness=False,
-                    **common,
                 ),
-                _summary(
-                    rows,
+                expected_summary(
+                    include_post_integrity_readiness=(
+                        include_post_integrity_readiness
+                    ),
                     include_stop_path=False,
                     include_stop_readiness=False,
                     include_exit_timing=False,
-                    **common,
                 ),
             )
         )
