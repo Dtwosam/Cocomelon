@@ -69,6 +69,17 @@ def test_long_trend_execution_shadow_legacy_source_waits() -> None:
     assert 'if [ "$format_check" != "current" ]; then' in compact
     assert 'echo "eligible=false"' in compact
     assert "incompatible execution-shadow format" in compact
+    assert "legacy_v1" in compact
+    assert "config_v2" in compact
+    assert "execution_config_sha256" in compact
+    assert (
+        "prospective-long-trend-carveout-execution-shadow-source-v1"
+        in compact
+    )
+    assert (
+        "prospective-long-trend-carveout-execution-shadow-source-v2"
+        in compact
+    )
 
 
 def test_long_trend_execution_shadow_wait_status_preserves_metadata() -> None:
@@ -99,6 +110,8 @@ def test_long_trend_execution_shadow_reuses_frozen_execution_path() -> None:
     assert "Fee-adjusted forward markouts" in source
     assert "visible-book IOC" in source
     assert "Other risk vetoes remain active" in source
+    assert "execution config source" in source
+    assert "execution config digest" in source
 
 
 def test_long_trend_execution_shadow_uploads_deterministic_summary() -> None:
