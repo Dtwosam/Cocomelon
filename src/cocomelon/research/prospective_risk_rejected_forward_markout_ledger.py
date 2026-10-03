@@ -1087,6 +1087,7 @@ def validate_risk_rejected_forward_markout_ledger(
         integrity_clean=integrity_clean,
         include_block_layer_attribution=False,
         include_combined_reason_attribution=False,
+        include_post_integrity_readiness=False,
     )
     pre_readiness_summary = _summary(
         rows,
@@ -1101,6 +1102,7 @@ def validate_risk_rejected_forward_markout_ledger(
         integrity_clean=integrity_clean,
         include_investigation_readiness=False,
         include_combined_reason_attribution=False,
+        include_post_integrity_readiness=False,
     )
     legacy_summary = _summary(
         rows,
@@ -1109,6 +1111,7 @@ def validate_risk_rejected_forward_markout_ledger(
         include_investigation_readiness=False,
         include_block_layer_attribution=False,
         include_combined_reason_attribution=False,
+        include_post_integrity_readiness=False,
     )
     if raw.get("summary") not in (
         current_summary,
