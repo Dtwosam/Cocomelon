@@ -373,12 +373,12 @@ jobs:
               continue
             fi
             IFS=$'\t' read -r artifact_id artifact_name <<<"$artifact_line"
-            rm -rf /tmp/previous-long-trend-carveout-ledger
-            mkdir -p /tmp/previous-long-trend-carveout-ledger
-            gh api               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > /tmp/previous-long-trend-carveout-ledger.zip
-            unzip -q               /tmp/previous-long-trend-carveout-ledger.zip               -d /tmp/previous-long-trend-carveout-ledger
+            rm -rf /tmp/previous-risk-rejected-stop-path-ledger
+            mkdir -p /tmp/previous-risk-rejected-stop-path-ledger
+            gh api               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > /tmp/previous-risk-rejected-stop-path-ledger.zip
+            unzip -q               /tmp/previous-risk-rejected-stop-path-ledger.zip               -d /tmp/previous-risk-rejected-stop-path-ledger
             candidate="$(
-              find /tmp/previous-long-trend-carveout-ledger                 -type f                 -name prospective-risk-rejected-stop-path-ledger.json                 -print -quit
+              find /tmp/previous-risk-rejected-stop-path-ledger                 -type f                 -name prospective-risk-rejected-stop-path-ledger.json                 -print -quit
             )"
             if [ -n "$candidate" ] && [ -s "$candidate" ]; then
               previous_path="$candidate"
