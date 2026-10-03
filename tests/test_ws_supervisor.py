@@ -594,6 +594,56 @@ def test_duplicate_and_out_of_order_are_not_dispatched() -> None:
     asyncio.run(run())
 
 
+def test_l2_stale_overage_starts_after_hard_freshness_ceiling() -> None:
+    async def run() -> None:
+        connection = FakeConnection([book(1_000)])
+
+        async def factory() -> FakeConnection:
+            return connection
+
+        async def event_sink(_event: StreamEvent) -> None:
+            return None
+
+        async def gap_sink(_gap: DataGap) -> None:
+            return None
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "l2Book", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: 1_000,
+            utcnow=lambda: datetime.fromtimestamp(
+                1,
+                tz=UTC,
+            ),
+            stale_after_ms=5_000,
+        )
+        await supervisor.run(
+            max_sessions=1,
+            max_messages_per_session=1,
+        )
+
+        assert supervisor.l2_stale_overage_ms(
+            "l2Book:BTC",
+            now_ms=5_999,
+        ) == 0
+        assert supervisor.l2_stale_overage_ms(
+            "l2Book:BTC",
+            now_ms=6_000,
+        ) == 0
+        assert supervisor.l2_stale_overage_ms(
+            "l2Book:BTC",
+            now_ms=7_250,
+        ) == 1_250
+        assert supervisor.l2_stale_overage_ms(
+            "l2Book:ETH",
+            now_ms=7_250,
+        ) is None
+
+    asyncio.run(run())
+
+
 def test_freshness_reports_stale_streams() -> None:
     async def run() -> None:
         connection = FakeConnection([trade(1)])
