@@ -4600,6 +4600,14 @@ def test_runtime_persists_weekly_drawdown_5m_candidate_source() -> None:
     assert "prospective-weekly-drawdown-5m-exit-source.json" in source
     assert "_restore_prospective_weekly_drawdown_5m_exit(" in source
     assert "prospective_weekly_drawdown_5m_exit_state.payload()" in source
+    assert (
+        "if prospective_weekly_drawdown_5m_exit_restore_error is not None:"
+        in source
+    )
+    assert (
+        "weekly-drawdown 5m candidate state restore failed"
+        in source
+    )
 
     call = source.index(
         "prospective_weekly_drawdown_5m_exit_source("
