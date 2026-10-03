@@ -410,6 +410,26 @@ def test_full_stack_markout_separates_final_admit_and_blocks(
     assert decisions["ETH"] == ("BLOCK", "momentum")
     assert decisions["BTC"] == ("ADMIT", "none")
 
+    carveout = result["long_trend_carveout"]
+    assert isinstance(carveout, dict)
+    assert carveout["evaluated"] == 3
+    assert carveout["admitted"] == 2
+    assert carveout["blocked"] == 1
+    assert carveout["block_layer_counts"] == {
+        "momentum": 1,
+        "none": 2,
+    }
+    carveout_decisions = {
+        row["market"]: (
+            row["long_trend_carveout_decision"],
+            row["long_trend_carveout_block_layer"],
+        )
+        for row in rows
+    }
+    assert carveout_decisions["SOL"] == ("ADMIT", "none")
+    assert carveout_decisions["ETH"] == ("BLOCK", "momentum")
+    assert carveout_decisions["BTC"] == ("ADMIT", "none")
+
     horizons = result["horizons"]
     assert isinstance(horizons, dict)
     one_hour = horizons["3600000"]
@@ -539,6 +559,74 @@ def test_full_stack_markout_reports_integrity_and_risk_exclusions(
     assert weekly["settled"] == 1
     assert weekly["mean_directional_return"] == "0.03"
     assert one_hour["changes_readiness_gate"] is False
+
+
+def test_risk_rejected_long_trend_carveout_runs_downstream_stack(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    combined, two_strike, momentum = _states()
+    feature = _record_feature(
+        store,
+        market="SOL",
+        timestamp_ms=START + 900,
+        return_1h="0.03",
+        day_return="0.05",
+    )
+    rejected = _opportunity(
+        suffix="risk-long-trend",
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=START + 1_000,
+        feature_snapshot_id=feature,
+        lead_strategy="trend",
+        approved=False,
+    )
+    rejected = replace(
+        rejected,
+        baseline_risk_reason_codes=("weekly_drawdown_lockout",),
+    )
+
+    result = prospective_full_stack_forward_markout_summary(
+        (rejected,),
+        (_path(rejected, returns=("0.01", "0.02", "0.03")),),
+        (),
+        store,
+        combined,
+        two_strike,
+        momentum,
+    )
+
+    rows = result["risk_rejected_rows"]
+    assert isinstance(rows, list)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["stack_decision"] == "BLOCK"
+    assert row["block_layer"] == "combined"
+    assert row["combined_block_reason"] == "long_trend"
+    assert row["momentum_decision"] is None
+    assert row["long_trend_carveout_decision"] == "ADMIT"
+    assert row["long_trend_carveout_block_layer"] == "none"
+    assert (
+        row["long_trend_carveout_momentum_decision"]
+        == "ADMIT"
+    )
+    assert (
+        row["long_trend_carveout_momentum_reason"]
+        == "momentum_band_pass"
+    )
+
+    carveout = result["risk_rejected_long_trend_carveout"]
+    assert isinstance(carveout, dict)
+    assert carveout["evaluated"] == 1
+    assert carveout["admitted"] == 1
+    assert carveout["blocked"] == 0
+    assert carveout["integrity_clean"] is True
+    one_hour = carveout["horizons"]["3600000"]
+    assert one_hour["admit"]["settled"] == 1
+    assert one_hour["admit"]["mean_directional_return"] == "0.03"
+    readiness = one_hour["review_readiness"]
+    assert readiness["changes_closed_trade_readiness_gate"] is False
 
 
 def test_risk_rejected_integrity_is_isolated_from_candidate_readiness(

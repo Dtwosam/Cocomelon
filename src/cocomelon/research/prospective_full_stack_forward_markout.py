@@ -42,6 +42,9 @@ MIN_BLOCK_SETTLED_PER_HORIZON: Final = 5
 MIN_LONG_SETTLED_PER_HORIZON: Final = 5
 MIN_SHORT_SETTLED_PER_HORIZON: Final = 5
 MIN_MARKETS_PER_HORIZON: Final = 4
+LONG_TREND_CARVEOUT_CANDIDATE_ID: Final = (
+    "prospective-top10-two-strike-momentum-no-long-trend-v1"
+)
 MOMENTUM_INTEGRITY_REASONS: Final = frozenset(
     {
         "missing_feature_fail_open",
@@ -457,6 +460,70 @@ def _risk_rejected_horizon_summary(
     }
 
 
+def _long_trend_carveout_rows(
+    rows: Sequence[dict[str, object]],
+) -> tuple[dict[str, object], ...]:
+    projected: list[dict[str, object]] = []
+    for row in rows:
+        decision = row.get("long_trend_carveout_decision")
+        layer = row.get("long_trend_carveout_block_layer")
+        if decision not in {"ADMIT", "BLOCK"}:
+            continue
+        if not isinstance(layer, str) or not layer:
+            raise ProspectiveFullStackForwardMarkoutError(
+                "long-trend carveout block layer is invalid"
+            )
+        item = dict(row)
+        item["stack_decision"] = decision
+        item["block_layer"] = layer
+        projected.append(item)
+    return tuple(projected)
+
+
+def _long_trend_carveout_summary(
+    rows: Sequence[dict[str, object]],
+    *,
+    integrity_clean: bool,
+    momentum_integrity_misses: int,
+) -> dict[str, object]:
+    projected = _long_trend_carveout_rows(rows)
+    decisions = Counter(
+        str(row["stack_decision"]) for row in projected
+    )
+    layers = Counter(str(row["block_layer"]) for row in projected)
+    return {
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "descriptive_only": True,
+        "changes_readiness_gate": False,
+        "changes_closed_trade_readiness_gate": False,
+        "candidate_id": LONG_TREND_CARVEOUT_CANDIDATE_ID,
+        "rule": {
+            "remove_combined_long_trend_veto": True,
+            "max_admitted_ordinal": 10,
+            "preserve_two_strike_filter": True,
+            "preserve_momentum_filter": True,
+        },
+        "evaluated": len(projected),
+        "admitted": decisions["ADMIT"],
+        "blocked": decisions["BLOCK"],
+        "block_layer_counts": dict(sorted(layers.items())),
+        "momentum_feature_integrity_misses": (
+            momentum_integrity_misses
+        ),
+        "integrity_clean": integrity_clean,
+        "horizons": {
+            str(horizon_ms): _horizon_summary(
+                projected,
+                horizon_ms=horizon_ms,
+                integrity_clean=integrity_clean,
+            )
+            for horizon_ms in FORWARD_HORIZONS_MS
+        },
+    }
+
+
 def prospective_full_stack_forward_markout_summary(
     opportunities: Sequence[
         ContinuousPaperOpeningOpportunityEvidence
@@ -497,6 +564,8 @@ def prospective_full_stack_forward_markout_summary(
     risk_rejected_missing_rank = 0
     risk_rejected_stale_rank = 0
     risk_rejected_momentum_feature_integrity_misses = 0
+    long_trend_carveout_momentum_integrity_misses = 0
+    risk_rejected_long_trend_carveout_momentum_integrity_misses = 0
     risk_rejected_reason_counts: Counter[str] = Counter()
     block_layer_counts: Counter[str] = Counter()
     decision_counts: Counter[str] = Counter()
@@ -606,6 +675,73 @@ def prospective_full_stack_forward_markout_summary(
                 stack_decision = "ADMIT"
                 block_layer = "none"
 
+        carveout_momentum_detail = momentum_detail
+        carveout_momentum_reason = momentum_reason
+        carveout_momentum_decision = momentum_decision
+        carveout_decision: str | None
+        carveout_block_layer: str | None
+        if combined_reason == "long_trend":
+            if prior_two_strikes >= STRIKE_THRESHOLD:
+                carveout_decision = "BLOCK"
+                carveout_block_layer = "two_strike"
+            else:
+                carveout_momentum_detail = (
+                    prospective_momentum_band_opportunity_decision(
+                        ordered_trades,
+                        feature_store,
+                        momentum_state,
+                        market=request.strategy_decision.market,
+                        direction=direction,
+                        timestamp_ms=evidence.opportunity_timestamp_ms,
+                        feature_snapshot_id=evidence.feature_snapshot_id,
+                    )
+                )
+                carveout_raw_reason = carveout_momentum_detail.get(
+                    "reason"
+                )
+                carveout_raw_decision = carveout_momentum_detail.get(
+                    "decision"
+                )
+                if carveout_raw_reason in MOMENTUM_INTEGRITY_REASONS:
+                    if risk_approved:
+                        long_trend_carveout_momentum_integrity_misses += 1
+                    else:
+                        risk_rejected_long_trend_carveout_momentum_integrity_misses += 1
+                    carveout_decision = None
+                    carveout_block_layer = None
+                    carveout_momentum_reason = (
+                        str(carveout_raw_reason)
+                    )
+                    carveout_momentum_decision = None
+                else:
+                    if carveout_raw_decision not in {
+                        "ADMIT",
+                        "BLOCK",
+                    }:
+                        raise ProspectiveFullStackForwardMarkoutError(
+                            "long-trend carveout momentum decision is invalid"
+                        )
+                    if not isinstance(carveout_raw_reason, str):
+                        raise ProspectiveFullStackForwardMarkoutError(
+                            "long-trend carveout momentum reason must be a string"
+                        )
+                    carveout_momentum_reason = carveout_raw_reason
+                    carveout_momentum_decision = (
+                        carveout_raw_decision
+                    )
+                    if carveout_raw_decision == "BLOCK":
+                        carveout_decision = "BLOCK"
+                        carveout_block_layer = "momentum"
+                    else:
+                        carveout_decision = "ADMIT"
+                        carveout_block_layer = "none"
+        elif combined_reason is not None:
+            carveout_decision = "BLOCK"
+            carveout_block_layer = "rank_above_10"
+        else:
+            carveout_decision = stack_decision
+            carveout_block_layer = block_layer
+
         if risk_approved:
             decision_counts[stack_decision] += 1
             block_layer_counts[block_layer] += 1
@@ -654,6 +790,34 @@ def prospective_full_stack_forward_markout_summary(
             ),
             "stack_decision": stack_decision,
             "block_layer": block_layer,
+            "long_trend_carveout_candidate_id": (
+                LONG_TREND_CARVEOUT_CANDIDATE_ID
+            ),
+            "long_trend_carveout_decision": carveout_decision,
+            "long_trend_carveout_block_layer": (
+                carveout_block_layer
+            ),
+            "long_trend_carveout_momentum_decision": (
+                carveout_momentum_decision
+            ),
+            "long_trend_carveout_momentum_reason": (
+                carveout_momentum_reason
+            ),
+            "long_trend_carveout_momentum_prior_strikes": (
+                None
+                if carveout_momentum_detail is None
+                else carveout_momentum_detail.get("prior_strikes")
+            ),
+            "long_trend_carveout_signed_return_1h": (
+                None
+                if carveout_momentum_detail is None
+                else carveout_momentum_detail.get("signed_return_1h")
+            ),
+            "long_trend_carveout_signed_day_return": (
+                None
+                if carveout_momentum_detail is None
+                else carveout_momentum_detail.get("signed_day_return")
+            ),
             "markouts": markouts,
         }
         if risk_approved:
@@ -688,6 +852,33 @@ def prospective_full_stack_forward_markout_summary(
         )
         for horizon_ms in FORWARD_HORIZONS_MS
     }
+    long_trend_carveout_integrity_clean = (
+        integrity_clean
+        and long_trend_carveout_momentum_integrity_misses == 0
+    )
+    risk_rejected_long_trend_carveout_integrity_clean = (
+        risk_rejected_integrity_clean
+        and risk_rejected_long_trend_carveout_momentum_integrity_misses
+        == 0
+    )
+    long_trend_carveout = _long_trend_carveout_summary(
+        row_values,
+        integrity_clean=long_trend_carveout_integrity_clean,
+        momentum_integrity_misses=(
+            long_trend_carveout_momentum_integrity_misses
+        ),
+    )
+    risk_rejected_long_trend_carveout = (
+        _long_trend_carveout_summary(
+            risk_rejected_row_values,
+            integrity_clean=(
+                risk_rejected_long_trend_carveout_integrity_clean
+            ),
+            momentum_integrity_misses=(
+                risk_rejected_long_trend_carveout_momentum_integrity_misses
+            ),
+        )
+    )
     return {
         "research_only": True,
         "execution_authority": False,
@@ -730,6 +921,9 @@ def prospective_full_stack_forward_markout_summary(
             risk_rejected_integrity_clean
         ),
         "risk_rejected_horizons": risk_rejected_horizons,
+        "risk_rejected_long_trend_carveout": (
+            risk_rejected_long_trend_carveout
+        ),
         "risk_rejected_rows": list(risk_rejected_row_values),
         "missing_rank": missing_rank,
         "stale_rank": stale_rank,
@@ -741,6 +935,7 @@ def prospective_full_stack_forward_markout_summary(
         "stack_blocked": decision_counts["BLOCK"],
         "block_layer_counts": dict(sorted(block_layer_counts.items())),
         "integrity_clean": integrity_clean,
+        "long_trend_carveout": long_trend_carveout,
         "horizons": horizons,
         "rows": list(row_values),
     }
