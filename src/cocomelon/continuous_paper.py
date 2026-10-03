@@ -3922,8 +3922,11 @@ class _RecordPump:
         self.event_loop_phase = "startup"
         self.event_loop_lag_samples = 0
         self.event_loop_max_lag_ms = 0
+        self.event_loop_max_lag_wakeup: dict[str, object] | None = None
         self.event_loop_slow_wakeup_count = 0
         self.event_loop_last_slow_wakeup: dict[str, object] | None = None
+        self.event_loop_slow_wakeup_count_by_phase: dict[str, int] = {}
+        self.event_loop_max_lag_ms_by_phase: dict[str, int] = {}
         self._recent_record_keys: deque[str] = deque()
         self._recent_record_key_set: set[str] = set()
         self._record_dedup_size = 131_072
@@ -4167,12 +4170,32 @@ async def _monitor_event_loop_lag(
         observed = loop.time()
         lag_ms = max(0, int((observed - expected) * 1_000))
         pump.event_loop_lag_samples += 1
-        pump.event_loop_max_lag_ms = max(
-            pump.event_loop_max_lag_ms,
+        previous_max_lag_ms = pump.event_loop_max_lag_ms
+        if lag_ms > previous_max_lag_ms:
+            pump.event_loop_max_lag_ms = lag_ms
+            pump.event_loop_max_lag_wakeup = {
+                "lag_ms": lag_ms,
+                "phase": scheduled_phase,
+                "observed_phase": pump.event_loop_phase,
+            }
+        pump.event_loop_max_lag_ms_by_phase[scheduled_phase] = max(
+            pump.event_loop_max_lag_ms_by_phase.get(
+                scheduled_phase,
+                0,
+            ),
             lag_ms,
         )
         if lag_ms >= slow_lag_ms:
             pump.event_loop_slow_wakeup_count += 1
+            pump.event_loop_slow_wakeup_count_by_phase[
+                scheduled_phase
+            ] = (
+                pump.event_loop_slow_wakeup_count_by_phase.get(
+                    scheduled_phase,
+                    0,
+                )
+                + 1
+            )
             pump.event_loop_last_slow_wakeup = {
                 "lag_ms": lag_ms,
                 "phase": scheduled_phase,
@@ -6514,8 +6537,15 @@ def _live_status_payload(
         "event_loop_phase": pump.event_loop_phase,
         "event_loop_lag_samples": pump.event_loop_lag_samples,
         "event_loop_max_lag_ms": pump.event_loop_max_lag_ms,
+        "event_loop_max_lag_wakeup": pump.event_loop_max_lag_wakeup,
         "event_loop_slow_wakeup_count": pump.event_loop_slow_wakeup_count,
         "event_loop_last_slow_wakeup": pump.event_loop_last_slow_wakeup,
+        "event_loop_slow_wakeup_count_by_phase": dict(
+            sorted(pump.event_loop_slow_wakeup_count_by_phase.items())
+        ),
+        "event_loop_max_lag_ms_by_phase": dict(
+            sorted(pump.event_loop_max_lag_ms_by_phase.items())
+        ),
         "shortlist_rotation_attempts": pump.shortlist_rotation_attempts,
         "shortlist_rotation_promotions": pump.shortlist_rotation_promotions,
         "shortlist_rotation_readiness_failures": (
@@ -7063,8 +7093,15 @@ def _operational_live_status_payload(
         "event_loop_phase": pump.event_loop_phase,
         "event_loop_lag_samples": pump.event_loop_lag_samples,
         "event_loop_max_lag_ms": pump.event_loop_max_lag_ms,
+        "event_loop_max_lag_wakeup": pump.event_loop_max_lag_wakeup,
         "event_loop_slow_wakeup_count": pump.event_loop_slow_wakeup_count,
         "event_loop_last_slow_wakeup": pump.event_loop_last_slow_wakeup,
+        "event_loop_slow_wakeup_count_by_phase": dict(
+            sorted(pump.event_loop_slow_wakeup_count_by_phase.items())
+        ),
+        "event_loop_max_lag_ms_by_phase": dict(
+            sorted(pump.event_loop_max_lag_ms_by_phase.items())
+        ),
         "shortlist_rotation_attempts": pump.shortlist_rotation_attempts,
         "shortlist_rotation_promotions": pump.shortlist_rotation_promotions,
         "shortlist_rotation_readiness_failures": (
