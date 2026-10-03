@@ -443,7 +443,7 @@ jobs:
               "",
               "**Execution authority:** `false`",
               "**Promotion authority:** `false`",
-              "**Changes closed-trade readiness:** `false`",
+              "**Changes candidate readiness:** `false`",
               "**LIVE TRADING: DISABLED.**",
           ]
           Path("/tmp/long-trend-carveout-status.md").write_text(
