@@ -51,7 +51,11 @@ from cocomelon.evidence.recording import (
     market_snapshot_record_event,
 )
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
-from cocomelon.execution.accounting import PaperPosition
+from cocomelon.execution.accounting import (
+    WEEK_MS,
+    PaperAccountState,
+    PaperPosition,
+)
 from cocomelon.execution.funding import (
     FundingAccrual,
     funding_boundary_for_record_time,
@@ -6988,6 +6992,82 @@ def _consecutive_loss_cooldown_status(
     }
 
 
+def _weekly_drawdown_lockout_status(
+    account: PaperAccountState,
+    risk_limits: RiskLimits,
+    *,
+    timestamp_ms: int,
+) -> dict[str, object]:
+    candidates = account.rolling_peak_candidates
+    peak = candidates[0]
+    state_consistent = (
+        timestamp_ms >= account.updated_at_ms
+        and all(
+            left.timestamp_ms <= right.timestamp_ms
+            for left, right in zip(
+                candidates,
+                candidates[1:],
+                strict=False,
+            )
+        )
+        and all(
+            left.equity > right.equity
+            for left, right in zip(
+                candidates,
+                candidates[1:],
+                strict=False,
+            )
+        )
+    )
+    drawdown = max(
+        Decimal("0"),
+        (peak.equity - account.equity) / peak.equity,
+    )
+    active = drawdown >= risk_limits.weekly_drawdown_limit
+    blocking_candidates = tuple(
+        candidate
+        for candidate in candidates
+        if (
+            (candidate.equity - account.equity)
+            / candidate.equity
+            >= risk_limits.weekly_drawdown_limit
+        )
+    )
+    release_at_ms_if_equity_flat: int | None = None
+    remaining_ms_if_equity_flat: int | None = None
+    if active and state_consistent and blocking_candidates:
+        last_blocker = blocking_candidates[-1]
+        release_at_ms_if_equity_flat = (
+            last_blocker.timestamp_ms + WEEK_MS + 1
+        )
+        remaining_ms_if_equity_flat = max(
+            0,
+            release_at_ms_if_equity_flat - timestamp_ms,
+        )
+    return {
+        "active": active,
+        "drawdown_fraction": str(drawdown),
+        "limit_fraction": str(risk_limits.weekly_drawdown_limit),
+        "peak_equity": str(peak.equity),
+        "peak_timestamp_ms": peak.timestamp_ms,
+        "peak_age_ms": (
+            None
+            if timestamp_ms < peak.timestamp_ms
+            else timestamp_ms - peak.timestamp_ms
+        ),
+        "candidate_count": len(candidates),
+        "blocking_candidate_count": len(blocking_candidates),
+        "release_at_ms_if_equity_flat": (
+            release_at_ms_if_equity_flat
+        ),
+        "remaining_ms_if_equity_flat": (
+            remaining_ms_if_equity_flat
+        ),
+        "state_consistent": state_consistent,
+        "estimate_assumes_flat_equity": True,
+    }
+
+
 def _operational_live_status_payload(
     execution: PaperExecutionAdapter,
     pump: _RecordPump,
@@ -7234,6 +7314,13 @@ def _operational_live_status_payload(
         "consecutive_loss_cooldown": (
             _consecutive_loss_cooldown_status(
                 execution,
+                risk_limits,
+                timestamp_ms=timestamp_ms,
+            )
+        ),
+        "weekly_drawdown_lockout": (
+            _weekly_drawdown_lockout_status(
+                execution.account,
                 risk_limits,
                 timestamp_ms=timestamp_ms,
             )
