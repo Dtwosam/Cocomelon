@@ -12,6 +12,7 @@ from cocomelon.domain.execution import (
     PositionAction,
     PositionActionType,
 )
+from cocomelon.domain.risk import RiskRequest
 from cocomelon.execution.accounting import PaperPosition, PositionSide
 from cocomelon.execution.funding import (
     FUNDING_INTERVAL_MS,
@@ -77,7 +78,7 @@ def _sha256(value: object) -> str:
 
 def _neutralize_weekly_drawdown(
     evidence: ContinuousPaperOpeningOpportunityEvidence,
-) -> object:
+) -> RiskRequest:
     request = evidence.risk_request_object
     baseline = evaluate_risk(request)
     if (
