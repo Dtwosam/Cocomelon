@@ -605,3 +605,26 @@ def test_full_stack_fast_markout_is_exported_and_runtime_watched() -> None:
     assert "risk-rejected opportunities / evaluated / stack admit" in source
     assert "risk-rejected reasons" in source
     assert "risk-rejected {minutes}m stack admit/block mean" in source
+
+
+def test_long_trend_execution_shadow_source_is_compact_and_watched() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    module = (
+        "src/cocomelon/research/"
+        "prospective_long_trend_carveout_execution_shadow_source.py"
+    )
+    artifact = (
+        "continuous-paper-state/"
+        "prospective-long-trend-execution-shadow-source.json"
+    )
+    assert module in source
+    assert module in source.split("changed_runtime=", 1)[1]
+    assert artifact in source
+    compact = source.split(
+        "- name: Upload compact continuous learning source",
+        1,
+    )[1].split("- name:", 1)[0]
+    assert artifact in compact
+
+

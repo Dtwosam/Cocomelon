@@ -4647,3 +4647,16 @@ The headroom is versioned as `websocket_l2_failover_headroom_ms=1000` in the con
 This changes only failover timing. The 5-second book freshness eligibility rule, 1-second execution-book limit, strategy logic, risk vetoes, sizing, stops, readiness, promotion state, and live-order authority remain unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Compact LONG+trend execution-shadow source — 2026-10-03
+
+The LONG+trend carveout evidence gate now has a defined next research stage, but the generic compact paper artifact does not carry the raw opening-opportunity risk request, exact decision-time L2 book, and forward path needed for a deeper paper execution shadow. The full resume artifact is materially larger and is not an appropriate research dependency.
+
+Continuous paper now emits a candidate-specific compact source containing only risk-rejected pure LONG+trend opportunities that the frozen carveout would reopen, and only when the baseline risk reason is exactly `weekly_drawdown_lockout`. Each exported row binds the original opening-opportunity evidence, captured decision-time book/risk request, carveout lineage, and its forward path when available. Missing opportunity lineage fails closed; missing paths remain explicit rather than fabricated.
+
+The source explicitly requires the durable LONG+trend fast-markout gate before any execution-shadow interpretation. Exporting this evidence does not start a shadow, alter the live/frozen entry stack, relax weekly drawdown protection, change sizing/planning/execution, modify readiness, or authorize live orders.
+
+The compact learning artifact now includes `prospective-long-trend-execution-shadow-source.json`, and changes to the source exporter participate in continuous-paper runtime handoff detection.
+
+**LIVE TRADING: DISABLED.**
