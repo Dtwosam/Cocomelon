@@ -50,6 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           source_run_id=""
           source_run_attempt=""
           resolution_mode=""
@@ -63,36 +64,121 @@ jobs:
             source_run_attempt="$EVENT_SOURCE_RUN_ATTEMPT"
             resolution_mode="successful_event"
           else
-            latest_success="$(
-              gh api                 -H "Accept: application/vnd.github+json"                 "repos/$GITHUB_REPOSITORY/actions/runs?status=success&per_page=100" |
-              jq -r '
-                .workflow_runs
-                | map(
-                    select(
-                      .path == ".github/workflows/continuous-paper.yml"
-                      and .conclusion == "success"
-                    )
-                  )
-                | sort_by(.updated_at)
-                | reverse
-                | .[0]
-                | if . == null then "" else "\(.id) \(.run_attempt)" end
-              '
+            runs_json="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=100"
             )"
-            if [[ -n "$latest_success" ]]; then
-              read -r source_run_id source_run_attempt <<<"$latest_success"
-            fi
+            read -r source_run_id source_run_attempt <<<"$(
+              printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in payload.get("workflow_runs", []):
+              if (
+                  run.get("path") == ".github/workflows/continuous-paper.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and (run.get("head_repository") or {}).get("full_name") == repo
+                  and isinstance(run.get("id"), int)
+                  and isinstance(run.get("run_attempt"), int)
+              ):
+                  print(run["id"], run["run_attempt"])
+                  break
+          '
+            )"
             resolution_mode="latest_success_catchup"
           fi
 
-          if [[ -z "$source_run_id" || -z "$source_run_attempt" ]]; then
+          if [[ ! "$source_run_id" =~ ^[0-9]+$ || ! "$source_run_attempt" =~ ^[0-9]+$ ]]; then
             echo "No successful continuous-paper source run is available." >&2
             exit 1
+          fi
+
+          required_artifacts_for_run() {
+            local candidate_run_id="$1"
+            local candidate_attempt="$2"
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/artifacts?per_page=100" |
+            CANDIDATE_RUN_ID="$candidate_run_id" \
+            CANDIDATE_ATTEMPT="$candidate_attempt" python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          run_id = os.environ["CANDIDATE_RUN_ID"]
+          attempt = os.environ["CANDIDATE_ATTEMPT"]
+          names = (
+              f"continuous-paper-cadence-shadow-{run_id}-{attempt}",
+              f"continuous-paper-learning-features-{run_id}-{attempt}",
+          )
+          artifacts = payload.get("artifacts", [])
+          for name in names:
+              matches = [
+                  item for item in artifacts
+                  if item.get("name") == name and item.get("expired") is False
+              ]
+              if len(matches) > 1:
+                  raise SystemExit(
+                      f"multiple non-expired source artifacts named {name}"
+                  )
+              if not matches:
+                  raise SystemExit(1)
+          '
+          }
+
+          if ! required_artifacts_for_run "$source_run_id" "$source_run_attempt"; then
+            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+              echo "Manual source run is missing required compact cadence artifacts." >&2
+              exit 1
+            fi
+            runs_json="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=100"
+            )"
+            mapfile -t candidates < <(
+              printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in payload.get("workflow_runs", []):
+              if (
+                  run.get("path") == ".github/workflows/continuous-paper.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and (run.get("head_repository") or {}).get("full_name") == repo
+                  and isinstance(run.get("id"), int)
+                  and isinstance(run.get("run_attempt"), int)
+              ):
+                  print(run["id"], run["run_attempt"], sep="\t")
+          '
+            )
+            found=false
+            for candidate in "${candidates[@]}"; do
+              IFS=$'\t' read -r candidate_run_id candidate_attempt <<<"$candidate"
+              if [ "$candidate_run_id" = "$source_run_id" ] && [ "$candidate_attempt" = "$source_run_attempt" ]; then
+                continue
+              fi
+              if required_artifacts_for_run "$candidate_run_id" "$candidate_attempt"; then
+                source_run_id="$candidate_run_id"
+                source_run_attempt="$candidate_attempt"
+                resolution_mode="latest_success_with_cadence_artifacts"
+                found=true
+                break
+              fi
+            done
+            if [ "$found" != "true" ]; then
+              echo "No successful continuous-paper run has the required compact cadence artifacts." >&2
+              exit 1
+            fi
           fi
 
           echo "SOURCE_RUN_ID=$source_run_id" >> "$GITHUB_ENV"
           echo "SOURCE_RUN_ATTEMPT=$source_run_attempt" >> "$GITHUB_ENV"
           echo "SOURCE_RESOLUTION_MODE=$resolution_mode" >> "$GITHUB_ENV"
+          echo "Resolved source run $source_run_id attempt $source_run_attempt via $resolution_mode."
 
       - uses: actions/checkout@v7
         with:
