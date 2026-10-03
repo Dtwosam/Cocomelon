@@ -339,6 +339,47 @@ def test_application_heartbeat_sends_ping_and_pong_is_control_only() -> None:
     asyncio.run(run())
 
 
+def test_hot_buffered_websocket_yields_between_messages() -> None:
+    async def run() -> None:
+        connection = FakeConnection(
+            [trade(1, 1_000), trade(2, 1_001), trade(3, 1_002)]
+        )
+        order: list[str] = []
+
+        async def factory() -> FakeConnection:
+            return connection
+
+        async def event_sink(event: StreamEvent) -> None:
+            order.append(f"event:{event.event_key}")
+
+        async def gap_sink(gap: DataGap) -> None:
+            raise AssertionError(f"unexpected gap: {gap}")
+
+        async def peer_task() -> None:
+            await asyncio.sleep(0)
+            order.append("peer-ran")
+
+        peer = asyncio.create_task(peer_task())
+        supervisor = WebSocketSupervisor(
+            factory,
+            [{"type": "trades", "coin": "BTC"}],
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: 1_000,
+            utcnow=lambda: datetime(2026, 8, 23, tzinfo=UTC),
+        )
+        await supervisor.run(
+            max_sessions=1,
+            max_messages_per_session=3,
+        )
+        await peer
+
+        peer_index = order.index("peer-ran")
+        assert 0 < peer_index < len(order) - 1
+
+    asyncio.run(run())
+
+
 def test_duplicate_and_out_of_order_are_not_dispatched() -> None:
     async def run() -> None:
         connection = FakeConnection([trade(1, 2000), trade(1, 2000), trade(2, 1000)])

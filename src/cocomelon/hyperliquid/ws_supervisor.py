@@ -418,6 +418,14 @@ class WebSocketSupervisor:
             last_session_message_ms = received_at_ms
             await self._dispatch(raw)
             received += 1
+
+            # recv_json() and downstream sinks can both complete immediately
+            # when the socket and replay pipeline are hot. Yield explicitly
+            # so one websocket lane cannot monopolize the event loop and
+            # starve the redundant lane, freshness watchdogs, or control
+            # tasks while consuming an already-buffered message burst.
+            await asyncio.sleep(0)
+
             now_ms = self._clock_ms()
             await self._open_l2_stale_gaps_if_needed(now_ms)
             self._raise_if_systemic_l2_stale(now_ms=now_ms)
