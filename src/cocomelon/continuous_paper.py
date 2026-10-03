@@ -319,6 +319,9 @@ from cocomelon.research.prospective_full_stack_exit_capacity_reflow import (
 from cocomelon.research.prospective_full_stack_forward_markout import (
     prospective_full_stack_forward_markout_summary,
 )
+from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
+    prospective_long_trend_execution_shadow_source,
+)
 from cocomelon.research.prospective_momentum_band_entry import (
     ProspectiveMomentumBandEntryState,
     evaluate_prospective_momentum_band_entry,
@@ -406,6 +409,9 @@ PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME = (
 )
 PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME = (
     "prospective-full-stack-forward-markout-summary.json"
+)
+PROSPECTIVE_LONG_TREND_EXECUTION_SHADOW_SOURCE_FILENAME = (
+    "prospective-long-trend-execution-shadow-source.json"
 )
 PROSPECTIVE_FULL_STACK_CAPACITY_REFLOW_SUMMARY_FILENAME = (
     "prospective-full-stack-capacity-reflow-summary.json"
@@ -9023,6 +9029,37 @@ async def run_continuous_paper_session(
             root
             / PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME,
             full_stack_forward_markout,
+        )
+        try:
+            long_trend_execution_shadow_source = (
+                prospective_long_trend_execution_shadow_source(
+                    full_stack_forward_markout,
+                    opening_opportunity_store.iter_records(),
+                    opening_opportunity_path_store.iter_paths(),
+                )
+            )
+        except Exception as exc:
+            long_trend_execution_shadow_source = {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "changes_execution": False,
+                "changes_risk_limits": False,
+                "changes_candidate_readiness": False,
+                "durable_gate_required": True,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        else:
+            long_trend_execution_shadow_source = dict(
+                long_trend_execution_shadow_source
+            )
+            long_trend_execution_shadow_source["enabled"] = True
+            long_trend_execution_shadow_source["error"] = None
+        _write_json_atomic(
+            root
+            / PROSPECTIVE_LONG_TREND_EXECUTION_SHADOW_SOURCE_FILENAME,
+            long_trend_execution_shadow_source,
         )
         if profit_lock_execution_shadow.shadow is None:
             full_stack_entry_exit = {
