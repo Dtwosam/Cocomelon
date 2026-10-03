@@ -278,7 +278,8 @@ jobs:
                   "",
                   (
                       "A reason is conjunctively ready only when both component "
-                      "ledgers are current and source-aligned. Cumulative "
+                      "ledgers are current and derived from the same "
+                      "authenticated paper run/attempt/artifact digest. Cumulative "
                       "integrity must be clean, or both ledgers must agree on "
                       "the same post-integrity-miss boundary and that clean "
                       "suffix must pass both independent gates from scratch."
