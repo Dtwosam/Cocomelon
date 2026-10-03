@@ -351,25 +351,67 @@ def _canonical_row(
         raise ProspectiveLongTrendCarveoutLedgerError(
             "row direction must be long or short"
         )
-    original_decision = _required_string(raw, "stack_decision")
-    original_layer = _required_string(raw, "block_layer")
+    original_decision_raw = raw.get("stack_decision")
+    if original_decision_raw is None:
+        original_decision_raw = raw.get("original_stack_decision")
+    if (
+        not isinstance(original_decision_raw, str)
+        or not original_decision_raw.strip()
+    ):
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "original stack decision must be a non-empty string"
+        )
+    original_decision = original_decision_raw
+
+    original_layer_raw = raw.get("block_layer")
+    if original_layer_raw is None:
+        original_layer_raw = raw.get("original_block_layer")
+    if (
+        not isinstance(original_layer_raw, str)
+        or not original_layer_raw.strip()
+    ):
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "original block layer must be a non-empty string"
+        )
+    original_layer = original_layer_raw
     combined_reason = _optional_string(
         raw.get("combined_block_reason"),
         field="combined_block_reason",
     )
-    if (
-        raw.get("long_trend_carveout_candidate_id")
-        != LONG_TREND_CARVEOUT_CANDIDATE_ID
-    ):
+    candidate_id = raw.get("long_trend_carveout_candidate_id")
+    if candidate_id is None:
+        candidate_id = raw.get("candidate_id")
+    if candidate_id != LONG_TREND_CARVEOUT_CANDIDATE_ID:
         raise ProspectiveLongTrendCarveoutLedgerError(
             "long-trend carveout candidate identity drift"
         )
-    carveout_decision = _required_string(
-        raw, "long_trend_carveout_decision"
+    carveout_decision_raw = raw.get(
+        "long_trend_carveout_decision"
     )
-    carveout_layer = _required_string(
-        raw, "long_trend_carveout_block_layer"
+    if carveout_decision_raw is None:
+        carveout_decision_raw = raw.get("carveout_decision")
+    if (
+        not isinstance(carveout_decision_raw, str)
+        or not carveout_decision_raw.strip()
+    ):
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout decision must be a non-empty string"
+        )
+    carveout_decision = carveout_decision_raw
+
+    carveout_layer_raw = raw.get(
+        "long_trend_carveout_block_layer"
     )
+    if carveout_layer_raw is None:
+        carveout_layer_raw = raw.get("carveout_block_layer")
+    if (
+        not isinstance(carveout_layer_raw, str)
+        or not carveout_layer_raw.strip()
+    ):
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout block layer must be a non-empty string"
+        )
+    carveout_layer = carveout_layer_raw
     _validate_transition(
         combined_reason=combined_reason,
         original_decision=original_decision,
@@ -386,21 +428,42 @@ def _canonical_row(
             "rank or strike lineage is invalid"
         )
 
+    momentum_decision_raw = raw.get(
+        "long_trend_carveout_momentum_decision"
+    )
+    if momentum_decision_raw is None:
+        momentum_decision_raw = raw.get(
+            "carveout_momentum_decision"
+        )
     momentum_decision = _optional_string(
-        raw.get("long_trend_carveout_momentum_decision"),
-        field="long_trend_carveout_momentum_decision",
+        momentum_decision_raw,
+        field="carveout_momentum_decision",
     )
     if momentum_decision not in {None, "ADMIT", "BLOCK"}:
         raise ProspectiveLongTrendCarveoutLedgerError(
             "carveout momentum decision is invalid"
         )
-    momentum_reason = _optional_string(
-        raw.get("long_trend_carveout_momentum_reason"),
-        field="long_trend_carveout_momentum_reason",
+    momentum_reason_raw = raw.get(
+        "long_trend_carveout_momentum_reason"
     )
+    if momentum_reason_raw is None:
+        momentum_reason_raw = raw.get(
+            "carveout_momentum_reason"
+        )
+    momentum_reason = _optional_string(
+        momentum_reason_raw,
+        field="carveout_momentum_reason",
+    )
+    momentum_prior_raw = raw.get(
+        "long_trend_carveout_momentum_prior_strikes"
+    )
+    if momentum_prior_raw is None:
+        momentum_prior_raw = raw.get(
+            "carveout_momentum_prior_strikes"
+        )
     momentum_prior = _optional_int(
-        raw.get("long_trend_carveout_momentum_prior_strikes"),
-        field="long_trend_carveout_momentum_prior_strikes",
+        momentum_prior_raw,
+        field="carveout_momentum_prior_strikes",
     )
     if momentum_prior is not None and momentum_prior < 0:
         raise ProspectiveLongTrendCarveoutLedgerError(
@@ -448,12 +511,20 @@ def _canonical_row(
         "carveout_momentum_reason": momentum_reason,
         "carveout_momentum_prior_strikes": momentum_prior,
         "carveout_signed_return_1h": _optional_decimal_string(
-            raw.get("long_trend_carveout_signed_return_1h"),
-            field="long_trend_carveout_signed_return_1h",
+            (
+                raw.get("long_trend_carveout_signed_return_1h")
+                if "long_trend_carveout_signed_return_1h" in raw
+                else raw.get("carveout_signed_return_1h")
+            ),
+            field="carveout_signed_return_1h",
         ),
         "carveout_signed_day_return": _optional_decimal_string(
-            raw.get("long_trend_carveout_signed_day_return"),
-            field="long_trend_carveout_signed_day_return",
+            (
+                raw.get("long_trend_carveout_signed_day_return")
+                if "long_trend_carveout_signed_day_return" in raw
+                else raw.get("carveout_signed_day_return")
+            ),
+            field="carveout_signed_day_return",
         ),
         "markouts": markouts,
     }
