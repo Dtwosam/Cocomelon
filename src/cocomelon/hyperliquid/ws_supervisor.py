@@ -105,6 +105,7 @@ class WebSocketSupervisor:
         self._last_server_message_ms: int | None = None
         self._reconnect_count = 0
         self._systemic_l2_stale_reconnect_count = 0
+        self._stale_deadline_buffered_message_count = 0
         self._duplicate_count = 0
         self._anomaly_count = 0
 
@@ -120,6 +121,35 @@ class WebSocketSupervisor:
             duplicate_count=self._duplicate_count,
             anomaly_count=self._anomaly_count,
         )
+
+    @property
+    def stale_deadline_buffered_message_count(self) -> int:
+        return self._stale_deadline_buffered_message_count
+
+    async def _recv_buffered_at_deadline(
+        self,
+        connection: WsConnection,
+    ) -> dict[str, object] | None:
+        receive_task = asyncio.create_task(
+            connection.recv_json()
+        )
+        try:
+            await asyncio.sleep(0)
+            if not receive_task.done():
+                receive_task.cancel()
+                await asyncio.gather(
+                    receive_task,
+                    return_exceptions=True,
+                )
+                return None
+            return receive_task.result()
+        except asyncio.CancelledError:
+            receive_task.cancel()
+            await asyncio.gather(
+                receive_task,
+                return_exceptions=True,
+            )
+            raise
 
     def _l2_stream_ids(self) -> tuple[str, ...]:
         return tuple(
@@ -374,45 +404,70 @@ class WebSocketSupervisor:
                 0.0,
                 (wake_ms - now_ms) / 1000,
             )
+            raw: dict[str, object] | None = None
             if remaining_seconds == 0.0:
-                if (
-                    silence_deadline_ms is not None
-                    and now_ms >= silence_deadline_ms
-                ):
-                    raise ConnectionError(
-                        "websocket server message silence timeout"
-                    )
-                await self._open_l2_stale_gaps_if_needed(now_ms)
-                self._raise_if_systemic_l2_stale(now_ms=now_ms)
-                if now_ms >= next_heartbeat_ms:
-                    await connection.send_json({"method": "ping"})
-                    next_heartbeat_ms = (
-                        self._clock_ms() + heartbeat_ms
-                    )
-                continue
-            try:
-                raw = await asyncio.wait_for(
-                    connection.recv_json(),
-                    timeout=remaining_seconds,
+                raw = await self._recv_buffered_at_deadline(
+                    connection
                 )
-            except TimeoutError:
-                now_ms = self._clock_ms()
-                if (
-                    silence_deadline_ms is not None
-                    and now_ms >= silence_deadline_ms
-                ):
-                    raise ConnectionError(
-                        "websocket server message silence timeout"
-                    ) from None
-                await self._open_l2_stale_gaps_if_needed(now_ms)
-                self._raise_if_systemic_l2_stale(now_ms=now_ms)
-                heartbeat_due = wake_ms == next_heartbeat_ms
-                if heartbeat_due or now_ms >= next_heartbeat_ms:
-                    await connection.send_json({"method": "ping"})
-                    next_heartbeat_ms = (
-                        self._clock_ms() + heartbeat_ms
+                if raw is None:
+                    if (
+                        silence_deadline_ms is not None
+                        and now_ms >= silence_deadline_ms
+                    ):
+                        raise ConnectionError(
+                            "websocket server message silence timeout"
+                        )
+                    await self._open_l2_stale_gaps_if_needed(
+                        now_ms
                     )
-                continue
+                    self._raise_if_systemic_l2_stale(
+                        now_ms=now_ms
+                    )
+                    if now_ms >= next_heartbeat_ms:
+                        await connection.send_json(
+                            {"method": "ping"}
+                        )
+                        next_heartbeat_ms = (
+                            self._clock_ms() + heartbeat_ms
+                        )
+                    continue
+                self._stale_deadline_buffered_message_count += 1
+            else:
+                try:
+                    raw = await asyncio.wait_for(
+                        connection.recv_json(),
+                        timeout=remaining_seconds,
+                    )
+                except TimeoutError:
+                    now_ms = self._clock_ms()
+                    if (
+                        silence_deadline_ms is not None
+                        and now_ms >= silence_deadline_ms
+                    ):
+                        raise ConnectionError(
+                            "websocket server message silence timeout"
+                        ) from None
+                    await self._open_l2_stale_gaps_if_needed(
+                        now_ms
+                    )
+                    self._raise_if_systemic_l2_stale(
+                        now_ms=now_ms
+                    )
+                    heartbeat_due = (
+                        wake_ms == next_heartbeat_ms
+                    )
+                    if (
+                        heartbeat_due
+                        or now_ms >= next_heartbeat_ms
+                    ):
+                        await connection.send_json(
+                            {"method": "ping"}
+                        )
+                        next_heartbeat_ms = (
+                            self._clock_ms() + heartbeat_ms
+                        )
+                    continue
+            assert raw is not None
             received_at_ms = self._clock_ms()
             self._last_server_message_ms = received_at_ms
             last_session_message_ms = received_at_ms
