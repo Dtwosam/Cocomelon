@@ -410,6 +410,102 @@ def _funding_index(
     return output
 
 
+def _exact_pnl_robustness(
+    results: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    exact: list[tuple[str, int, str, Decimal]] = []
+    for item in results:
+        raw_pnl = item.get("exact_realized_pnl")
+        market = item.get("market")
+        timestamp_ms = item.get("timestamp_ms")
+        opportunity_id = item.get("opportunity_id")
+        if raw_pnl is None:
+            continue
+        if (
+            not isinstance(raw_pnl, str)
+            or not isinstance(market, str)
+            or isinstance(timestamp_ms, bool)
+            or not isinstance(timestamp_ms, int)
+            or not isinstance(opportunity_id, str)
+        ):
+            raise ProspectiveWeeklyDrawdown5mExitError(
+                "exact realized pnl robustness row is invalid"
+            )
+        exact.append(
+            (
+                market,
+                timestamp_ms,
+                opportunity_id,
+                Decimal(raw_pnl),
+            )
+        )
+
+    exact.sort(key=lambda row: (row[1], row[2]))
+    values = tuple(row[3] for row in exact)
+    total = sum(values, ZERO)
+    leave_option = tuple(total - value for value in values)
+
+    by_market: dict[str, Decimal] = {}
+    for market, _timestamp_ms, _opportunity_id, value in exact:
+        by_market[market] = by_market.get(market, ZERO) + value
+    leave_market = tuple(total - value for value in by_market.values())
+
+    split_index = len(values) // 2
+    first_half = values[:split_index]
+    second_half = values[split_index:]
+    first_half_pnl = sum(first_half, ZERO)
+    second_half_pnl = sum(second_half, ZERO)
+    chronological_halves_positive = (
+        len(values) >= 4
+        and len(first_half) >= 2
+        and len(second_half) >= 2
+        and first_half_pnl > ZERO
+        and second_half_pnl > ZERO
+    )
+
+    option_robust = (
+        len(values) >= 2
+        and min(leave_option, default=ZERO) > ZERO
+    )
+    market_robust = (
+        len(by_market) >= 2
+        and min(leave_market, default=ZERO) > ZERO
+    )
+    minimum_sample_met = (
+        len(values) >= 12
+        and len(by_market) >= 4
+    )
+    investigation_ready = (
+        minimum_sample_met
+        and total > ZERO
+        and option_robust
+        and market_robust
+        and chronological_halves_positive
+    )
+    return {
+        "exact_option_count": len(values),
+        "market_count": len(by_market),
+        "minimum_exact_options": 12,
+        "minimum_markets": 4,
+        "minimum_sample_met": minimum_sample_met,
+        "total_exact_realized_pnl": str(total),
+        "leave_one_option_out_min_pnl": str(
+            min(leave_option, default=ZERO)
+        ),
+        "positive_after_removing_any_one_option": option_robust,
+        "leave_one_market_out_min_pnl": str(
+            min(leave_market, default=ZERO)
+        ),
+        "positive_after_removing_any_one_market": market_robust,
+        "chronological_first_half_count": len(first_half),
+        "chronological_second_half_count": len(second_half),
+        "chronological_first_half_pnl": str(first_half_pnl),
+        "chronological_second_half_pnl": str(second_half_pnl),
+        "chronological_halves_positive": chronological_halves_positive,
+        "investigation_ready": investigation_ready,
+    }
+
+
 def prospective_weekly_drawdown_5m_exit_summary(
     source: object,
 ) -> dict[str, object]:
@@ -849,6 +945,10 @@ def prospective_weekly_drawdown_5m_exit_summary(
             else str(
                 sum(exact_pnls, ZERO) / Decimal(len(exact_pnls))
             )
+        ),
+        "robustness": _exact_pnl_robustness(result_tuple),
+        "candidate_investigation_ready": (
+            _exact_pnl_robustness(result_tuple)["investigation_ready"]
         ),
         "option_results": list(result_tuple),
     }
