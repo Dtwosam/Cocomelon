@@ -28,7 +28,12 @@ def test_full_stack_matched_ledger_is_research_only() -> None:
 def test_full_stack_matched_ledger_binds_summary_and_journal() -> None:
     source = _source()
 
-    assert "continuous-paper-learning-source-$run_id-$run_attempt" in source
+    assert (
+        "continuous-paper-learning-source-"
+        "$candidate_run_id-$candidate_attempt"
+        in source
+    )
+    assert "latest_successful_with_compact_artifact" in source
     assert "source artifact digest is missing or invalid" in source
     assert "prospective-full-stack-entry-exit-summary.json" in source
     assert "journal.sqlite3" in source
