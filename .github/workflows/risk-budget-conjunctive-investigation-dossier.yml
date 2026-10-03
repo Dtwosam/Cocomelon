@@ -273,6 +273,68 @@ jobs:
           else:
               lines.append("- no risk reason is present in both evidence families")
 
+          candidate = report["weekly_drawdown_5m_candidate"]
+          lines.extend(
+              [
+                  "",
+                  "### Frozen weekly-drawdown 5m recovery candidate",
+                  "",
+                  f"- candidate: `{candidate['candidate_id']}`",
+                  f"- status: `{candidate['status']}`",
+                  f"- frozen at ms: `{candidate['frozen_at_ms']}`",
+                  (
+                      "- paired review rows / required: "
+                      f"`{candidate['review_rows']} / "
+                      f"{candidate['thresholds']['review_rows']}`"
+                  ),
+                  (
+                      "- markets / LONG / SHORT: "
+                      f"`{candidate['review_market_count']} / "
+                      f"{candidate['review_long_count']} / "
+                      f"{candidate['review_short_count']}`"
+                  ),
+                  (
+                      "- economic / stop-survival ready: "
+                      f"`{candidate['economic_ready']} / "
+                      f"{candidate['stop_survival_ready']}`"
+                  ),
+                  (
+                      "- 5m mean / LOO-opportunity / LOO-market: "
+                      f"`{candidate['return_robustness']['mean_directional_return']} / "
+                      f"{candidate['return_robustness']['leave_one_opportunity_min_mean']} / "
+                      f"{candidate['return_robustness']['leave_one_market_min_mean']}`"
+                  ),
+                  (
+                      "- stop survivors / crossings / margin: "
+                      f"`{candidate['stop_robustness']['survivors']} / "
+                      f"{candidate['stop_robustness']['crossings']} / "
+                      f"{candidate['stop_robustness']['survival_margin']}`"
+                  ),
+                  (
+                      "- ready for exact execution-shadow investigation: "
+                      f"`{candidate['ready_for_execution_shadow_investigation']}`"
+                  ),
+                  (
+                      "- frozen review cohort SHA-256: "
+                      f"`{candidate['review_cohort_sha256']}`"
+                  ),
+                  "",
+                  (
+                      "This candidate counts only the first 20 paired, "
+                      "post-freeze full-stack ADMIT opportunities rejected "
+                      "solely by weekly_drawdown_lockout. Discovery rows cannot "
+                      "enter the validation cohort, and later rows cannot rescue "
+                      "a failed first-20 review."
+                  ),
+                  (
+                      "Passing this candidate can authorize only a deeper exact "
+                      "paper execution-shadow investigation. It cannot relax "
+                      "the weekly drawdown veto, change sizing, or grant live "
+                      "order authority."
+                  ),
+              ]
+          )
+
           lines.extend(
               [
                   "",
