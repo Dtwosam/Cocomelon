@@ -4608,3 +4608,16 @@ The append-only carveout ledger now derives a fixed-horizon exit-timing view for
 This is descriptive timing evidence only. It does not change the existing carveout investigation gate, entry rules, exits, stops, risk limits, sizing, candidate readiness, promotion state, or live-order authority. Previously published ledger summaries remain valid.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Reconnect lanes on stale L2 payload timestamps — 2026-10-03
+
+Worker `37129994357` on #818 still showed systemic decision-time L2 staleness after repeated successful REST reseeds and supervisor replacements. Pre-recovery telemetry showed a lane receiving recent server traffic while all 20 L2 streams remained stale, and post-recovery lanes immediately returned to sub-second exchange-time freshness.
+
+The current official Hyperliquid WebSocket contract describes `WsBook` as a snapshot feed pushed on each block (at least 0.5 seconds since the previous push). Therefore a lane that continues receiving server traffic or exact duplicate messages while most L2 exchange timestamps stop advancing beyond the existing freshness window is not considered healthy enough to suppress reconnect.
+
+The supervisor now reconnects when either the majority of L2 subscriptions become receive-time silent or the majority of their exchange timestamps remain stale beyond the existing reconnect threshold while the websocket itself is active. Duplicate arrivals still refresh socket/subscription receive-time liveness and remain deduplicated from replay, but they cannot mask frozen L2 payload timestamps.
+
+No book-freshness ceiling, eligibility rule, strategy threshold, risk limit, sizing rule, stop, readiness gate, promotion state, or live-order authority is changed.
+
+**LIVE TRADING: DISABLED.**
