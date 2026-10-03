@@ -27,6 +27,8 @@ def _return_ledger(
     integrity: bool = True,
     ready: bool = True,
     current_gate: bool = True,
+    post_ready: bool | None = None,
+    post_started_at_ms: int = 2_000,
 ) -> dict[str, object]:
     summary: dict[str, object] = {
         "integrity_clean": integrity,
@@ -48,6 +50,29 @@ def _return_ledger(
                 }
             },
         }
+    if post_ready is not None:
+        summary["post_integrity_miss"] = {
+            "boundary_known": True,
+            "last_miss_at_ms": post_started_at_ms - 1,
+            "started_at_ms": post_started_at_ms,
+            "terminal_opportunity_count": 12,
+            "risk_budget_investigation_readiness": {
+                "scope": "risk_rejected_stack_admit_only",
+                "ready_reasons": (
+                    ["weekly_drawdown_lockout"] if post_ready else []
+                ),
+                "by_reason": {
+                    "weekly_drawdown_lockout": {
+                        "ready_for_risk_budget_investigation": post_ready,
+                        "horizons": {
+                            "300000": {"ready": post_ready},
+                            "900000": {"ready": post_ready},
+                            "3600000": {"ready": post_ready},
+                        },
+                    }
+                },
+            },
+        }
     return {
         "overlap_started_at_ms": 1_000,
         "source_history": [_identity(run_id)],
@@ -62,6 +87,8 @@ def _stop_ledger(
     integrity: bool = True,
     ready: bool = True,
     current_gate: bool = True,
+    post_ready: bool | None = None,
+    post_started_at_ms: int = 2_000,
 ) -> dict[str, object]:
     summary: dict[str, object] = {
         "integrity_clean": integrity,
@@ -81,6 +108,33 @@ def _stop_ledger(
                         "3600000": {"ready": ready},
                     },
                 }
+            },
+        }
+    if post_ready is not None:
+        summary["post_integrity_miss"] = {
+            "boundary_known": True,
+            "last_miss_at_ms": post_started_at_ms - 1,
+            "started_at_ms": post_started_at_ms,
+            "terminal_opportunity_count": 12,
+            "risk_budget_stop_investigation": {
+                "scope": (
+                    "risk_rejected_stack_admit_stop_survival_only"
+                ),
+                "ready_reasons": (
+                    ["weekly_drawdown_lockout"] if post_ready else []
+                ),
+                "by_reason": {
+                    "weekly_drawdown_lockout": {
+                        "ready_for_risk_budget_stop_investigation": (
+                            post_ready
+                        ),
+                        "horizons": {
+                            "300000": {"ready": post_ready},
+                            "900000": {"ready": post_ready},
+                            "3600000": {"ready": post_ready},
+                        },
+                    }
+                },
             },
         }
     return {
@@ -163,6 +217,56 @@ def test_dossier_blocks_dirty_cumulative_integrity() -> None:
     assert report["status"] == "blocked_by_source_integrity"
     assert report["source_aligned"] is True
     assert report["integrity_clean"] is False
+    assert report["ready_reasons"] == []
+    assert report["by_reason"]["weekly_drawdown_lockout"][
+        "conjunctive_ready_for_investigation"
+    ] is False
+
+
+def test_dossier_uses_aligned_post_integrity_cohort() -> None:
+    report = build_risk_budget_investigation_dossier(
+        _return_ledger(
+            integrity=False,
+            post_ready=True,
+            post_started_at_ms=5_001,
+        ),
+        _stop_ledger(
+            integrity=False,
+            post_ready=True,
+            post_started_at_ms=5_001,
+        ),
+    )
+
+    assert report["status"] == "aligned_post_integrity_evaluated"
+    assert report["integrity_clean"] is False
+    assert report["effective_integrity_clean"] is True
+    assert report["integrity_scope"] == "post_integrity_miss"
+    assert report["post_integrity_source_aligned"] is True
+    assert report["post_integrity_started_at_ms"] == 5_001
+    assert report["ready_reasons"] == ["weekly_drawdown_lockout"]
+    assert report["by_reason"]["weekly_drawdown_lockout"][
+        "conjunctive_ready_for_investigation"
+    ] is True
+
+
+def test_dossier_rejects_mismatched_post_integrity_boundaries() -> None:
+    report = build_risk_budget_investigation_dossier(
+        _return_ledger(
+            integrity=False,
+            post_ready=True,
+            post_started_at_ms=5_001,
+        ),
+        _stop_ledger(
+            integrity=False,
+            post_ready=True,
+            post_started_at_ms=6_001,
+        ),
+    )
+
+    assert report["status"] == "blocked_by_source_integrity"
+    assert report["effective_integrity_clean"] is False
+    assert report["integrity_scope"] == "blocked"
+    assert report["post_integrity_source_aligned"] is False
     assert report["ready_reasons"] == []
     assert report["by_reason"]["weekly_drawdown_lockout"][
         "conjunctive_ready_for_investigation"
