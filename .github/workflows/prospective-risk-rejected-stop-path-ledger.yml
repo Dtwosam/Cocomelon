@@ -505,6 +505,15 @@ jobs:
 
           previous = os.environ["PREVIOUS_WORKFLOW_RUN_ID"] or "none"
           investigation = summary["risk_budget_stop_investigation"]
+          post_integrity = summary.get("post_integrity_miss", {})
+          if not isinstance(post_integrity, dict):
+              post_integrity = {}
+          post_investigation = post_integrity.get(
+              "risk_budget_stop_investigation",
+              {},
+          )
+          if not isinstance(post_investigation, dict):
+              post_investigation = {}
           lines = [
               "## Risk-rejected observed stop-path ledger",
               "",
@@ -516,6 +525,10 @@ jobs:
               f"- previous ledger workflow run: `{previous}`",
               f"- terminal / previous / new / pending: `{ledger['row_count']} / {ledger['previous_row_count']} / {ledger['new_row_count']} / {ledger['pending_opportunity_count']}`",
               f"- cumulative source integrity clean: `{summary['integrity_clean']}`",
+              f"- post-integrity boundary known: `{post_integrity.get('boundary_known', False)}`",
+              f"- post-integrity last miss / start: `{post_integrity.get('last_miss_at_ms')} / {post_integrity.get('started_at_ms')}`",
+              f"- post-integrity terminal opportunities: `{post_integrity.get('terminal_opportunity_count', 0)}`",
+              f"- post-integrity ready reasons: `{post_investigation.get('ready_reasons', [])}`",
               f"- block layer counts: `{summary['block_layer_counts']}`",
               f"- risk reason counts: `{summary['risk_reason_counts']}`",
               f"- rows SHA-256: `{ledger['rows_sha256']}`",
@@ -645,6 +658,7 @@ jobs:
                   "Claim scope is deliberately narrow: this ledger reports only observed causal mark crossings against the original decision-time stop.",
                   "A survivor means no captured causal mark crossed the stop before that horizon. It does not prove the unseen intrablock path stayed clear.",
                   "The overlay does not simulate stop fill price, slippage, funding, sizing, portfolio capacity, or a complete counterfactual trade lifecycle.",
+                  "Cumulative integrity remains an immutable audit fact. The post-integrity cohort starts strictly after the last known rank/momentum lineage miss and must satisfy the same stop-survival gate from scratch.",
                   "This stop-survival gate is necessary but not sufficient for any risk-budget investigation: the separate return/economic gate in Issue #774 must also pass. Neither gate can relax risk by itself.",
                   "Pending or missing-path opportunities remain unfrozen. Every previously published terminal overlay row must remain byte-for-byte equivalent after canonicalization.",
                   "",
