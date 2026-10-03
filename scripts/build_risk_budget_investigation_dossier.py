@@ -54,6 +54,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "source_aligned": report["source_aligned"],
                 "integrity_clean": report["integrity_clean"],
                 "ready_reasons": report["ready_reasons"],
+                "weekly_drawdown_5m_status": report[
+                    "weekly_drawdown_5m_candidate"
+                ]["status"],
+                "weekly_drawdown_5m_review_rows": report[
+                    "weekly_drawdown_5m_candidate"
+                ]["review_rows"],
                 "report_sha256": report["report_sha256"],
             },
             sort_keys=True,
