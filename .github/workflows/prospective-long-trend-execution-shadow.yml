@@ -5,7 +5,9 @@ on:
     branches:
       - main
     paths:
-      - ".github/workflows/prospective-long-trend-execution-shadow.yml"\n      - "src/cocomelon/research/prospective_long_trend_carveout_execution_shadow.py"\n      - "scripts/evaluate_prospective_long_trend_execution_shadow.py"
+      - ".github/workflows/prospective-long-trend-execution-shadow.yml"
+      - "src/cocomelon/research/prospective_long_trend_carveout_execution_shadow.py"
+      - "scripts/evaluate_prospective_long_trend_execution_shadow.py"
   workflow_run:
     workflows:
       - "Continuous Mainnet Paper Trader"
