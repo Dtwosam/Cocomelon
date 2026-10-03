@@ -755,6 +755,16 @@ def _mean(values: Sequence[Decimal]) -> Decimal | None:
     return sum(values, ZERO) / Decimal(len(values))
 
 
+def _median_int(values: Sequence[int]) -> int | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    midpoint = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[midpoint]
+    return (ordered[midpoint - 1] + ordered[midpoint]) // 2
+
+
 def _mean_robustness(
     values: Sequence[tuple[str, Decimal]],
 ) -> dict[str, object]:
@@ -890,6 +900,7 @@ def _horizon_summary(
     *,
     horizon_ms: int,
     integrity_clean: bool,
+    include_stop_path: bool = True,
 ) -> dict[str, object]:
     key = str(horizon_ms)
     settled: list[tuple[dict[str, object], Decimal]] = []
@@ -952,6 +963,44 @@ def _horizon_summary(
         cast(str, row["market"]) for row, _value in settled
     }
     reopened_markets = {market for market, _value in reopened}
+    stop_evaluable = 0
+    stop_crossings = 0
+    stop_survivors = 0
+    stop_cross_times: list[int] = []
+    if include_stop_path:
+        for row, _value in settled:
+            if not (
+                row["combined_block_reason"] == "long_trend"
+                and row["original_stack_decision"] == "BLOCK"
+                and row["original_block_layer"] == "combined"
+                and row["carveout_decision"] == "ADMIT"
+            ):
+                continue
+            raw_stop_path = row.get("stop_path")
+            if not isinstance(raw_stop_path, dict):
+                continue
+            raw_horizons = raw_stop_path.get("horizons")
+            if not isinstance(raw_horizons, dict):
+                continue
+            stop_item = raw_horizons.get(key)
+            if not isinstance(stop_item, dict):
+                continue
+            stop_status = stop_item.get("status")
+            if stop_status not in {
+                "observed_stop_crossing",
+                "observed_path_survivor",
+            }:
+                continue
+            stop_evaluable += 1
+            if stop_status == "observed_stop_crossing":
+                stop_crossings += 1
+                raw_time = stop_item.get("time_to_stop_ms")
+                if isinstance(raw_time, int) and not isinstance(
+                    raw_time, bool
+                ):
+                    stop_cross_times.append(raw_time)
+            else:
+                stop_survivors += 1
 
     sample_complete = (
         len(settled) >= MIN_SETTLED_PER_HORIZON
@@ -1024,7 +1073,7 @@ def _horizon_summary(
         and reopened_robust
     )
 
-    return {
+    result: dict[str, object] = {
         "horizon_ms": horizon_ms,
         "terminal_opportunities": len(rows),
         "settled_opportunities": len(settled),
@@ -1070,6 +1119,26 @@ def _horizon_summary(
             "changes_candidate_readiness": False,
         },
     }
+    if include_stop_path:
+        result["reopened_long_trend_stop_path"] = {
+            "claim_scope": "observed_mark_stop_crossing_only",
+            "evaluable": stop_evaluable,
+            "crossings": stop_crossings,
+            "survivors": stop_survivors,
+            "crossing_fraction": (
+                None
+                if stop_evaluable == 0
+                else str(
+                    Decimal(stop_crossings)
+                    / Decimal(stop_evaluable)
+                )
+            ),
+            "median_time_to_stop_ms": _median_int(stop_cross_times),
+            "changes_execution": False,
+            "changes_risk_limits": False,
+            "changes_candidate_readiness": False,
+        }
+    return result
 
 
 def _summary(
@@ -1077,6 +1146,7 @@ def _summary(
     *,
     pending_opportunity_count: int,
     integrity_clean: bool,
+    include_stop_path: bool = True,
 ) -> dict[str, object]:
     row_values = tuple(rows)
     decisions = Counter(
@@ -1102,6 +1172,7 @@ def _summary(
             row_values,
             horizon_ms=horizon_ms,
             integrity_clean=integrity_clean,
+            include_stop_path=include_stop_path,
         )
         for horizon_ms in FORWARD_HORIZONS_MS
     }
@@ -1185,11 +1256,18 @@ def validate_long_trend_carveout_ledger(
         and item.get("integrity_clean") is True
         for item in history
     )
-    if raw.get("summary") != _summary(
+    current_summary = _summary(
         rows,
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
-    ):
+    )
+    legacy_summary = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_stop_path=False,
+    )
+    if raw.get("summary") not in (current_summary, legacy_summary):
         raise ProspectiveLongTrendCarveoutLedgerError(
             "carveout summary does not reconcile"
         )
