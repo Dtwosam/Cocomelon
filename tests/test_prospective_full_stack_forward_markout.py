@@ -67,15 +67,17 @@ def _record_feature(
     *,
     market: str,
     timestamp_ms: int,
-    return_1h: str,
-    day_return: str,
+    return_1h: str | None,
+    day_return: str | None,
 ) -> str:
     snapshot = FeatureSnapshot(
         market=_market(market),
         as_of_ms=timestamp_ms,
         source_received_at_ms=timestamp_ms,
         schema_version=1,
-        day_return=Decimal(day_return),
+        day_return=(
+            Decimal(day_return) if day_return is not None else None
+        ),
         funding=Decimal("0"),
         open_interest=Decimal("100"),
         day_notional_volume=Decimal("1000000"),
@@ -84,7 +86,9 @@ def _record_feature(
         mark_oracle_dislocation_bps=Decimal("0"),
         return_5m=None,
         return_15m=None,
-        return_1h=Decimal(return_1h),
+        return_1h=(
+            Decimal(return_1h) if return_1h is not None else None
+        ),
         return_4h=None,
         realized_vol_15m=None,
         range_expansion_15m=None,
@@ -653,12 +657,19 @@ def test_risk_rejected_long_trend_tracks_candidate_only_integrity_miss(
 ) -> None:
     store = LearningFeatureSnapshotStore(tmp_path / "features")
     combined, two_strike, momentum = _states()
+    incomplete_feature = _record_feature(
+        store,
+        market="SOL",
+        timestamp_ms=START + 1_400,
+        return_1h=None,
+        day_return="0.05",
+    )
     rejected = _opportunity(
-        suffix="risk-long-trend-missing-feature",
+        suffix="risk-long-trend-incomplete-feature",
         market="SOL",
         direction=Direction.LONG,
         timestamp_ms=START + 1_500,
-        feature_snapshot_id="missing-feature",
+        feature_snapshot_id=incomplete_feature,
         lead_strategy="trend",
         approved=False,
     )
@@ -694,7 +705,7 @@ def test_risk_rejected_long_trend_tracks_candidate_only_integrity_miss(
     assert rows[0]["long_trend_carveout_decision"] is None
     assert (
         rows[0]["long_trend_carveout_momentum_reason"]
-        == "missing_feature_fail_open"
+        == "incomplete_feature_fail_open"
     )
 
 
