@@ -1433,13 +1433,26 @@ class _SupervisorGroup:
         self,
         *,
         now_ms: int,
+        additional_stale_grace_ms: int = 0,
     ) -> frozenset[str]:
+        if additional_stale_grace_ms < 0:
+            raise ValueError(
+                "additional_stale_grace_ms must be non-negative"
+            )
         if len(self.supervisors) != len(self.ready_market_keys):
             raise RuntimeError(
                 "supervisor and L2 readiness lane counts differ"
             )
+        effective_now_ms = max(
+            0,
+            now_ms - additional_stale_grace_ms,
+        )
         stale_by_lane = tuple(
-            set(supervisor.stale_l2_streams(now_ms=now_ms))
+            set(
+                supervisor.stale_l2_streams(
+                    now_ms=effective_now_ms
+                )
+            )
             for supervisor in self.supervisors
         )
         return frozenset(
@@ -8504,9 +8517,16 @@ async def run_continuous_paper_session(
             nonlocal last_pipeline_stale_recovery_boundary_ms
 
             health_now_ms = utc_now_ms()
+            supervisor_recovery_grace_ms = (
+                config.websocket_redundant_lane_reconnect_stagger_ms
+                * len(supervisor_group.supervisors)
+            )
             supervisor_unhealthy_market_keys = (
                 supervisor_group.unhealthy_l2_market_keys(
                     now_ms=health_now_ms,
+                    additional_stale_grace_ms=(
+                        supervisor_recovery_grace_ms
+                    ),
                 )
             )
             supervisor_systemically_unhealthy_l2 = (
@@ -8553,6 +8573,9 @@ async def run_continuous_paper_session(
                 ),
                 "supervisor_unhealthy_markets": sorted(
                     supervisor_unhealthy_market_keys
+                ),
+                "supervisor_recovery_grace_ms": (
+                    supervisor_recovery_grace_ms
                 ),
                 "pipeline_stale_market_count": len(
                     pipeline_stale_market_keys
