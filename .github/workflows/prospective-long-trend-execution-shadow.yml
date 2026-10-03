@@ -301,10 +301,6 @@ jobs:
           SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
           SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
           SOURCE_RESOLUTION: ${{ steps.source.outputs.resolution_mode }}
-          GATE_RUN_ID: ${{ steps.gate.outputs.workflow_run_id }}
-          GATE_ARTIFACT_NAME: ${{ steps.gate.outputs.artifact_name }}
-          GATE_ARTIFACT_DIGEST: ${{ steps.gate.outputs.artifact_digest }}
-          GATE_LEDGER_SHA256: ${{ steps.gate.outputs.ledger_sha256 }}
           WAIT_REASON: ${{ steps.compact.outputs.reason }}
         run: |
           set -euo pipefail
@@ -377,8 +373,8 @@ jobs:
           '
           )
 
-          gate_artifact_line=""
           gate_run_id=""
+          gate_artifact_line=""
           for candidate_run_id in "${gate_runs[@]}"; do
             artifacts_json="$(
               gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/artifacts?per_page=100"
@@ -405,7 +401,7 @@ jobs:
           digest = item.get("digest")
           if not isinstance(digest, str) or not digest.startswith("sha256:"):
               raise SystemExit("durable gate artifact digest is missing or invalid")
-          print(item["id"], item["name"], digest, sep="\t")
+          print(f"{item['id']}|{item['name']}|{digest}")
           '
             )"
             if [ -n "$candidate_artifact_line" ]; then
@@ -420,7 +416,171 @@ jobs:
             exit 0
           fi
 
-          IFS=
+          IFS='|' read -r gate_artifact_id gate_artifact_name gate_artifact_digest \
+            <<<"$gate_artifact_line"
+          rm -rf /tmp/long-trend-execution-shadow-gate
+          mkdir -p /tmp/long-trend-execution-shadow-gate
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$gate_artifact_id/zip" \
+            > /tmp/long-trend-execution-shadow-gate.zip
+          actual_artifact_digest="sha256:$(sha256sum /tmp/long-trend-execution-shadow-gate.zip | cut -d' ' -f1)"
+          if [ "$actual_artifact_digest" != "$gate_artifact_digest" ]; then
+            echo "durable gate artifact digest mismatch" >&2
+            exit 1
+          fi
+          unzip -q /tmp/long-trend-execution-shadow-gate.zip \
+            -d /tmp/long-trend-execution-shadow-gate
+          gate_path="$(
+            find /tmp/long-trend-execution-shadow-gate \
+              -type f \
+              -name prospective-long-trend-carveout-fast-markout-ledger.json \
+              -print -quit
+          )"
+          test -n "$gate_path"
+          test -s "$gate_path"
+
+          mapfile -t gate_check < <(
+            SOURCE_PATH="$SOURCE_PATH" GATE_PATH="$gate_path" python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          source = json.loads(
+              Path(os.environ["SOURCE_PATH"]).read_text(encoding="utf-8")
+          )
+          gate = json.loads(
+              Path(os.environ["GATE_PATH"]).read_text(encoding="utf-8")
+          )
+          if source.get("durable_gate_required") is not True:
+              raise SystemExit("execution-shadow source does not require durable gate")
+          if (
+              source.get("durable_gate_source")
+              != "prospective-long-trend-carveout-fast-markout-ledger"
+          ):
+              raise SystemExit("execution-shadow durable gate source drift")
+          if (
+              gate.get("kind")
+              != "prospective-long-trend-carveout-fast-markout-ledger-v1"
+          ):
+              raise SystemExit("durable gate ledger kind is unsupported")
+          if gate.get("research_only") is not True:
+              raise SystemExit("durable gate research-only boundary drift")
+          for key in (
+              "execution_authority",
+              "promotion_authority",
+              "changes_risk_limits",
+              "changes_candidate_readiness",
+          ):
+              if gate.get(key) is not False:
+                  raise SystemExit(f"durable gate authority drift: {key}")
+          if gate.get("candidate_id") != source.get("candidate_id"):
+              raise SystemExit("durable gate candidate lineage mismatch")
+          claimed_digest = gate.get("ledger_sha256")
+          if not isinstance(claimed_digest, str) or len(claimed_digest) != 64:
+              raise SystemExit("durable gate ledger digest is invalid")
+          digest_payload = dict(gate)
+          digest_payload.pop("ledger_sha256", None)
+          actual_digest = hashlib.sha256(
+              json.dumps(
+                  digest_payload,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              ).encode("utf-8")
+          ).hexdigest()
+          if actual_digest != claimed_digest:
+              raise SystemExit("durable gate ledger digest mismatch")
+          summary = gate.get("summary")
+          if not isinstance(summary, dict):
+              raise SystemExit("durable gate summary is missing")
+          ready = (
+              summary.get(
+                  "all_horizons_ready_for_execution_shadow_investigation"
+              )
+              is True
+          )
+          print("ready" if ready else "waiting")
+          print(claimed_digest)
+          PY
+          )
+          gate_state="${gate_check[0]}"
+          gate_ledger_sha256="${gate_check[1]}"
+
+          echo "workflow_run_id=$gate_run_id" >> "$GITHUB_OUTPUT"
+          echo "artifact_id=$gate_artifact_id" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$gate_artifact_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$gate_artifact_digest" >> "$GITHUB_OUTPUT"
+          echo "ledger_sha256=$gate_ledger_sha256" >> "$GITHUB_OUTPUT"
+          if [ "$gate_state" = "ready" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "reason=durable fast-markout investigation gate passed" >> "$GITHUB_OUTPUT"
+          else
+            echo "reason=durable fast-markout investigation gate has not passed" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish waiting-for-gate status
+        if: ${{ steps.compact.outputs.eligible == 'true' && steps.gate.outputs.ready != 'true' }}
+        shell: bash
+        env:
+          ISSUE_NUMBER: ${{ env.SHADOW_ISSUE }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          SOURCE_RESOLUTION: ${{ steps.source.outputs.resolution_mode }}
+          GATE_RUN_ID: ${{ steps.gate.outputs.workflow_run_id }}
+          GATE_ARTIFACT_NAME: ${{ steps.gate.outputs.artifact_name }}
+          GATE_ARTIFACT_DIGEST: ${{ steps.gate.outputs.artifact_digest }}
+          GATE_LEDGER_SHA256: ${{ steps.gate.outputs.ledger_sha256 }}
+          GATE_REASON: ${{ steps.gate.outputs.reason }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          def shown(value: str | None) -> str:
+              return value or "none"
+
+          lines = [
+              "## LONG+trend execution-shadow evidence",
+              "",
+              "**Status:** waiting for durable execution-shadow gate",
+              "",
+              (
+                  "- source paper run / attempt: "
+                  f"`{os.environ['SOURCE_RUN_ID']} / "
+                  f"{os.environ['SOURCE_RUN_ATTEMPT']}`"
+              ),
+              f"- source resolution: `{os.environ['SOURCE_RESOLUTION']}`",
+              f"- gate workflow run: `{shown(os.environ.get('GATE_RUN_ID'))}`",
+              f"- gate artifact: `{shown(os.environ.get('GATE_ARTIFACT_NAME'))}`",
+              f"- gate artifact digest: `{shown(os.environ.get('GATE_ARTIFACT_DIGEST'))}`",
+              f"- gate ledger digest: `{shown(os.environ.get('GATE_LEDGER_SHA256'))}`",
+              f"- reason: {os.environ.get('GATE_REASON') or 'durable gate is not ready'}",
+              "",
+              "No counterfactual fill or PnL evidence is credited until the durable fast-markout investigation gate passes.",
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**Changes risk limits:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path(
+              "/tmp/long-trend-execution-shadow-status.md"
+          ).write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" \
+            -f body="$(cat /tmp/long-trend-execution-shadow-status.md)"
+
+      - name: Evaluate captured execution shadow
+        id: evaluate
+        if: ${{ steps.compact.outputs.eligible == 'true' && steps.gate.outputs.ready == 'true' }}
         shell: bash
         env:
           SOURCE_PATH: ${{ steps.compact.outputs.source_path }}
@@ -441,6 +601,10 @@ jobs:
           SOURCE_ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
           SOURCE_ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
           SOURCE_RESOLUTION: ${{ steps.source.outputs.resolution_mode }}
+          GATE_RUN_ID: ${{ steps.gate.outputs.workflow_run_id }}
+          GATE_ARTIFACT_NAME: ${{ steps.gate.outputs.artifact_name }}
+          GATE_ARTIFACT_DIGEST: ${{ steps.gate.outputs.artifact_digest }}
+          GATE_LEDGER_SHA256: ${{ steps.gate.outputs.ledger_sha256 }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -535,385 +699,6 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         if: ${{ steps.compact.outputs.eligible == 'true' && steps.gate.outputs.ready == 'true' }}
-        with:
-          name: prospective-long-trend-execution-shadow-${{ github.run_id }}-${{ github.run_attempt }}
-          path: prospective-long-trend-execution-shadow-summary.json
-          if-no-files-found: error
-          retention-days: 90
-\t' read -r gate_artifact_id gate_artifact_name gate_artifact_digest \
-            <<<"$gate_artifact_line"
-          rm -rf /tmp/long-trend-execution-shadow-gate
-          mkdir -p /tmp/long-trend-execution-shadow-gate
-          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$gate_artifact_id/zip" \
-            > /tmp/long-trend-execution-shadow-gate.zip
-          unzip -q /tmp/long-trend-execution-shadow-gate.zip \
-            -d /tmp/long-trend-execution-shadow-gate
-          gate_path="$(
-            find /tmp/long-trend-execution-shadow-gate \
-              -type f \
-              -name prospective-long-trend-carveout-fast-markout-ledger.json \
-              -print -quit
-          )"
-          test -n "$gate_path"
-          test -s "$gate_path"
-
-          gate_check="$(
-            SOURCE_PATH="$SOURCE_PATH" GATE_PATH="$gate_path" python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          source = json.loads(
-              Path(os.environ["SOURCE_PATH"]).read_text(encoding="utf-8")
-          )
-          gate = json.loads(
-              Path(os.environ["GATE_PATH"]).read_text(encoding="utf-8")
-          )
-          if source.get("durable_gate_required") is not True:
-              raise SystemExit("execution-shadow source does not require durable gate")
-          if (
-              source.get("durable_gate_source")
-              != "prospective-long-trend-carveout-fast-markout-ledger"
-          ):
-              raise SystemExit("execution-shadow durable gate source drift")
-          if (
-              gate.get("kind")
-              != "prospective-long-trend-carveout-fast-markout-ledger-v1"
-          ):
-              raise SystemExit("durable gate ledger kind is unsupported")
-          if gate.get("research_only") is not True:
-              raise SystemExit("durable gate research-only boundary drift")
-          for key in (
-              "execution_authority",
-              "promotion_authority",
-              "changes_risk_limits",
-              "changes_candidate_readiness",
-          ):
-              if gate.get(key) is not False:
-                  raise SystemExit(f"durable gate authority drift: {key}")
-          if gate.get("candidate_id") != source.get("candidate_id"):
-              raise SystemExit("durable gate candidate lineage mismatch")
-          ledger_sha256 = gate.get("ledger_sha256")
-          if not isinstance(ledger_sha256, str) or len(ledger_sha256) != 64:
-              raise SystemExit("durable gate ledger digest is invalid")
-          summary = gate.get("summary")
-          if not isinstance(summary, dict):
-              raise SystemExit("durable gate summary is missing")
-          ready = (
-              summary.get(
-                  "all_horizons_ready_for_execution_shadow_investigation"
-              )
-              is True
-          )
-          print(
-              ("ready" if ready else "waiting")
-              + "\t"
-              + ledger_sha256
-          )
-          PY
-          )"
-          IFS=
-        shell: bash
-        env:
-          SOURCE_PATH: ${{ steps.compact.outputs.source_path }}
-        run: |
-          set -euo pipefail
-          python scripts/evaluate_prospective_long_trend_execution_shadow.py \
-            "$SOURCE_PATH" \
-            --json-out prospective-long-trend-execution-shadow-summary.json
-
-      - name: Publish execution-shadow status
-        if: ${{ steps.compact.outputs.eligible == 'true' }}
-        shell: bash
-        env:
-          ISSUE_NUMBER: ${{ env.SHADOW_ISSUE }}
-          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
-          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
-          SOURCE_HEAD_SHA: ${{ steps.source.outputs.head_sha }}
-          SOURCE_ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
-          SOURCE_ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
-          SOURCE_RESOLUTION: ${{ steps.source.outputs.resolution_mode }}
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          summary = json.loads(
-              Path(
-                  "prospective-long-trend-execution-shadow-summary.json"
-              ).read_text(encoding="utf-8")
-          )
-          lines = [
-              "## LONG+trend execution-shadow evidence",
-              "",
-              "**Status:** collecting",
-              "",
-              f"- source paper run / attempt: `{os.environ['SOURCE_RUN_ID']} / {os.environ['SOURCE_RUN_ATTEMPT']}`",
-              f"- source head SHA: `{os.environ['SOURCE_HEAD_SHA']}`",
-              f"- source resolution: `{os.environ['SOURCE_RESOLUTION']}`",
-              f"- source artifact: `{os.environ['SOURCE_ARTIFACT_NAME']}`",
-              f"- source artifact digest: `{os.environ['SOURCE_ARTIFACT_DIGEST']}`",
-              f"- candidate: `{summary['candidate_id']}`",
-              f"- source schema version: `{summary['source_schema_version']}`",
-              f"- execution config source: `{summary['execution_config_source']}`",
-              f"- execution config version: `{summary['execution_config']['config_version']}`",
-              f"- execution config digest: `{summary['execution_config_sha256']}`",
-              f"- source opportunities: `{summary['source_opportunities']}`",
-              f"- counterfactual risk approvals: `{summary['counterfactual_risk_approvals']}`",
-              f"- counterfactual risk rejections: `{summary['counterfactual_risk_rejections']}`",
-              f"- planning approvals / rejections: `{summary['planning_approvals']} / {summary['planning_rejections']}`",
-              f"- execution results: `{summary['execution_results']}`",
-              f"- fillable opportunities: `{summary['fillable_opportunities']}`",
-              "",
-              "### Fee-adjusted forward markouts",
-              "",
-              "| Horizon | Settled | + / - / flat | Total PnL | Mean PnL | Mean return | Profit factor | Markets | LOO option min | LOO market min |",
-              "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-          ]
-          for key in ("300000", "900000", "3600000"):
-              item = summary["by_horizon"][key]
-              robust = item["robustness"]
-              lines.append(
-                  "| {minutes}m | {settled} | {positive}/{negative}/{flat} | "
-                  "{total} | {mean} | {ret} | {pf} | {markets} | "
-                  "{loo_option} | {loo_market} |".format(
-                      minutes=int(key) // 60000,
-                      settled=item["settled"],
-                      positive=item["positive"],
-                      negative=item["negative"],
-                      flat=item["flat"],
-                      total=item["total_entry_fee_adjusted_mark_to_market_pnl"],
-                      mean=item["mean_entry_fee_adjusted_mark_to_market_pnl"],
-                      ret=item["mean_directional_return_fraction"],
-                      pf=item["profit_factor"],
-                      markets=robust["market_count"],
-                      loo_option=robust["leave_one_option_out_min_pnl"],
-                      loo_market=robust["leave_one_market_out_min_pnl"],
-                  )
-              )
-              lines.append(
-                  f"- {int(key) // 60000}m statuses: `{item['status_counts']}`"
-              )
-          lines.extend(
-              [
-                  "",
-                  "This shadow neutralizes only the captured weekly-drawdown veto in an isolated copy, then reuses the existing risk engine, planner, and visible-book IOC. Other risk vetoes remain active in the counterfactual.",
-                  "",
-                  "Forward outcomes are entry-fee-adjusted mark-to-market only. Replacement exits, exit fees, funding, and realized trade lifecycle PnL are not modeled here.",
-                  "",
-                  "**Execution authority:** `false`",
-                  "**Promotion authority:** `false`",
-                  "**Changes risk limits:** `false`",
-                  "**Changes candidate readiness:** `false`",
-                  "**LIVE TRADING: DISABLED.**",
-              ]
-          )
-          Path("/tmp/long-trend-execution-shadow-status.md").write_text(
-              "\n".join(lines) + "\n",
-              encoding="utf-8",
-          )
-          PY
-          gh api \
-            --method PATCH \
-            -H "Accept: application/vnd.github+json" \
-            "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" \
-            -f body="$(cat /tmp/long-trend-execution-shadow-status.md)"
-
-      - uses: actions/upload-artifact@v7
-        if: ${{ steps.compact.outputs.eligible == 'true' }}
-        with:
-          name: prospective-long-trend-execution-shadow-${{ github.run_id }}-${{ github.run_attempt }}
-          path: prospective-long-trend-execution-shadow-summary.json
-          if-no-files-found: error
-          retention-days: 90
-\t' read -r gate_state gate_ledger_sha256 <<<"$gate_check"
-
-          echo "workflow_run_id=$gate_run_id" >> "$GITHUB_OUTPUT"
-          echo "artifact_id=$gate_artifact_id" >> "$GITHUB_OUTPUT"
-          echo "artifact_name=$gate_artifact_name" >> "$GITHUB_OUTPUT"
-          echo "artifact_digest=$gate_artifact_digest" >> "$GITHUB_OUTPUT"
-          echo "ledger_sha256=$gate_ledger_sha256" >> "$GITHUB_OUTPUT"
-          if [ "$gate_state" = "ready" ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-            echo "reason=durable fast-markout investigation gate passed" >> "$GITHUB_OUTPUT"
-          else
-            echo "reason=durable fast-markout investigation gate has not passed" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Publish waiting-for-gate status
-        if: ${{ steps.compact.outputs.eligible == 'true' && steps.gate.outputs.ready != 'true' }}
-        shell: bash
-        env:
-          ISSUE_NUMBER: ${{ env.SHADOW_ISSUE }}
-          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
-          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
-          SOURCE_RESOLUTION: ${{ steps.source.outputs.resolution_mode }}
-          GATE_RUN_ID: ${{ steps.gate.outputs.workflow_run_id }}
-          GATE_ARTIFACT_NAME: ${{ steps.gate.outputs.artifact_name }}
-          GATE_ARTIFACT_DIGEST: ${{ steps.gate.outputs.artifact_digest }}
-          GATE_LEDGER_SHA256: ${{ steps.gate.outputs.ledger_sha256 }}
-          GATE_REASON: ${{ steps.gate.outputs.reason }}
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import os
-          from pathlib import Path
-
-          def shown(value: str | None) -> str:
-              return value or "none"
-
-          lines = [
-              "## LONG+trend execution-shadow evidence",
-              "",
-              "**Status:** waiting for durable execution-shadow gate",
-              "",
-              (
-                  "- source paper run / attempt: "
-                  f"`{os.environ['SOURCE_RUN_ID']} / "
-                  f"{os.environ['SOURCE_RUN_ATTEMPT']}`"
-              ),
-              f"- source resolution: `{os.environ['SOURCE_RESOLUTION']}`",
-              f"- gate workflow run: `{shown(os.environ.get('GATE_RUN_ID'))}`",
-              f"- gate artifact: `{shown(os.environ.get('GATE_ARTIFACT_NAME'))}`",
-              f"- gate artifact digest: `{shown(os.environ.get('GATE_ARTIFACT_DIGEST'))}`",
-              f"- gate ledger digest: `{shown(os.environ.get('GATE_LEDGER_SHA256'))}`",
-              f"- reason: {os.environ.get('GATE_REASON') or 'durable gate is not ready'}",
-              "",
-              "No counterfactual fill or PnL evidence is credited until the durable fast-markout investigation gate passes.",
-              "",
-              "**Execution authority:** `false`",
-              "**Promotion authority:** `false`",
-              "**Changes risk limits:** `false`",
-              "**LIVE TRADING: DISABLED.**",
-          ]
-          Path(
-              "/tmp/long-trend-execution-shadow-status.md"
-          ).write_text(
-              "\n".join(lines) + "\n",
-              encoding="utf-8",
-          )
-          PY
-          gh api \
-            --method PATCH \
-            -H "Accept: application/vnd.github+json" \
-            "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" \
-            -f body="$(cat /tmp/long-trend-execution-shadow-status.md)"
-
-      - name: Evaluate captured execution shadow
-        id: evaluate
-        if: ${{ steps.compact.outputs.eligible == 'true' && steps.gate.outputs.ready == 'true' }}
-        shell: bash
-        env:
-          SOURCE_PATH: ${{ steps.compact.outputs.source_path }}
-        run: |
-          set -euo pipefail
-          python scripts/evaluate_prospective_long_trend_execution_shadow.py \
-            "$SOURCE_PATH" \
-            --json-out prospective-long-trend-execution-shadow-summary.json
-
-      - name: Publish execution-shadow status
-        if: ${{ steps.compact.outputs.eligible == 'true' }}
-        shell: bash
-        env:
-          ISSUE_NUMBER: ${{ env.SHADOW_ISSUE }}
-          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
-          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
-          SOURCE_HEAD_SHA: ${{ steps.source.outputs.head_sha }}
-          SOURCE_ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
-          SOURCE_ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
-          SOURCE_RESOLUTION: ${{ steps.source.outputs.resolution_mode }}
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          summary = json.loads(
-              Path(
-                  "prospective-long-trend-execution-shadow-summary.json"
-              ).read_text(encoding="utf-8")
-          )
-          lines = [
-              "## LONG+trend execution-shadow evidence",
-              "",
-              "**Status:** collecting",
-              "",
-              f"- source paper run / attempt: `{os.environ['SOURCE_RUN_ID']} / {os.environ['SOURCE_RUN_ATTEMPT']}`",
-              f"- source head SHA: `{os.environ['SOURCE_HEAD_SHA']}`",
-              f"- source resolution: `{os.environ['SOURCE_RESOLUTION']}`",
-              f"- source artifact: `{os.environ['SOURCE_ARTIFACT_NAME']}`",
-              f"- source artifact digest: `{os.environ['SOURCE_ARTIFACT_DIGEST']}`",
-              f"- candidate: `{summary['candidate_id']}`",
-              f"- source schema version: `{summary['source_schema_version']}`",
-              f"- execution config source: `{summary['execution_config_source']}`",
-              f"- execution config version: `{summary['execution_config']['config_version']}`",
-              f"- execution config digest: `{summary['execution_config_sha256']}`",
-              f"- source opportunities: `{summary['source_opportunities']}`",
-              f"- counterfactual risk approvals: `{summary['counterfactual_risk_approvals']}`",
-              f"- counterfactual risk rejections: `{summary['counterfactual_risk_rejections']}`",
-              f"- planning approvals / rejections: `{summary['planning_approvals']} / {summary['planning_rejections']}`",
-              f"- execution results: `{summary['execution_results']}`",
-              f"- fillable opportunities: `{summary['fillable_opportunities']}`",
-              "",
-              "### Fee-adjusted forward markouts",
-              "",
-              "| Horizon | Settled | + / - / flat | Total PnL | Mean PnL | Mean return | Profit factor | Markets | LOO option min | LOO market min |",
-              "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-          ]
-          for key in ("300000", "900000", "3600000"):
-              item = summary["by_horizon"][key]
-              robust = item["robustness"]
-              lines.append(
-                  "| {minutes}m | {settled} | {positive}/{negative}/{flat} | "
-                  "{total} | {mean} | {ret} | {pf} | {markets} | "
-                  "{loo_option} | {loo_market} |".format(
-                      minutes=int(key) // 60000,
-                      settled=item["settled"],
-                      positive=item["positive"],
-                      negative=item["negative"],
-                      flat=item["flat"],
-                      total=item["total_entry_fee_adjusted_mark_to_market_pnl"],
-                      mean=item["mean_entry_fee_adjusted_mark_to_market_pnl"],
-                      ret=item["mean_directional_return_fraction"],
-                      pf=item["profit_factor"],
-                      markets=robust["market_count"],
-                      loo_option=robust["leave_one_option_out_min_pnl"],
-                      loo_market=robust["leave_one_market_out_min_pnl"],
-                  )
-              )
-              lines.append(
-                  f"- {int(key) // 60000}m statuses: `{item['status_counts']}`"
-              )
-          lines.extend(
-              [
-                  "",
-                  "This shadow neutralizes only the captured weekly-drawdown veto in an isolated copy, then reuses the existing risk engine, planner, and visible-book IOC. Other risk vetoes remain active in the counterfactual.",
-                  "",
-                  "Forward outcomes are entry-fee-adjusted mark-to-market only. Replacement exits, exit fees, funding, and realized trade lifecycle PnL are not modeled here.",
-                  "",
-                  "**Execution authority:** `false`",
-                  "**Promotion authority:** `false`",
-                  "**Changes risk limits:** `false`",
-                  "**Changes candidate readiness:** `false`",
-                  "**LIVE TRADING: DISABLED.**",
-              ]
-          )
-          Path("/tmp/long-trend-execution-shadow-status.md").write_text(
-              "\n".join(lines) + "\n",
-              encoding="utf-8",
-          )
-          PY
-          gh api \
-            --method PATCH \
-            -H "Accept: application/vnd.github+json" \
-            "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" \
-            -f body="$(cat /tmp/long-trend-execution-shadow-status.md)"
-
-      - uses: actions/upload-artifact@v7
-        if: ${{ steps.compact.outputs.eligible == 'true' }}
         with:
           name: prospective-long-trend-execution-shadow-${{ github.run_id }}-${{ github.run_attempt }}
           path: prospective-long-trend-execution-shadow-summary.json
