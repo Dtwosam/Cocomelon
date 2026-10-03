@@ -1749,7 +1749,7 @@ def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
         reconnect_grace_without_books.systemically_stale_l2(
             now_ms=10_000
         )
-        is True
+        is False
     )
 
 
@@ -1759,6 +1759,10 @@ def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
     )
 
     assert "supervisor.stale_l2_streams(now_ms=now_ms)" in source
+    assert "market not in self.ready_market_keys[lane]" not in source[
+        source.index("def unhealthy_l2_market_keys("):
+        source.index("def systemically_stale_l2(")
+    ]
     assert "systemically_stale_l2(" in source
     assert "pipeline_systemically_unhealthy_l2" in source
     assert "last_pipeline_stale_recovery_boundary_ms" in source
