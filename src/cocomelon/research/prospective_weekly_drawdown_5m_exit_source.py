@@ -188,6 +188,104 @@ def _is_candidate_row(raw: dict[str, object]) -> bool:
     )
 
 
+def _five_minute_stop_path(
+    raw_row: dict[str, object],
+    *,
+    opportunity_timestamp_ms: int,
+) -> dict[str, object]:
+    raw_path = raw_row.get("long_trend_carveout_stop_path")
+    if not isinstance(raw_path, dict):
+        raise ProspectiveWeeklyDrawdown5mExitSourceError(
+            "candidate stop-path evidence is missing"
+        )
+    if (
+        raw_path.get("claim_scope")
+        != "observed_mark_stop_crossing_only"
+        or raw_path.get("changes_execution") is not False
+        or raw_path.get("changes_risk_limits") is not False
+        or raw_path.get("changes_candidate_readiness") is not False
+    ):
+        raise ProspectiveWeeklyDrawdown5mExitSourceError(
+            "candidate stop-path contract drift"
+        )
+    raw_horizons = raw_path.get("horizons")
+    if not isinstance(raw_horizons, dict):
+        raise ProspectiveWeeklyDrawdown5mExitSourceError(
+            "candidate stop-path horizons are missing"
+        )
+    raw_five = raw_horizons.get(str(EXIT_HORIZON_MS))
+    if not isinstance(raw_five, dict):
+        raise ProspectiveWeeklyDrawdown5mExitSourceError(
+            "candidate 5m stop-path evidence is missing"
+        )
+    status = raw_five.get("status")
+    supported = {
+        "missing_stop",
+        "missing_path",
+        "unsupported_horizon",
+        "markout_pending",
+        "markout_stale",
+        "no_causal_marks",
+        "observed_stop_crossing",
+        "observed_path_survivor",
+    }
+    if not isinstance(status, str) or status not in supported:
+        raise ProspectiveWeeklyDrawdown5mExitSourceError(
+            "candidate 5m stop-path status is invalid"
+        )
+    target_at_ms = raw_five.get("target_at_ms")
+    expected_target = opportunity_timestamp_ms + EXIT_HORIZON_MS
+    if (
+        isinstance(target_at_ms, bool)
+        or not isinstance(target_at_ms, int)
+        or target_at_ms != expected_target
+    ):
+        raise ProspectiveWeeklyDrawdown5mExitSourceError(
+            "candidate 5m stop-path target drift"
+        )
+    observed_mark_count = raw_five.get("observed_mark_count")
+    if (
+        isinstance(observed_mark_count, bool)
+        or not isinstance(observed_mark_count, int)
+        or observed_mark_count < 0
+    ):
+        raise ProspectiveWeeklyDrawdown5mExitSourceError(
+            "candidate 5m stop-path mark count is invalid"
+        )
+    stop_crossed = raw_five.get("stop_crossed")
+    survived = raw_five.get("survived_observed_marks_to_horizon")
+    if status == "observed_stop_crossing":
+        if stop_crossed is not True or survived is not False:
+            raise ProspectiveWeeklyDrawdown5mExitSourceError(
+                "observed stop crossing flags are inconsistent"
+            )
+    elif status == "observed_path_survivor":
+        if stop_crossed is not False or survived is not True:
+            raise ProspectiveWeeklyDrawdown5mExitSourceError(
+                "observed stop survivor flags are inconsistent"
+            )
+    elif stop_crossed is not None or survived is not None:
+        raise ProspectiveWeeklyDrawdown5mExitSourceError(
+            "incomplete stop path must not claim crossing or survival"
+        )
+    return {
+        "claim_scope": "observed_mark_stop_crossing_only",
+        "status": status,
+        "target_at_ms": target_at_ms,
+        "observed_mark_count": observed_mark_count,
+        "stop_crossed": stop_crossed,
+        "first_stop_cross_at_ms": raw_five.get(
+            "first_stop_cross_at_ms"
+        ),
+        "first_stop_cross_mark_px": raw_five.get(
+            "first_stop_cross_mark_px"
+        ),
+        "time_to_stop_ms": raw_five.get("time_to_stop_ms"),
+        "survived_observed_marks_to_horizon": survived,
+        "unseen_intraperiod_path_complete": False,
+    }
+
+
 def _validated_integrity_boundary(
     full_stack_summary: dict[str, object],
     state: ProspectiveWeeklyDrawdown5mExitState,
@@ -325,6 +423,11 @@ def prospective_weekly_drawdown_5m_exit_source(
                 "candidate opportunity lineage mismatch"
             )
 
+        stop_path = _five_minute_stop_path(
+            raw_row,
+            opportunity_timestamp_ms=timestamp_ms,
+        )
+
         exit_book = exit_book_map.get(opportunity_id)
         if exit_book is None:
             missing_exit_books += 1
@@ -386,6 +489,7 @@ def prospective_weekly_drawdown_5m_exit_source(
                 "opportunity_id": opportunity_id,
                 "lineage": lineage,
                 "opportunity": evidence.to_dict(),
+                "stop_path": stop_path,
                 "exit_book": (
                     None if exit_book is None else exit_book.to_dict()
                 ),
