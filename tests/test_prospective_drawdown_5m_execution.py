@@ -63,6 +63,7 @@ def _book(
     bid: str,
     ask: str,
     suffix: str,
+    size: str = "1000",
 ) -> StreamEvent:
     return StreamEvent(
         kind=StreamKind.L2_BOOK,
@@ -79,14 +80,14 @@ def _book(
             "bids": (
                 {
                     "px": Decimal(bid),
-                    "sz": Decimal("1000"),
+                    "sz": Decimal(size),
                     "n": 1,
                 },
             ),
             "asks": (
                 {
                     "px": Decimal(ask),
-                    "sz": Decimal("1000"),
+                    "sz": Decimal(size),
                     "n": 1,
                 },
             ),
@@ -98,16 +99,21 @@ def _evidence(
     *,
     timestamp_ms: int,
     cooldown_active: bool = False,
+    direction: Direction = Direction.LONG,
 ) -> ContinuousPaperOpeningOpportunityEvidence:
     config = PaperExecutionConfig()
     decision = StrategyDecision(
         market=_market(),
-        direction=Direction.LONG,
+        direction=direction,
         score=Decimal("0.8"),
         timestamp_ms=timestamp_ms - config.latency_ms,
         feature_snapshot_id=f"feature-{timestamp_ms}",
         lead_strategy="trend",
-        invalidation_price=Decimal("90"),
+        invalidation_price=(
+            Decimal("90")
+            if direction is Direction.LONG
+            else Decimal("110")
+        ),
         signal_ids=(f"signal-{timestamp_ms}",),
         reason_codes=("decision_threshold_met",),
     )
@@ -164,7 +170,7 @@ def _evidence(
         strategy_decision_id=decision.decision_id,
         feature_snapshot_id=decision.feature_snapshot_id,
         market=_market().canonical,
-        direction="long",
+        direction=direction.value,
         lead_strategy="trend",
         opportunity_timestamp_ms=timestamp_ms,
         baseline_risk_approved=False,
@@ -187,6 +193,7 @@ def _exit_book(
     *,
     bid: str = "102",
     ask: str = "102.05",
+    size: str = "1000",
 ) -> OpeningOpportunityExitBookEvidence:
     target = evidence.opportunity_timestamp_ms + EXIT_HORIZON_MS
     observed = target + 100
@@ -204,6 +211,7 @@ def _exit_book(
             bid=bid,
             ask=ask,
             suffix="exit",
+            size=size,
         ),
         instrument=_instrument(observed),
     )
@@ -285,6 +293,65 @@ def test_exact_five_minute_shadow_models_entry_exit_fees() -> None:
     assert result["execution_authority"] is False
     assert result["promotion_authority"] is False
     assert result["changes_risk_limits"] is False
+
+
+def test_exact_five_minute_shadow_handles_profitable_short() -> None:
+    evidence = _evidence(
+        timestamp_ms=15_000_000,
+        direction=Direction.SHORT,
+    )
+    result = prospective_drawdown_5m_execution_summary(
+        _source(
+            evidence,
+            exit_book=_exit_book(
+                evidence,
+                bid="97.95",
+                ask="98",
+            ),
+        )
+    )
+
+    option = result["option_results"][0]
+    assert option["status"] == "exact"
+    assert option["direction"] == "short"
+    assert Decimal(option["exact_realized_pnl"]) > 0
+
+
+def test_partial_five_minute_close_is_never_exact() -> None:
+    evidence = _evidence(timestamp_ms=17_000_000)
+    result = prospective_drawdown_5m_execution_summary(
+        _source(
+            evidence,
+            exit_book=_exit_book(
+                evidence,
+                size="0.01",
+            ),
+        )
+    )
+
+    option = result["option_results"][0]
+    assert option["status"] == "incomplete"
+    assert option["complete_close"] is False
+    assert option["incomplete_reason"] == "exit_partial_fill"
+    assert result["exact_realized_pnl_options"] == 0
+    assert result["incomplete_reason_counts"] == {
+        "exit_partial_fill": 1
+    }
+
+
+def test_missing_hourly_funding_evidence_blocks_exact_pnl() -> None:
+    evidence = _evidence(timestamp_ms=3_500_000)
+    result = prospective_drawdown_5m_execution_summary(
+        _source(evidence, exit_book=_exit_book(evidence))
+    )
+
+    option = result["option_results"][0]
+    assert option["status"] == "incomplete"
+    assert option["funding_boundary_count"] == 1
+    assert option["funding_evidence_count"] == 0
+    assert option["incomplete_reason"] == "funding_evidence_required"
+    assert option["missing_funding_boundaries_ms"] == [3_600_000]
+    assert result["exact_realized_pnl_options"] == 0
 
 
 def test_shadow_preserves_second_risk_veto_after_drawdown_removed() -> None:
