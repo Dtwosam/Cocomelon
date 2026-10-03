@@ -153,8 +153,9 @@ def prospective_long_trend_execution_shadow_source(
             )
         evidence = opportunity_map.get(opportunity_id)
         if evidence is None:
-            missing_opportunities += 1
-            continue
+            raise ProspectiveLongTrendExecutionShadowSourceError(
+                "reopened long-trend opportunity evidence is missing"
+            )
         if (
             evidence.opportunity_timestamp_ms < overlap_started_at_ms
             or evidence.direction != "long"
@@ -218,11 +219,19 @@ def prospective_long_trend_execution_shadow_source(
 
     exported.sort(
         key=lambda item: (
-            cast(dict[str, object], item["opportunity"])[
-                "opportunity_timestamp_ms"
-            ],
-            cast(dict[str, object], item["opportunity"])["market"],
-            item["opportunity_id"],
+            cast(
+                int,
+                cast(dict[str, object], item["opportunity"])[
+                    "opportunity_timestamp_ms"
+                ],
+            ),
+            cast(
+                str,
+                cast(dict[str, object], item["opportunity"])[
+                    "market"
+                ],
+            ),
+            cast(str, item["opportunity_id"]),
         )
     )
     row_ids = tuple(cast(str, item["opportunity_id"]) for item in exported)
