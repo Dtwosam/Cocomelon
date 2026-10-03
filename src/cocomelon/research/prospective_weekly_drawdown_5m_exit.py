@@ -24,6 +24,7 @@ from cocomelon.execution.planner import (
     plan_opening_order,
     plan_reduce_only_order,
 )
+from cocomelon.evidence.openings import conservative_cost_estimate
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityEvidence,
 )
@@ -267,6 +268,10 @@ def _execution_config_compatible(
 ) -> None:
     request = evidence.risk_request_object
     instrument = evidence.instrument_object
+    if request.cost_estimate != conservative_cost_estimate(config):
+        raise ProspectiveWeeklyDrawdown5mExitError(
+            "execution cost estimate drift"
+        )
     if (
         instrument.minimum_order_notional
         != config.native_perp_min_notional
