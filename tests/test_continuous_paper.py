@@ -1602,6 +1602,7 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
                 connected=connected,
                 last_server_message_ms=last_server_message_ms,
                 reconnect_count=reconnect_count,
+                systemic_l2_stale_reconnect_count=0,
                 duplicate_count=2,
                 anomaly_count=1,
             )
@@ -1670,6 +1671,7 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
     assert lanes[1]["missing_ready_l2_markets"] == ["SOL"]
     assert lanes[1]["last_server_message_age_ms"] == 1_000
     assert lanes[1]["reconnect_count"] == 5
+    assert lanes[1]["systemic_l2_stale_reconnect_count"] == 0
 
 
 def test_supervisor_group_recovers_on_majority_stale_l2() -> None:

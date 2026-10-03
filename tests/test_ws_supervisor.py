@@ -176,6 +176,122 @@ def test_server_silence_forces_reconnect() -> None:
     asyncio.run(run())
 
 
+def test_systemic_l2_stale_on_active_socket_forces_reconnect() -> None:
+    async def run() -> None:
+        now = [1_000]
+
+        def book_for(coin: str, time_ms: int) -> dict[str, object]:
+            return {
+                "channel": "l2Book",
+                "data": {
+                    "coin": coin,
+                    "levels": [
+                        [{"n": 1, "px": "99", "sz": "1"}],
+                        [{"n": 1, "px": "101", "sz": "1"}],
+                    ],
+                    "time": time_ms,
+                },
+            }
+
+        first_rows: list[tuple[int, object]] = [
+            (1_000, book_for("BTC", 1_000)),
+            (1_001, book_for("ETH", 1_001)),
+            (7_000, trade(1, 7_000)),
+        ]
+        second_rows: list[tuple[int, object]] = [
+            (8_000, book_for("BTC", 8_000)),
+            (8_001, book_for("ETH", 8_001)),
+            (8_002, ConnectionError("bounded end")),
+        ]
+
+        class ClockedConnection(FakeConnection):
+            def __init__(self, rows: list[tuple[int, object]]) -> None:
+                super().__init__([])
+                self.clock_rows = rows
+
+            async def recv_json(self) -> dict[str, object]:
+                timestamp_ms, row = self.clock_rows.pop(0)
+                now[0] = timestamp_ms
+                if isinstance(row, BaseException):
+                    raise row
+                assert isinstance(row, dict)
+                return row
+
+        first = ClockedConnection(first_rows)
+        second = ClockedConnection(second_rows)
+        pool = [first, second]
+        gaps: list[DataGap] = []
+        sleeps: list[float] = []
+
+        async def factory() -> ClockedConnection:
+            return pool.pop(0)
+
+        async def event_sink(_event: StreamEvent) -> None:
+            return None
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        async def fake_sleep(value: float) -> None:
+            sleeps.append(value)
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            (
+                {"type": "l2Book", "coin": "BTC"},
+                {"type": "l2Book", "coin": "ETH"},
+                {"type": "trades", "coin": "BTC"},
+            ),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime.fromtimestamp(
+                now[0] / 1000,
+                tz=UTC,
+            ),
+            sleep=fake_sleep,
+            stale_after_ms=5_000,
+            systemic_l2_stale_reconnect_fraction=0.5,
+        )
+        await supervisor.run(
+            max_sessions=2,
+            max_messages_per_session=3,
+        )
+
+        assert first.closed is True
+        assert second.closed is True
+        assert supervisor.health.reconnect_count == 1
+        assert supervisor.health.systemic_l2_stale_reconnect_count == 1
+        assert sleeps == [1.0]
+        assert any(
+            gap.reason == "stale"
+            and gap.stream_id == "l2Book:BTC"
+            for gap in gaps
+        )
+        assert any(
+            gap.reason == "stale"
+            and gap.stream_id == "l2Book:ETH"
+            for gap in gaps
+        )
+
+
+def test_systemic_l2_stale_reconnect_fraction_must_be_valid() -> None:
+    for value in (0.0, -0.1, 1.1):
+        with pytest.raises(
+            ValueError,
+            match="systemic_l2_stale_reconnect_fraction",
+        ):
+            WebSocketSupervisor(
+                lambda: None,  # type: ignore[arg-type]
+                (),
+                event_sink=lambda _event: None,  # type: ignore[arg-type]
+                gap_sink=lambda _gap: None,  # type: ignore[arg-type]
+                clock_ms=lambda: 0,
+                utcnow=lambda: datetime.now(UTC),
+                systemic_l2_stale_reconnect_fraction=value,
+            )
+
+
 def test_server_silence_timeout_must_be_positive() -> None:
     with pytest.raises(
         ValueError,

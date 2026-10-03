@@ -1522,6 +1522,9 @@ def _supervisor_group_health_payload(
                 "lane": lane,
                 "connected": health.connected,
                 "reconnect_count": health.reconnect_count,
+                "systemic_l2_stale_reconnect_count": (
+                    health.systemic_l2_stale_reconnect_count
+                ),
                 "duplicate_count": health.duplicate_count,
                 "anomaly_count": health.anomaly_count,
                 "last_server_message_ms": (
@@ -8456,6 +8459,7 @@ async def run_continuous_paper_session(
                     server_silence_timeout_ms=(
                         config.websocket_server_silence_timeout_ms
                     ),
+                    systemic_l2_stale_reconnect_fraction=0.5,
                 )
                 supervisors.append(supervisor)
                 tasks.append(
