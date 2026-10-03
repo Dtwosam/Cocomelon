@@ -17,9 +17,15 @@ def test_prospective_readiness_workflow_is_fail_closed() -> None:
         "evaluate_prospective_trade_quality_readiness.py"
         in source
     )
-    assert 'map(select(.status == "completed"))' in source
-    assert 'if [[ "$conclusion" != "success" ]]' in source
-    assert "Expected exactly one current $key ledger artifact." in source
+    assert "Resolve latest coherent immutable ledgers" in source
+    assert "completed_runs(workflow_file" in source
+    assert 'latest.get("conclusion") != "success"' in source
+    assert "artifact_for_run(" in source
+    assert "Artifact digest mismatch" in source
+    assert "cadence_signature(" in source
+    assert "No authenticated prediction/comparison ledger pair shares" in source
+    assert "cadence_cohort_row_count" in source
+    assert "coherent cadence cohort rows" in source
     assert "**Status:** BLOCKED" in source
     blocked = source.split(
         "      - name: Publish blocked readiness status",
