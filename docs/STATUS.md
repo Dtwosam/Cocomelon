@@ -4427,3 +4427,16 @@ Continuous-paper state handoff also now accepts exact artifacts from completed p
 No context freshness limit, strategy threshold, risk rule, sizing rule, execution assumption, readiness gate, promotion state, or live-order authority is relaxed.
 
 **LIVE TRADING: DISABLED.**
+
+
+### LONG+trend carveout downstream shadow — 2026-10-03
+
+Risk-rejected forward-markout evidence now shows that the frozen combined entry filter's pure `long_trend` block has positive mean directional returns across the observed 5m, 15m, and 60m horizons. That is not enough to remove the veto because the existing stack stops at the combined layer and therefore does not record whether the same opportunity would subsequently be blocked by two-strike or momentum.
+
+The full-stack forward-markout research path now evaluates a parallel no-LONG-trend-veto challenger out of band. The live/frozen stack decision remains unchanged. For a pure `long_trend` block, the challenger preserves the top-10 rank requirement, applies the same two-strike state, then evaluates the same frozen momentum rule. Rank-above-10 blocks remain blocked. Existing non-combined opportunities inherit the original downstream decision.
+
+Both risk-approved and risk-rejected summaries now carry challenger decision counts, block-layer counts, integrity misses, and the same fixed 5m / 15m / 60m markout review summaries. The new fields are descriptive only and have zero execution, promotion, readiness, sizing, or risk authority.
+
+This creates the evidence needed to test whether removing only the blanket LONG+trend veto can improve opportunity selection without weakening the rest of the entry stack.
+
+**LIVE TRADING: DISABLED.**
