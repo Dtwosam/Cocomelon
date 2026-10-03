@@ -1455,6 +1455,62 @@ def test_runtime_refreshes_clock_after_l2_recovery_before_context_due_check() ->
     assert "recovery cannot starve" in window
 
 
+def test_runtime_context_refresh_failure_retries_fail_closed() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    refresh_index = source.index(
+        'pump.event_loop_phase = "context_refresh"'
+    )
+    attempt_index = source.index(
+        "pump.context_refresh_attempts += 1",
+        refresh_index,
+    )
+    call_index = source.index(
+        "await _refresh_native_market_snapshots(reader)",
+        attempt_index,
+    )
+    except_index = source.index(
+        "except (InfoHttpError, TransportError) as exc:",
+        call_index,
+    )
+    failure_index = source.index(
+        "pump.context_refresh_failures += 1",
+        except_index,
+    )
+    heartbeat_index = source.index(
+        "_emit_operational_live_status(",
+        failure_index,
+    )
+    continue_index = source.index(
+        "continue",
+        heartbeat_index,
+    )
+    success_index = source.index(
+        "pump.context_refresh_successes += 1",
+        continue_index,
+    )
+
+    assert (
+        refresh_index
+        < attempt_index
+        < call_index
+        < except_index
+        < failure_index
+        < heartbeat_index
+        < continue_index
+        < success_index
+    )
+    failure_window = source[except_index:continue_index]
+    assert "context_refresh_consecutive_failures += 1" in failure_window
+    assert "context_refresh_last_error" in failure_window
+    assert "Keep the previous context timestamps untouched." in failure_window
+    assert "refreshed_received_at_ms" not in failure_window.split(
+        "_emit_operational_live_status(",
+        1,
+    )[1]
+
+
 def test_stale_l2_gap_revokes_rotation_readiness() -> None:
     ready = {"BTC", "ETH"}
     required = frozenset({"BTC", "ETH"})
