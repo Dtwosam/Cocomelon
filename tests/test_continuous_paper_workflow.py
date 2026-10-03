@@ -628,3 +628,22 @@ def test_long_trend_execution_shadow_source_is_compact_and_watched() -> None:
     assert artifact in compact
 
 
+
+
+def test_compact_learning_source_includes_weekly_drawdown_5m_candidate() -> None:
+    source = Path(".github/workflows/continuous-paper.yml").read_text(
+        encoding="utf-8"
+    )
+    upload = source.split(
+        "      - name: Upload compact continuous learning source",
+        1,
+    )[1].split(
+        "      - name:",
+        1,
+    )[0]
+
+    assert (
+        "continuous-paper-state/"
+        "prospective-weekly-drawdown-5m-exit-source.json"
+        in upload
+    )
