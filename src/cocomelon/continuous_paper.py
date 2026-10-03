@@ -354,6 +354,10 @@ from cocomelon.research.prospective_two_strike_stop_filter import (
     ProspectiveTwoStrikeStopFilterState,
     evaluate_prospective_two_strike_stop_filter,
 )
+from cocomelon.research.prospective_weekly_drawdown_5m_exit_source import (
+    ProspectiveWeeklyDrawdown5mExitState,
+    prospective_weekly_drawdown_5m_exit_source,
+)
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
@@ -433,6 +437,12 @@ PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME = (
 )
 PROSPECTIVE_REPLACEMENT_EXIT_POLICY_STATE_FILENAME = (
     "prospective-replacement-5m-exit-state.json"
+)
+PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_STATE_FILENAME = (
+    "prospective-weekly-drawdown-5m-exit-state.json"
+)
+PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_SOURCE_FILENAME = (
+    "prospective-weekly-drawdown-5m-exit-source.json"
 )
 ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME = (
     "adaptive-delay-selector-state.json"
@@ -2482,6 +2492,33 @@ def _restore_prospective_replacement_exit_policy(
     except Exception as exc:
         return (
             ProspectiveReplacementExitPolicyState(
+                started_at_ms=started_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _restore_prospective_weekly_drawdown_5m_exit(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> tuple[ProspectiveWeeklyDrawdown5mExitState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveWeeklyDrawdown5mExitState(
+                started_at_ms=started_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveWeeklyDrawdown5mExitState.from_payload(raw),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveWeeklyDrawdown5mExitState(
                 started_at_ms=started_at_ms
             ),
             f"{type(exc).__name__}: {exc}",
@@ -8038,6 +8075,13 @@ async def run_continuous_paper_session(
         started_at_ms=started_at_ms,
     )
     (
+        prospective_weekly_drawdown_5m_exit_state,
+        prospective_weekly_drawdown_5m_exit_restore_error,
+    ) = _restore_prospective_weekly_drawdown_5m_exit(
+        root / PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_STATE_FILENAME,
+        started_at_ms=started_at_ms,
+    )
+    (
         prospective_side_conditioned_delay_state,
         _prospective_side_conditioned_delay_restore_error,
     ) = _restore_prospective_side_conditioned_delay(
@@ -8340,6 +8384,11 @@ async def run_continuous_paper_session(
                     (
                         root / PROSPECTIVE_REPLACEMENT_EXIT_POLICY_STATE_FILENAME,
                         prospective_replacement_exit_policy_state.payload(),
+                    ),
+                    (
+                        root
+                        / PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_STATE_FILENAME,
+                        prospective_weekly_drawdown_5m_exit_state.payload(),
                     ),
                     (
                         root / PROSPECTIVE_SIDE_CONDITIONED_DELAY_STATE_FILENAME,
@@ -9040,6 +9089,46 @@ async def run_continuous_paper_session(
             root
             / PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME,
             full_stack_forward_markout,
+        )
+        try:
+            if prospective_weekly_drawdown_5m_exit_restore_error is not None:
+                raise RuntimeError(
+                    "weekly-drawdown 5m candidate state restore failed: "
+                    + prospective_weekly_drawdown_5m_exit_restore_error
+                )
+            weekly_drawdown_5m_exit_source = (
+                prospective_weekly_drawdown_5m_exit_source(
+                    full_stack_forward_markout,
+                    opening_opportunity_store.iter_records(),
+                    opening_opportunity_exit_book_store.iter_records(),
+                    replacement_funding_store.iter_records(),
+                    replay_config.execution,
+                    prospective_weekly_drawdown_5m_exit_state,
+                )
+            )
+        except Exception as exc:
+            weekly_drawdown_5m_exit_source = {
+                "enabled": False,
+                "error": f"{type(exc).__name__}: {exc}",
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "changes_execution": False,
+                "changes_risk_limits": False,
+                "changes_candidate_readiness": False,
+                "candidate_id": (
+                    prospective_weekly_drawdown_5m_exit_state.candidate_id
+                ),
+                "started_at_ms": (
+                    prospective_weekly_drawdown_5m_exit_state.started_at_ms
+                ),
+                "state_restore_error": (
+                    prospective_weekly_drawdown_5m_exit_restore_error
+                ),
+            }
+        _write_json_atomic(
+            root / PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_SOURCE_FILENAME,
+            weekly_drawdown_5m_exit_source,
         )
         try:
             long_trend_execution_shadow_source = (

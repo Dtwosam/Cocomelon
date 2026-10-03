@@ -4579,3 +4579,76 @@ def test_full_stack_entry_exit_summary_is_persisted_at_worker_end() -> None:
         "root / PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME"
         in source
     )
+
+
+def test_runtime_persists_weekly_drawdown_5m_candidate_source() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "ProspectiveWeeklyDrawdown5mExitState" in source
+    assert "prospective_weekly_drawdown_5m_exit_source" in source
+    assert (
+        'PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_STATE_FILENAME = ('
+        in source
+    )
+    assert "prospective-weekly-drawdown-5m-exit-state.json" in source
+    assert (
+        'PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_SOURCE_FILENAME = ('
+        in source
+    )
+    assert "prospective-weekly-drawdown-5m-exit-source.json" in source
+    assert "_restore_prospective_weekly_drawdown_5m_exit(" in source
+    assert "prospective_weekly_drawdown_5m_exit_state.payload()" in source
+    assert (
+        "if prospective_weekly_drawdown_5m_exit_restore_error is not None:"
+        in source
+    )
+    assert (
+        "weekly-drawdown 5m candidate state restore failed"
+        in source
+    )
+
+    call = source.index(
+        "prospective_weekly_drawdown_5m_exit_source("
+    )
+    assert source.index(
+        "full_stack_forward_markout,",
+        call,
+    ) > call
+    assert source.index(
+        "opening_opportunity_store.iter_records(),",
+        call,
+    ) > call
+    assert source.index(
+        "opening_opportunity_exit_book_store.iter_records(),",
+        call,
+    ) > call
+    assert source.index(
+        "replacement_funding_store.iter_records(),",
+        call,
+    ) > call
+    assert source.index(
+        "replay_config.execution,",
+        call,
+    ) > call
+    assert source.index(
+        "prospective_weekly_drawdown_5m_exit_state,",
+        call,
+    ) > call
+    assert (
+        "root / PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_SOURCE_FILENAME"
+        in source
+    )
+    assert (
+        '"execution_authority": False'
+        in source[call : call + 3500]
+    )
+    assert (
+        '"promotion_authority": False'
+        in source[call : call + 3500]
+    )
+    assert (
+        '"changes_risk_limits": False'
+        in source[call : call + 3500]
+    )
