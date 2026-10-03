@@ -335,17 +335,14 @@ def test_duplicate_l2_snapshot_does_not_mask_stale_payload_reconnect() -> None:
             systemic_l2_stale_reconnect_fraction=0.5,
         )
 
-        with pytest.raises(
-            ConnectionError,
-            match="systemic l2 subscription staleness",
-        ):
-            await supervisor.run(
-                max_sessions=1,
-                max_messages_per_session=3,
-            )
+        await supervisor.run(
+            max_sessions=1,
+            max_messages_per_session=3,
+        )
 
         assert supervisor.health.duplicate_count == 1
         assert supervisor.health.systemic_l2_stale_reconnect_count == 1
+        assert connection.closed is True
         assert any(
             gap.reason == "stale"
             and gap.stream_id == "l2Book:BTC"
