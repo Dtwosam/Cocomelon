@@ -895,6 +895,102 @@ def _spread_robustness(
     }
 
 
+def _is_reopened_long_trend(row: dict[str, object]) -> bool:
+    return (
+        row["combined_block_reason"] == "long_trend"
+        and row["original_stack_decision"] == "BLOCK"
+        and row["original_block_layer"] == "combined"
+        and row["carveout_decision"] == "ADMIT"
+    )
+
+
+def _reopened_exit_timing_summary(
+    rows: Sequence[dict[str, object]],
+) -> dict[str, object]:
+    complete: list[tuple[str, dict[int, Decimal]]] = []
+    for row in rows:
+        if not _is_reopened_long_trend(row):
+            continue
+        markouts = cast(dict[str, dict[str, object]], row["markouts"])
+        values: dict[int, Decimal] = {}
+        for horizon_ms in FORWARD_HORIZONS_MS:
+            markout = markouts[str(horizon_ms)]
+            if markout["status"] != "settled":
+                break
+            raw_return = markout["directional_return"]
+            if not isinstance(raw_return, str):
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "settled markout is missing directional return"
+                )
+            values[horizon_ms] = Decimal(raw_return)
+        else:
+            complete.append((cast(str, row["market"]), values))
+
+    five_ms, fifteen_ms, sixty_ms = FORWARD_HORIZONS_MS
+    five_vs_sixty = tuple(
+        (market, values[five_ms] - values[sixty_ms])
+        for market, values in complete
+    )
+    fifteen_vs_sixty = tuple(
+        (market, values[fifteen_ms] - values[sixty_ms])
+        for market, values in complete
+    )
+    five_vs_fifteen = tuple(
+        (market, values[five_ms] - values[fifteen_ms])
+        for market, values in complete
+    )
+
+    best_horizon_counts: Counter[str] = Counter()
+    best_horizon_ties = 0
+    early_exit_preferred = 0
+    sixty_min_preferred = 0
+    early_vs_sixty_ties = 0
+    for _market, values in complete:
+        best_value = max(values.values())
+        best_horizons = tuple(
+            horizon_ms
+            for horizon_ms, value in values.items()
+            if value == best_value
+        )
+        if len(best_horizons) == 1:
+            best_horizon_counts[str(best_horizons[0])] += 1
+        else:
+            best_horizon_ties += 1
+
+        best_early = max(values[five_ms], values[fifteen_ms])
+        if best_early > values[sixty_ms]:
+            early_exit_preferred += 1
+        elif values[sixty_ms] > best_early:
+            sixty_min_preferred += 1
+        else:
+            early_vs_sixty_ties += 1
+
+    return {
+        "claim_scope": "fixed_markout_exit_timing_only",
+        "evaluable_opportunities": len(complete),
+        "market_count": len({market for market, _values in complete}),
+        "best_horizon_counts": dict(
+            sorted(best_horizon_counts.items())
+        ),
+        "best_horizon_ties": best_horizon_ties,
+        "early_exit_preferred_count": early_exit_preferred,
+        "sixty_min_preferred_count": sixty_min_preferred,
+        "early_vs_sixty_tie_count": early_vs_sixty_ties,
+        "five_min_minus_sixty_min": _mean_robustness(
+            five_vs_sixty
+        ),
+        "fifteen_min_minus_sixty_min": _mean_robustness(
+            fifteen_vs_sixty
+        ),
+        "five_min_minus_fifteen_min": _mean_robustness(
+            five_vs_fifteen
+        ),
+        "changes_execution": False,
+        "changes_risk_limits": False,
+        "changes_candidate_readiness": False,
+    }
+
+
 def _horizon_summary(
     rows: Sequence[dict[str, object]],
     *,
@@ -1178,6 +1274,7 @@ def _summary(
     integrity_clean: bool,
     include_stop_path: bool = True,
     include_stop_readiness: bool = True,
+    include_exit_timing: bool = True,
 ) -> dict[str, object]:
     row_values = tuple(rows)
     decisions = Counter(
@@ -1208,7 +1305,7 @@ def _summary(
         )
         for horizon_ms in FORWARD_HORIZONS_MS
     }
-    return {
+    result: dict[str, object] = {
         "terminal_opportunity_count": len(row_values),
         "pending_opportunity_count": pending_opportunity_count,
         "integrity_clean": integrity_clean,
@@ -1226,6 +1323,11 @@ def _summary(
         ),
         "horizons": horizons,
     }
+    if include_exit_timing:
+        result["reopened_long_trend_exit_timing"] = (
+            _reopened_exit_timing_summary(row_values)
+        )
+    return result
 
 
 def _validate_metadata(raw: dict[str, object]) -> int:
@@ -1293,10 +1395,30 @@ def validate_long_trend_carveout_ledger(
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
     )
+    pre_exit_timing_summary = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_exit_timing=False,
+    )
+    pre_stop_readiness_with_timing_summary = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_stop_readiness=False,
+    )
     pre_stop_readiness_summary = _summary(
         rows,
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
+        include_stop_readiness=False,
+        include_exit_timing=False,
+    )
+    pre_stop_path_with_timing_summary = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_stop_path=False,
         include_stop_readiness=False,
     )
     legacy_summary = _summary(
@@ -1305,10 +1427,14 @@ def validate_long_trend_carveout_ledger(
         integrity_clean=integrity_clean,
         include_stop_path=False,
         include_stop_readiness=False,
+        include_exit_timing=False,
     )
     if raw.get("summary") not in (
         current_summary,
+        pre_exit_timing_summary,
+        pre_stop_readiness_with_timing_summary,
         pre_stop_readiness_summary,
+        pre_stop_path_with_timing_summary,
         legacy_summary,
     ):
         raise ProspectiveLongTrendCarveoutLedgerError(
