@@ -9037,6 +9037,12 @@ async def run_continuous_paper_session(
                     opening_opportunity_store.iter_records(),
                     opening_opportunity_path_store.iter_paths(),
                     replay_config.execution,
+                    exit_books=(
+                        opening_opportunity_exit_book_store.iter_records()
+                    ),
+                    funding_records=(
+                        replacement_funding_store.iter_records()
+                    ),
                 )
             )
         except Exception as exc:
