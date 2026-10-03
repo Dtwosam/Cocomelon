@@ -504,24 +504,71 @@ jobs:
           summary = gate.get("summary")
           if not isinstance(summary, dict):
               raise SystemExit("durable gate summary is missing")
-          ready = (
-              summary.get(
-                  "all_horizons_ready_for_execution_shadow_investigation"
-              )
-              is True
+          effective_ready = summary.get(
+              "effective_all_horizons_ready_for_execution_shadow_investigation"
           )
+          if effective_ready is None:
+              ready = (
+                  summary.get(
+                      "all_horizons_ready_for_execution_shadow_investigation"
+                  )
+                  is True
+              )
+              integrity_scope = "legacy_cumulative"
+          else:
+              if not isinstance(effective_ready, bool):
+                  raise SystemExit("durable gate effective readiness is invalid")
+              ready = effective_ready
+              integrity_scope = summary.get("effective_integrity_scope")
+              if integrity_scope not in {
+                  "cumulative",
+                  "post_integrity_miss",
+                  "none",
+              }:
+                  raise SystemExit("durable gate integrity scope is invalid")
+              if ready and integrity_scope == "cumulative":
+                  if (
+                      summary.get("integrity_clean") is not True
+                      or summary.get(
+                          "all_horizons_ready_for_execution_shadow_investigation"
+                      )
+                      is not True
+                  ):
+                      raise SystemExit(
+                          "durable cumulative gate readiness is inconsistent"
+                      )
+              elif ready and integrity_scope == "post_integrity_miss":
+                  post = summary.get("post_integrity_miss")
+                  if (
+                      not isinstance(post, dict)
+                      or post.get("boundary_known") is not True
+                      or post.get(
+                          "all_horizons_ready_for_execution_shadow_investigation"
+                      )
+                      is not True
+                  ):
+                      raise SystemExit(
+                          "durable post-integrity gate readiness is inconsistent"
+                      )
+              elif ready or integrity_scope != "none":
+                  raise SystemExit(
+                      "durable gate readiness/scope is inconsistent"
+                  )
           print("ready" if ready else "waiting")
           print(claimed_digest)
+          print(integrity_scope)
           PY
           )
           gate_state="${gate_check[0]}"
           gate_ledger_sha256="${gate_check[1]}"
+          gate_integrity_scope="${gate_check[2]}"
 
           echo "workflow_run_id=$gate_run_id" >> "$GITHUB_OUTPUT"
           echo "artifact_id=$gate_artifact_id" >> "$GITHUB_OUTPUT"
           echo "artifact_name=$gate_artifact_name" >> "$GITHUB_OUTPUT"
           echo "artifact_digest=$gate_artifact_digest" >> "$GITHUB_OUTPUT"
           echo "ledger_sha256=$gate_ledger_sha256" >> "$GITHUB_OUTPUT"
+          echo "integrity_scope=$gate_integrity_scope" >> "$GITHUB_OUTPUT"
           if [ "$gate_state" = "ready" ]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
             echo "reason=durable fast-markout investigation gate passed" >> "$GITHUB_OUTPUT"
@@ -541,6 +588,7 @@ jobs:
           GATE_ARTIFACT_NAME: ${{ steps.gate.outputs.artifact_name }}
           GATE_ARTIFACT_DIGEST: ${{ steps.gate.outputs.artifact_digest }}
           GATE_LEDGER_SHA256: ${{ steps.gate.outputs.ledger_sha256 }}
+          GATE_INTEGRITY_SCOPE: ${{ steps.gate.outputs.integrity_scope }}
           GATE_REASON: ${{ steps.gate.outputs.reason }}
         run: |
           set -euo pipefail
@@ -566,6 +614,7 @@ jobs:
               f"- gate artifact: `{shown(os.environ.get('GATE_ARTIFACT_NAME'))}`",
               f"- gate artifact digest: `{shown(os.environ.get('GATE_ARTIFACT_DIGEST'))}`",
               f"- gate ledger digest: `{shown(os.environ.get('GATE_LEDGER_SHA256'))}`",
+              f"- gate integrity scope: `{shown(os.environ.get('GATE_INTEGRITY_SCOPE'))}`",
               f"- reason: {os.environ.get('GATE_REASON') or 'durable gate is not ready'}",
               "",
               "No counterfactual fill or PnL evidence is credited until the durable fast-markout investigation gate passes.",
@@ -615,6 +664,7 @@ jobs:
           GATE_ARTIFACT_NAME: ${{ steps.gate.outputs.artifact_name }}
           GATE_ARTIFACT_DIGEST: ${{ steps.gate.outputs.artifact_digest }}
           GATE_LEDGER_SHA256: ${{ steps.gate.outputs.ledger_sha256 }}
+          GATE_INTEGRITY_SCOPE: ${{ steps.gate.outputs.integrity_scope }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -641,6 +691,7 @@ jobs:
               f"- durable gate artifact: `{os.environ['GATE_ARTIFACT_NAME']}`",
               f"- durable gate artifact digest: `{os.environ['GATE_ARTIFACT_DIGEST']}`",
               f"- durable gate ledger digest: `{os.environ['GATE_LEDGER_SHA256']}`",
+              f"- durable gate integrity scope: `{os.environ['GATE_INTEGRITY_SCOPE']}`",
               f"- candidate: `{summary['candidate_id']}`",
               f"- source schema version: `{summary['source_schema_version']}`",
               f"- execution config source: `{summary['execution_config_source']}`",
