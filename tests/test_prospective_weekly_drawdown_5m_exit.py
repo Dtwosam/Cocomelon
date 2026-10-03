@@ -35,6 +35,7 @@ from cocomelon.research.continuous_paper_replacement_funding import (
 )
 from cocomelon.research.prospective_weekly_drawdown_5m_exit import (
     ProspectiveWeeklyDrawdown5mExitError,
+    _exact_pnl_robustness,
     prospective_weekly_drawdown_5m_exit_summary,
 )
 from cocomelon.research.prospective_weekly_drawdown_5m_exit_source import (
@@ -624,6 +625,50 @@ def test_shadow_requires_funding_evidence_for_crossed_boundary() -> None:
     assert option["funding_evidence_count"] == 0
     assert option["exact_realized_pnl"] is None
     assert option["incomplete_reason"] == "funding_evidence_required"
+
+
+def test_exact_pnl_robustness_requires_leave_one_and_chronology() -> None:
+    rows = tuple(
+        {
+            "opportunity_id": f"op-{index}",
+            "timestamp_ms": 1_000 + index,
+            "market": "SOL" if index < 2 else "BTC",
+            "exact_realized_pnl": "1",
+        }
+        for index in range(4)
+    )
+
+    robustness = _exact_pnl_robustness(rows)
+
+    assert robustness["exact_option_count"] == 4
+    assert robustness["market_count"] == 2
+    assert robustness["positive_after_removing_any_one_option"] is True
+    assert robustness["positive_after_removing_any_one_market"] is True
+    assert robustness["chronological_halves_positive"] is True
+    assert robustness["minimum_sample_met"] is False
+    assert robustness["investigation_ready"] is False
+
+
+def test_single_exact_exit_is_not_investigation_ready() -> None:
+    evidence = _evidence(timestamp_ms=36_500_000)
+    state = ProspectiveWeeklyDrawdown5mExitState(
+        started_at_ms=36_495_000
+    )
+
+    result = prospective_weekly_drawdown_5m_exit_summary(
+        _source(
+            evidence,
+            state=state,
+            exit_book=_exit_book(evidence),
+        )
+    )
+
+    robustness = result["robustness"]
+    assert robustness["exact_option_count"] == 1
+    assert robustness["positive_after_removing_any_one_option"] is False
+    assert robustness["positive_after_removing_any_one_market"] is False
+    assert robustness["chronological_halves_positive"] is False
+    assert result["candidate_investigation_ready"] is False
 
 
 def test_shadow_rejects_execution_cost_estimate_drift() -> None:
