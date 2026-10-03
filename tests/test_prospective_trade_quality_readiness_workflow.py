@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from textwrap import dedent
 
 
 def test_prospective_readiness_workflow_is_fail_closed() -> None:
@@ -45,3 +46,29 @@ def test_prospective_readiness_workflow_is_fail_closed() -> None:
     assert "paper " in source
     assert "entries, timing, sizing, stops, risk, promotion state" in source
     assert "no authority to change" in source
+
+
+
+def test_prospective_readiness_embedded_resolver_python_compiles() -> None:
+    source = Path(
+        ".github/workflows/prospective-trade-quality-readiness.yml"
+    ).read_text(encoding="utf-8")
+    resolver = source.split(
+        "      - name: Resolve latest coherent immutable ledgers",
+        1,
+    )[1].split(
+        "      - name: Build fail-closed readiness manifest",
+        1,
+    )[0]
+    embedded = resolver.split(
+        "          python - <<'PY'\n",
+        1,
+    )[1].split(
+        "\n          PY",
+        1,
+    )[0]
+    compile(
+        dedent(embedded),
+        "<prospective-readiness-resolver>",
+        "exec",
+    )
