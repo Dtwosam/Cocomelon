@@ -452,7 +452,7 @@ def _weekly_drawdown_5m_candidate(
     )
     stop_ready = (
         sample_complete
-        and stops_robustness["survival_margin"] > 0
+        and cast(int, stops_robustness["survival_margin"]) > 0
         and stops_robustness[
             "survivor_majority_after_removing_any_one_opportunity"
         ]
