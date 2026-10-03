@@ -276,6 +276,7 @@ def test_risk_rejected_ledger_accepts_pre_combined_reason_summary() -> None:
     legacy = deepcopy(ledger)
     summary = legacy["summary"]
     assert isinstance(summary, dict)
+    summary.pop("post_integrity_miss")
     summary.pop("combined_block_reason_counts")
     horizons = summary["horizons"]
     assert isinstance(horizons, dict)
@@ -515,6 +516,7 @@ def test_risk_rejected_ledger_accepts_pre_layer_summary() -> None:
     legacy = deepcopy(ledger)
     summary = legacy["summary"]
     assert isinstance(summary, dict)
+    summary.pop("post_integrity_miss")
     summary.pop("stack_block_layer_counts")
     summary.pop("combined_block_reason_counts")
     horizons = summary["horizons"]
@@ -550,6 +552,7 @@ def test_risk_rejected_ledger_accepts_pre_readiness_summary() -> None:
     legacy = deepcopy(ledger)
     legacy_summary = legacy["summary"]
     assert isinstance(legacy_summary, dict)
+    legacy_summary.pop("post_integrity_miss")
     legacy_summary.pop("risk_budget_investigation_readiness")
     digest_payload = {
         key: value
