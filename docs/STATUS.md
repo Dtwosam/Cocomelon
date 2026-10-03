@@ -4414,3 +4414,16 @@ The event-loop watchdog now preserves the exact wakeup that established the life
 This change is diagnostic only. It does not alter market-data freshness limits, websocket subscriptions, L2 recovery behavior, strategy thresholds, risk vetoes, sizing, execution, readiness, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Transient context-refresh fail-closed recovery and failed-run handoff — 2026-10-03
+
+Continuous paper run `37096513901` terminated after Hyperliquid's mainnet `metaAndAssetCtxs` endpoint returned repeated HTTP 502 responses during the normal 30-second context refresh. The run had already preserved exact paper state, but the workflow's successor steps were conditioned on overall job success, so no successor was dispatched from that valid artifact.
+
+Periodic context refresh now treats exhausted Hyperliquid 429/5xx/transport failures as transient data-plane failures. The runtime records refresh attempt/success/failure/consecutive-failure telemetry, preserves the prior context timestamp without pretending it is fresh, publishes the error, and retries on the next normal context poll. If the outage persists, the unchanged context-age gate naturally fails closed and prevents new exposure.
+
+Continuous-paper state handoff also now accepts exact artifacts from completed paper runs whose conclusion is either success or failure. Fast-resume successor dispatch runs whenever the exact resume artifact uploaded successfully, even if the trader step failed. The durable fallback uses the same exact-run binding when fast resume dispatch is unavailable. Watchdog/manual recovery may likewise select a completed failed run only when its named durable artifact exists and passes the existing restore validation.
+
+No context freshness limit, strategy threshold, risk rule, sizing rule, execution assumption, readiness gate, promotion state, or live-order authority is relaxed.
+
+**LIVE TRADING: DISABLED.**
