@@ -11,6 +11,12 @@ from typing import Final, cast
 from cocomelon.research.prospective_momentum_band_forward_markout import (
     FORWARD_HORIZONS_MS,
 )
+from cocomelon.research.prospective_risk_rejected_forward_markout_ledger import (
+    MIN_REASON_LONG_SETTLED_PER_HORIZON,
+    MIN_REASON_MARKETS_PER_HORIZON,
+    MIN_REASON_SHORT_SETTLED_PER_HORIZON,
+    MIN_REASON_STACK_ADMIT_SETTLED_PER_HORIZON,
+)
 
 LEDGER_SCHEMA_VERSION: Final = 1
 LEDGER_KIND: Final = "prospective-risk-rejected-stop-path-ledger-v1"
@@ -533,11 +539,212 @@ def _horizon_summary(
     }
 
 
+def _survival_margin(
+    rows: Sequence[dict[str, object]],
+    *,
+    horizon_key: str,
+) -> int | None:
+    survivors = 0
+    crossings = 0
+    evaluated = 0
+    for row in rows:
+        stop_path = cast(dict[str, object], row["stop_path"])
+        horizons = cast(
+            dict[str, dict[str, object]],
+            stop_path["horizons"],
+        )
+        status = cast(str, horizons[horizon_key]["status"])
+        if status == "observed_path_survivor":
+            survivors += 1
+            evaluated += 1
+        elif status == "observed_stop_crossing":
+            crossings += 1
+            evaluated += 1
+    if evaluated == 0:
+        return None
+    return survivors - crossings
+
+
+def _risk_budget_stop_readiness(
+    rows: Sequence[dict[str, object]],
+    *,
+    integrity_clean: bool,
+) -> dict[str, object]:
+    stack_admit_rows = tuple(
+        row for row in rows if row["stack_decision"] == "ADMIT"
+    )
+    reasons = sorted(
+        {
+            reason
+            for row in stack_admit_rows
+            for reason in cast(
+                list[str],
+                row["baseline_risk_reason_codes"],
+            )
+        }
+    )
+    by_reason: dict[str, dict[str, object]] = {}
+    ready_reasons: list[str] = []
+
+    for reason in reasons:
+        reason_rows = tuple(
+            row
+            for row in stack_admit_rows
+            if reason
+            in cast(list[str], row["baseline_risk_reason_codes"])
+        )
+        horizons: dict[str, dict[str, object]] = {}
+        reason_ready = True
+        for horizon_ms in FORWARD_HORIZONS_MS:
+            key = str(horizon_ms)
+            evaluable: list[dict[str, object]] = []
+            survivors = 0
+            crossings = 0
+            for row in reason_rows:
+                stop_path = cast(dict[str, object], row["stop_path"])
+                path_horizons = cast(
+                    dict[str, dict[str, object]],
+                    stop_path["horizons"],
+                )
+                status = cast(str, path_horizons[key]["status"])
+                if status == "observed_path_survivor":
+                    survivors += 1
+                    evaluable.append(row)
+                elif status == "observed_stop_crossing":
+                    crossings += 1
+                    evaluable.append(row)
+
+            markets = {
+                cast(str, row["market"]) for row in evaluable
+            }
+            long_count = sum(
+                row["direction"] == "long" for row in evaluable
+            )
+            short_count = sum(
+                row["direction"] == "short" for row in evaluable
+            )
+            coverage_complete = (
+                bool(reason_rows)
+                and len(evaluable) == len(reason_rows)
+            )
+            sample_complete = (
+                len(evaluable)
+                >= MIN_REASON_STACK_ADMIT_SETTLED_PER_HORIZON
+                and len(markets) >= MIN_REASON_MARKETS_PER_HORIZON
+                and long_count >= MIN_REASON_LONG_SETTLED_PER_HORIZON
+                and short_count >= MIN_REASON_SHORT_SETTLED_PER_HORIZON
+            )
+            survivor_majority = survivors > crossings
+
+            leave_one_margins = tuple(
+                margin
+                for index in range(len(evaluable))
+                if (
+                    margin := _survival_margin(
+                        tuple(
+                            evaluable[:index]
+                            + evaluable[index + 1 :]
+                        ),
+                        horizon_key=key,
+                    )
+                )
+                is not None
+            )
+            opportunity_robust = (
+                len(leave_one_margins) == len(evaluable)
+                and bool(leave_one_margins)
+                and min(leave_one_margins) > 0
+            )
+
+            leave_market_margins = tuple(
+                margin
+                for market in sorted(markets)
+                if (
+                    margin := _survival_margin(
+                        tuple(
+                            row
+                            for row in evaluable
+                            if row["market"] != market
+                        ),
+                        horizon_key=key,
+                    )
+                )
+                is not None
+            )
+            market_robust = (
+                len(leave_market_margins) == len(markets)
+                and bool(leave_market_margins)
+                and min(leave_market_margins) > 0
+            )
+            ready = (
+                integrity_clean
+                and coverage_complete
+                and sample_complete
+                and survivor_majority
+                and opportunity_robust
+                and market_robust
+            )
+            reason_ready = reason_ready and ready
+            horizons[key] = {
+                "evaluable": len(evaluable),
+                "survivors": survivors,
+                "crossings": crossings,
+                "survival_margin": survivors - crossings,
+                "market_count": len(markets),
+                "long_evaluable": long_count,
+                "short_evaluable": short_count,
+                "coverage_complete": coverage_complete,
+                "sample_complete": sample_complete,
+                "survivor_majority": survivor_majority,
+                "leave_one_opportunity_min_survival_margin": (
+                    None
+                    if not leave_one_margins
+                    else min(leave_one_margins)
+                ),
+                "leave_one_market_min_survival_margin": (
+                    None
+                    if not leave_market_margins
+                    else min(leave_market_margins)
+                ),
+                "single_opportunity_robust": opportunity_robust,
+                "single_market_robust": market_robust,
+                "ready_for_risk_budget_stop_investigation": ready,
+            }
+        if reason_ready and horizons:
+            ready_reasons.append(reason)
+        by_reason[reason] = {
+            "ready_for_risk_budget_stop_investigation": (
+                reason_ready and bool(horizons)
+            ),
+            "horizons": horizons,
+        }
+
+    return {
+        "scope": "risk_rejected_stack_admit_stop_survival_only",
+        "ready_reasons": ready_reasons,
+        "min_evaluable_per_horizon": (
+            MIN_REASON_STACK_ADMIT_SETTLED_PER_HORIZON
+        ),
+        "min_markets_per_horizon": MIN_REASON_MARKETS_PER_HORIZON,
+        "min_long_evaluable_per_horizon": (
+            MIN_REASON_LONG_SETTLED_PER_HORIZON
+        ),
+        "min_short_evaluable_per_horizon": (
+            MIN_REASON_SHORT_SETTLED_PER_HORIZON
+        ),
+        "by_reason": by_reason,
+        "changes_risk_limits": False,
+        "changes_execution": False,
+        "changes_candidate_readiness": False,
+    }
+
+
 def _summary(
     rows: Sequence[dict[str, object]],
     *,
     pending_opportunity_count: int,
     integrity_clean: bool,
+    include_risk_budget_stop_readiness: bool = True,
 ) -> dict[str, object]:
     row_values = tuple(rows)
     block_layers = Counter(
@@ -548,7 +755,7 @@ def _summary(
         risk_reasons.update(
             cast(list[str], row["baseline_risk_reason_codes"])
         )
-    return {
+    result: dict[str, object] = {
         "terminal_opportunity_count": len(row_values),
         "pending_opportunity_count": pending_opportunity_count,
         "integrity_clean": integrity_clean,
@@ -566,6 +773,14 @@ def _summary(
         "changes_risk_limits": False,
         "changes_candidate_readiness": False,
     }
+    if include_risk_budget_stop_readiness:
+        result["risk_budget_stop_investigation"] = (
+            _risk_budget_stop_readiness(
+                row_values,
+                integrity_clean=integrity_clean,
+            )
+        )
+    return result
 
 
 def _validate_metadata(raw: dict[str, object]) -> int:
@@ -624,11 +839,18 @@ def validate_risk_rejected_stop_path_ledger(
         and item.get("integrity_clean") is True
         for item in history
     )
-    if raw.get("summary") != _summary(
+    current_summary = _summary(
         rows,
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
-    ):
+    )
+    legacy_summary = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_risk_budget_stop_readiness=False,
+    )
+    if raw.get("summary") not in (current_summary, legacy_summary):
         raise RiskRejectedStopPathLedgerError(
             "stop-path summary does not reconcile"
         )
