@@ -4550,3 +4550,15 @@ The outer supervisor-group health check now escalates only when the same markets
 No freshness ceiling, eligibility threshold, strategy rule, risk limit, sizing rule, stop, promotion state, or live-order authority is relaxed.
 
 **LIVE TRADING: DISABLED.**
+
+### Post-integrity risk evidence cohort — 2026-10-03
+
+The risk-rejected return and observed-stop ledgers preserve cumulative source-integrity failures forever, which is correct for auditability but previously meant one historical missing/stale rank or momentum-lineage miss could permanently block every later risk-budget investigation even after the capture path was repaired.
+
+The full-stack forward-markout source now records the exact latest timestamp of any risk-rejected integrity miss covered by its existing integrity definition. Both risk-rejected ledgers preserve their cumulative integrity flag and immutable historical rows, while also deriving a separate post-integrity cohort that begins strictly after that latest miss. Legacy dirty sources without an authenticated miss boundary remain ineligible for the clean cohort.
+
+The post-integrity return cohort must satisfy the same precommitted risk-investigation economics gate from scratch. The post-integrity stop cohort must satisfy the same independent observed-stop-survival gate from scratch. The conjunctive dossier can use the clean suffix only when both ledgers come from the same authenticated source and agree on the exact same cohort start. Otherwise it remains blocked by source integrity.
+
+This does not erase old evidence, reinterpret a dirty source as clean, relax the weekly drawdown lockout, change entry filters, sizing, execution, promotion state, or live authority.
+
+**LIVE TRADING: DISABLED.**
