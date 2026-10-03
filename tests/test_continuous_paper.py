@@ -1598,6 +1598,7 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
             reconnect_count: int,
         ) -> None:
             self._stale = stale
+            self.stale_deadline_buffered_message_count = 4
             self.health = SimpleNamespace(
                 connected=connected,
                 last_server_message_ms=last_server_message_ms,
@@ -1672,6 +1673,7 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
     assert lanes[1]["last_server_message_age_ms"] == 1_000
     assert lanes[1]["reconnect_count"] == 5
     assert lanes[1]["systemic_l2_stale_reconnect_count"] == 0
+    assert lanes[0]["stale_deadline_buffered_message_count"] == 4
 
 
 def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
