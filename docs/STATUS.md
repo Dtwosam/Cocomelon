@@ -4597,3 +4597,14 @@ The websocket supervisor now maintains two distinct clocks. Exchange-time age co
 This prevents a live L2 subscription from being torn down merely because its book exchange timestamp has not advanced. It does not make an old book eligible, does not close a stale-book gap, and does not change the existing 15-second freshness ceiling, REST recovery, strategy, risk, sizing, stops, readiness, promotion, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Reopened LONG+trend fixed-horizon exit timing — 2026-10-03
+
+The risk-rejected carveout now has enough structure to separate entry quality from hold duration. Pure LONG+trend setups reopened by the no-veto challenger already report fixed 5m, 15m, and 60m forward returns plus observed original-stop survival, but the ledger did not directly compare those horizons opportunity by opportunity.
+
+The append-only carveout ledger now derives a fixed-horizon exit-timing view for reopened pure LONG+trend setups with all three horizons settled. It reports which horizon is best per opportunity, how often either 5m/15m beats 60m, and leave-one-opportunity / leave-one-market robustness for 5m-minus-60m, 15m-minus-60m, and 5m-minus-15m return differences.
+
+This is descriptive timing evidence only. It does not change the existing carveout investigation gate, entry rules, exits, stops, risk limits, sizing, candidate readiness, promotion state, or live-order authority. Previously published ledger summaries remain valid.
+
+**LIVE TRADING: DISABLED.**
