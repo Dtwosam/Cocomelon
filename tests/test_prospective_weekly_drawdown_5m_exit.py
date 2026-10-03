@@ -263,7 +263,7 @@ def _full_stack_summary(
                 "block_layer": (
                     "none" if stack_decision == "ADMIT" else "momentum"
                 ),
-                "stop_path": {
+                "long_trend_carveout_stop_path": {
                     "claim_scope": "observed_mark_stop_crossing_only",
                     "original_stop_price": "90",
                     "entry_reference_price": "100",
