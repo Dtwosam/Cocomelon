@@ -9091,6 +9091,11 @@ async def run_continuous_paper_session(
             full_stack_forward_markout,
         )
         try:
+            if prospective_weekly_drawdown_5m_exit_restore_error is not None:
+                raise RuntimeError(
+                    "weekly-drawdown 5m candidate state restore failed: "
+                    + prospective_weekly_drawdown_5m_exit_restore_error
+                )
             weekly_drawdown_5m_exit_source = (
                 prospective_weekly_drawdown_5m_exit_source(
                     full_stack_forward_markout,
