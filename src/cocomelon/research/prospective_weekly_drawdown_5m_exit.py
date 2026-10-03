@@ -13,6 +13,7 @@ from cocomelon.domain.execution import (
     PositionActionType,
 )
 from cocomelon.domain.risk import RiskRequest
+from cocomelon.evidence.openings import conservative_cost_estimate
 from cocomelon.execution.accounting import PaperPosition, PositionSide
 from cocomelon.execution.funding import (
     FUNDING_INTERVAL_MS,
@@ -24,7 +25,6 @@ from cocomelon.execution.planner import (
     plan_opening_order,
     plan_reduce_only_order,
 )
-from cocomelon.evidence.openings import conservative_cost_estimate
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityEvidence,
 )
