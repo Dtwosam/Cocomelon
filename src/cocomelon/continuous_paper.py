@@ -4227,6 +4227,15 @@ class _RecordPump:
             self.cadence_shadow = None
 
 
+async def _cooperative_stream_yield() -> None:
+    # Stream handlers can consume buffered websocket bursts without an
+    # otherwise-suspending await once record processing begins. Yield after
+    # each completed dispatch, outside the record-pump lock, so control,
+    # freshness, and health tasks get a scheduling opportunity without
+    # changing stream ordering or trading decisions.
+    await asyncio.sleep(0)
+
+
 async def _monitor_event_loop_lag(
     pump: _RecordPump,
     *,
@@ -8496,6 +8505,7 @@ async def run_continuous_paper_session(
                             market_key
                         )
                     await mux.on_event(lane, event)
+                    await _cooperative_stream_yield()
 
                 async def lane_gap_sink(
                     gap: DataGap,
@@ -8507,6 +8517,7 @@ async def run_continuous_paper_session(
                         required_market_keys=required_market_keys,
                     )
                     await mux.on_gap(lane, gap)
+                    await _cooperative_stream_yield()
 
                 supervisor = WebSocketSupervisor(
                     connection_factory,
