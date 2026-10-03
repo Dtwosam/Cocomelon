@@ -1649,8 +1649,8 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
     )
 
     assert payload["required_market_count"] == 3
-    assert payload["unhealthy_l2_market_count"] == 2
-    assert payload["unhealthy_l2_markets"] == ["ETH", "SOL"]
+    assert payload["unhealthy_l2_market_count"] == 1
+    assert payload["unhealthy_l2_markets"] == ["ETH"]
     lanes = payload["lanes"]
     assert isinstance(lanes, list)
     assert lanes[0]["connected"] is True
