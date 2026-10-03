@@ -4562,3 +4562,16 @@ The post-integrity return cohort must satisfy the same precommitted risk-investi
 This does not erase old evidence, reinterpret a dirty source as clean, relax the weekly drawdown lockout, change entry filters, sizing, execution, promotion state, or live authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### WebSocket supervisor scheduler fairness — 2026-10-03
+
+Lane-level runtime telemetry showed repeated systemic L2 churn with both redundant lanes simultaneously stale/disconnected: 53+ successful replacement promotions and more than 1,000 fresh REST reseeds still returned to 16 stale books and zero deep-ready markets. The same worker reported event-loop wakeup lag up to 5.3 seconds while individual record-pump processing remained below 300ms with zero lock wait.
+
+Hyperliquid documents the mainnet `l2Book` websocket as a snapshot feed pushed on each block (subject to the feed's 0.5-second push floor), so a 20-market cohort freezing together is not normal quiet-market behavior. The supervisor could consume already-buffered websocket messages through immediately completing awaits without an explicit scheduler handoff, allowing one hot task to monopolize the event loop across a burst.
+
+The websocket supervisor now yields to the asyncio scheduler after every received server message. This preserves every event, ordering, deduplication, exchange-time freshness, gap semantics, subscriptions, risk rules, execution rules, and the existing 15-second book freshness ceiling. A regression test proves another ready task can run between buffered websocket messages.
+
+No market-data threshold, strategy rule, risk budget, sizing rule, stop, readiness gate, promotion state, or live-order authority changes.
+
+**LIVE TRADING: DISABLED.**
