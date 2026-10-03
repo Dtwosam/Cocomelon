@@ -6150,6 +6150,12 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                 ],
             },
         },
+        "predecision_l2_refresh_attempts": 2,
+        "predecision_l2_refresh_books": 40,
+        "predecision_l2_refresh_failures": 0,
+        "predecision_l2_refresh_late_completions": 0,
+        "predecision_l2_refresh_last_duration_ms": 2400,
+        "predecision_l2_refresh_last_headroom_ms": 7600,
         "journal_observations": 12,
         "session_decision_epochs": 2,
         "last_decision_boundary_ms": 1_699_999_900_000,
@@ -6336,6 +6342,16 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "missing-ready=0, reconnects=0, l2-stale-reconnects=0, "
         "server-age=80ms, "
         "age-min/max=590/690ms"
+        in rendered
+    )
+    assert (
+        "predecision L2 REST refresh attempts / fresh books / "
+        "failures / late completions: 2 / 40 / 0 / 0"
+        in rendered
+    )
+    assert (
+        "predecision L2 last duration / decision headroom: "
+        "2400ms / 7600ms"
         in rendered
     )
     assert "research telemetry deferred: true" in rendered
