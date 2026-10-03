@@ -1401,12 +1401,25 @@ def validate_long_trend_carveout_ledger(
         integrity_clean=integrity_clean,
         include_exit_timing=False,
     )
+    pre_stop_readiness_with_timing_summary = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_stop_readiness=False,
+    )
     pre_stop_readiness_summary = _summary(
         rows,
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
         include_stop_readiness=False,
         include_exit_timing=False,
+    )
+    pre_stop_path_with_timing_summary = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_stop_path=False,
+        include_stop_readiness=False,
     )
     legacy_summary = _summary(
         rows,
@@ -1419,7 +1432,9 @@ def validate_long_trend_carveout_ledger(
     if raw.get("summary") not in (
         current_summary,
         pre_exit_timing_summary,
+        pre_stop_readiness_with_timing_summary,
         pre_stop_readiness_summary,
+        pre_stop_path_with_timing_summary,
         legacy_summary,
     ):
         raise ProspectiveLongTrendCarveoutLedgerError(
