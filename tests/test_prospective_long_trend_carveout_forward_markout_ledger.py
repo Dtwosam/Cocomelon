@@ -363,6 +363,16 @@ def test_carveout_ledger_accepts_pre_stop_path_summary() -> None:
     for item in horizons.values():
         assert isinstance(item, dict)
         item.pop("reopened_long_trend_stop_path")
+        readiness = item["investigation_readiness"]
+        assert isinstance(readiness, dict)
+        for key in (
+            "stop_path_complete_for_reopened_sample",
+            "stop_survivor_majority",
+            "stop_evaluable",
+            "stop_crossings",
+            "stop_survivors",
+        ):
+            readiness.pop(key)
 
     digest_payload = {
         key: value
