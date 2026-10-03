@@ -4660,3 +4660,18 @@ The source explicitly requires the durable LONG+trend fast-markout gate before a
 The compact learning artifact now includes `prospective-long-trend-execution-shadow-source.json`, and changes to the source exporter participate in continuous-paper runtime handoff detection.
 
 **LIVE TRADING: DISABLED.**
+
+
+### LONG+trend captured execution shadow — 2026-10-03
+
+The no-LONG-trend-veto challenger has accumulated a small but directionally interesting reopened sample, while the real paper account remains protected by the weekly drawdown lockout. Commit #825 added a compact source that exports only pure LONG+trend opportunities rejected exclusively by `weekly_drawdown_lockout` and reopened by the frozen challenger, together with their exact captured risk request, decision-time L2 book, execution instrument, and forward mark path.
+
+A dedicated research-only execution shadow now consumes that authenticated source. It neutralizes only the weekly drawdown veto in an isolated copy of the captured request by resetting the copied rolling peak to current equity, then re-runs the unchanged independent risk engine. Any other risk veto remains binding. Risk-approved counterfactuals continue through the existing opening planner and visible-book IOC simulator using the captured instrument, book, latency, fee, slippage, notional, liquidity, and risk ceilings.
+
+Filled shadows report entry-fee-adjusted 5m / 15m / 60m mark-to-market PnL, directional returns, sign counts, profit factor where defined, and leave-one-opportunity / leave-one-market PnL robustness. Replacement exits, exit fees, funding, and complete realized trade lifecycle PnL are intentionally not modeled at this stage.
+
+Issue #828 is the dedicated continuously refreshed status surface. Its workflow binds the exact completed paper run, run attempt, compact artifact identity, artifact digest, and source SHA before evaluation.
+
+This path has no authority to relax weekly drawdown protection, change the live/frozen entry stack, alter sizing or execution, change readiness, promote a candidate, or enable live trading.
+
+**LIVE TRADING: DISABLED.**
