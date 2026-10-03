@@ -119,16 +119,72 @@ def build_risk_budget_investigation_dossier(
         and return_overlap == stop_overlap
     )
 
-    economic_gate = return_summary.get(
+    cumulative_economic_gate = return_summary.get(
         "risk_budget_investigation_readiness"
     )
-    stop_gate = stop_summary.get("risk_budget_stop_investigation")
-    gates_current = isinstance(economic_gate, dict) and isinstance(
-        stop_gate, dict
+    cumulative_stop_gate = stop_summary.get(
+        "risk_budget_stop_investigation"
     )
+    gates_current = isinstance(
+        cumulative_economic_gate, dict
+    ) and isinstance(cumulative_stop_gate, dict)
     return_integrity = return_summary.get("integrity_clean") is True
     stop_integrity = stop_summary.get("integrity_clean") is True
     integrity_clean = return_integrity and stop_integrity
+
+    return_post = return_summary.get("post_integrity_miss")
+    stop_post = stop_summary.get("post_integrity_miss")
+    post_boundary_known = (
+        isinstance(return_post, dict)
+        and isinstance(stop_post, dict)
+        and return_post.get("boundary_known") is True
+        and stop_post.get("boundary_known") is True
+    )
+    post_started_at_ms = (
+        return_post.get("started_at_ms")
+        if isinstance(return_post, dict)
+        else None
+    )
+    stop_post_started_at_ms = (
+        stop_post.get("started_at_ms")
+        if isinstance(stop_post, dict)
+        else None
+    )
+    post_source_aligned = (
+        source_aligned
+        and post_boundary_known
+        and isinstance(post_started_at_ms, int)
+        and not isinstance(post_started_at_ms, bool)
+        and post_started_at_ms == stop_post_started_at_ms
+    )
+    post_economic_gate = (
+        return_post.get("risk_budget_investigation_readiness")
+        if isinstance(return_post, dict)
+        else None
+    )
+    post_stop_gate = (
+        stop_post.get("risk_budget_stop_investigation")
+        if isinstance(stop_post, dict)
+        else None
+    )
+    post_gates_current = isinstance(
+        post_economic_gate, dict
+    ) and isinstance(post_stop_gate, dict)
+    if integrity_clean:
+        integrity_scope = "cumulative"
+        effective_integrity_clean = True
+        economic_gate = cumulative_economic_gate
+        stop_gate = cumulative_stop_gate
+    elif post_source_aligned and post_gates_current:
+        integrity_scope = "post_integrity_miss"
+        effective_integrity_clean = True
+        economic_gate = post_economic_gate
+        stop_gate = post_stop_gate
+    else:
+        integrity_scope = "blocked"
+        effective_integrity_clean = False
+        economic_gate = cumulative_economic_gate
+        stop_gate = cumulative_stop_gate
 
     economic_by_reason: dict[str, object] = {}
     stop_by_reason: dict[str, object] = {}
@@ -161,7 +217,7 @@ def build_risk_budget_investigation_dossier(
         conjunctive_ready = (
             source_aligned
             and gates_current
-            and integrity_clean
+            and effective_integrity_clean
             and economic_ready
             and stop_ready
         )
@@ -187,10 +243,12 @@ def build_risk_budget_investigation_dossier(
         status = "waiting_for_current_gate_format"
     elif not source_aligned:
         status = "waiting_for_aligned_sources"
-    elif not integrity_clean:
-        status = "blocked_by_source_integrity"
-    else:
+    elif integrity_clean:
         status = "aligned_evaluated"
+    elif post_source_aligned and post_gates_current:
+        status = "aligned_post_integrity_evaluated"
+    else:
+        status = "blocked_by_source_integrity"
 
     payload: dict[str, object] = {
         "schema_version": DOSSIER_SCHEMA_VERSION,
@@ -199,6 +257,12 @@ def build_risk_budget_investigation_dossier(
         "source_aligned": source_aligned,
         "gates_current": gates_current,
         "integrity_clean": integrity_clean,
+        "effective_integrity_clean": effective_integrity_clean,
+        "integrity_scope": integrity_scope,
+        "post_integrity_source_aligned": post_source_aligned,
+        "post_integrity_started_at_ms": (
+            post_started_at_ms if post_source_aligned else None
+        ),
         "return_integrity_clean": return_integrity,
         "stop_integrity_clean": stop_integrity,
         "return_source": return_identity,
@@ -240,6 +304,7 @@ def validate_risk_budget_investigation_dossier(
         "waiting_for_aligned_sources",
         "blocked_by_source_integrity",
         "aligned_evaluated",
+        "aligned_post_integrity_evaluated",
     }:
         raise RiskBudgetInvestigationDossierError(
             "risk-budget dossier status is unsupported"
