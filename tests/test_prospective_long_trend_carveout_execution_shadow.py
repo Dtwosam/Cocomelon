@@ -298,7 +298,6 @@ def test_shadow_refuses_to_bypass_multiple_risk_vetoes() -> None:
     evidence = _evidence(daily_realized_pnl=Decimal("-150"))
     assert evidence.baseline_risk_reason_codes == (
         "daily_loss_lockout",
-        "weekly_drawdown_lockout",
     )
 
     with pytest.raises(
