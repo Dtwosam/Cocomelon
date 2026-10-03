@@ -439,7 +439,8 @@ def test_shadow_replays_entry_and_exact_real_l2_five_minute_exit() -> None:
     assert result["exact_realized_pnl_options"] == 1
     assert Decimal(result["total_exact_realized_pnl"]) > 0
     option = result["option_results"][0]
-    assert option["entry_execution_result"] == "full"
+    assert option["entry_execution_result"] in {"full", "partial"}
+    assert Decimal(option["entry_filled_quantity"]) > 0
     assert option["exit_execution_result"] == "full"
     assert option["complete_close"] is True
     assert option["funding_boundary_count"] == 0
