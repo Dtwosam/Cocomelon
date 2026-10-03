@@ -1,0 +1,308 @@
+name: Risk-Budget Conjunctive Investigation Dossier
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/cocomelon/research/prospective_risk_budget_investigation_dossier.py"
+      - "scripts/build_risk_budget_investigation_dossier.py"
+      - ".github/workflows/risk-budget-conjunctive-investigation-dossier.yml"
+  workflow_run:
+    workflows:
+      - "Prospective Risk-Rejected Fast-Markout Ledger"
+      - "Prospective Risk-Rejected Stop-Path Ledger"
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: risk-budget-conjunctive-investigation-dossier
+  cancel-in-progress: false
+
+jobs:
+  dossier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DOSSIER_ISSUE: "809"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install project
+        run: python -m pip install -e .
+
+      - name: Restore latest component ledgers
+        id: sources
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          resolve_ledger() {
+            local workflow="$1"
+            local prefix="$2"
+            local filename="$3"
+            local root="$4"
+            local runs_json run_id artifacts_json artifact_line
+            runs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?branch=main&status=success&per_page=100"
+            )"
+            mapfile -t run_ids < <(
+              jq -r '
+                .workflow_runs
+                | sort_by(.updated_at)
+                | reverse
+                | .[].id
+              ' <<<"$runs_json"
+            )
+            for run_id in "${run_ids[@]}"; do
+              artifacts_json="$(
+                gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+              )"
+              artifact_line="$(
+                jq -r --arg prefix "$prefix" '
+                  .artifacts
+                  | map(
+                      select(
+                        (.expired | not)
+                        and (.name | startswith($prefix))
+                      )
+                    )
+                  | if length > 0
+                    then [.[0].id, .[0].name] | @tsv
+                    else ""
+                    end
+                ' <<<"$artifacts_json"
+              )"
+              if [ -z "$artifact_line" ]; then
+                continue
+              fi
+              IFS=$'\t' read -r artifact_id artifact_name <<<"$artifact_line"
+              rm -rf "$root"
+              mkdir -p "$root"
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > "$root.zip"
+              unzip -q "$root.zip" -d "$root"
+              candidate="$(find "$root" -type f -name "$filename" -print -quit)"
+              if [ -n "$candidate" ] && [ -s "$candidate" ]; then
+                printf '%s\t%s\t%s\n' "$candidate" "$run_id" "$artifact_name"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          return_line="$(
+            resolve_ledger               prospective-risk-rejected-fast-markout-ledger.yml               prospective-risk-rejected-fast-markout-ledger-               prospective-risk-rejected-fast-markout-ledger.json               /tmp/risk-return-ledger || true
+          )"
+          stop_line="$(
+            resolve_ledger               prospective-risk-rejected-stop-path-ledger.yml               prospective-risk-rejected-stop-path-ledger-               prospective-risk-rejected-stop-path-ledger.json               /tmp/risk-stop-ledger || true
+          )"
+
+          if [ -z "$return_line" ] || [ -z "$stop_line" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          IFS=$'\t' read -r return_path return_run return_artifact <<<"$return_line"
+          IFS=$'\t' read -r stop_path stop_run stop_artifact <<<"$stop_line"
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "return_path=$return_path" >> "$GITHUB_OUTPUT"
+          echo "return_run=$return_run" >> "$GITHUB_OUTPUT"
+          echo "return_artifact=$return_artifact" >> "$GITHUB_OUTPUT"
+          echo "stop_path=$stop_path" >> "$GITHUB_OUTPUT"
+          echo "stop_run=$stop_run" >> "$GITHUB_OUTPUT"
+          echo "stop_artifact=$stop_artifact" >> "$GITHUB_OUTPUT"
+
+      - name: Publish waiting-for-ledgers status
+        if: ${{ steps.sources.outputs.available != 'true' }}
+        shell: bash
+        run: |
+          cat > /tmp/risk-budget-dossier-status.md <<'EOF'
+          ## Risk-budget conjunctive investigation readiness
+
+          **Status:** waiting for both durable component ledgers
+
+          The conjunctive dossier requires a durable risk-rejected return ledger and a durable observed stop-path ledger before it can evaluate source alignment.
+
+          A risk reason cannot become investigable from one component alone.
+
+          **Execution authority:** `false`
+          **Promotion authority:** `false`
+          **Changes risk limits:** `false`
+          **LIVE TRADING: DISABLED.**
+          EOF
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$DOSSIER_ISSUE"             -f body="$(cat /tmp/risk-budget-dossier-status.md)"
+
+      - name: Build conjunctive dossier
+        if: ${{ steps.sources.outputs.available == 'true' }}
+        id: build
+        continue-on-error: true
+        shell: bash
+        env:
+          RETURN_PATH: ${{ steps.sources.outputs.return_path }}
+          STOP_PATH: ${{ steps.sources.outputs.stop_path }}
+        run: |
+          set +e
+          python scripts/build_risk_budget_investigation_dossier.py             "$RETURN_PATH"             "$STOP_PATH"             --json-out prospective-risk-budget-investigation-dossier.json             > /tmp/risk-budget-dossier.stdout.json             2> /tmp/risk-budget-dossier.error
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            test -s prospective-risk-budget-investigation-dossier.json
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "error<<EOF"
+              cat /tmp/risk-budget-dossier.error
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish blocked dossier status
+        if: ${{ steps.sources.outputs.available == 'true' && steps.build.outputs.clean != 'true' }}
+        shell: bash
+        env:
+          ERROR_TEXT: ${{ steps.build.outputs.error }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          error = os.environ.get("ERROR_TEXT") or "unknown validation error"
+          lines = [
+              "## Risk-budget conjunctive investigation readiness",
+              "",
+              "**Status:** BLOCKED — component ledger validation failed",
+              "",
+              f"- error: `{error[:1200]}`",
+              "",
+              "No risk reason is credited as investigable.",
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**Changes risk limits:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/risk-budget-dossier-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$DOSSIER_ISSUE"             -f body="$(cat /tmp/risk-budget-dossier-status.md)"
+
+      - name: Fail closed on dossier drift
+        if: ${{ steps.sources.outputs.available == 'true' && steps.build.outputs.clean != 'true' }}
+        run: exit 1
+
+      - name: Publish clean dossier status
+        if: ${{ steps.build.outputs.clean == 'true' }}
+        shell: bash
+        env:
+          RETURN_WORKFLOW_RUN: ${{ steps.sources.outputs.return_run }}
+          RETURN_ARTIFACT: ${{ steps.sources.outputs.return_artifact }}
+          STOP_WORKFLOW_RUN: ${{ steps.sources.outputs.stop_run }}
+          STOP_ARTIFACT: ${{ steps.sources.outputs.stop_artifact }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(
+              Path(
+                  "prospective-risk-budget-investigation-dossier.json"
+              ).read_text(encoding="utf-8")
+          )
+          lines = [
+              "## Risk-budget conjunctive investigation readiness",
+              "",
+              f"**Status:** `{report['status']}`",
+              "",
+              f"- source aligned: `{report['source_aligned']}`",
+              f"- current gate formats: `{report['gates_current']}`",
+              f"- cumulative integrity clean: `{report['integrity_clean']}`",
+              f"- conjunctively ready reasons: `{report['ready_reasons']}`",
+              (
+                  "- return ledger workflow / artifact: "
+                  f"`{os.environ['RETURN_WORKFLOW_RUN']} / "
+                  f"{os.environ['RETURN_ARTIFACT']}`"
+              ),
+              (
+                  "- stop ledger workflow / artifact: "
+                  f"`{os.environ['STOP_WORKFLOW_RUN']} / "
+                  f"{os.environ['STOP_ARTIFACT']}`"
+              ),
+              f"- return paper source: `{report['return_source']}`",
+              f"- stop paper source: `{report['stop_source']}`",
+              f"- return ledger SHA-256: `{report['return_ledger_sha256']}`",
+              f"- stop ledger SHA-256: `{report['stop_ledger_sha256']}`",
+              f"- dossier SHA-256: `{report['report_sha256']}`",
+              "",
+              "### Readiness by risk reason",
+              "",
+          ]
+          if report["by_reason"]:
+              for reason, values in sorted(report["by_reason"].items()):
+                  lines.append(
+                      "- {reason}: economic={economic}, stop={stop}, "
+                      "conjunctive={conjunctive}".format(
+                          reason=reason,
+                          economic=values["economic_ready"],
+                          stop=values["stop_survival_ready"],
+                          conjunctive=values[
+                              "conjunctive_ready_for_investigation"
+                          ],
+                      )
+                  )
+          else:
+              lines.append("- no risk reason is present in both evidence families")
+
+          lines.extend(
+              [
+                  "",
+                  (
+                      "A reason is conjunctively ready only when both component "
+                      "ledgers are current, integrity-clean, derived from the "
+                      "same authenticated paper run/attempt/artifact digest, "
+                      "and that reason passes both independent gates."
+                  ),
+                  (
+                      "Conjunctive readiness authorizes only deeper research "
+                      "investigation. It cannot relax a risk veto or change "
+                      "execution, sizing, strategy, promotion, or live authority."
+                  ),
+                  "",
+                  "**Execution authority:** `false`",
+                  "**Promotion authority:** `false`",
+                  "**Changes risk limits:** `false`",
+                  "**LIVE TRADING: DISABLED.**",
+              ]
+          )
+          Path("/tmp/risk-budget-dossier-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$DOSSIER_ISSUE"             -f body="$(cat /tmp/risk-budget-dossier-status.md)"
+
+      - name: Upload dossier artifact
+        if: ${{ steps.build.outputs.clean == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-risk-budget-investigation-dossier-${{ github.run_id }}-${{ github.run_attempt }}
+          path: prospective-risk-budget-investigation-dossier.json
+          if-no-files-found: error
+          retention-days: 90

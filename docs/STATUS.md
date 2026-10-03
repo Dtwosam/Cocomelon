@@ -4510,3 +4510,15 @@ Previously published stop-path ledger artifacts remain valid through explicit le
 This changes no risk limit, sizing rule, strategy threshold, execution behavior, candidate readiness, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+### Conjunctive risk-budget investigation dossier — 2026-10-03
+
+The risk-rejected return ledger and observed stop-path ledger now have independent research gates, but they can complete at different times and may temporarily point at different paper sources. A manual comparison could therefore combine evidence that is individually valid but not source-aligned.
+
+A new research-only conjunctive dossier binds the latest durable return and stop ledgers by the exact authenticated paper run ID, run attempt, compact artifact name, artifact digest, and common stack start. It reports a risk reason as ready for deeper investigation only when both component ledgers use current gate formats, both cumulative integrity flags are clean, the source identities match exactly, and the same reason passes both the economic-return gate and the robust stop-survival gate.
+
+If either ledger is missing, stale-format, source-misaligned, or integrity-dirty, the dossier fails closed and reports no conjunctively ready reason. Issue #809 is the dedicated status surface and a durable JSON dossier artifact is published on clean workflow runs.
+
+Conjunctive readiness authorizes only deeper research investigation. It does not relax a risk veto, change a risk limit, alter sizing or execution, change strategy/candidate readiness, promote a strategy, or enable live orders.
+
+**LIVE TRADING: DISABLED.**
