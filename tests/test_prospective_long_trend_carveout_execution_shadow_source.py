@@ -40,6 +40,36 @@ class _Evidence:
 
 
 @dataclass(frozen=True)
+class _ExitBook:
+    opportunity_id: str
+    horizon_ms: int
+    market: str = "SOL"
+    direction: str = "long"
+    opportunity_timestamp_ms: int = 1_000_000
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "opportunity_id": self.opportunity_id,
+            "horizon_ms": self.horizon_ms,
+            "market": self.market,
+            "direction": self.direction,
+            "opportunity_timestamp_ms": self.opportunity_timestamp_ms,
+        }
+
+
+@dataclass(frozen=True)
+class _Funding:
+    market: str
+    boundary_ms: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "market": self.market,
+            "boundary_ms": self.boundary_ms,
+        }
+
+
+@dataclass(frozen=True)
 class _Path:
     opportunity_id: str
     market: str = "SOL"
@@ -102,13 +132,23 @@ def test_source_exports_only_reopened_weekly_long_trend() -> None:
         PaperExecutionConfig(),
     )
 
-    assert payload["schema_version"] == 2
-    assert payload["kind"].endswith("-v2")
+    assert payload["schema_version"] == 3
+    assert payload["kind"].endswith("-v3")
     assert payload["execution_config"]["config_version"] == "phase7-v1"
     assert isinstance(payload["execution_config_sha256"], str)
     assert payload["source_opportunity_count"] == 1
     assert payload["missing_opportunity_evidence"] == 0
     assert payload["missing_forward_paths"] == 0
+    assert payload["fixed_exit_horizons_ms"] == [
+        300_000,
+        900_000,
+        3_600_000,
+    ]
+    assert payload["exit_book_count"] == 0
+    assert payload["missing_exit_books"] == 3
+    assert payload["funding_record_count"] == 0
+    assert isinstance(payload["exit_books_sha256"], str)
+    assert isinstance(payload["funding_records_sha256"], str)
     assert payload["execution_authority"] is False
     assert payload["changes_execution"] is False
     assert payload["changes_risk_limits"] is False
@@ -117,6 +157,32 @@ def test_source_exports_only_reopened_weekly_long_trend() -> None:
     assert rows[0]["opportunity_id"] == "op-1"
     assert rows[0]["path"] is not None
     assert isinstance(payload["source_sha256"], str)
+
+
+def test_source_exports_matching_exit_books_and_funding() -> None:
+    payload = prospective_long_trend_execution_shadow_source(
+        _summary(),
+        (_Evidence("op-1"),),  # type: ignore[arg-type]
+        (_Path("op-1"),),  # type: ignore[arg-type]
+        PaperExecutionConfig(),
+        exit_books=(
+            _ExitBook("op-1", 300_000),
+            _ExitBook("op-1", 900_000),
+            _ExitBook("other", 300_000, market="BTC"),
+        ),  # type: ignore[arg-type]
+        funding_records=(
+            _Funding("SOL", 3_600_000),
+            _Funding("BTC", 3_600_000),
+        ),  # type: ignore[arg-type]
+    )
+
+    assert payload["exit_book_count"] == 2
+    assert payload["missing_exit_books"] == 1
+    assert [
+        item["horizon_ms"] for item in payload["exit_books"]
+    ] == [300_000, 900_000]
+    assert payload["funding_record_count"] == 1
+    assert payload["funding_records"][0]["market"] == "SOL"
 
 
 def test_source_skips_non_pure_long_trend_blocks() -> None:
