@@ -15,13 +15,26 @@ from cocomelon.execution.planner import PlanningRejection, plan_opening_order
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityEvidence,
 )
+from cocomelon.research.continuous_paper_opening_opportunity_exit_books import (
+    OpeningOpportunityExitBookEvidence,
+)
 from cocomelon.research.continuous_paper_opening_opportunity_paths import (
     ContinuousPaperOpeningOpportunityPath,
+)
+from cocomelon.research.continuous_paper_replacement_funding import (
+    ReplacementFundingBoundaryEvidence,
+)
+from cocomelon.research.prospective_capacity_reflow_exit_fill import (
+    prospective_capacity_reflow_exit_fill_summary,
+)
+from cocomelon.research.prospective_capacity_reflow_realized_pnl import (
+    prospective_capacity_reflow_realized_pnl_summary,
 )
 from cocomelon.research.prospective_full_stack_forward_markout import (
     LONG_TREND_CARVEOUT_CANDIDATE_ID,
 )
 from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
+    LEGACY_CONFIG_SOURCE_KIND,
     LEGACY_SOURCE_KIND,
     SOURCE_KIND,
     WEEKLY_DRAWDOWN_REASON,
@@ -152,8 +165,13 @@ def _validate_source(
         raise ProspectiveLongTrendExecutionShadowError(
             "execution-shadow source schema is unsupported"
         )
-    if schema_version == SOURCE_SCHEMA_VERSION:
-        if raw.get("kind") != SOURCE_KIND:
+    if schema_version in {SOURCE_SCHEMA_VERSION, 2}:
+        expected_kind = (
+            SOURCE_KIND
+            if schema_version == SOURCE_SCHEMA_VERSION
+            else LEGACY_CONFIG_SOURCE_KIND
+        )
+        if raw.get("kind") != expected_kind:
             raise ProspectiveLongTrendExecutionShadowError(
                 "execution-shadow source kind is unsupported"
             )
@@ -168,7 +186,7 @@ def _validate_source(
                 "captured execution config digest mismatch"
             )
         config = _execution_config_from_payload(config_payload)
-        config_source = "captured_source_v2"
+        config_source = f"captured_source_v{schema_version}"
     elif schema_version == 1:
         if raw.get("kind") != LEGACY_SOURCE_KIND:
             raise ProspectiveLongTrendExecutionShadowError(
@@ -254,6 +272,220 @@ def _validate_source(
         seen.add(opportunity_id)
         rows.append(item)
     return tuple(rows), config, config_source, schema_version
+
+def _lifecycle_evidence(
+    raw: object,
+    *,
+    schema_version: int,
+    opportunity_ids: frozenset[str],
+) -> tuple[
+    tuple[OpeningOpportunityExitBookEvidence, ...],
+    tuple[ReplacementFundingBoundaryEvidence, ...],
+]:
+    if schema_version < 3:
+        return (), ()
+    if not isinstance(raw, dict):
+        raise ProspectiveLongTrendExecutionShadowError(
+            "execution-shadow lifecycle source must be an object"
+        )
+    if raw.get("fixed_exit_horizons_ms") != list(FORWARD_HORIZONS_MS):
+        raise ProspectiveLongTrendExecutionShadowError(
+            "execution-shadow fixed exit horizons drift"
+        )
+    if raw.get("max_exit_book_capture_lag_ms") != MAX_MARK_LAG_MS:
+        raise ProspectiveLongTrendExecutionShadowError(
+            "execution-shadow exit-book lag drift"
+        )
+
+    raw_exit_books = raw.get("exit_books")
+    if not isinstance(raw_exit_books, list):
+        raise ProspectiveLongTrendExecutionShadowError(
+            "execution-shadow exit books must be a list"
+        )
+    if raw.get("exit_book_count") != len(raw_exit_books):
+        raise ProspectiveLongTrendExecutionShadowError(
+            "execution-shadow exit-book count mismatch"
+        )
+    if raw.get("exit_books_sha256") != _sha256(raw_exit_books):
+        raise ProspectiveLongTrendExecutionShadowError(
+            "execution-shadow exit-book digest mismatch"
+        )
+    exit_books: list[OpeningOpportunityExitBookEvidence] = []
+    seen_exit_books: set[tuple[str, int]] = set()
+    for item in raw_exit_books:
+        try:
+            evidence = OpeningOpportunityExitBookEvidence.from_dict(item)
+        except Exception as exc:
+            raise ProspectiveLongTrendExecutionShadowError(
+                "execution-shadow exit-book evidence is invalid"
+            ) from exc
+        if evidence.opportunity_id not in opportunity_ids:
+            raise ProspectiveLongTrendExecutionShadowError(
+                "execution-shadow exit book references unknown opportunity"
+            )
+        if evidence.horizon_ms not in FORWARD_HORIZONS_MS:
+            raise ProspectiveLongTrendExecutionShadowError(
+                "execution-shadow exit-book horizon is unsupported"
+            )
+        key = (evidence.opportunity_id, evidence.horizon_ms)
+        if key in seen_exit_books:
+            raise ProspectiveLongTrendExecutionShadowError(
+                "duplicate execution-shadow exit book"
+            )
+        seen_exit_books.add(key)
+        exit_books.append(evidence)
+
+    raw_funding = raw.get("funding_records")
+    if not isinstance(raw_funding, list):
+        raise ProspectiveLongTrendExecutionShadowError(
+            "execution-shadow funding records must be a list"
+        )
+    if raw.get("funding_record_count") != len(raw_funding):
+        raise ProspectiveLongTrendExecutionShadowError(
+            "execution-shadow funding-record count mismatch"
+        )
+    if raw.get("funding_records_sha256") != _sha256(raw_funding):
+        raise ProspectiveLongTrendExecutionShadowError(
+            "execution-shadow funding-record digest mismatch"
+        )
+    funding: list[ReplacementFundingBoundaryEvidence] = []
+    seen_funding: set[tuple[str, int]] = set()
+    for item in raw_funding:
+        try:
+            evidence = ReplacementFundingBoundaryEvidence.from_dict(item)
+        except Exception as exc:
+            raise ProspectiveLongTrendExecutionShadowError(
+                "execution-shadow funding evidence is invalid"
+            ) from exc
+        key = (evidence.market, evidence.boundary_ms)
+        if key in seen_funding:
+            raise ProspectiveLongTrendExecutionShadowError(
+                "duplicate execution-shadow funding record"
+            )
+        seen_funding.add(key)
+        funding.append(evidence)
+
+    return tuple(exit_books), tuple(funding)
+
+
+def _exit_execution_config_payload(
+    config: PaperExecutionConfig,
+) -> dict[str, object]:
+    return {
+        "config_version": config.config_version,
+        "latency_ms": config.latency_ms,
+        "max_book_age_ms": config.max_book_age_ms,
+        "max_ioc_slippage_bps": str(config.max_ioc_slippage_bps),
+        "taker_fee_rate": str(config.taker_fee_rate),
+        "fee_schedule_id": config.fee_schedule_id,
+    }
+
+
+def _exact_realized_horizon_summary(
+    realized: dict[str, object],
+    *,
+    horizon_ms: int,
+) -> dict[str, object]:
+    raw_options = realized.get("option_results")
+    if not isinstance(raw_options, list):
+        raise ProspectiveLongTrendExecutionShadowError(
+            "execution-shadow realized option results are invalid"
+        )
+    key = str(horizon_ms)
+    exact: list[tuple[str, Decimal, Decimal]] = []
+    statuses: Counter[str] = Counter()
+    for raw_option in raw_options:
+        if not isinstance(raw_option, dict):
+            raise ProspectiveLongTrendExecutionShadowError(
+                "execution-shadow realized option is invalid"
+            )
+        market = raw_option.get("opportunity_market")
+        exits = raw_option.get("exits")
+        if not isinstance(market, str) or not isinstance(exits, dict):
+            raise ProspectiveLongTrendExecutionShadowError(
+                "execution-shadow realized option lineage is invalid"
+            )
+        raw_exit = exits.get(key)
+        if not isinstance(raw_exit, dict):
+            statuses["missing_exit_result"] += 1
+            continue
+        raw_pnl = raw_exit.get("exact_realized_pnl")
+        raw_return = raw_exit.get("exact_realized_return_fraction")
+        if isinstance(raw_pnl, str) and isinstance(raw_return, str):
+            pnl = Decimal(raw_pnl)
+            return_fraction = Decimal(raw_return)
+            exact.append((market, pnl, return_fraction))
+            statuses["exact"] += 1
+        else:
+            reason = raw_exit.get("incomplete_reason")
+            statuses[
+                reason if isinstance(reason, str) and reason else "incomplete"
+            ] += 1
+
+    pnl_values = tuple(item[1] for item in exact)
+    return_values = tuple(item[2] for item in exact)
+    positive = tuple(value for value in pnl_values if value > ZERO)
+    negative = tuple(value for value in pnl_values if value < ZERO)
+    markets = sorted({item[0] for item in exact})
+    leave_one_option = [
+        sum(
+            (
+                candidate[1]
+                for candidate_index, candidate in enumerate(exact)
+                if candidate_index != index
+            ),
+            ZERO,
+        )
+        for index in range(len(exact))
+    ]
+    leave_one_market = [
+        sum(
+            (candidate[1] for candidate in exact if candidate[0] != market),
+            ZERO,
+        )
+        for market in markets
+    ]
+    gross_profit = sum(positive, ZERO)
+    gross_loss = -sum(negative, ZERO)
+    count = len(exact)
+    return {
+        "horizon_ms": horizon_ms,
+        "status_counts": dict(sorted(statuses.items())),
+        "exact_options": count,
+        "positive": len(positive),
+        "negative": len(negative),
+        "flat": sum(value == ZERO for value in pnl_values),
+        "total_exact_realized_pnl": str(sum(pnl_values, ZERO)),
+        "mean_exact_realized_pnl": (
+            None
+            if count == 0
+            else str(sum(pnl_values, ZERO) / Decimal(count))
+        ),
+        "mean_exact_realized_return_fraction": (
+            None
+            if count == 0
+            else str(sum(return_values, ZERO) / Decimal(count))
+        ),
+        "gross_profit": str(gross_profit),
+        "gross_loss": str(gross_loss),
+        "profit_factor": (
+            None
+            if gross_loss == ZERO
+            else str(gross_profit / gross_loss)
+        ),
+        "market_count": len(markets),
+        "leave_one_option_out_min_total_pnl": (
+            None
+            if not leave_one_option
+            else str(min(leave_one_option))
+        ),
+        "leave_one_market_out_min_total_pnl": (
+            None
+            if not leave_one_market
+            else str(min(leave_one_market))
+        ),
+    }
+
 
 def _execution_config_compatible(
     evidence: ContinuousPaperOpeningOpportunityEvidence,
@@ -529,7 +761,16 @@ def prospective_long_trend_execution_shadow_summary(
             legacy_config=config,
         )
     )
+    opportunity_ids = frozenset(
+        cast(str, row["opportunity_id"]) for row in rows
+    )
+    exit_books, funding_records = _lifecycle_evidence(
+        source,
+        schema_version=source_schema_version,
+        opportunity_ids=opportunity_ids,
+    )
     results: list[dict[str, object]] = []
+    lifecycle_entry_options: list[dict[str, object]] = []
     risk_rejections: Counter[str] = Counter()
     planning_rejections: Counter[str] = Counter()
     execution_results: Counter[str] = Counter()
@@ -655,6 +896,54 @@ def prospective_long_trend_execution_shadow_summary(
             )
             for horizon_ms in FORWARD_HORIZONS_MS
         }
+        if plan.stop_price is None:
+            raise ProspectiveLongTrendExecutionShadowError(
+                "execution-shadow opening plan is missing stop"
+            )
+        lifecycle_entry_options.append(
+            {
+                "option_id": opportunity_id,
+                "opportunity_id": opportunity_id,
+                "opportunity_timestamp_ms": (
+                    evidence.opportunity_timestamp_ms
+                ),
+                "opportunity_market": evidence.market,
+                "opportunity_direction": evidence.direction,
+                "risk_approved": True,
+                "risk_reason_codes": list(risk.reason_codes),
+                "planning_approved": True,
+                "planning_rejection": None,
+                "execution_result": attempt.result.value,
+                "attempt_id": attempt.attempt_id,
+                "entry_attempt_timestamp_ms": (
+                    attempt.attempt_timestamp_ms
+                ),
+                "opening_plan_id": plan.plan_id,
+                "opening_risk_decision_id": plan.risk_decision_id,
+                "opening_strategy_decision_id": (
+                    plan.strategy_decision_id
+                ),
+                "opening_stop_price": str(plan.stop_price),
+                "correlation_bucket": (
+                    adjusted_request.correlation_bucket
+                ),
+                "venue_max_leverage": str(
+                    evidence.instrument_object.venue_max_leverage
+                ),
+                "requested_quantity": str(
+                    attempt.requested_quantity
+                ),
+                "filled_quantity": str(attempt.filled_quantity),
+                "average_fill_price": str(entry_price),
+                "gross_fill_notional": str(
+                    attempt.gross_fill_notional
+                ),
+                "taker_fee": str(entry_fee),
+                "unfilled_quantity": str(
+                    attempt.unfilled_quantity
+                ),
+            }
+        )
         results.append(result)
 
     result_tuple = tuple(
@@ -671,6 +960,41 @@ def prospective_long_trend_execution_shadow_summary(
         item["filled_quantity"] is not None
         for item in result_tuple
     )
+
+    lifecycle_modeled = source_schema_version >= 3
+    exit_fill: dict[str, object] | None = None
+    realized_pnl: dict[str, object] | None = None
+    exact_by_horizon: dict[str, object] = {}
+    if lifecycle_modeled:
+        fill_feasibility: dict[str, object] = {
+            "replacement_entry_fills_modeled": True,
+            "execution_config": _exit_execution_config_payload(
+                active_config
+            ),
+            "fillable_option_ids": [
+                cast(str, item["option_id"])
+                for item in lifecycle_entry_options
+            ],
+            "option_results": lifecycle_entry_options,
+        }
+        exit_fill = prospective_capacity_reflow_exit_fill_summary(
+            fill_feasibility,
+            exit_books,
+            active_config,
+            horizons_ms=FORWARD_HORIZONS_MS,
+        )
+        realized_pnl = prospective_capacity_reflow_realized_pnl_summary(
+            exit_fill,
+            funding_records,
+        )
+        exact_by_horizon = {
+            str(horizon_ms): _exact_realized_horizon_summary(
+                realized_pnl,
+                horizon_ms=horizon_ms,
+            )
+            for horizon_ms in FORWARD_HORIZONS_MS
+        }
+
     return {
         "research_only": True,
         "execution_authority": False,
@@ -693,7 +1017,9 @@ def prospective_long_trend_execution_shadow_summary(
             "captured_request_plus_decision_time_visible_book_ioc"
         ),
         "outcome_scope": (
-            "entry_fee_adjusted_forward_mark_to_market_only"
+            "entry_markout_plus_real_l2_fixed_horizon_realized_when_complete"
+            if lifecycle_modeled
+            else "entry_fee_adjusted_forward_mark_to_market_only"
         ),
         "forward_horizons_ms": list(FORWARD_HORIZONS_MS),
         "max_mark_lag_ms": MAX_MARK_LAG_MS,
@@ -724,8 +1050,23 @@ def prospective_long_trend_execution_shadow_summary(
             for horizon_ms in FORWARD_HORIZONS_MS
         },
         "option_results": list(result_tuple),
-        "replacement_exits_modeled": False,
-        "exit_fees_modeled": False,
-        "funding_modeled": False,
-        "realized_pnl_modeled": False,
+        "exit_book_records": len(exit_books),
+        "funding_evidence_records": len(funding_records),
+        "fixed_horizon_exit_execution": exit_fill,
+        "fixed_horizon_realized_pnl": realized_pnl,
+        "exact_realized_by_horizon": exact_by_horizon,
+        "exact_realized_pnl_available": (
+            False
+            if realized_pnl is None
+            else realized_pnl["exact_realized_pnl_available"]
+        ),
+        "exact_realized_pnl_option_horizons": (
+            0
+            if realized_pnl is None
+            else realized_pnl["exact_realized_pnl_option_horizons"]
+        ),
+        "replacement_exits_modeled": lifecycle_modeled,
+        "exit_fees_modeled": lifecycle_modeled,
+        "funding_modeled": lifecycle_modeled,
+        "realized_pnl_modeled": lifecycle_modeled,
     }
