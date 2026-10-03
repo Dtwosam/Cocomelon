@@ -599,6 +599,9 @@ jobs:
             continuous-paper-state/prospective-full-stack-entry-exit-summary.json
             continuous-paper-state/prospective-full-stack-forward-markout-summary.json
             continuous-paper-state/prospective-long-trend-execution-shadow-source.json
+            continuous-paper-state/prospective-drawdown-5m-execution-state.json
+            continuous-paper-state/prospective-drawdown-5m-execution-source.json
+            continuous-paper-state/prospective-drawdown-5m-execution-summary.json
             continuous-paper-state/prospective-full-stack-capacity-reflow-summary.json
             continuous-paper-state/prospective-full-stack-exit-capacity-reflow-summary.json
             continuous-paper-state/prospective-two-strike-stop-filter-state.json
@@ -607,6 +610,46 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
+
+      - name: Render drawdown-blocked fixed-5m execution research
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-drawdown-5m-execution-summary.json') != '' }}
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          path = Path(
+              "continuous-paper-state/"
+              "prospective-drawdown-5m-execution-summary.json"
+          )
+          payload = json.loads(path.read_text(encoding="utf-8"))
+          print("## Drawdown-blocked fixed-5m execution shadow")
+          print("- authority: RESEARCH ONLY / NO RISK-LIMIT CHANGE")
+          if payload.get("error"):
+              print(f"- research error: {payload['error']}")
+          else:
+              print(
+                  "- source / exact / incomplete: "
+                  f"{payload.get('source_opportunities', 0)} / "
+                  f"{payload.get('exact_realized_pnl_options', 0)} / "
+                  f"{payload.get('incomplete_options', 0)}"
+              )
+              print(
+                  "- exact PnL / review ready: "
+                  f"{payload.get('total_exact_realized_pnl')} / "
+                  f"{payload.get('ready_for_review', False)}"
+              )
+              print(
+                  "- LONG / SHORT exact: "
+                  f"{payload.get('long_exact_options', 0)} / "
+                  f"{payload.get('short_exact_options', 0)}"
+              )
+              print(
+                  "- failed requirements: "
+                  f"{payload.get('failed_requirements', [])}"
+              )
+          PY
 
       - name: Upload momentum-band forward-markout research summary
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-momentum-band-forward-markout-summary.json') != '' }}
