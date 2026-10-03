@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
-
 from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.research.prospective_drawdown_5m_execution_source import (
     CANDIDATE_ID,
