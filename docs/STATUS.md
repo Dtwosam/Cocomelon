@@ -4608,3 +4608,16 @@ The append-only carveout ledger now derives a fixed-horizon exit-timing view for
 This is descriptive timing evidence only. It does not change the existing carveout investigation gate, entry rules, exits, stops, risk limits, sizing, candidate readiness, promotion state, or live-order authority. Previously published ledger summaries remain valid.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Pre-decision REST L2 freshness sweep — 2026-10-03
+
+Worker `37129994357` on the receive-time websocket-liveness fix (#818) still completed its first decision epoch with 20 selected markets, 16 `stale_book` rejections, and zero deep-ready markets. The subsequent guarded recovery immediately restored a healthy L2 lane, showing that the remaining loss of coverage happens at the decision boundary rather than because the venue or REST recovery path is unavailable.
+
+The continuous paper runtime now schedules one authenticated Hyperliquid mainnet REST `l2Book` sweep inside the existing 30-second decision grace window. By default the sweep starts 10 seconds before the aligned decision evaluation time and feeds fresh books through the existing canonical replay pump. A full 20-market sweep consumes 40 of the runtime's existing 1000-weight rolling one-minute REST budget.
+
+This is proactive freshness maintenance, not a risk or eligibility relaxation. The existing 15-second exchange-time book freshness ceiling remains unchanged; stale REST books are still rejected by the existing promotion check, and a decision epoch that is still systemically stale continues to fail closed and invoke the existing recovery path. Dedicated heartbeat telemetry records sweep attempts, fresh books, failures, duration, decision headroom, and late completions.
+
+No strategy threshold, risk limit, sizing rule, stop, candidate readiness gate, promotion state, or live-order authority changes.
+
+**LIVE TRADING: DISABLED.**
