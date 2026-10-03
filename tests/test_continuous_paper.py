@@ -4190,7 +4190,7 @@ def test_runtime_hot_path_uses_only_operational_heartbeat() -> None:
         "stale_l2_pipeline_reason_fallback_triggers",
     ):
         assert f'"{field}"' in operational
-    assert source.count("_emit_operational_live_status(") == 4
+    assert source.count("_emit_operational_live_status(") == 5
     assert source.count("_emit_live_status(") == 1
 
 
