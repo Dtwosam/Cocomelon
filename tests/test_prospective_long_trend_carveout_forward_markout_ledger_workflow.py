@@ -59,6 +59,17 @@ def test_long_trend_carveout_workflow_binds_exact_paper_source() -> None:
     assert 'row.get("long_trend_carveout_stop_path")' in source
 
 
+def test_long_trend_carveout_workflow_requires_stop_survival_for_review() -> None:
+    source = _source()
+
+    assert "Stop complete?" in source
+    assert "Survivor majority?" in source
+    assert 'ready["stop_path_complete_for_reopened_sample"]' in source
+    assert 'ready["stop_survivor_majority"]' in source
+    assert "strictly more survivors than observed stop crossings" in source
+    assert "Stop-path survival is descriptive only and is not part" not in source
+
+
 def test_long_trend_carveout_workflow_restores_append_only_ledger() -> None:
     source = _source()
 
