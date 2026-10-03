@@ -159,6 +159,165 @@ def _markout(
     }
 
 
+def _stop_path_overlay(
+    evidence: ContinuousPaperOpeningOpportunityEvidence,
+    path: ContinuousPaperOpeningOpportunityPath | None,
+    markouts: dict[str, dict[str, object]],
+) -> dict[str, object]:
+    request = evidence.risk_request_object
+    stop = request.strategy_decision.invalidation_price
+    entry = request.entry_reference_price
+    if stop is not None:
+        if not stop.is_finite() or stop <= ZERO:
+            raise ProspectiveFullStackForwardMarkoutError(
+                "opening opportunity stop must be positive and finite"
+            )
+        if (
+            request.strategy_decision.direction is Direction.LONG
+            and stop >= entry
+        ):
+            raise ProspectiveFullStackForwardMarkoutError(
+                "long opening opportunity stop must be below entry"
+            )
+        if (
+            request.strategy_decision.direction is Direction.SHORT
+            and stop <= entry
+        ):
+            raise ProspectiveFullStackForwardMarkoutError(
+                "short opening opportunity stop must be above entry"
+            )
+
+    horizons: dict[str, dict[str, object]] = {}
+    for horizon_ms in FORWARD_HORIZONS_MS:
+        key = str(horizon_ms)
+        target_at_ms = evidence.opportunity_timestamp_ms + horizon_ms
+        markout = markouts[key]
+        markout_status = markout.get("status")
+        if stop is None:
+            horizons[key] = {
+                "status": "missing_stop",
+                "target_at_ms": target_at_ms,
+                "observed_mark_count": 0,
+                "stop_crossed": None,
+                "first_stop_cross_at_ms": None,
+                "first_stop_cross_mark_px": None,
+                "time_to_stop_ms": None,
+                "survived_observed_marks_to_horizon": None,
+            }
+            continue
+        if path is None:
+            horizons[key] = {
+                "status": "missing_path",
+                "target_at_ms": target_at_ms,
+                "observed_mark_count": 0,
+                "stop_crossed": None,
+                "first_stop_cross_at_ms": None,
+                "first_stop_cross_mark_px": None,
+                "time_to_stop_ms": None,
+                "survived_observed_marks_to_horizon": None,
+            }
+            continue
+        if horizon_ms > path.max_path_age_ms:
+            horizons[key] = {
+                "status": "unsupported_horizon",
+                "target_at_ms": target_at_ms,
+                "observed_mark_count": 0,
+                "stop_crossed": None,
+                "first_stop_cross_at_ms": None,
+                "first_stop_cross_mark_px": None,
+                "time_to_stop_ms": None,
+                "survived_observed_marks_to_horizon": None,
+            }
+            continue
+        if markout_status != "settled":
+            horizons[key] = {
+                "status": f"markout_{markout_status}",
+                "target_at_ms": target_at_ms,
+                "observed_mark_count": 0,
+                "stop_crossed": None,
+                "first_stop_cross_at_ms": None,
+                "first_stop_cross_mark_px": None,
+                "time_to_stop_ms": None,
+                "survived_observed_marks_to_horizon": None,
+            }
+            continue
+
+        causal_marks = tuple(
+            item
+            for item in path.marks
+            if (
+                evidence.opportunity_timestamp_ms
+                < item.observed_at_ms
+                <= target_at_ms
+            )
+        )
+        if not causal_marks:
+            horizons[key] = {
+                "status": "no_causal_marks",
+                "target_at_ms": target_at_ms,
+                "observed_mark_count": 0,
+                "stop_crossed": None,
+                "first_stop_cross_at_ms": None,
+                "first_stop_cross_mark_px": None,
+                "time_to_stop_ms": None,
+                "survived_observed_marks_to_horizon": None,
+            }
+            continue
+
+        first_cross = next(
+            (
+                item
+                for item in causal_marks
+                if (
+                    item.mark_px <= stop
+                    if evidence.direction == "long"
+                    else item.mark_px >= stop
+                )
+            ),
+            None,
+        )
+        crossed = first_cross is not None
+        horizons[key] = {
+            "status": (
+                "observed_stop_crossing"
+                if crossed
+                else "observed_path_survivor"
+            ),
+            "target_at_ms": target_at_ms,
+            "observed_mark_count": len(causal_marks),
+            "stop_crossed": crossed,
+            "first_stop_cross_at_ms": (
+                None
+                if first_cross is None
+                else first_cross.observed_at_ms
+            ),
+            "first_stop_cross_mark_px": (
+                None
+                if first_cross is None
+                else str(first_cross.mark_px)
+            ),
+            "time_to_stop_ms": (
+                None
+                if first_cross is None
+                else (
+                    first_cross.observed_at_ms
+                    - evidence.opportunity_timestamp_ms
+                )
+            ),
+            "survived_observed_marks_to_horizon": not crossed,
+        }
+
+    return {
+        "claim_scope": "observed_mark_stop_crossing_only",
+        "original_stop_price": None if stop is None else str(stop),
+        "entry_reference_price": str(entry),
+        "horizons": horizons,
+        "changes_execution": False,
+        "changes_risk_limits": False,
+        "changes_candidate_readiness": False,
+    }
+
+
 def _spread(
     values: Sequence[tuple[str, str, Decimal]],
 ) -> Decimal | None:
@@ -757,6 +916,11 @@ def prospective_full_stack_forward_markout_summary(
             )
             for horizon_ms in FORWARD_HORIZONS_MS
         }
+        stop_path = _stop_path_overlay(
+            evidence,
+            path,
+            markouts,
+        )
         row = {
             "opportunity_id": evidence.opportunity_id,
             "timestamp_ms": evidence.opportunity_timestamp_ms,
@@ -818,6 +982,7 @@ def prospective_full_stack_forward_markout_summary(
                 if carveout_momentum_detail is None
                 else carveout_momentum_detail.get("signed_day_return")
             ),
+            "long_trend_carveout_stop_path": stop_path,
             "markouts": markouts,
         }
         if risk_approved:
