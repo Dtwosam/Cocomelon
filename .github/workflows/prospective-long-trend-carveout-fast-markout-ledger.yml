@@ -496,6 +496,9 @@ jobs:
               )
           )
           summary = ledger["summary"]
+          post_integrity = summary.get("post_integrity_miss", {})
+          if not isinstance(post_integrity, dict):
+              post_integrity = {}
 
           def stamp(value):
               return datetime.fromtimestamp(
@@ -516,6 +519,12 @@ jobs:
               f"- previous ledger workflow run: `{previous}`",
               f"- terminal / previous / new / pending / unevaluable: `{ledger['row_count']} / {ledger['previous_row_count']} / {ledger['new_row_count']} / {ledger['pending_opportunity_count']} / {ledger['unevaluable_opportunity_count']}`",
               f"- cumulative source integrity clean: `{summary['integrity_clean']}`",
+              f"- post-integrity boundary known: `{post_integrity.get('boundary_known', False)}`",
+              f"- post-integrity last miss / start: `{post_integrity.get('last_miss_at_ms')} / {post_integrity.get('started_at_ms')}`",
+              f"- post-integrity terminal opportunities: `{post_integrity.get('terminal_opportunity_count', 0)}`",
+              f"- post-integrity all horizons ready: `{post_integrity.get('all_horizons_ready_for_execution_shadow_investigation', False)}`",
+              f"- effective integrity scope: `{summary.get('effective_integrity_scope', 'none')}`",
+              f"- effective all horizons ready for execution-shadow investigation: `{summary.get('effective_all_horizons_ready_for_execution_shadow_investigation', summary['all_horizons_ready_for_execution_shadow_investigation'])}`",
               f"- challenger admitted / blocked terminal: `{summary['carveout_admitted_terminal']} / {summary['carveout_blocked_terminal']}`",
               f"- changed decision-or-layer terminal: `{summary['changed_decision_or_layer_terminal']}`",
               f"- reopened pure LONG+trend terminal: `{summary['reopened_long_trend_terminal']}`",
@@ -624,7 +633,7 @@ jobs:
           lines.extend(
               [
                   "",
-                  "Investigation gate only: every horizon requires >=20 settled opportunities, >=5 ADMIT, >=5 BLOCK, >=5 LONG, >=5 SHORT, >=4 markets, positive admitted mean, negative blocked mean, positive and leave-one robust separation, plus >=10 reopened pure LONG+trend opportunities across >=4 markets with positive leave-one-opportunity and leave-one-market robustness. The reopened sample must also have complete observed stop-path coverage and strictly more survivors than observed stop crossings.",
+                  "Investigation gate only: cumulative evidence may pass only when cumulative integrity is clean. If historical integrity is dirty, only a candidate-specific post-integrity suffix with a known last-miss boundary may re-earn the gate, and that suffix must satisfy every threshold from scratch: >=20 settled opportunities, >=5 ADMIT, >=5 BLOCK, >=5 LONG, >=5 SHORT, >=4 markets, positive admitted mean, negative blocked mean, positive and leave-one robust separation, plus >=10 reopened pure LONG+trend opportunities across >=4 markets with positive leave-one-opportunity and leave-one-market robustness. The reopened sample must also have complete observed stop-path coverage and strictly more survivors than observed stop crossings.",
                   "Passing this gate can authorize only a deeper paper execution-shadow investigation. It cannot change the live/frozen entry stack, any risk limit, sizing, candidate readiness, promotion state, or live-order authority.",
                   "Stop-path evidence reports only observed causal marks against the original decision-time stop; it does not model unseen intramillisecond prices, stop fills, slippage, or a complete counterfactual trade lifecycle.",
                   "Only rows with every fixed horizon terminal become immutable. Pending or missing-path rows remain unfrozen.",
