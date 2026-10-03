@@ -411,7 +411,7 @@ jobs:
           digest = item.get("digest")
           if not isinstance(digest, str) or not digest.startswith("sha256:"):
               raise SystemExit("durable gate artifact digest is missing or invalid")
-          print(f"{item['id']}|{item['name']}|{digest}")
+          print(item["id"], item["name"], digest, sep="|")
           '
             )"
             if [ -n "$candidate_artifact_line" ]; then
