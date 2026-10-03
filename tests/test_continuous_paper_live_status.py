@@ -6043,6 +6043,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "connected": True,
                     "reconnect_count": 7,
                     "systemic_l2_stale_reconnect_count": 6,
+                    "systemic_l2_targeted_resubscribe_count": 12,
                     "duplicate_count": 5,
                     "anomaly_count": 1,
                     "last_server_message_ms": 1_699_999_999_900,
@@ -6070,6 +6071,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "connected": False,
                     "reconnect_count": 11,
                     "systemic_l2_stale_reconnect_count": 8,
+                    "systemic_l2_targeted_resubscribe_count": 15,
                     "duplicate_count": 9,
                     "anomaly_count": 0,
                     "last_server_message_ms": 1_699_999_998_000,
@@ -6292,7 +6294,8 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert "L2 supervisor unhealthy markets: 16 / 20" in rendered
     assert (
         "L2 lane 0: connected=true, ready=20, stale=16, "
-        "missing-ready=0, reconnects=7, l2-stale-reconnects=6, "
+        "missing-ready=0, reconnects=7, "
+        "l2-targeted-resubscribes=12, l2-stale-reconnects=6, "
         "server-age=100ms"
         in rendered
     )
@@ -6308,7 +6311,8 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     )
     assert (
         "L2 lane 1: connected=false, ready=18, stale=15, "
-        "missing-ready=2, reconnects=11, l2-stale-reconnects=8, "
+        "missing-ready=2, reconnects=11, "
+        "l2-targeted-resubscribes=15, l2-stale-reconnects=8, "
         "server-age=2000ms"
         in rendered
     )
@@ -6338,6 +6342,8 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "age-min/max=590/690ms"
         in rendered
     )
+    assert "l2-targeted-resubscribes=12" in rendered
+    assert "l2-targeted-resubscribes=15" in rendered
     assert "research telemetry deferred: true" in rendered
     assert "Cadence opportunity learning" not in rendered
     assert "Fixed profit-lock counterfactual" not in rendered
