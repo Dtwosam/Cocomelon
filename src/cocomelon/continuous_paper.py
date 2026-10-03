@@ -57,7 +57,12 @@ from cocomelon.execution.funding import (
     funding_boundary_for_record_time,
 )
 from cocomelon.execution.paper import PaperExecutionAdapter
-from cocomelon.hyperliquid.client import INTERVAL_MS, InfoClient
+from cocomelon.hyperliquid.client import (
+    INTERVAL_MS,
+    InfoClient,
+    InfoHttpError,
+    TransportError,
+)
 from cocomelon.hyperliquid.normalize import (
     normalize_candles,
     normalize_funding_history,
@@ -3902,6 +3907,11 @@ class _RecordPump:
         self.shortlist_rotation_attempts = 0
         self.shortlist_rotation_promotions = 0
         self.shortlist_rotation_readiness_failures = 0
+        self.context_refresh_attempts = 0
+        self.context_refresh_successes = 0
+        self.context_refresh_failures = 0
+        self.context_refresh_consecutive_failures = 0
+        self.context_refresh_last_error: str | None = None
         self.stale_l2_recovery_attempts = 0
         self.stale_l2_recovery_promotions = 0
         self.stale_l2_recovery_readiness_failures = 0
@@ -6551,6 +6561,13 @@ def _live_status_payload(
         "shortlist_rotation_readiness_failures": (
             pump.shortlist_rotation_readiness_failures
         ),
+        "context_refresh_attempts": pump.context_refresh_attempts,
+        "context_refresh_successes": pump.context_refresh_successes,
+        "context_refresh_failures": pump.context_refresh_failures,
+        "context_refresh_consecutive_failures": (
+            pump.context_refresh_consecutive_failures
+        ),
+        "context_refresh_last_error": pump.context_refresh_last_error,
         "stale_l2_recovery_attempts": (
             pump.stale_l2_recovery_attempts
         ),
@@ -7107,6 +7124,13 @@ def _operational_live_status_payload(
         "shortlist_rotation_readiness_failures": (
             pump.shortlist_rotation_readiness_failures
         ),
+        "context_refresh_attempts": pump.context_refresh_attempts,
+        "context_refresh_successes": pump.context_refresh_successes,
+        "context_refresh_failures": pump.context_refresh_failures,
+        "context_refresh_consecutive_failures": (
+            pump.context_refresh_consecutive_failures
+        ),
+        "context_refresh_last_error": pump.context_refresh_last_error,
         "stale_l2_recovery_attempts": (
             pump.stale_l2_recovery_attempts
         ),
@@ -8650,10 +8674,34 @@ async def run_continuous_paper_session(
                 )
 
                 pump.event_loop_phase = "context_refresh"
-                (
-                    refreshed,
-                    refreshed_received_at_ms,
-                ) = await _refresh_native_market_snapshots(reader)
+                pump.context_refresh_attempts += 1
+                try:
+                    (
+                        refreshed,
+                        refreshed_received_at_ms,
+                    ) = await _refresh_native_market_snapshots(reader)
+                except (InfoHttpError, TransportError) as exc:
+                    pump.context_refresh_failures += 1
+                    pump.context_refresh_consecutive_failures += 1
+                    pump.context_refresh_last_error = (
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    pump.event_loop_phase = "control_wait"
+                    _emit_operational_live_status(
+                        execution,
+                        pump,
+                        selected,
+                        replay_config.risk_limits,
+                        timestamp_ms=utc_now_ms(),
+                        l2_supervisor_group=supervisor_group,
+                    )
+                    # Keep the previous context timestamps untouched.
+                    # Eligibility will fail closed as they age, and the next
+                    # normal poll retries with fresh mainnet observations.
+                    continue
+                pump.context_refresh_successes += 1
+                pump.context_refresh_consecutive_failures = 0
+                pump.context_refresh_last_error = None
                 pump.event_loop_phase = "context_postprocess"
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
