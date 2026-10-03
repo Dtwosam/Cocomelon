@@ -328,6 +328,7 @@ def test_stop_path_ledger_accepts_pre_stop_gate_summary() -> None:
     legacy = deepcopy(ledger)
     summary = legacy["summary"]
     assert isinstance(summary, dict)
+    summary.pop("post_integrity_miss")
     summary.pop("risk_budget_stop_investigation")
 
     digest_payload = {
