@@ -4675,3 +4675,14 @@ Issue #828 is the dedicated continuously refreshed status surface. Its workflow 
 This path has no authority to relax weekly drawdown protection, change the live/frozen entry stack, alter sizing or execution, change readiness, promote a candidate, or enable live trading.
 
 **LIVE TRADING: DISABLED.**
+
+
+### LONG+trend execution-shadow config lineage — 2026-10-03
+
+The captured execution shadow now binds each new source artifact to the exact `PaperExecutionConfig` used by the paper worker. Source schema v2 records the execution config version, latency, book/context freshness ceilings, funding grace, IOC slippage ceiling, taker fee rate and fee schedule, native minimum notional, and paper leverage ceiling together with a dedicated config digest covered again by the source digest.
+
+The evaluator treats v2's captured config as authoritative for risk/planner/visible-book IOC replay. Legacy v1 sources remain temporarily evaluable only with an explicit `phase7-v1` fallback so the first #825 artifact can be studied instead of discarded. Every summary states whether its config came from the captured v2 source or the legacy evaluator fallback, and reports the exact config digest.
+
+This prevents future execution-model changes from being silently mixed into the same counterfactual evidence. The change is provenance-only: it does not alter the paper trader's execution config, risk limits, strategy, sizing, stops, readiness, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
