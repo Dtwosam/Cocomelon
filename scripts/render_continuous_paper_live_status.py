@@ -9443,6 +9443,7 @@ def _render_operational_live_status(
                     "ready={ready}, stale={stale}, missing-ready={missing}, "
                     "reconnects={reconnects}, "
                     "l2-stale-reconnects={l2_stale_reconnects}, "
+                    "deadline-drains={deadline_drains}, "
                     "server-age={server_age}ms, "
                     "age-min/max={age_min}/{age_max}ms".format(
                         lane=raw_lane.get("lane", "?"),
@@ -9467,6 +9468,10 @@ def _render_operational_live_status(
                         ),
                         l2_stale_reconnects=raw_lane.get(
                             "systemic_l2_stale_reconnect_count",
+                            0,
+                        ),
+                        deadline_drains=raw_lane.get(
+                            "stale_deadline_buffered_message_count",
                             0,
                         ),
                         server_age=raw_lane.get(
