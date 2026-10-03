@@ -272,22 +272,51 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/failure-receipts-status.md <<EOF
-          ## Prospective candidate first-failure receipts
+          python - <<'PY'
+          import os
+          from pathlib import Path
 
-          **Status:** BLOCKED
+          def shown(value: str | None) -> str:
+              return value or "none"
 
-          - source readiness run: `$SOURCE_RUN_ID`
-          - source readiness attempt: `$SOURCE_RUN_ATTEMPT`
-          - canonical readiness artifact resolved: `$SOURCE_READY`
-          - receipt update outcome: `$UPDATE_OUTCOME`
-
-          The receipt layer refuses to infer or rewrite first-failure evidence when the canonical readiness artifact is missing, pre-lifecycle, invalid, or inconsistent with a prior immutable receipt.
-
-          **Execution authority:** `false`
-          **Promotion authority:** `false`
-          **LIVE TRADING: DISABLED.**
-          EOF
+          lines = [
+              "## Prospective candidate first-failure receipts",
+              "",
+              "**Status:** BLOCKED",
+              "",
+              (
+                  "- source readiness run: "
+                  f"`{shown(os.environ.get('SOURCE_RUN_ID'))}`"
+              ),
+              (
+                  "- source readiness attempt: "
+                  f"`{shown(os.environ.get('SOURCE_RUN_ATTEMPT'))}`"
+              ),
+              (
+                  "- canonical readiness artifact resolved: "
+                  f"`{shown(os.environ.get('SOURCE_READY'))}`"
+              ),
+              (
+                  "- receipt update outcome: "
+                  f"`{shown(os.environ.get('UPDATE_OUTCOME'))}`"
+              ),
+              "",
+              (
+                  "The receipt layer refuses to infer or rewrite first-failure "
+                  "evidence when the canonical readiness artifact is missing, "
+                  "pre-lifecycle, invalid, or inconsistent with a prior "
+                  "immutable receipt."
+              ),
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/failure-receipts-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
           gh api \
             --method PATCH \
             -H "Accept: application/vnd.github+json" \

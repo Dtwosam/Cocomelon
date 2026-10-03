@@ -49,7 +49,7 @@ jobs:
 
       - run: python -m pip install -e .
 
-      - name: Resolve latest completed immutable ledgers
+      - name: Resolve latest coherent immutable ledgers
         id: ledgers
         continue-on-error: true
         env:
@@ -57,93 +57,368 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import io
+          import json
+          import os
+          import subprocess
+          import zipfile
+          from pathlib import Path
 
-          resolve_ledger() {
-            local key="$1"
-            local workflow_file="$2"
-            local artifact_prefix="$3"
-            local expected_file="$4"
-            local out_dir="/tmp/readiness-$key"
+          repo = os.environ["GITHUB_REPOSITORY"]
+          output_path = Path(os.environ["GITHUB_OUTPUT"])
 
-            local runs_json
-            runs_json="$(
-              gh api                 -H "Accept: application/vnd.github+json"                 "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow_file/runs?branch=main&per_page=100"
-            )"
-            local run_line
-            run_line="$(
-              jq -r '
-                .workflow_runs
-                | map(select(.status == "completed"))
-                | sort_by(.updated_at)
-                | reverse
-                | .[0]
-                | if . == null
-                  then ""
-                  else [.id, .run_attempt, .conclusion] | @tsv
-                  end
-              ' <<<"$runs_json"
-            )"
-            if [[ -z "$run_line" ]]; then
-              echo "No completed $key ledger workflow run exists." >&2
-              return 1
-            fi
+          def gh_json(endpoint: str) -> dict[str, object]:
+              raw = subprocess.check_output(
+                  [
+                      "gh",
+                      "api",
+                      "-H",
+                      "Accept: application/vnd.github+json",
+                      endpoint,
+                  ]
+              )
+              payload = json.loads(raw)
+              if not isinstance(payload, dict):
+                  raise SystemExit(f"GitHub API payload is not an object: {endpoint}")
+              return payload
 
-            local run_id run_attempt conclusion
-            IFS=$'\t' read -r run_id run_attempt conclusion <<<"$run_line"
-            if [[ "$conclusion" != "success" ]]; then
-              echo "Latest completed $key ledger run $run_id concluded $conclusion." >&2
-              return 1
-            fi
+          def gh_bytes(endpoint: str) -> bytes:
+              return subprocess.check_output(
+                  [
+                      "gh",
+                      "api",
+                      "-H",
+                      "Accept: application/vnd.github+json",
+                      endpoint,
+                  ]
+              )
 
-            local artifacts_json artifact_line
-            artifacts_json="$(
-              gh api                 -H "Accept: application/vnd.github+json"                 "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
-            )"
-            artifact_line="$(
-              jq -r                 --arg prefix "$artifact_prefix"                 '.artifacts
-                 | map(
-                     select(
-                       (.expired | not)
-                       and (.name | startswith($prefix))
-                     )
-                   )
-                 | if length == 1
-                   then [.[0].id, .[0].name, .[0].digest] | @tsv
-                   else ""
-                   end'                 <<<"$artifacts_json"
-            )"
-            if [[ -z "$artifact_line" ]]; then
-              echo "Expected exactly one current $key ledger artifact." >&2
-              return 1
-            fi
+          def completed_runs(workflow_file: str) -> list[dict[str, object]]:
+              payload = gh_json(
+                  f"repos/{repo}/actions/workflows/{workflow_file}/runs"
+                  "?branch=main&per_page=100"
+              )
+              runs = [
+                  run
+                  for run in payload.get("workflow_runs", [])
+                  if isinstance(run, dict)
+                  and run.get("status") == "completed"
+              ]
+              runs.sort(
+                  key=lambda item: str(item.get("updated_at") or ""),
+                  reverse=True,
+              )
+              if not runs:
+                  raise SystemExit(
+                      f"No completed {workflow_file} workflow run exists."
+                  )
+              latest = runs[0]
+              if latest.get("conclusion") != "success":
+                  raise SystemExit(
+                      "Latest completed "
+                      f"{workflow_file} run {latest.get('id')} concluded "
+                      f"{latest.get('conclusion')}."
+                  )
+              return runs
 
-            local artifact_id artifact_name artifact_digest
-            IFS=$'\t' read -r               artifact_id artifact_name artifact_digest               <<<"$artifact_line"
-            rm -rf "$out_dir" "$out_dir.zip"
-            mkdir -p "$out_dir"
-            gh api               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > "$out_dir.zip"
-            unzip -q "$out_dir.zip" -d "$out_dir"
-            local ledger_path
-            ledger_path="$(
-              find "$out_dir"                 -type f                 -name "$expected_file"                 -print -quit
-            )"
-            if [[ -z "$ledger_path" || ! -s "$ledger_path" ]]; then
-              echo "$key ledger JSON is missing." >&2
-              return 1
-            fi
+          def artifact_for_run(
+              run: dict[str, object],
+              *,
+              prefix: str,
+              required: bool,
+          ) -> dict[str, object] | None:
+              run_id = run.get("id")
+              if not isinstance(run_id, int):
+                  raise SystemExit("workflow run ID is invalid")
+              payload = gh_json(
+                  f"repos/{repo}/actions/runs/{run_id}/artifacts?per_page=100"
+              )
+              matches = [
+                  item
+                  for item in payload.get("artifacts", [])
+                  if isinstance(item, dict)
+                  and item.get("expired") is False
+                  and isinstance(item.get("name"), str)
+                  and item["name"].startswith(prefix)
+              ]
+              if len(matches) > 1:
+                  raise SystemExit(
+                      f"Multiple current artifacts with prefix {prefix} "
+                      f"exist for run {run_id}."
+                  )
+              if not matches:
+                  if required:
+                      raise SystemExit(
+                          f"Expected exactly one current artifact with prefix "
+                          f"{prefix} for latest run {run_id}."
+                      )
+                  return None
+              artifact = matches[0]
+              digest = artifact.get("digest")
+              if not isinstance(digest, str) or not digest.startswith("sha256:"):
+                  raise SystemExit(
+                      f"Artifact digest is missing or invalid for run {run_id}."
+                  )
+              return artifact
 
-            {
-              echo "${key}_path=$ledger_path"
-              echo "${key}_run_id=$run_id"
-              echo "${key}_run_attempt=$run_attempt"
-              echo "${key}_artifact_name=$artifact_name"
-              echo "${key}_artifact_digest=$artifact_digest"
-            } >> "$GITHUB_OUTPUT"
-          }
+          def load_artifact_json(
+              run: dict[str, object],
+              artifact: dict[str, object],
+              *,
+              expected_file: str,
+          ) -> tuple[dict[str, object], bytes]:
+              artifact_id = artifact.get("id")
+              if not isinstance(artifact_id, int):
+                  raise SystemExit("artifact ID is invalid")
+              blob = gh_bytes(
+                  f"repos/{repo}/actions/artifacts/{artifact_id}/zip"
+              )
+              expected_digest = artifact["digest"]
+              actual_digest = "sha256:" + hashlib.sha256(blob).hexdigest()
+              if actual_digest != expected_digest:
+                  raise SystemExit(
+                      f"Artifact digest mismatch for {artifact.get('name')}."
+                  )
+              with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+                  matches = [
+                      name
+                      for name in archive.namelist()
+                      if Path(name).name == expected_file
+                  ]
+                  if len(matches) != 1:
+                      raise SystemExit(
+                          f"Expected exactly one {expected_file} in "
+                          f"{artifact.get('name')}."
+                      )
+                  data = archive.read(matches[0])
+              payload = json.loads(data)
+              if not isinstance(payload, dict):
+                  raise SystemExit(f"{expected_file} must contain an object")
+              return payload, data
 
-          resolve_ledger             prediction             prospective-cadence-prediction-ledger.yml             cadence-microstructure-prediction-ledger-             cadence-microstructure-prediction-ledger.json
-          resolve_ledger             comparison             prospective-cadence-comparison-ledger.yml             cadence-model-comparison-ledger-             cadence-model-comparison-ledger.json
-          resolve_ledger             timing             prospective-side-conditioned-timing-ledger.yml             prospective-side-conditioned-timing-ledger-             prospective-side-conditioned-timing-ledger.json
+          def candidate_ledgers(
+              workflow_file: str,
+              *,
+              artifact_prefix: str,
+              expected_file: str,
+          ) -> list[dict[str, object]]:
+              runs = completed_runs(workflow_file)
+              latest_artifact = artifact_for_run(
+                  runs[0],
+                  prefix=artifact_prefix,
+                  required=True,
+              )
+              assert latest_artifact is not None
+              candidates: list[dict[str, object]] = []
+              for run in runs:
+                  if run.get("conclusion") != "success":
+                      continue
+                  artifact = artifact_for_run(
+                      run,
+                      prefix=artifact_prefix,
+                      required=False,
+                  )
+                  if artifact is None:
+                      continue
+                  payload, data = load_artifact_json(
+                      run,
+                      artifact,
+                      expected_file=expected_file,
+                  )
+                  candidates.append(
+                      {
+                          "run": run,
+                          "artifact": artifact,
+                          "payload": payload,
+                          "data": data,
+                      }
+                  )
+                  if len(candidates) >= 40:
+                      break
+              if not candidates:
+                  raise SystemExit(
+                      f"No authenticated {artifact_prefix} artifact is available."
+                  )
+              return candidates
+
+          prediction_candidates = candidate_ledgers(
+              "prospective-cadence-prediction-ledger.yml",
+              artifact_prefix="cadence-microstructure-prediction-ledger-",
+              expected_file="cadence-microstructure-prediction-ledger.json",
+          )
+          comparison_candidates = candidate_ledgers(
+              "prospective-cadence-comparison-ledger.yml",
+              artifact_prefix="cadence-model-comparison-ledger-",
+              expected_file="cadence-model-comparison-ledger.json",
+          )
+
+          def cadence_signature(
+              item: dict[str, object],
+              *,
+              comparison: bool,
+          ) -> tuple[int, int, str]:
+              payload = item["payload"]
+              assert isinstance(payload, dict)
+              row_count = payload.get("row_count")
+              start = payload.get("prospective_start_ms")
+              digest = payload.get("frozen_training_rows_sha256")
+              if (
+                  isinstance(row_count, bool)
+                  or not isinstance(row_count, int)
+                  or isinstance(start, bool)
+                  or not isinstance(start, int)
+                  or not isinstance(digest, str)
+                  or not digest
+              ):
+                  raise SystemExit("cadence ledger cohort metadata is invalid")
+              if comparison and payload.get("prospective_rows") != row_count:
+                  raise SystemExit(
+                      "comparison prospective_rows does not match row_count"
+                  )
+              return row_count, start, digest
+
+          comparison_by_signature: dict[
+              tuple[int, int, str],
+              dict[str, object],
+          ] = {}
+          for item in comparison_candidates:
+              signature = cadence_signature(item, comparison=True)
+              comparison_by_signature.setdefault(signature, item)
+
+          coherent: list[
+              tuple[
+                  tuple[int, int, str],
+                  dict[str, object],
+                  dict[str, object],
+              ]
+          ] = []
+          for prediction in prediction_candidates:
+              signature = cadence_signature(
+                  prediction,
+                  comparison=False,
+              )
+              comparison = comparison_by_signature.get(signature)
+              if comparison is not None:
+                  coherent.append((signature, prediction, comparison))
+
+          if not coherent:
+              raise SystemExit(
+                  "No authenticated prediction/comparison ledger pair shares "
+                  "the same immutable cadence horizon."
+              )
+
+          coherent.sort(
+              key=lambda item: (
+                  item[0][0],
+                  str(
+                      (
+                          item[1]["run"]
+                          if isinstance(item[1]["run"], dict)
+                          else {}
+                      ).get("updated_at")
+                      or ""
+                  ),
+                  str(
+                      (
+                          item[2]["run"]
+                          if isinstance(item[2]["run"], dict)
+                          else {}
+                      ).get("updated_at")
+                      or ""
+                  ),
+              ),
+              reverse=True,
+          )
+          signature, prediction, comparison = coherent[0]
+
+          timing_runs = completed_runs(
+              "prospective-side-conditioned-timing-ledger.yml"
+          )
+          timing_artifact = artifact_for_run(
+              timing_runs[0],
+              prefix="prospective-side-conditioned-timing-ledger-",
+              required=True,
+          )
+          assert timing_artifact is not None
+          timing_payload, timing_data = load_artifact_json(
+              timing_runs[0],
+              timing_artifact,
+              expected_file="prospective-side-conditioned-timing-ledger.json",
+          )
+          del timing_payload
+
+          selections = (
+              (
+                  "prediction",
+                  prediction,
+                  "cadence-microstructure-prediction-ledger.json",
+              ),
+              (
+                  "comparison",
+                  comparison,
+                  "cadence-model-comparison-ledger.json",
+              ),
+          )
+          output_lines: list[str] = []
+          for key, item, filename in selections:
+              run = item["run"]
+              artifact = item["artifact"]
+              data = item["data"]
+              assert isinstance(run, dict)
+              assert isinstance(artifact, dict)
+              assert isinstance(data, bytes)
+              run_id = run.get("id")
+              run_attempt = run.get("run_attempt")
+              if not isinstance(run_id, int) or not isinstance(run_attempt, int):
+                  raise SystemExit(f"{key} workflow run identity is invalid")
+              out_dir = Path(f"/tmp/readiness-{key}")
+              out_dir.mkdir(parents=True, exist_ok=True)
+              ledger_path = out_dir / filename
+              ledger_path.write_bytes(data)
+              output_lines.extend(
+                  [
+                      f"{key}_path={ledger_path}",
+                      f"{key}_run_id={run_id}",
+                      f"{key}_run_attempt={run_attempt}",
+                      f"{key}_artifact_name={artifact['name']}",
+                      f"{key}_artifact_digest={artifact['digest']}",
+                  ]
+              )
+
+          timing_run = timing_runs[0]
+          timing_run_id = timing_run.get("id")
+          timing_run_attempt = timing_run.get("run_attempt")
+          if (
+              not isinstance(timing_run_id, int)
+              or not isinstance(timing_run_attempt, int)
+          ):
+              raise SystemExit("timing workflow run identity is invalid")
+          timing_dir = Path("/tmp/readiness-timing")
+          timing_dir.mkdir(parents=True, exist_ok=True)
+          timing_path = (
+              timing_dir
+              / "prospective-side-conditioned-timing-ledger.json"
+          )
+          timing_path.write_bytes(timing_data)
+          output_lines.extend(
+              [
+                  f"timing_path={timing_path}",
+                  f"timing_run_id={timing_run_id}",
+                  f"timing_run_attempt={timing_run_attempt}",
+                  f"timing_artifact_name={timing_artifact['name']}",
+                  f"timing_artifact_digest={timing_artifact['digest']}",
+                  f"cadence_cohort_row_count={signature[0]}",
+                  f"cadence_cohort_start_ms={signature[1]}",
+                  f"cadence_cohort_training_digest={signature[2]}",
+              ]
+          )
+          output_path.write_text(
+              "\n".join(output_lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
 
       - name: Build fail-closed readiness manifest
         id: evaluate
@@ -220,6 +495,7 @@ jobs:
           PREDICTION_RUN_ID: ${{ steps.ledgers.outputs.prediction_run_id }}
           COMPARISON_RUN_ID: ${{ steps.ledgers.outputs.comparison_run_id }}
           TIMING_RUN_ID: ${{ steps.ledgers.outputs.timing_run_id }}
+          CADENCE_COHORT_ROWS: ${{ steps.ledgers.outputs.cadence_cohort_row_count }}
         shell: bash
         run: |
           set -euo pipefail
@@ -279,6 +555,10 @@ jobs:
               (
                   "- timing prospective start: "
                   f"`{iso_ms(timing['started_at_ms'])}`"
+              ),
+              (
+                  "- coherent cadence cohort rows: "
+                  f"`{os.environ['CADENCE_COHORT_ROWS']}`"
               ),
               "- cross-ledger cadence alignment: `clean`",
               "",

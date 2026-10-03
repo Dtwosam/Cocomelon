@@ -20,6 +20,20 @@ def test_failure_receipt_workflow_is_research_only_and_append_only() -> None:
     assert "workflow_dispatch" in source
     assert "schedule:" in source
 
+    blocked = source.split(
+        "      - name: Publish blocked receipt status",
+        1,
+    )[1].split(
+        "      - name: Fail closed on receipt integrity",
+        1,
+    )[0]
+    assert "python - <<'PY'" in blocked
+    assert "SOURCE_RUN_ID" in blocked
+    assert "SOURCE_RUN_ATTEMPT" in blocked
+    assert "**Execution authority:** `false`" in blocked
+    assert "**Promotion authority:** `false`" in blocked
+    assert "<<EOF" not in blocked
+
     forbidden = (
         "continuous-paper.yml",
         "workflow_dispatch inputs confirm",
