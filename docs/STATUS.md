@@ -4621,3 +4621,16 @@ The supervisor now reconnects when either the majority of L2 subscriptions becom
 No book-freshness ceiling, eligibility rule, strategy threshold, risk limit, sizing rule, stop, readiness gate, promotion state, or live-order authority is changed.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Stagger-aware L2 group recovery escalation — 2026-10-03
+
+Worker `37132034182` on `105c412` showed the lane-level reconnect watchdog working, but also exposed an escalation race. Lane 0 had already entered its frozen-L2 reconnect path while lane 1 was still inside the configured redundant-lane reconnect stagger. During that overlap both lanes could briefly report the same markets stale, causing the control loop to escalate immediately to REST reseed plus whole-group websocket replacement.
+
+The runtime now distinguishes hard book freshness from full-group recovery escalation. Books still become stale at the existing eligibility ceiling and remain ineligible for trading immediately. However, whole-group recovery now waits for each redundant lane to exceed its lane-specific recovery grace, giving the staggered lane reconnect mechanism time to heal the feed before the runtime tears down both lanes.
+
+The default escalation window is derived from the existing reconnect stagger: with the current 5-second stagger, lane 0 receives 5 seconds of self-recovery headroom after the hard freshness ceiling and lane 1 receives 10 seconds. If the redundant lanes remain stale beyond those windows, the existing REST reseed and replacement-group fallback still executes fail-closed.
+
+No book freshness threshold, strategy threshold, risk rule, sizing rule, stop, readiness gate, promotion state, or live-order authority is relaxed.
+
+**LIVE TRADING: DISABLED.**

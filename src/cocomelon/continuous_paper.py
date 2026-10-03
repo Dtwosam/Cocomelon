@@ -1410,6 +1410,7 @@ class _SupervisorGroup:
     required_market_keys: frozenset[str]
     ready_market_keys: tuple[set[str], ...]
     l2_exchange_age_ms_by_market: tuple[dict[str, int], ...] = ()
+    l2_group_recovery_grace_ms_by_lane: tuple[int, ...] = ()
 
     def stale_l2_market_keys(
         self,
@@ -1438,6 +1439,19 @@ class _SupervisorGroup:
             raise RuntimeError(
                 "supervisor and L2 readiness lane counts differ"
             )
+        if (
+            self.l2_group_recovery_grace_ms_by_lane
+            and len(self.l2_group_recovery_grace_ms_by_lane)
+            != len(self.supervisors)
+        ):
+            raise RuntimeError(
+                "supervisor and L2 recovery-grace lane counts differ"
+            )
+        grace_by_lane = (
+            self.l2_group_recovery_grace_ms_by_lane
+            if self.l2_group_recovery_grace_ms_by_lane
+            else tuple(0 for _ in self.supervisors)
+        )
         stale_by_lane = tuple(
             set(supervisor.stale_l2_streams(now_ms=now_ms))
             for supervisor in self.supervisors
@@ -1446,7 +1460,25 @@ class _SupervisorGroup:
             market
             for market in self.required_market_keys
             if all(
-                f"l2Book:{market}" in stale_by_lane[lane]
+                (
+                    (stream_id := f"l2Book:{market}")
+                    in stale_by_lane[lane]
+                )
+                and (
+                    grace_by_lane[lane] == 0
+                    or (
+                        (
+                            overage_ms := self.supervisors[
+                                lane
+                            ].l2_stale_overage_ms(
+                                stream_id,
+                                now_ms=now_ms,
+                            )
+                        )
+                        is not None
+                        and overage_ms >= grace_by_lane[lane]
+                    )
+                )
                 for lane in range(len(self.supervisors))
             )
         )
@@ -8472,6 +8504,10 @@ async def run_continuous_paper_session(
                 tasks.append(
                     asyncio.create_task(supervisor.run())
                 )
+            recovery_step_ms = max(
+                1_000,
+                config.websocket_redundant_lane_reconnect_stagger_ms,
+            )
             return _SupervisorGroup(
                 supervisors=tuple(supervisors),
                 tasks=tuple(tasks),
@@ -8480,6 +8516,10 @@ async def run_continuous_paper_session(
                 ready_market_keys=ready_market_keys,
                 l2_exchange_age_ms_by_market=(
                     l2_exchange_age_ms_by_market
+                ),
+                l2_group_recovery_grace_ms_by_lane=tuple(
+                    (lane + 1) * recovery_step_ms
+                    for lane in range(len(supervisors))
                 ),
             )
 
