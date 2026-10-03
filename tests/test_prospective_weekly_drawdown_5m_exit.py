@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# ruff: noqa: I001 -- red TDD imports reference modules added next.
+
 from datetime import UTC, datetime
 from decimal import Decimal
 
