@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-# ruff: noqa: I001 -- red TDD imports reference modules added next.
-
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -221,7 +219,14 @@ def _full_stack_summary(
     *,
     integrity_last_miss_at_ms: int | None,
     stack_decision: str = "ADMIT",
+    stop_status: str = "observed_path_survivor",
 ) -> dict[str, object]:
+    stop_crossed = (
+        True if stop_status == "observed_stop_crossing" else False
+    )
+    stop_survived = (
+        True if stop_status == "observed_path_survivor" else False
+    )
     return {
         "enabled": True,
         "error": None,
@@ -258,6 +263,47 @@ def _full_stack_summary(
                 "block_layer": (
                     "none" if stack_decision == "ADMIT" else "momentum"
                 ),
+                "stop_path": {
+                    "claim_scope": "observed_mark_stop_crossing_only",
+                    "original_stop_price": "90",
+                    "entry_reference_price": "100",
+                    "changes_execution": False,
+                    "changes_risk_limits": False,
+                    "changes_candidate_readiness": False,
+                    "horizons": {
+                        str(EXIT_HORIZON_MS): {
+                            "status": stop_status,
+                            "target_at_ms": (
+                                evidence.opportunity_timestamp_ms
+                                + EXIT_HORIZON_MS
+                            ),
+                            "observed_mark_count": (
+                                0 if stop_status == "no_causal_marks" else 3
+                            ),
+                            "stop_crossed": (
+                                None
+                                if stop_status == "no_causal_marks"
+                                else stop_crossed
+                            ),
+                            "first_stop_cross_at_ms": (
+                                evidence.opportunity_timestamp_ms + 120_000
+                                if stop_crossed
+                                else None
+                            ),
+                            "first_stop_cross_mark_px": (
+                                "89" if stop_crossed else None
+                            ),
+                            "time_to_stop_ms": (
+                                120_000 if stop_crossed else None
+                            ),
+                            "survived_observed_marks_to_horizon": (
+                                None
+                                if stop_status == "no_causal_marks"
+                                else stop_survived
+                            ),
+                        }
+                    },
+                },
             }
         ],
     }
@@ -268,13 +314,13 @@ def _source(
     *,
     state: ProspectiveWeeklyDrawdown5mExitState,
     exit_book: OpeningOpportunityExitBookEvidence | None,
-    cooldown_active: bool = False,
+    stop_status: str = "observed_path_survivor",
 ) -> dict[str, object]:
-    del cooldown_active
     return prospective_weekly_drawdown_5m_exit_source(
         _full_stack_summary(
             evidence,
             integrity_last_miss_at_ms=state.started_at_ms - 1,
+            stop_status=stop_status,
         ),
         (evidence,),
         (() if exit_book is None else (exit_book,)),
@@ -304,14 +350,14 @@ def test_state_round_trip_freezes_post_deploy_five_minute_rule() -> None:
 
 
 def test_source_exports_only_post_freeze_stack_admit_weekly_lockout() -> None:
-    state = ProspectiveWeeklyDrawdown5mExitState(started_at_ms=9_000_000)
+    state = ProspectiveWeeklyDrawdown5mExitState(started_at_ms=9_995_000)
     evidence = _evidence(timestamp_ms=10_000_000)
     book = _exit_book(evidence)
 
     payload = prospective_weekly_drawdown_5m_exit_source(
         _full_stack_summary(
             evidence,
-            integrity_last_miss_at_ms=8_999_999,
+            integrity_last_miss_at_ms=9_994_999,
         ),
         (evidence,),
         (book,),
@@ -328,6 +374,8 @@ def test_source_exports_only_post_freeze_stack_admit_weekly_lockout() -> None:
     assert isinstance(rows, list)
     assert rows[0]["opportunity_id"] == evidence.opportunity_id
     assert rows[0]["exit_book"]["horizon_ms"] == EXIT_HORIZON_MS
+    assert rows[0]["stop_path"]["status"] == "observed_path_survivor"
+    assert rows[0]["stop_path"]["stop_crossed"] is False
 
 
 def test_source_excludes_discovery_rows_before_freeze() -> None:
@@ -352,7 +400,7 @@ def test_source_excludes_discovery_rows_before_freeze() -> None:
 
 def test_source_fails_closed_if_integrity_break_reaches_candidate_window() -> None:
     evidence = _evidence(timestamp_ms=10_000_000)
-    state = ProspectiveWeeklyDrawdown5mExitState(started_at_ms=9_000_000)
+    state = ProspectiveWeeklyDrawdown5mExitState(started_at_ms=9_995_000)
 
     with pytest.raises(
         ProspectiveWeeklyDrawdown5mExitSourceError,
@@ -361,7 +409,7 @@ def test_source_fails_closed_if_integrity_break_reaches_candidate_window() -> No
         prospective_weekly_drawdown_5m_exit_source(
             _full_stack_summary(
                 evidence,
-                integrity_last_miss_at_ms=9_500_000,
+                integrity_last_miss_at_ms=9_998_000,
             ),
             (evidence,),
             (_exit_book(evidence),),
@@ -373,7 +421,7 @@ def test_source_fails_closed_if_integrity_break_reaches_candidate_window() -> No
 
 def test_shadow_replays_entry_and_exact_real_l2_five_minute_exit() -> None:
     evidence = _evidence(timestamp_ms=10_000_000)
-    state = ProspectiveWeeklyDrawdown5mExitState(started_at_ms=9_000_000)
+    state = ProspectiveWeeklyDrawdown5mExitState(started_at_ms=9_995_000)
 
     result = prospective_weekly_drawdown_5m_exit_summary(
         _source(
@@ -407,7 +455,7 @@ def test_shadow_exposes_other_veto_after_weekly_drawdown_removed() -> None:
         timestamp_ms=20_000_000,
         cooldown_active=True,
     )
-    state = ProspectiveWeeklyDrawdown5mExitState(started_at_ms=19_000_000)
+    state = ProspectiveWeeklyDrawdown5mExitState(started_at_ms=19_995_000)
 
     result = prospective_weekly_drawdown_5m_exit_summary(
         _source(
@@ -427,7 +475,7 @@ def test_shadow_exposes_other_veto_after_weekly_drawdown_removed() -> None:
 
 def test_shadow_keeps_missing_five_minute_exit_book_incomplete() -> None:
     evidence = _evidence(timestamp_ms=30_000_000)
-    state = ProspectiveWeeklyDrawdown5mExitState(started_at_ms=29_000_000)
+    state = ProspectiveWeeklyDrawdown5mExitState(started_at_ms=29_995_000)
 
     result = prospective_weekly_drawdown_5m_exit_summary(
         _source(
@@ -444,9 +492,60 @@ def test_shadow_keeps_missing_five_minute_exit_book_incomplete() -> None:
     assert option["incomplete_reason"] == "missing_exit_book"
 
 
+def test_shadow_does_not_credit_five_minute_exit_after_observed_stop_cross() -> None:
+    evidence = _evidence(timestamp_ms=35_000_000)
+    state = ProspectiveWeeklyDrawdown5mExitState(
+        started_at_ms=34_995_000
+    )
+
+    result = prospective_weekly_drawdown_5m_exit_summary(
+        _source(
+            evidence,
+            state=state,
+            exit_book=_exit_book(evidence),
+            stop_status="observed_stop_crossing",
+        )
+    )
+
+    assert result["observed_stop_survivor_options"] == 0
+    assert result["observed_stop_crossing_options"] == 1
+    assert result["exact_realized_pnl_options"] == 0
+    option = result["option_results"][0]
+    assert option["stop_path_status"] == "observed_stop_crossing"
+    assert option["exact_realized_pnl"] is None
+    assert (
+        option["incomplete_reason"]
+        == "observed_stop_crossing_before_5m"
+    )
+
+
+def test_shadow_keeps_unobserved_stop_path_incomplete() -> None:
+    evidence = _evidence(timestamp_ms=36_000_000)
+    state = ProspectiveWeeklyDrawdown5mExitState(
+        started_at_ms=35_995_000
+    )
+
+    result = prospective_weekly_drawdown_5m_exit_summary(
+        _source(
+            evidence,
+            state=state,
+            exit_book=_exit_book(evidence),
+            stop_status="no_causal_marks",
+        )
+    )
+
+    assert result["observed_stop_survivor_options"] == 0
+    assert result["observed_stop_path_incomplete_options"] == 1
+    assert result["exact_realized_pnl_options"] == 0
+    option = result["option_results"][0]
+    assert option["stop_path_status"] == "no_causal_marks"
+    assert option["exact_realized_pnl"] is None
+    assert option["incomplete_reason"] == "stop_path_not_evaluable"
+
+
 def test_shadow_rejects_tampered_source_digest() -> None:
     evidence = _evidence(timestamp_ms=40_000_000)
-    state = ProspectiveWeeklyDrawdown5mExitState(started_at_ms=39_000_000)
+    state = ProspectiveWeeklyDrawdown5mExitState(started_at_ms=39_995_000)
     source = _source(
         evidence,
         state=state,
