@@ -17,7 +17,7 @@ DOSSIER_KIND: Final = "prospective-risk-budget-investigation-dossier-v1"
 WEEKLY_DRAWDOWN_5M_CANDIDATE_ID: Final = (
     "prospective-weekly-drawdown-stack-admit-5m-v1"
 )
-WEEKLY_DRAWDOWN_5M_FROZEN_AT_MS: Final = 1_791_057_000_000
+WEEKLY_DRAWDOWN_5M_FROZEN_AT_MS: Final = 1_791_057_218_000
 WEEKLY_DRAWDOWN_5M_HORIZON_MS: Final = 300_000
 WEEKLY_DRAWDOWN_REASON: Final = "weekly_drawdown_lockout"
 WEEKLY_DRAWDOWN_5M_REVIEW_ROWS: Final = 20
