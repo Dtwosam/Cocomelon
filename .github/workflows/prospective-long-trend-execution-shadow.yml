@@ -284,22 +284,40 @@ jobs:
           WAIT_REASON: ${{ steps.compact.outputs.reason }}
         run: |
           set -euo pipefail
-          cat > /tmp/long-trend-execution-shadow-status.md <<EOF
-          ## LONG+trend execution-shadow evidence
+          python - <<'PY'
+          import os
+          from pathlib import Path
 
-          **Status:** waiting for compatible compact source
-
-          - source paper run / attempt: `$SOURCE_RUN_ID / $SOURCE_RUN_ATTEMPT`
-          - source resolution: `$SOURCE_RESOLUTION`
-          - reason: $WAIT_REASON
-
-          No counterfactual fill or PnL evidence is credited from this run.
-
-          **Execution authority:** `false`
-          **Promotion authority:** `false`
-          **Changes risk limits:** `false`
-          **LIVE TRADING: DISABLED.**
-          EOF
+          lines = [
+              "## LONG+trend execution-shadow evidence",
+              "",
+              "**Status:** waiting for compatible compact source",
+              "",
+              (
+                  "- source paper run / attempt: "
+                  f"`{os.environ['SOURCE_RUN_ID']} / "
+                  f"{os.environ['SOURCE_RUN_ATTEMPT']}`"
+              ),
+              (
+                  "- source resolution: "
+                  f"`{os.environ['SOURCE_RESOLUTION']}`"
+              ),
+              f"- reason: {os.environ.get('WAIT_REASON') or 'source is not yet eligible'}",
+              "",
+              "No counterfactual fill or PnL evidence is credited from this run.",
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**Changes risk limits:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path(
+              "/tmp/long-trend-execution-shadow-status.md"
+          ).write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
           gh api \
             --method PATCH \
             -H "Accept: application/vnd.github+json" \
