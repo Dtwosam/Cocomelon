@@ -73,6 +73,20 @@ def test_stop_path_workflow_surfaces_crossings_by_filter_layer() -> None:
     assert 'item["by_combined_reason"]' in source
 
 
+def test_stop_path_workflow_surfaces_risk_budget_survival_gate() -> None:
+    source = _source()
+
+    assert "### Risk-budget stop-survival gate" in source
+    assert "ready reasons" in source
+    assert "minimum evaluable / markets / LONG / SHORT per horizon" in source
+    assert "### Stop-survival readiness by risk reason" in source
+    assert "leave_one_opportunity_min_survival_margin" in source
+    assert "leave_one_market_min_survival_margin" in source
+    assert "coverage_complete" in source
+    assert "Issue #774 must also pass" in source
+    assert "Neither gate can relax risk by itself." in source
+
+
 def test_stop_path_workflow_keeps_claim_scope_narrow() -> None:
     source = _source()
 

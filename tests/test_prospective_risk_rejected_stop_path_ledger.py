@@ -78,13 +78,14 @@ def _row(
     layer: str,
     combined_reason: str | None,
     crossed: bool | None,
+    direction: str = "long",
 ) -> dict[str, object]:
     decision = "ADMIT" if layer == "none" else "BLOCK"
     return {
         "opportunity_id": f"opportunity-{suffix}",
         "timestamp_ms": timestamp_ms,
         "market": market,
-        "direction": "long",
+        "direction": direction,
         "lead_strategy": "trend",
         "baseline_risk_approved": False,
         "baseline_risk_reason_codes": ["weekly_drawdown_lockout"],
@@ -186,6 +187,101 @@ def test_stop_path_ledger_freezes_resolved_and_keeps_pending() -> None:
     assert five["by_block_layer"]["momentum"]["survivors"] == 1
     assert five["by_combined_reason"]["long_trend"]["crossings"] == 1
     validate_risk_rejected_stop_path_ledger(ledger)
+
+
+def _ready_stop_rows(*, crossings: int) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    markets = ("SOL", "ETH", "BTC", "HYPE")
+    for index in range(12):
+        rows.append(
+            _row(
+                f"ready-{index}",
+                timestamp_ms=START + index + 1,
+                market=markets[index % len(markets)],
+                layer="none",
+                combined_reason=None,
+                crossed=index < crossings,
+                direction=("long" if index % 2 == 0 else "short"),
+            )
+        )
+    return rows
+
+
+def test_stop_path_ledger_gates_risk_investigation_on_robust_survival() -> None:
+    ledger = _update(_source(_ready_stop_rows(crossings=4)))
+    gate = ledger["summary"]["risk_budget_stop_investigation"]
+
+    assert gate["scope"] == (
+        "risk_rejected_stack_admit_stop_survival_only"
+    )
+    assert gate["ready_reasons"] == ["weekly_drawdown_lockout"]
+    assert gate["min_evaluable_per_horizon"] == 12
+    assert gate["min_markets_per_horizon"] == 4
+    assert gate["min_long_evaluable_per_horizon"] == 3
+    assert gate["min_short_evaluable_per_horizon"] == 3
+
+    reason = gate["by_reason"]["weekly_drawdown_lockout"]
+    assert reason["ready_for_risk_budget_stop_investigation"] is True
+    for item in reason["horizons"].values():
+        assert item["evaluable"] == 12
+        assert item["survivors"] == 8
+        assert item["crossings"] == 4
+        assert item["survival_margin"] == 4
+        assert item["market_count"] == 4
+        assert item["long_evaluable"] == 6
+        assert item["short_evaluable"] == 6
+        assert item["coverage_complete"] is True
+        assert item["sample_complete"] is True
+        assert item["survivor_majority"] is True
+        assert item["single_opportunity_robust"] is True
+        assert item["single_market_robust"] is True
+        assert (
+            item["ready_for_risk_budget_stop_investigation"]
+            is True
+        )
+
+
+def test_stop_path_ledger_rejects_tied_survival_for_risk_review() -> None:
+    ledger = _update(_source(_ready_stop_rows(crossings=6)))
+    gate = ledger["summary"]["risk_budget_stop_investigation"]
+
+    assert gate["ready_reasons"] == []
+    reason = gate["by_reason"]["weekly_drawdown_lockout"]
+    assert reason["ready_for_risk_budget_stop_investigation"] is False
+    for item in reason["horizons"].values():
+        assert item["survivors"] == 6
+        assert item["crossings"] == 6
+        assert item["survivor_majority"] is False
+        assert (
+            item["ready_for_risk_budget_stop_investigation"]
+            is False
+        )
+
+
+def test_stop_path_ledger_accepts_pre_stop_gate_summary() -> None:
+    ledger = _update(_source(_ready_stop_rows(crossings=4)))
+    legacy = deepcopy(ledger)
+    summary = legacy["summary"]
+    assert isinstance(summary, dict)
+    summary.pop("risk_budget_stop_investigation")
+
+    digest_payload = {
+        key: value
+        for key, value in legacy.items()
+        if key != "ledger_sha256"
+    }
+    legacy["ledger_sha256"] = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    validated = validate_risk_rejected_stop_path_ledger(legacy)
+    assert validated["row_count"] == 12
 
 
 def test_stop_path_ledger_preserves_terminal_rows() -> None:

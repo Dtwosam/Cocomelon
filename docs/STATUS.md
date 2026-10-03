@@ -4496,3 +4496,17 @@ Previously published ledger artifacts remain valid through an explicit pre-stop-
 Passing this gate still authorizes only deeper paper execution-shadow investigation. It does not change the frozen entry stack, risk limits, sizing, execution, candidate readiness, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+### Risk-budget stop-survival investigation gate — 2026-10-03
+
+The risk-rejected return ledger already requires a diversified, robust positive forward-markout sample before any rejected reason can be considered for deeper risk-budget investigation. Return evidence alone is not enough to show that a blocked setup would have survived its original decision-time stop.
+
+The append-only risk-rejected stop-path ledger now adds a separate, necessary stop-survival gate over only the frozen full-stack ADMIT rows that were rejected by risk. For each risk reason and each fixed 5m / 15m / 60m horizon it requires complete observed stop-path coverage, at least 12 evaluable opportunities across at least 4 markets with at least 3 LONG and 3 SHORT, strictly more observed path survivors than observed stop crossings, and a positive survivor-minus-crossing margin after removing any one opportunity and after removing any one market.
+
+The gate is deliberately conjunctive with the existing return/economic gate in Issue #774. Passing the stop-survival gate alone cannot relax a risk limit, and passing the return gate alone cannot relax a risk limit. Both remain research evidence for a later, explicit investigation only.
+
+Previously published stop-path ledger artifacts remain valid through explicit legacy-summary compatibility. Immutable rows and their source binding are unchanged.
+
+This changes no risk limit, sizing rule, strategy threshold, execution behavior, candidate readiness, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
