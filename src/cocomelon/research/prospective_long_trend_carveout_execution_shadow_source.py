@@ -9,21 +9,36 @@ from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityEvidence,
 )
+from cocomelon.research.continuous_paper_opening_opportunity_exit_books import (
+    OpeningOpportunityExitBookEvidence,
+)
 from cocomelon.research.continuous_paper_opening_opportunity_paths import (
     ContinuousPaperOpeningOpportunityPath,
+)
+from cocomelon.research.continuous_paper_replacement_funding import (
+    ReplacementFundingBoundaryEvidence,
 )
 from cocomelon.research.prospective_full_stack_forward_markout import (
     LONG_TREND_CARVEOUT_CANDIDATE_ID,
 )
 
-SCHEMA_VERSION: Final = 2
+SCHEMA_VERSION: Final = 3
 SOURCE_KIND: Final = (
+    "prospective-long-trend-carveout-execution-shadow-source-v3"
+)
+LEGACY_CONFIG_SOURCE_KIND: Final = (
     "prospective-long-trend-carveout-execution-shadow-source-v2"
 )
 LEGACY_SOURCE_KIND: Final = (
     "prospective-long-trend-carveout-execution-shadow-source-v1"
 )
 WEEKLY_DRAWDOWN_REASON: Final = "weekly_drawdown_lockout"
+FIXED_EXIT_HORIZONS_MS: Final = (
+    5 * 60 * 1_000,
+    15 * 60 * 1_000,
+    60 * 60 * 1_000,
+)
+MAX_EXIT_BOOK_CAPTURE_LAG_MS: Final = 120_000
 
 
 class ProspectiveLongTrendExecutionShadowSourceError(RuntimeError):
@@ -118,6 +133,9 @@ def prospective_long_trend_execution_shadow_source(
     opportunities: Sequence[ContinuousPaperOpeningOpportunityEvidence],
     paths: Sequence[ContinuousPaperOpeningOpportunityPath],
     execution_config: PaperExecutionConfig,
+    *,
+    exit_books: Sequence[OpeningOpportunityExitBookEvidence] = (),
+    funding_records: Sequence[ReplacementFundingBoundaryEvidence] = (),
 ) -> dict[str, object]:
     if not isinstance(full_stack_summary, dict):
         raise ProspectiveLongTrendExecutionShadowSourceError(
@@ -269,6 +287,75 @@ def prospective_long_trend_execution_shadow_source(
             "duplicate execution-shadow source opportunity id"
         )
 
+    exported_ids = set(row_ids)
+    exported_evidence = {
+        evidence.opportunity_id: evidence
+        for evidence in opportunity_map.values()
+        if evidence.opportunity_id in exported_ids
+    }
+    selected_exit_books: list[dict[str, object]] = []
+    seen_exit_books: set[tuple[str, int]] = set()
+    for exit_book in exit_books:
+        if exit_book.opportunity_id not in exported_ids:
+            continue
+        if exit_book.horizon_ms not in FIXED_EXIT_HORIZONS_MS:
+            continue
+        evidence = exported_evidence[exit_book.opportunity_id]
+        if (
+            exit_book.market != evidence.market
+            or exit_book.direction != evidence.direction
+            or exit_book.opportunity_timestamp_ms
+            != evidence.opportunity_timestamp_ms
+        ):
+            raise ProspectiveLongTrendExecutionShadowSourceError(
+                "execution-shadow exit-book lineage mismatch"
+            )
+        key = (exit_book.opportunity_id, exit_book.horizon_ms)
+        if key in seen_exit_books:
+            raise ProspectiveLongTrendExecutionShadowSourceError(
+                "duplicate execution-shadow exit book"
+            )
+        seen_exit_books.add(key)
+        selected_exit_books.append(exit_book.to_dict())
+    selected_exit_books.sort(
+        key=lambda item: (
+            cast(int, item["opportunity_timestamp_ms"]),
+            cast(str, item["market"]),
+            cast(str, item["opportunity_id"]),
+            cast(int, item["horizon_ms"]),
+        )
+    )
+
+    max_close_offset_ms = (
+        max(FIXED_EXIT_HORIZONS_MS)
+        + MAX_EXIT_BOOK_CAPTURE_LAG_MS
+        + execution_config.latency_ms
+    )
+    selected_funding_records: list[dict[str, object]] = []
+    seen_funding: set[tuple[str, int]] = set()
+    for funding in funding_records:
+        relevant = any(
+            funding.market == evidence.market
+            and evidence.opportunity_timestamp_ms < funding.boundary_ms
+            <= evidence.opportunity_timestamp_ms + max_close_offset_ms
+            for evidence in exported_evidence.values()
+        )
+        if not relevant:
+            continue
+        key = (funding.market, funding.boundary_ms)
+        if key in seen_funding:
+            raise ProspectiveLongTrendExecutionShadowSourceError(
+                "duplicate execution-shadow funding record"
+            )
+        seen_funding.add(key)
+        selected_funding_records.append(funding.to_dict())
+    selected_funding_records.sort(
+        key=lambda item: (
+            cast(int, item["boundary_ms"]),
+            cast(str, item["market"]),
+        )
+    )
+
     config_payload = execution_config_payload(execution_config)
     payload: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
@@ -288,6 +375,18 @@ def prospective_long_trend_execution_shadow_source(
         ),
         "execution_config": config_payload,
         "execution_config_sha256": _sha256(config_payload),
+        "fixed_exit_horizons_ms": list(FIXED_EXIT_HORIZONS_MS),
+        "max_exit_book_capture_lag_ms": MAX_EXIT_BOOK_CAPTURE_LAG_MS,
+        "exit_books": selected_exit_books,
+        "exit_book_count": len(selected_exit_books),
+        "exit_books_sha256": _sha256(selected_exit_books),
+        "missing_exit_books": (
+            len(exported) * len(FIXED_EXIT_HORIZONS_MS)
+            - len(selected_exit_books)
+        ),
+        "funding_records": selected_funding_records,
+        "funding_record_count": len(selected_funding_records),
+        "funding_records_sha256": _sha256(selected_funding_records),
         "source_opportunity_count": len(exported),
         "missing_opportunity_evidence": missing_opportunities,
         "missing_forward_paths": missing_paths,
