@@ -400,6 +400,10 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
         in source
     )
     assert (
+        '"src/cocomelon/research/prospective_weekly_drawdown_5m_exit_source.py"'
+        in source
+    )
+    assert (
         '"src/cocomelon/research/prospective_capacity_reflow_exit_fill.py"'
         in source
     )
