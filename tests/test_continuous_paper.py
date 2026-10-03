@@ -23,6 +23,7 @@ from cocomelon.continuous_paper import (
     _closed_trade_stop_reentry_payload,
     _closed_trade_utc_hour_payload,
     _consecutive_loss_cooldown_status,
+    _cooperative_stream_yield,
     _ContinuousDelayedEntryExecutionShadowSink,
     _ContinuousEntryMidMarkoutSink,
     _ContinuousOpeningFillLiquiditySink,
@@ -807,6 +808,51 @@ def test_record_pump_wakes_on_new_decision_epoch() -> None:
         assert wakeup.is_set() is True
 
     asyncio.run(scenario())
+
+
+def test_cooperative_stream_yield_runs_ready_control_task() -> None:
+    async def scenario() -> None:
+        order: list[str] = []
+
+        async def control_task() -> None:
+            order.append("control")
+
+        task = asyncio.create_task(control_task())
+        order.append("stream")
+        await _cooperative_stream_yield()
+        order.append("after_yield")
+        await task
+
+        assert order == ["stream", "control", "after_yield"]
+
+    asyncio.run(scenario())
+
+
+def test_websocket_lane_dispatch_yields_after_event_and_gap() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    event_sink = source.split(
+        "                async def lane_event_sink(",
+        1,
+    )[1].split(
+        "                async def lane_gap_sink(",
+        1,
+    )[0]
+    gap_sink = source.split(
+        "                async def lane_gap_sink(",
+        1,
+    )[1].split(
+        "                supervisor = WebSocketSupervisor(",
+        1,
+    )[0]
+
+    assert event_sink.index("await mux.on_event(lane, event)") < (
+        event_sink.index("await _cooperative_stream_yield()")
+    )
+    assert gap_sink.index("await mux.on_gap(lane, gap)") < (
+        gap_sink.index("await _cooperative_stream_yield()")
+    )
 
 
 def test_event_loop_lag_monitor_records_blocking_phase() -> None:
