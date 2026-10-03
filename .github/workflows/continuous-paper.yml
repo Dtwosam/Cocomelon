@@ -445,6 +445,7 @@ jobs:
             --deep-limit 20 \
             --context-poll-seconds 30 \
             --websocket-server-silence-timeout-ms 15000 \
+            --websocket-redundant-lane-reconnect-stagger-ms 5000 \
             --selection-refresh-seconds 300 \
             --checkpoint-seconds 30 \
             --stop-file /tmp/continuous-paper-upgrade-requested \

@@ -4575,3 +4575,14 @@ The websocket supervisor now yields to the asyncio scheduler after every receive
 No market-data threshold, strategy rule, risk budget, sizing rule, stop, readiness gate, promotion state, or live-order authority changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Stagger redundant L2 lane reconnects — 2026-10-03
+
+Worker `37127438608` on `e755c4c` still showed 16 stale books and zero deep-ready markets after 18 successful full-group recoveries. Pre-recovery lane telemetry showed both redundant websocket lanes disconnecting together after the same systemic-L2-stale trigger, while post-recovery telemetry showed both lanes immediately healthy with 20/20 ready markets and sub-second L2 ages.
+
+The redundant lanes now keep the existing 15-second L2 freshness ceiling but no longer self-reconnect at the same instant. Lane 0 retains the existing systemic-stale reconnect timing; lane 1 receives a fixed 5-second reconnect grace. This preserves strict decision-time stale-book rejection while giving one lane time to reconnect and resubscribe before the second lane tears down.
+
+Server-silence recovery, outer REST reseeding, full-group replacement recovery, stale-data fail-closed behavior, strategy thresholds, risk limits, sizing, stops, readiness, promotion, and live-order authority are unchanged.
+
+**LIVE TRADING: DISABLED.**

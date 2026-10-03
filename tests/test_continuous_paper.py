@@ -1856,8 +1856,13 @@ def test_continuous_context_poll_has_freshness_headroom() -> None:
     assert config.context_poll_seconds == 30
     assert config.context_poll_seconds * 1000 < 60_000
     assert config.websocket_server_silence_timeout_ms == 15_000
+    assert config.websocket_redundant_lane_reconnect_stagger_ms == 5_000
     assert "--context-poll-seconds 30" in workflow
     assert "--websocket-server-silence-timeout-ms 15000" in workflow
+    assert (
+        "--websocket-redundant-lane-reconnect-stagger-ms 5000"
+        in workflow
+    )
     assert "--context-poll-seconds 60" not in workflow
 
 
@@ -1897,6 +1902,29 @@ def test_continuous_config_requires_positive_websocket_silence_timeout() -> None
         ContinuousPaperConfig(
             websocket_server_silence_timeout_ms=0,
         )
+
+
+def test_continuous_config_requires_non_negative_lane_reconnect_stagger() -> None:
+    with pytest.raises(
+        ValueError,
+        match="websocket_redundant_lane_reconnect_stagger_ms",
+    ):
+        ContinuousPaperConfig(
+            websocket_redundant_lane_reconnect_stagger_ms=-1,
+        )
+
+
+def test_runtime_staggers_redundant_l2_lane_reconnects() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "systemic_l2_stale_reconnect_grace_ms=(\n"
+        "                        lane\n"
+        "                        * config.websocket_redundant_lane_reconnect_stagger_ms"
+        in source
+    )
 
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:

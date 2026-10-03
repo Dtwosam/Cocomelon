@@ -275,6 +275,107 @@ def test_systemic_l2_stale_on_active_socket_forces_reconnect() -> None:
         )
 
 
+def test_systemic_l2_reconnect_grace_delays_lane_teardown() -> None:
+    async def run() -> None:
+        now = [1_000]
+
+        def book_for(coin: str, time_ms: int) -> dict[str, object]:
+            return {
+                "channel": "l2Book",
+                "data": {
+                    "coin": coin,
+                    "levels": [
+                        [{"n": 1, "px": "99", "sz": "1"}],
+                        [{"n": 1, "px": "101", "sz": "1"}],
+                    ],
+                    "time": time_ms,
+                },
+            }
+
+        rows: list[tuple[int, object]] = [
+            (1_000, book_for("BTC", 1_000)),
+            (1_001, book_for("ETH", 1_001)),
+            (7_000, trade(1, 7_000)),
+        ]
+
+        class ClockedConnection(FakeConnection):
+            def __init__(self) -> None:
+                super().__init__([])
+                self.clock_rows = rows
+
+            async def recv_json(self) -> dict[str, object]:
+                timestamp_ms, row = self.clock_rows.pop(0)
+                now[0] = timestamp_ms
+                assert isinstance(row, dict)
+                return row
+
+        connection = ClockedConnection()
+        gaps: list[DataGap] = []
+
+        async def factory() -> ClockedConnection:
+            return connection
+
+        async def event_sink(_event: StreamEvent) -> None:
+            return None
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            (
+                {"type": "l2Book", "coin": "BTC"},
+                {"type": "l2Book", "coin": "ETH"},
+                {"type": "trades", "coin": "BTC"},
+            ),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime.fromtimestamp(
+                now[0] / 1000,
+                tz=UTC,
+            ),
+            stale_after_ms=5_000,
+            systemic_l2_stale_reconnect_fraction=0.5,
+            systemic_l2_stale_reconnect_grace_ms=3_000,
+        )
+        await supervisor.run(
+            max_sessions=1,
+            max_messages_per_session=3,
+        )
+
+        assert supervisor.health.reconnect_count == 0
+        assert supervisor.health.systemic_l2_stale_reconnect_count == 0
+        assert any(
+            gap.reason == "stale"
+            and gap.stream_id == "l2Book:BTC"
+            for gap in gaps
+        )
+        assert any(
+            gap.reason == "stale"
+            and gap.stream_id == "l2Book:ETH"
+            for gap in gaps
+        )
+
+    asyncio.run(run())
+
+
+def test_systemic_l2_stale_reconnect_grace_must_be_non_negative() -> None:
+    with pytest.raises(
+        ValueError,
+        match="systemic_l2_stale_reconnect_grace_ms",
+    ):
+        WebSocketSupervisor(
+            lambda: None,  # type: ignore[arg-type]
+            (),
+            event_sink=lambda _event: None,  # type: ignore[arg-type]
+            gap_sink=lambda _gap: None,  # type: ignore[arg-type]
+            clock_ms=lambda: 0,
+            utcnow=lambda: datetime.now(UTC),
+            systemic_l2_stale_reconnect_grace_ms=-1,
+        )
+
+
 def test_systemic_l2_stale_reconnect_fraction_must_be_valid() -> None:
     for value in (0.0, -0.1, 1.1):
         with pytest.raises(
