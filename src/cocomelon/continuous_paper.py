@@ -455,6 +455,7 @@ class ContinuousPaperConfig:
     deep_limit: int = 20
     context_poll_seconds: int = 30
     websocket_server_silence_timeout_ms: int = 15_000
+    websocket_l2_reconnect_grace_ms: int = 5_000
     selection_refresh_seconds: int = 300
     checkpoint_seconds: int = 30
     warmup_5m_bars: int = 25
@@ -470,6 +471,10 @@ class ContinuousPaperConfig:
         if self.websocket_server_silence_timeout_ms <= 0:
             raise ValueError(
                 "websocket_server_silence_timeout_ms must be positive"
+            )
+        if self.websocket_l2_reconnect_grace_ms <= 0:
+            raise ValueError(
+                "websocket_l2_reconnect_grace_ms must be positive"
             )
         if self.selection_refresh_seconds < self.context_poll_seconds:
             raise ValueError("selection_refresh_seconds must be >= context_poll_seconds")
@@ -1448,6 +1453,31 @@ class _SupervisorGroup:
             )
         )
 
+    def local_l2_reconnect_grace_active(
+        self,
+        *,
+        now_ms: int,
+        grace_ms: int,
+    ) -> bool:
+        if grace_ms <= 0:
+            raise ValueError("L2 reconnect grace must be positive")
+        for supervisor, task in zip(
+            self.supervisors,
+            self.tasks,
+            strict=True,
+        ):
+            if task.done():
+                continue
+            last_reconnect_ms = (
+                supervisor.health.last_systemic_l2_stale_reconnect_ms
+            )
+            if (
+                last_reconnect_ms is not None
+                and 0 <= now_ms - last_reconnect_ms < grace_ms
+            ):
+                return True
+        return False
+
     def systemically_stale_l2(
         self,
         *,
@@ -1524,6 +1554,17 @@ def _supervisor_group_health_payload(
                 "reconnect_count": health.reconnect_count,
                 "systemic_l2_stale_reconnect_count": (
                     health.systemic_l2_stale_reconnect_count
+                ),
+                "last_systemic_l2_stale_reconnect_ms": (
+                    health.last_systemic_l2_stale_reconnect_ms
+                ),
+                "systemic_l2_stale_reconnect_age_ms": (
+                    None
+                    if health.last_systemic_l2_stale_reconnect_ms is None
+                    else max(
+                        0,
+                        now_ms - health.last_systemic_l2_stale_reconnect_ms,
+                    )
                 ),
                 "duplicate_count": health.duplicate_count,
                 "anomaly_count": health.anomaly_count,
@@ -8532,6 +8573,38 @@ async def run_continuous_paper_session(
             )
             if not systemically_unhealthy_l2:
                 return False
+
+            if supervisor_group.local_l2_reconnect_grace_active(
+                now_ms=health_now_ms,
+                grace_ms=config.websocket_l2_reconnect_grace_ms,
+            ):
+                pump.event_loop_phase = "l2_reconnect_grace"
+                locally_healed = await _wait_supervisor_group_ready(
+                    supervisor_group,
+                    timeout_seconds=(
+                        config.websocket_l2_reconnect_grace_ms / 1000
+                    ),
+                )
+                pump.event_loop_phase = "l2_recovery"
+                if locally_healed:
+                    if pipeline_recovery_boundary_ms is not None:
+                        last_pipeline_stale_recovery_boundary_ms = (
+                            pipeline_recovery_boundary_ms
+                        )
+                    return False
+
+                health_now_ms = utc_now_ms()
+                supervisor_unhealthy_market_keys = (
+                    supervisor_group.unhealthy_l2_market_keys(
+                        now_ms=health_now_ms,
+                    )
+                )
+                supervisor_systemically_unhealthy_l2 = (
+                    _is_systemic_l2_failure(
+                        supervisor_group.required_market_keys,
+                        supervisor_unhealthy_market_keys,
+                    )
+                )
 
             pump.last_stale_l2_recovery_trigger = {
                 "timestamp_ms": health_now_ms,
