@@ -130,6 +130,18 @@ def test_long_trend_carveout_gate_cannot_authorize_trading() -> None:
     assert ">=10 reopened pure LONG+trend opportunities" in source
 
 
+def test_long_trend_carveout_status_surfaces_exit_timing() -> None:
+    source = _source()
+
+    assert "Reopened LONG+trend exit timing" in source
+    assert "early exit preferred / 60m preferred / tied" in source
+    assert "five_min_minus_sixty_min" in source
+    assert "fifteen_min_minus_sixty_min" in source
+    assert "five_min_minus_fifteen_min" in source
+    assert "leave_one_opportunity_min_mean" in source
+    assert "leave_one_market_min_mean" in source
+
+
 def test_long_trend_carveout_status_surfaces_stop_path_survival() -> None:
     source = _source()
 
