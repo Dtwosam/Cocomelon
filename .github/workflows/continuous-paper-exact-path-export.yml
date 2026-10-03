@@ -53,6 +53,7 @@ jobs:
           set -euo pipefail
           source_run_id=""
           source_attempt=""
+          resolution_mode=""
 
           if [ "$EVENT_NAME" = "workflow_run" ] && [ "$EVENT_CONCLUSION" != "success" ]; then
             echo "eligible=false" >> "$GITHUB_OUTPUT"
@@ -63,9 +64,11 @@ jobs:
           if [ "$EVENT_NAME" = "workflow_run" ]; then
             source_run_id="$EVENT_RUN_ID"
             source_attempt="$EVENT_RUN_ATTEMPT"
+            resolution_mode="successful_event"
           elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$DISPATCH_RUN_ID" ]; then
             source_run_id="$DISPATCH_RUN_ID"
             source_attempt="$DISPATCH_RUN_ATTEMPT"
+            resolution_mode="manual_exact"
           else
             runs_json="$(
               gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=50"
@@ -89,6 +92,7 @@ jobs:
                   break
           '
             )"
+            resolution_mode="latest_successful"
           fi
 
           if [[ ! "$source_run_id" =~ ^[0-9]+$ ]]; then
@@ -102,6 +106,82 @@ jobs:
           fi
           if [[ ! "$source_attempt" =~ ^[0-9]+$ ]]; then
             echo "source run attempt is missing or invalid" >&2
+            exit 1
+          fi
+
+          artifact_for_run() {
+            local candidate_run_id="$1"
+            local candidate_attempt="$2"
+            local expected_name="continuous-paper-state-$candidate_run_id-$candidate_attempt"
+            local artifacts_json
+            artifacts_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/artifacts?per_page=100"
+            )"
+            printf '%s' "$artifacts_json" |
+            ARTIFACT_NAME="$expected_name" python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          name = os.environ["ARTIFACT_NAME"]
+          matches = [
+              item for item in payload.get("artifacts", [])
+              if item.get("name") == name and item.get("expired") is False
+          ]
+          if not matches:
+              raise SystemExit(0)
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected at most one non-expired source artifact named {name}"
+              )
+          print(matches[0]["id"])
+          '
+          }
+
+          artifact_id="$(artifact_for_run "$source_run_id" "$source_attempt")"
+          strict_manual=false
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$DISPATCH_RUN_ID" ]; then
+            strict_manual=true
+          fi
+          if [ -z "$artifact_id" ] && [ "$strict_manual" != "true" ]; then
+            runs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=50"
+            )"
+            mapfile -t artifact_candidates < <(
+              printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in payload.get("workflow_runs", []):
+              if (
+                  run.get("path") == ".github/workflows/continuous-paper.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and (run.get("head_repository") or {}).get("full_name") == repo
+                  and isinstance(run.get("id"), int)
+                  and isinstance(run.get("run_attempt"), int)
+              ):
+                  print(run["id"], run["run_attempt"], sep="\t")
+          '
+            )
+            for candidate in "${artifact_candidates[@]}"; do
+              IFS=$'\t' read -r candidate_run_id candidate_attempt <<<"$candidate"
+              if [ "$candidate_run_id" = "$source_run_id" ] && [ "$candidate_attempt" = "$source_attempt" ]; then
+                continue
+              fi
+              candidate_artifact_id="$(
+                artifact_for_run "$candidate_run_id" "$candidate_attempt"
+              )"
+              if [ -n "$candidate_artifact_id" ]; then
+                source_run_id="$candidate_run_id"
+                source_attempt="$candidate_attempt"
+                artifact_id="$candidate_artifact_id"
+                resolution_mode="latest_successful_with_state_artifact"
+                break
+              fi
+            done
+          fi
+          if [ -z "$artifact_id" ]; then
+            echo "selected source has no authenticated paper-state artifact" >&2
             exit 1
           fi
 
@@ -130,36 +210,11 @@ jobs:
           '
           )"
 
-          artifact_name="continuous-paper-state-$source_run_id-$source_attempt"
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$source_run_id/artifacts?per_page=100"             > /tmp/source-artifacts.json
-          artifact_id="$(
-            python - "$artifact_name" <<'PY'
-          import json
-          import sys
-          from pathlib import Path
-
-          name = sys.argv[1]
-          payload = json.loads(
-              Path("/tmp/source-artifacts.json").read_text(encoding="utf-8")
-          )
-          matches = [
-              item
-              for item in payload.get("artifacts", [])
-              if item.get("name") == name
-              and item.get("expired") is False
-          ]
-          if len(matches) != 1:
-              raise SystemExit(
-                  f"expected exactly one non-expired source artifact named {name}"
-              )
-          print(matches[0]["id"])
-          PY
-          )"
-
           echo "source_run_id=$source_run_id" >> "$GITHUB_OUTPUT"
           echo "source_attempt=$source_attempt" >> "$GITHUB_OUTPUT"
           echo "source_head_sha=$source_head_sha" >> "$GITHUB_OUTPUT"
           echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+          echo "resolution_mode=$resolution_mode" >> "$GITHUB_OUTPUT"
 
       - name: Stream exact trade-path evidence
         if: ${{ steps.source.outputs.eligible == 'true' }}
