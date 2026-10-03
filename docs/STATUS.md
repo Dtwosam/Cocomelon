@@ -4522,3 +4522,18 @@ If either ledger is missing, stale-format, source-misaligned, or integrity-dirty
 Conjunctive readiness authorizes only deeper research investigation. It does not relax a risk veto, change a risk limit, alter sizing or execution, change strategy/candidate readiness, promote a strategy, or enable live orders.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Lane-local reconnect for systemic L2 subscription silence — 2026-10-03
+
+Live worker `37117105394` showed a repeated market-data failure pattern even after prior recovery and event-loop fixes: 21 guarded stale-L2 recoveries were promoted successfully, reseeding 420 books with zero REST failures, while healthy decision epochs could still later lose most deep readiness.
+
+The per-lane diagnostics isolated the failure before recovery. Both redundant websocket lanes remained connected and continued receiving server traffic within roughly one second, but all 20 L2 subscriptions on each lane were stale and had lost readiness at the same time. The last observed L2 exchange-vs-receive skew remained sub-second, and event-loop stalls were well below the 15-second L2 freshness ceiling. Hyperliquid documents `l2Book` as a snapshot feed pushed on blocks and allows up to 1000 websocket subscriptions, so this pattern is treated as channel-level subscription silence rather than normal quiet-market behavior or quota exhaustion.
+
+`WebSocketSupervisor` now has an opt-in systemic-L2 stale reconnect policy. Continuous paper enables it at the same 50% majority threshold used by the outer systemic recovery logic. When at least that fraction of a lane's L2 subscriptions are stale while the websocket itself is still receiving recent server messages, only that lane reconnects and resubscribes. The existing redundant-lane supervisor, REST reseed, and whole-group replacement remain unchanged as fail-closed fallback paths.
+
+A dedicated `systemic_l2_stale_reconnect_count` is exposed per lane so Issue #469 can verify whether lane-local healing reduces expensive whole-group recovery churn.
+
+No L2 freshness threshold, eligibility rule, strategy threshold, risk veto, sizing rule, stop, readiness gate, promotion state, or live-order authority is relaxed.
+
+**LIVE TRADING: DISABLED.**
