@@ -8680,11 +8680,11 @@ async def run_continuous_paper_session(
                         refreshed,
                         refreshed_received_at_ms,
                     ) = await _refresh_native_market_snapshots(reader)
-                except (InfoHttpError, TransportError) as exc:
+                except (InfoHttpError, TransportError) as refresh_exc:
                     pump.context_refresh_failures += 1
                     pump.context_refresh_consecutive_failures += 1
                     pump.context_refresh_last_error = (
-                        f"{type(exc).__name__}: {exc}"
+                        f"{type(refresh_exc).__name__}: {refresh_exc}"
                     )
                     pump.event_loop_phase = "control_wait"
                     _emit_operational_live_status(
