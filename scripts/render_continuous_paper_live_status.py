@@ -9766,6 +9766,17 @@ def _render_operational_live_status(
                 f"{payload.get('shortlist_rotation_readiness_failures', 0)}"
             ),
             (
+                "- context refresh attempts / success / failures / consecutive: "
+                f"{payload.get('context_refresh_attempts', 0)} / "
+                f"{payload.get('context_refresh_successes', 0)} / "
+                f"{payload.get('context_refresh_failures', 0)} / "
+                f"{payload.get('context_refresh_consecutive_failures', 0)}"
+            ),
+            (
+                "- last context refresh error: "
+                f"{payload.get('context_refresh_last_error')}"
+            ),
+            (
                 "- stale-L2 recoveries attempts / promoted / failed readiness: "
                 f"{payload.get('stale_l2_recovery_attempts', 0)} / "
                 f"{payload.get('stale_l2_recovery_promotions', 0)} / "
