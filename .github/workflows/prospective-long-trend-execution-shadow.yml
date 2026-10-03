@@ -248,10 +248,23 @@ jobs:
           payload = json.loads(
               Path(os.environ["SOURCE_PATH"]).read_text(encoding="utf-8")
           )
+          schema = payload.get("schema_version") if isinstance(payload, dict) else None
+          kind = payload.get("kind") if isinstance(payload, dict) else None
+          legacy_v1 = (
+              schema == 1
+              and kind
+              == "prospective-long-trend-carveout-execution-shadow-source-v1"
+          )
+          config_v2 = (
+              schema == 2
+              and kind
+              == "prospective-long-trend-carveout-execution-shadow-source-v2"
+              and isinstance(payload.get("execution_config"), dict)
+              and isinstance(payload.get("execution_config_sha256"), str)
+          )
           current = (
               isinstance(payload, dict)
-              and payload.get("kind")
-              == "prospective-long-trend-carveout-execution-shadow-source-v1"
+              and (legacy_v1 or config_v2)
               and payload.get("research_only") is True
               and payload.get("execution_authority") is False
               and payload.get("promotion_authority") is False
@@ -370,6 +383,10 @@ jobs:
               f"- source artifact: `{os.environ['SOURCE_ARTIFACT_NAME']}`",
               f"- source artifact digest: `{os.environ['SOURCE_ARTIFACT_DIGEST']}`",
               f"- candidate: `{summary['candidate_id']}`",
+              f"- source schema version: `{summary['source_schema_version']}`",
+              f"- execution config source: `{summary['execution_config_source']}`",
+              f"- execution config version: `{summary['execution_config']['config_version']}`",
+              f"- execution config digest: `{summary['execution_config_sha256']}`",
               f"- source opportunities: `{summary['source_opportunities']}`",
               f"- counterfactual risk approvals: `{summary['counterfactual_risk_approvals']}`",
               f"- counterfactual risk rejections: `{summary['counterfactual_risk_rejections']}`",
