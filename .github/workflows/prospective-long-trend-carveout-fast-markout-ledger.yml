@@ -242,6 +242,11 @@ jobs:
           payload = json.loads(Path(os.environ["SUMMARY_PATH"]).read_text(encoding="utf-8"))
           candidate = payload.get("risk_rejected_long_trend_carveout") if isinstance(payload, dict) else None
           rows = payload.get("risk_rejected_rows") if isinstance(payload, dict) else None
+          stop_overlay = (
+              candidate.get("stop_path_overlay")
+              if isinstance(candidate, dict)
+              else None
+          )
           current = (
               isinstance(candidate, dict)
               and candidate.get("candidate_id") == candidate_id
@@ -250,10 +255,20 @@ jobs:
               and candidate.get("promotion_authority") is False
               and candidate.get("changes_readiness_gate") is False
               and candidate.get("changes_closed_trade_readiness_gate") is False
+              and isinstance(stop_overlay, dict)
+              and stop_overlay.get("enabled") is True
+              and stop_overlay.get("claim_scope") == "observed_mark_stop_crossing_only"
+              and stop_overlay.get("changes_execution") is False
+              and stop_overlay.get("changes_risk_limits") is False
+              and stop_overlay.get("changes_candidate_readiness") is False
               and isinstance(rows, list)
               and all(
                   isinstance(row, dict)
                   and row.get("long_trend_carveout_candidate_id") == candidate_id
+                  and isinstance(
+                      row.get("long_trend_carveout_stop_path"),
+                      dict,
+                  )
                   for row in rows
               )
           )
@@ -262,7 +277,7 @@ jobs:
           )"
           if [ "$format_check" != "current" ]; then
             echo "eligible=false" >> "$GITHUB_OUTPUT"
-            echo "reason=compact source predates long-trend carveout lineage" >> "$GITHUB_OUTPUT"
+            echo "reason=compact source predates long-trend stop-path lineage" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "eligible=true" >> "$GITHUB_OUTPUT"
@@ -511,19 +526,21 @@ jobs:
               "",
               "### Fixed forward horizons",
               "",
-              "| Horizon | Settled | Admit | Block | LONG | SHORT | Markets | Admit mean | Block mean | Spread | LOO spread opp | LOO spread market | Reopened LONG+trend | Reopened markets | Reopened mean | Reopened LOO opp | Reopened LOO market | Ready? |",
-              "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+              "| Horizon | Settled | Admit | Block | LONG | SHORT | Markets | Admit mean | Block mean | Spread | LOO spread opp | LOO spread market | Reopened LONG+trend | Reopened markets | Reopened mean | Reopened LOO opp | Reopened LOO market | Stop eval | Stop crossed | Stop survived | Cross frac | Median TTS | Ready? |",
+              "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
           ]
           for horizon_ms in ledger["forward_horizons_ms"]:
               item = summary["horizons"][str(horizon_ms)]
               spread = item["spread_robustness"]
               reopened = item["reopened_long_trend"]
+              stop_path = item["reopened_long_trend_stop_path"]
               ready = item["investigation_readiness"]
               lines.append(
                   "| {minutes}m | {settled} | {admit} | {block} | {long} | {short} | "
                   "{markets} | {admit_mean} | {block_mean} | {spread} | {loo_opp} | "
                   "{loo_market} | {reopened_n} | {reopened_markets} | {reopened_mean} | "
-                  "{reopened_loo_opp} | {reopened_loo_market} | {ready} |".format(
+                  "{reopened_loo_opp} | {reopened_loo_market} | {stop_eval} | "
+                  "{stop_crossed} | {stop_survived} | {cross_frac} | {median_tts} | {ready} |".format(
                       minutes=horizon_ms // 60000,
                       settled=item["settled_opportunities"],
                       admit=item["admit_settled"],
@@ -541,6 +558,11 @@ jobs:
                       reopened_mean=reopened["mean_directional_return"],
                       reopened_loo_opp=reopened["leave_one_opportunity_min_mean"],
                       reopened_loo_market=reopened["leave_one_market_min_mean"],
+                      stop_eval=stop_path["evaluable"],
+                      stop_crossed=stop_path["crossings"],
+                      stop_survived=stop_path["survivors"],
+                      cross_frac=stop_path["crossing_fraction"],
+                      median_tts=stop_path["median_time_to_stop_ms"],
                       ready=ready["ready_for_execution_shadow_investigation"],
                   )
               )
@@ -549,6 +571,7 @@ jobs:
                   "",
                   "Investigation gate only: every horizon requires >=20 settled opportunities, >=5 ADMIT, >=5 BLOCK, >=5 LONG, >=5 SHORT, >=4 markets, positive admitted mean, negative blocked mean, positive and leave-one robust separation, plus >=10 reopened pure LONG+trend opportunities across >=4 markets with positive leave-one-opportunity and leave-one-market robustness.",
                   "Passing this gate can authorize only a deeper paper execution-shadow investigation. It cannot change the live/frozen entry stack, any risk limit, sizing, candidate readiness, promotion state, or live-order authority.",
+                  "Stop-path survival is descriptive only and is not part of the existing investigation gate. It reports only observed causal marks against the original decision-time stop; it does not model unseen intramillisecond prices, stop fills, slippage, or a complete counterfactual trade lifecycle.",
                   "Only rows with every fixed horizon terminal become immutable. Pending or missing-path rows remain unfrozen.",
                   "Every previously published terminal row must remain byte-for-byte equivalent after canonicalization.",
                   "",
