@@ -4455,3 +4455,16 @@ The review gate can authorize only a deeper paper execution-shadow investigation
 Passing this gate cannot alter the frozen entry stack, risk limits, sizing, candidate readiness, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### LONG+trend carveout observed stop-path survival — 2026-10-03
+
+The durable LONG+trend carveout fast-markout ledger can show a positive 5m / 15m / 60m directional return even when the original decision-time stop would have been crossed earlier. Fixed-horizon recovery therefore is not, by itself, evidence that reopening the pure LONG+trend cohort would produce a viable paper trade.
+
+The full-stack forward-path source now records a research-only stop-path overlay for every opportunity. It binds the exact decision-time invalidation price and entry reference to the already persisted opening-opportunity mark path. For each fixed horizon it reports only what the captured causal marks can prove: an observed stop crossing, an observed-path survivor, or an explicit unresolved state when stop/path/markout evidence is insufficient. It never infers unobserved intramillisecond prices.
+
+The append-only LONG+trend carveout ledger preserves the new stop-path lineage on terminal rows and derives per-horizon reopened-cohort stop-evaluable count, observed crossings, observed survivors, crossing fraction, and median time-to-stop. Existing pre-overlay ledger rows and summaries remain valid, while the workflow waits for a stop-aware compact source before crediting new evidence.
+
+This stop-path overlay is descriptive only and is deliberately excluded from the existing execution-shadow investigation readiness gate. It does not simulate stop fills, slippage, position sizing, funding, replacement capacity, or a complete counterfactual lifecycle. It changes no strategy threshold, risk veto, sizing rule, execution behavior, readiness gate, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
