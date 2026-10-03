@@ -77,3 +77,17 @@ def test_conjunctive_dossier_surfaces_post_integrity_scope() -> None:
     assert "post-integrity source aligned / start" in source
     assert "same post-integrity-miss boundary" in source
     assert "pass both independent gates from scratch" in source
+
+
+
+def test_conjunctive_dossier_surfaces_frozen_weekly_drawdown_5m_candidate() -> None:
+    source = _source()
+
+    assert "Frozen weekly-drawdown 5m recovery candidate" in source
+    assert "paired review rows / required" in source
+    assert "economic / stop-survival ready" in source
+    assert "ready for exact execution-shadow investigation" in source
+    assert "first 20 paired" in source
+    assert "Discovery rows cannot enter the validation cohort" in source
+    assert "later rows cannot rescue a failed first-20 review" in source
+    assert "cannot relax the weekly drawdown veto" in source
