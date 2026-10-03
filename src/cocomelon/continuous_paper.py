@@ -455,6 +455,7 @@ class ContinuousPaperConfig:
     deep_limit: int = 20
     context_poll_seconds: int = 30
     websocket_server_silence_timeout_ms: int = 15_000
+    websocket_redundant_lane_reconnect_stagger_ms: int = 5_000
     selection_refresh_seconds: int = 300
     checkpoint_seconds: int = 30
     warmup_5m_bars: int = 25
@@ -470,6 +471,11 @@ class ContinuousPaperConfig:
         if self.websocket_server_silence_timeout_ms <= 0:
             raise ValueError(
                 "websocket_server_silence_timeout_ms must be positive"
+            )
+        if self.websocket_redundant_lane_reconnect_stagger_ms < 0:
+            raise ValueError(
+                "websocket_redundant_lane_reconnect_stagger_ms "
+                "must be non-negative"
             )
         if self.selection_refresh_seconds < self.context_poll_seconds:
             raise ValueError("selection_refresh_seconds must be >= context_poll_seconds")
@@ -8457,6 +8463,10 @@ async def run_continuous_paper_session(
                         config.websocket_server_silence_timeout_ms
                     ),
                     systemic_l2_stale_reconnect_fraction=0.5,
+                    systemic_l2_stale_reconnect_grace_ms=(
+                        lane
+                        * config.websocket_redundant_lane_reconnect_stagger_ms
+                    ),
                 )
                 supervisors.append(supervisor)
                 tasks.append(
