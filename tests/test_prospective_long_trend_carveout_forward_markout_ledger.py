@@ -458,6 +458,11 @@ def test_carveout_ledger_accepts_pre_stop_path_summary() -> None:
     legacy = deepcopy(ledger)
     summary = legacy["summary"]
     assert isinstance(summary, dict)
+    summary.pop("post_integrity_miss")
+    summary.pop(
+        "effective_all_horizons_ready_for_execution_shadow_investigation"
+    )
+    summary.pop("effective_integrity_scope")
     horizons = summary["horizons"]
     assert isinstance(horizons, dict)
     for item in horizons.values():
@@ -500,6 +505,11 @@ def test_carveout_ledger_accepts_pre_stop_readiness_summary() -> None:
     legacy = deepcopy(ledger)
     summary = legacy["summary"]
     assert isinstance(summary, dict)
+    summary.pop("post_integrity_miss")
+    summary.pop(
+        "effective_all_horizons_ready_for_execution_shadow_investigation"
+    )
+    summary.pop("effective_integrity_scope")
     horizons = summary["horizons"]
     assert isinstance(horizons, dict)
     for item in horizons.values():
