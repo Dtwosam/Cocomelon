@@ -104,8 +104,14 @@ def _row(
     }
 
 
-def _summary(rows: list[dict[str, object]]) -> dict[str, object]:
-    return {
+def _summary(
+    rows: list[dict[str, object]],
+    *,
+    integrity_clean: bool = True,
+    last_miss_at_ms: int | None = None,
+    include_integrity_boundary: bool = True,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
         "enabled": True,
         "error": None,
         "research_only": True,
@@ -122,9 +128,14 @@ def _summary(rows: list[dict[str, object]]) -> dict[str, object]:
         "forward_horizons_ms": [300_000, 900_000, 3_600_000],
         "max_mark_lag_ms": MAX_MARK_LAG_MS,
         "risk_rejected_stack_evaluated": len(rows),
-        "risk_rejected_integrity_clean": True,
+        "risk_rejected_integrity_clean": integrity_clean,
         "risk_rejected_rows": rows,
     }
+    if include_integrity_boundary:
+        payload["risk_rejected_integrity_last_miss_at_ms"] = (
+            last_miss_at_ms
+        )
+    return payload
 
 
 def _update(
@@ -428,8 +439,11 @@ def test_risk_rejected_investigation_readiness_rejects_market_concentration() ->
 
 
 def test_risk_rejected_investigation_readiness_requires_clean_source() -> None:
-    source = _summary(_ready_rows())
-    source["risk_rejected_integrity_clean"] = False
+    source = _summary(
+        _ready_rows(),
+        integrity_clean=False,
+        last_miss_at_ms=START + 5_000,
+    )
     ledger = _update(source)
 
     readiness = ledger["summary"]["risk_budget_investigation_readiness"]
@@ -437,6 +451,55 @@ def test_risk_rejected_investigation_readiness_requires_clean_source() -> None:
     assert readiness["ready_reasons"] == []
     weekly = readiness["by_reason"]["weekly_drawdown_lockout"]
     assert weekly["ready_for_risk_budget_investigation"] is False
+
+
+def test_risk_rejected_post_integrity_cohort_starts_after_last_miss() -> None:
+    old_row = _row(
+        "pre-miss-l",
+        timestamp_ms=START + 4_000,
+        market="SOL",
+        decision="ADMIT",
+        reason="weekly_drawdown_lockout",
+        returns=("0.01", "0.012", "0.015"),
+    )
+    clean_rows = _ready_rows()
+    source = _summary(
+        [old_row, *clean_rows],
+        integrity_clean=False,
+        last_miss_at_ms=START + 5_000,
+    )
+
+    ledger = _update(source)
+    summary = ledger["summary"]
+
+    assert summary["integrity_clean"] is False
+    assert summary["risk_budget_investigation_readiness"][
+        "ready_reasons"
+    ] == []
+    post = summary["post_integrity_miss"]
+    assert post["boundary_known"] is True
+    assert post["last_miss_at_ms"] == START + 5_000
+    assert post["started_at_ms"] == START + 5_001
+    assert post["terminal_opportunity_count"] == 12
+    readiness = post["risk_budget_investigation_readiness"]
+    assert readiness["ready_reasons"] == ["weekly_drawdown_lockout"]
+    assert readiness["changes_risk_limits"] is False
+    assert readiness["execution_authority"] is False
+
+
+def test_risk_rejected_legacy_dirty_source_has_no_clean_boundary() -> None:
+    source = _summary(
+        _ready_rows(),
+        integrity_clean=False,
+        include_integrity_boundary=False,
+    )
+
+    ledger = _update(source)
+    post = ledger["summary"]["post_integrity_miss"]
+
+    assert post["boundary_known"] is False
+    assert post["started_at_ms"] is None
+    assert post["risk_budget_investigation_readiness"] is None
 
 
 def test_risk_rejected_ledger_accepts_pre_layer_summary() -> None:
