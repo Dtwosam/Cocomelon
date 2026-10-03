@@ -60,6 +60,7 @@ class WebSocketSupervisor:
         stale_after_ms: int = 15_000,
         server_silence_timeout_ms: int | None = None,
         systemic_l2_stale_reconnect_fraction: float | None = None,
+        systemic_l2_stale_reconnect_grace_ms: int = 0,
         dedup_size: int = 2048,
     ) -> None:
         if heartbeat_seconds <= 0:
@@ -80,6 +81,10 @@ class WebSocketSupervisor:
             raise ValueError(
                 "systemic_l2_stale_reconnect_fraction must be in (0, 1]"
             )
+        if systemic_l2_stale_reconnect_grace_ms < 0:
+            raise ValueError(
+                "systemic_l2_stale_reconnect_grace_ms must be non-negative"
+            )
         if dedup_size <= 0:
             raise ValueError("dedup_size must be positive")
         self._connection_factory = connection_factory
@@ -94,6 +99,9 @@ class WebSocketSupervisor:
         self._server_silence_timeout_ms = server_silence_timeout_ms
         self._systemic_l2_stale_reconnect_fraction = (
             systemic_l2_stale_reconnect_fraction
+        )
+        self._systemic_l2_stale_reconnect_grace_ms = (
+            systemic_l2_stale_reconnect_grace_ms
         )
         self._dedup_size = dedup_size
         self._recent_keys: dict[str, deque[str]] = defaultdict(deque)
@@ -177,8 +185,16 @@ class WebSocketSupervisor:
             or now_ms - last_server_message_ms >= self._stale_after_ms
         ):
             return False
+        reconnect_after_ms = (
+            self._stale_after_ms
+            + self._systemic_l2_stale_reconnect_grace_ms
+        )
         stale_count = sum(
-            self._l2_stream_is_stale(stream_id, now_ms=now_ms)
+            (
+                (anchor := self._l2_freshness_anchor_ms(stream_id))
+                is not None
+                and now_ms - anchor >= reconnect_after_ms
+            )
             for stream_id in stream_ids
         )
         minimum_stale = (
