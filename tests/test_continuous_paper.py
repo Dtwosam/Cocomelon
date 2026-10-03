@@ -1471,7 +1471,7 @@ def test_runtime_context_refresh_failure_retries_fail_closed() -> None:
         attempt_index,
     )
     except_index = source.index(
-        "except (InfoHttpError, TransportError) as exc:",
+        "except (InfoHttpError, TransportError) as refresh_exc:",
         call_index,
     )
     failure_index = source.index(
