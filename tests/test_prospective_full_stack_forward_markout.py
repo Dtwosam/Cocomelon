@@ -635,11 +635,67 @@ def test_risk_rejected_long_trend_carveout_runs_downstream_stack(
     assert carveout["admitted"] == 1
     assert carveout["blocked"] == 0
     assert carveout["integrity_clean"] is True
+    assert (
+        result[
+            "risk_rejected_long_trend_carveout_integrity_last_miss_at_ms"
+        ]
+        is None
+    )
     one_hour = carveout["horizons"]["3600000"]
     assert one_hour["admit"]["settled"] == 1
     assert one_hour["admit"]["mean_directional_return"] == "0.03"
     readiness = one_hour["review_readiness"]
     assert readiness["changes_closed_trade_readiness_gate"] is False
+
+
+def test_risk_rejected_long_trend_tracks_candidate_only_integrity_miss(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    combined, two_strike, momentum = _states()
+    rejected = _opportunity(
+        suffix="risk-long-trend-missing-feature",
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=START + 1_500,
+        feature_snapshot_id="missing-feature",
+        lead_strategy="trend",
+        approved=False,
+    )
+    rejected = replace(
+        rejected,
+        baseline_risk_reason_codes=("weekly_drawdown_lockout",),
+    )
+
+    result = prospective_full_stack_forward_markout_summary(
+        (rejected,),
+        (_path(rejected, returns=("0.01", "0.02", "0.03")),),
+        (),
+        store,
+        combined,
+        two_strike,
+        momentum,
+    )
+
+    assert result["risk_rejected_integrity_clean"] is True
+    assert result["risk_rejected_integrity_last_miss_at_ms"] is None
+    carveout = result["risk_rejected_long_trend_carveout"]
+    assert isinstance(carveout, dict)
+    assert carveout["integrity_clean"] is False
+    assert carveout["momentum_feature_integrity_misses"] == 1
+    assert (
+        result[
+            "risk_rejected_long_trend_carveout_integrity_last_miss_at_ms"
+        ]
+        == rejected.opportunity_timestamp_ms
+    )
+    rows = result["risk_rejected_rows"]
+    assert isinstance(rows, list)
+    assert rows[0]["long_trend_carveout_decision"] is None
+    assert (
+        rows[0]["long_trend_carveout_momentum_reason"]
+        == "missing_feature_fail_open"
+    )
 
 
 def test_long_trend_carveout_stop_path_records_early_crossing(
@@ -766,6 +822,12 @@ def test_risk_rejected_integrity_is_isolated_from_candidate_readiness(
     assert result["risk_rejected_integrity_clean"] is False
     assert result["risk_rejected_integrity_last_miss_at_ms"] == (
         rejected.opportunity_timestamp_ms
+    )
+    assert (
+        result[
+            "risk_rejected_long_trend_carveout_integrity_last_miss_at_ms"
+        ]
+        == rejected.opportunity_timestamp_ms
     )
     horizons = result["horizons"]
     assert isinstance(horizons, dict)
