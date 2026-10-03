@@ -244,6 +244,172 @@ def _canonical_markout(
     }
 
 
+def _canonical_stop_path(
+    raw: object,
+    *,
+    timestamp_ms: int,
+) -> dict[str, object]:
+    if not isinstance(raw, dict):
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout stop path must be an object"
+        )
+    if raw.get("claim_scope") != "observed_mark_stop_crossing_only":
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout stop path claim scope drift"
+        )
+    stop = _optional_decimal_string(
+        raw.get("original_stop_price"),
+        field="original_stop_price",
+    )
+    entry = _optional_decimal_string(
+        raw.get("entry_reference_price"),
+        field="entry_reference_price",
+    )
+    if entry is None or Decimal(entry) <= ZERO:
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout stop path entry reference must be positive"
+        )
+    if stop is not None and Decimal(stop) <= ZERO:
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout stop path stop must be positive"
+        )
+    if (
+        raw.get("changes_execution") is not False
+        or raw.get("changes_risk_limits") is not False
+        or raw.get("changes_candidate_readiness") is not False
+    ):
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout stop path authority drift"
+        )
+
+    raw_horizons = raw.get("horizons")
+    if not isinstance(raw_horizons, dict):
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout stop path horizons must be an object"
+        )
+    expected = {str(value) for value in FORWARD_HORIZONS_MS}
+    if set(raw_horizons) != expected:
+        raise ProspectiveLongTrendCarveoutLedgerError(
+            "carveout stop path horizon drift"
+        )
+    unresolved = {
+        "missing_stop",
+        "missing_path",
+        "unsupported_horizon",
+        "markout_pending",
+        "markout_stale",
+        "markout_missing_path",
+        "markout_unsupported_horizon",
+        "no_causal_marks",
+    }
+    horizons: dict[str, dict[str, object]] = {}
+    for horizon_ms in FORWARD_HORIZONS_MS:
+        key = str(horizon_ms)
+        item = raw_horizons[key]
+        if not isinstance(item, dict):
+            raise ProspectiveLongTrendCarveoutLedgerError(
+                "carveout stop path horizon must be an object"
+            )
+        status = _required_string(item, "status")
+        target = _required_int(item, "target_at_ms")
+        if target != timestamp_ms + horizon_ms:
+            raise ProspectiveLongTrendCarveoutLedgerError(
+                "carveout stop path target drift"
+            )
+        count = _required_int(item, "observed_mark_count")
+        if count < 0:
+            raise ProspectiveLongTrendCarveoutLedgerError(
+                "carveout stop path mark count is invalid"
+            )
+        crossed = item.get("stop_crossed")
+        survived = item.get("survived_observed_marks_to_horizon")
+        first_at = item.get("first_stop_cross_at_ms")
+        first_px = item.get("first_stop_cross_mark_px")
+        time_to_stop = item.get("time_to_stop_ms")
+
+        if status == "observed_stop_crossing":
+            if crossed is not True or survived is not False or count <= 0:
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "carveout stop crossing flags are invalid"
+                )
+            if (
+                isinstance(first_at, bool)
+                or not isinstance(first_at, int)
+                or first_at <= timestamp_ms
+                or first_at > target
+            ):
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "carveout stop crossing timestamp is invalid"
+                )
+            parsed_px = _optional_decimal_string(
+                first_px,
+                field="first_stop_cross_mark_px",
+            )
+            if parsed_px is None or Decimal(parsed_px) <= ZERO:
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "carveout stop crossing mark is invalid"
+                )
+            if (
+                isinstance(time_to_stop, bool)
+                or not isinstance(time_to_stop, int)
+                or time_to_stop != first_at - timestamp_ms
+            ):
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "carveout stop crossing duration is invalid"
+                )
+        elif status == "observed_path_survivor":
+            if crossed is not False or survived is not True or count <= 0:
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "carveout stop survivor flags are invalid"
+                )
+            if any(
+                value is not None
+                for value in (first_at, first_px, time_to_stop)
+            ):
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "carveout stop survivor contains crossing evidence"
+                )
+            parsed_px = None
+        elif status in unresolved:
+            if crossed is not None or survived is not None:
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "unresolved carveout stop path has resolved flags"
+                )
+            if any(
+                value is not None
+                for value in (first_at, first_px, time_to_stop)
+            ):
+                raise ProspectiveLongTrendCarveoutLedgerError(
+                    "unresolved carveout stop path has crossing evidence"
+                )
+            parsed_px = None
+        else:
+            raise ProspectiveLongTrendCarveoutLedgerError(
+                f"unsupported carveout stop path status: {status}"
+            )
+
+        horizons[key] = {
+            "status": status,
+            "target_at_ms": target,
+            "observed_mark_count": count,
+            "stop_crossed": crossed,
+            "first_stop_cross_at_ms": first_at,
+            "first_stop_cross_mark_px": parsed_px,
+            "time_to_stop_ms": time_to_stop,
+            "survived_observed_marks_to_horizon": survived,
+        }
+
+    return {
+        "claim_scope": "observed_mark_stop_crossing_only",
+        "original_stop_price": stop,
+        "entry_reference_price": entry,
+        "horizons": horizons,
+        "changes_execution": False,
+        "changes_risk_limits": False,
+        "changes_candidate_readiness": False,
+    }
+
+
 def _validate_transition(
     *,
     combined_reason: str | None,
@@ -490,7 +656,7 @@ def _canonical_row(
         for horizon_ms in FORWARD_HORIZONS_MS
     }
 
-    return {
+    row = {
         "opportunity_id": _required_string(raw, "opportunity_id"),
         "timestamp_ms": timestamp_ms,
         "market": _required_string(raw, "market"),
@@ -528,6 +694,15 @@ def _canonical_row(
         ),
         "markouts": markouts,
     }
+    raw_stop_path = raw.get("long_trend_carveout_stop_path")
+    if raw_stop_path is None and "stop_path" in raw:
+        raw_stop_path = raw.get("stop_path")
+    if raw_stop_path is not None:
+        row["stop_path"] = _canonical_stop_path(
+            raw_stop_path,
+            timestamp_ms=timestamp_ms,
+        )
+    return row
 
 
 def _row_identity(row: dict[str, object]) -> tuple[int, str]:
@@ -578,6 +753,16 @@ def _mean(values: Sequence[Decimal]) -> Decimal | None:
     if not values:
         return None
     return sum(values, ZERO) / Decimal(len(values))
+
+
+def _median_int(values: Sequence[int]) -> int | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    midpoint = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[midpoint]
+    return (ordered[midpoint - 1] + ordered[midpoint]) // 2
 
 
 def _mean_robustness(
@@ -715,6 +900,7 @@ def _horizon_summary(
     *,
     horizon_ms: int,
     integrity_clean: bool,
+    include_stop_path: bool = True,
 ) -> dict[str, object]:
     key = str(horizon_ms)
     settled: list[tuple[dict[str, object], Decimal]] = []
@@ -777,6 +963,44 @@ def _horizon_summary(
         cast(str, row["market"]) for row, _value in settled
     }
     reopened_markets = {market for market, _value in reopened}
+    stop_evaluable = 0
+    stop_crossings = 0
+    stop_survivors = 0
+    stop_cross_times: list[int] = []
+    if include_stop_path:
+        for row, _value in settled:
+            if not (
+                row["combined_block_reason"] == "long_trend"
+                and row["original_stack_decision"] == "BLOCK"
+                and row["original_block_layer"] == "combined"
+                and row["carveout_decision"] == "ADMIT"
+            ):
+                continue
+            raw_stop_path = row.get("stop_path")
+            if not isinstance(raw_stop_path, dict):
+                continue
+            raw_horizons = raw_stop_path.get("horizons")
+            if not isinstance(raw_horizons, dict):
+                continue
+            stop_item = raw_horizons.get(key)
+            if not isinstance(stop_item, dict):
+                continue
+            stop_status = stop_item.get("status")
+            if stop_status not in {
+                "observed_stop_crossing",
+                "observed_path_survivor",
+            }:
+                continue
+            stop_evaluable += 1
+            if stop_status == "observed_stop_crossing":
+                stop_crossings += 1
+                raw_time = stop_item.get("time_to_stop_ms")
+                if isinstance(raw_time, int) and not isinstance(
+                    raw_time, bool
+                ):
+                    stop_cross_times.append(raw_time)
+            else:
+                stop_survivors += 1
 
     sample_complete = (
         len(settled) >= MIN_SETTLED_PER_HORIZON
@@ -849,7 +1073,7 @@ def _horizon_summary(
         and reopened_robust
     )
 
-    return {
+    result: dict[str, object] = {
         "horizon_ms": horizon_ms,
         "terminal_opportunities": len(rows),
         "settled_opportunities": len(settled),
@@ -895,6 +1119,26 @@ def _horizon_summary(
             "changes_candidate_readiness": False,
         },
     }
+    if include_stop_path:
+        result["reopened_long_trend_stop_path"] = {
+            "claim_scope": "observed_mark_stop_crossing_only",
+            "evaluable": stop_evaluable,
+            "crossings": stop_crossings,
+            "survivors": stop_survivors,
+            "crossing_fraction": (
+                None
+                if stop_evaluable == 0
+                else str(
+                    Decimal(stop_crossings)
+                    / Decimal(stop_evaluable)
+                )
+            ),
+            "median_time_to_stop_ms": _median_int(stop_cross_times),
+            "changes_execution": False,
+            "changes_risk_limits": False,
+            "changes_candidate_readiness": False,
+        }
+    return result
 
 
 def _summary(
@@ -902,6 +1146,7 @@ def _summary(
     *,
     pending_opportunity_count: int,
     integrity_clean: bool,
+    include_stop_path: bool = True,
 ) -> dict[str, object]:
     row_values = tuple(rows)
     decisions = Counter(
@@ -927,6 +1172,7 @@ def _summary(
             row_values,
             horizon_ms=horizon_ms,
             integrity_clean=integrity_clean,
+            include_stop_path=include_stop_path,
         )
         for horizon_ms in FORWARD_HORIZONS_MS
     }
@@ -1010,11 +1256,18 @@ def validate_long_trend_carveout_ledger(
         and item.get("integrity_clean") is True
         for item in history
     )
-    if raw.get("summary") != _summary(
+    current_summary = _summary(
         rows,
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
-    ):
+    )
+    legacy_summary = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_stop_path=False,
+    )
+    if raw.get("summary") not in (current_summary, legacy_summary):
         raise ProspectiveLongTrendCarveoutLedgerError(
             "carveout summary does not reconcile"
         )

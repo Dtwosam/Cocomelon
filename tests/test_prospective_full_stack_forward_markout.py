@@ -615,6 +615,19 @@ def test_risk_rejected_long_trend_carveout_runs_downstream_stack(
         row["long_trend_carveout_momentum_reason"]
         == "momentum_band_pass"
     )
+    stop_path = row["long_trend_carveout_stop_path"]
+    assert stop_path["original_stop_price"] == "90"
+    assert stop_path["entry_reference_price"] == "100"
+    assert (
+        stop_path["horizons"]["300000"]["status"]
+        == "observed_path_survivor"
+    )
+    assert (
+        stop_path["horizons"]["3600000"][
+            "survived_observed_marks_to_horizon"
+        ]
+        is True
+    )
 
     carveout = result["risk_rejected_long_trend_carveout"]
     assert isinstance(carveout, dict)
@@ -627,6 +640,70 @@ def test_risk_rejected_long_trend_carveout_runs_downstream_stack(
     assert one_hour["admit"]["mean_directional_return"] == "0.03"
     readiness = one_hour["review_readiness"]
     assert readiness["changes_closed_trade_readiness_gate"] is False
+
+
+def test_long_trend_carveout_stop_path_records_early_crossing(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    combined, two_strike, momentum = _states()
+    feature = _record_feature(
+        store,
+        market="SOL",
+        timestamp_ms=START + 900,
+        return_1h="0.03",
+        day_return="0.05",
+    )
+    rejected = _opportunity(
+        suffix="risk-long-trend-stop",
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=START + 1_000,
+        feature_snapshot_id=feature,
+        lead_strategy="trend",
+        approved=False,
+    )
+    rejected = replace(
+        rejected,
+        baseline_risk_reason_codes=("weekly_drawdown_lockout",),
+    )
+    path = _path(rejected, returns=("0.01", "0.02", "0.03"))
+    path = replace(
+        path,
+        marks=(
+            ContinuousPaperOpeningOpportunityPathMark(
+                observed_at_ms=(
+                    rejected.opportunity_timestamp_ms + 60_000
+                ),
+                mark_px=Decimal("89"),
+                source="fixture",
+            ),
+            *path.marks,
+        ),
+    )
+
+    result = prospective_full_stack_forward_markout_summary(
+        (rejected,),
+        (path,),
+        (),
+        store,
+        combined,
+        two_strike,
+        momentum,
+    )
+
+    row = result["risk_rejected_rows"][0]
+    stop_path = row["long_trend_carveout_stop_path"]
+    for horizon in ("300000", "900000", "3600000"):
+        item = stop_path["horizons"][horizon]
+        assert item["status"] == "observed_stop_crossing"
+        assert item["stop_crossed"] is True
+        assert item["first_stop_cross_at_ms"] == (
+            rejected.opportunity_timestamp_ms + 60_000
+        )
+        assert item["first_stop_cross_mark_px"] == "89"
+        assert item["time_to_stop_ms"] == 60_000
+        assert item["survived_observed_marks_to_horizon"] is False
 
 
 def test_risk_rejected_integrity_is_isolated_from_candidate_readiness(

@@ -53,6 +53,10 @@ def test_long_trend_carveout_workflow_binds_exact_paper_source() -> None:
         in source
     )
     assert 'row.get("long_trend_carveout_candidate_id")' in source
+    assert 'candidate.get("stop_path_overlay")' in source
+    assert 'stop_overlay.get("enabled") is True' in source
+    assert '"observed_mark_stop_crossing_only"' in source
+    assert 'row.get("long_trend_carveout_stop_path")' in source
 
 
 def test_long_trend_carveout_workflow_restores_append_only_ledger() -> None:
@@ -93,7 +97,7 @@ def test_long_trend_carveout_legacy_sources_wait_without_credit() -> None:
 
     assert 'print("current" if current else "legacy")' in compact
     assert 'if [ "$format_check" != "current" ]; then' in compact
-    assert "predates long-trend carveout lineage" in compact
+    assert "predates long-trend stop-path lineage" in compact
     assert 'echo "eligible=false"' in compact
     assert "Fail closed on ledger drift" not in compact
 
@@ -113,6 +117,19 @@ def test_long_trend_carveout_gate_cannot_authorize_trading() -> None:
         in source
     )
     assert ">=10 reopened pure LONG+trend opportunities" in source
+
+
+def test_long_trend_carveout_status_surfaces_stop_path_survival() -> None:
+    source = _source()
+
+    assert "Stop eval" in source
+    assert "Stop crossed" in source
+    assert "Stop survived" in source
+    assert 'stop_path["crossing_fraction"]' in source
+    assert 'stop_path["median_time_to_stop_ms"]' in source
+    assert "Stop-path survival is descriptive only" in source
+    assert "does not model unseen intramillisecond prices" in source
+    assert "is not part of the existing investigation gate" in source
 
 
 def test_long_trend_carveout_non_success_wake_falls_back() -> None:
