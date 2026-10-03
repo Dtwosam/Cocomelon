@@ -167,22 +167,38 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/readiness-status.md <<EOF
-          ## Prospective trade-quality readiness
+          python - <<'PY'
+          import os
+          from pathlib import Path
 
-          **Status:** BLOCKED
-
-          - ledger resolution: `$LEDGER_OUTCOME`
-          - readiness evaluation: `$EVALUATE_OUTCOME`
-
-          The aggregate gate refuses to reuse stale successful evidence when the newest completed ledger run is failed, missing, expired, or cross-ledger inconsistent.
-
-          No candidate is marked ready from this run. Prior immutable ledger artifacts remain evidence only.
-
-          **Execution authority:** `false`  
-          **Promotion authority:** `false`  
-          **LIVE TRADING: DISABLED.**
-          EOF
+          lines = [
+              "## Prospective trade-quality readiness",
+              "",
+              "**Status:** BLOCKED",
+              "",
+              f"- ledger resolution: `{os.environ['LEDGER_OUTCOME']}`",
+              f"- readiness evaluation: `{os.environ['EVALUATE_OUTCOME']}`",
+              "",
+              (
+                  "The aggregate gate refuses to reuse stale successful evidence "
+                  "when the newest completed ledger run is failed, missing, "
+                  "expired, or cross-ledger inconsistent."
+              ),
+              "",
+              (
+                  "No candidate is marked ready from this run. Prior immutable "
+                  "ledger artifacts remain evidence only."
+              ),
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/readiness-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
           gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER"             -f body="$(cat /tmp/readiness-status.md)"
 
       - name: Fail closed on readiness integrity
