@@ -901,6 +901,7 @@ def _horizon_summary(
     horizon_ms: int,
     integrity_clean: bool,
     include_stop_path: bool = True,
+    include_stop_readiness: bool = True,
 ) -> dict[str, object]:
     key = str(horizon_ms)
     settled: list[tuple[dict[str, object], Decimal]] = []
@@ -1063,6 +1064,14 @@ def _horizon_summary(
         ]
         is True
     )
+    stop_path_complete = (
+        stop_evaluable == len(reopened)
+        and bool(reopened)
+    )
+    stop_survivor_majority = (
+        stop_evaluable > 0
+        and stop_survivors > stop_crossings
+    )
     ready = (
         integrity_clean
         and sample_complete
@@ -1071,7 +1080,52 @@ def _horizon_summary(
         and reopened_complete
         and reopened_positive
         and reopened_robust
+        and (
+            not include_stop_readiness
+            or (
+                stop_path_complete
+                and stop_survivor_majority
+            )
+        )
     )
+
+    readiness: dict[str, object] = {
+        "ready_for_execution_shadow_investigation": ready,
+        "integrity_clean": integrity_clean,
+        "sample_complete": sample_complete,
+        "separation_positive": separation_positive,
+        "spread_robust": spread_robust,
+        "reopened_sample_complete": reopened_complete,
+        "reopened_mean_positive": reopened_positive,
+        "reopened_robust": reopened_robust,
+        "min_settled": MIN_SETTLED_PER_HORIZON,
+        "min_admit_settled": MIN_ADMIT_SETTLED_PER_HORIZON,
+        "min_block_settled": MIN_BLOCK_SETTLED_PER_HORIZON,
+        "min_long_settled": MIN_LONG_SETTLED_PER_HORIZON,
+        "min_short_settled": MIN_SHORT_SETTLED_PER_HORIZON,
+        "min_markets": MIN_MARKETS_PER_HORIZON,
+        "min_reopened_long_trend_settled": (
+            MIN_REOPENED_LONG_TREND_SETTLED_PER_HORIZON
+        ),
+        "min_reopened_long_trend_markets": (
+            MIN_REOPENED_LONG_TREND_MARKETS_PER_HORIZON
+        ),
+        "changes_execution": False,
+        "changes_risk_limits": False,
+        "changes_candidate_readiness": False,
+    }
+    if include_stop_readiness:
+        readiness.update(
+            {
+                "stop_path_complete_for_reopened_sample": (
+                    stop_path_complete
+                ),
+                "stop_survivor_majority": stop_survivor_majority,
+                "stop_evaluable": stop_evaluable,
+                "stop_crossings": stop_crossings,
+                "stop_survivors": stop_survivors,
+            }
+        )
 
     result: dict[str, object] = {
         "horizon_ms": horizon_ms,
@@ -1093,31 +1147,7 @@ def _horizon_summary(
         "reopened_long_trend_settled": len(reopened),
         "reopened_long_trend_market_count": len(reopened_markets),
         "reopened_long_trend": reopened_robustness,
-        "investigation_readiness": {
-            "ready_for_execution_shadow_investigation": ready,
-            "integrity_clean": integrity_clean,
-            "sample_complete": sample_complete,
-            "separation_positive": separation_positive,
-            "spread_robust": spread_robust,
-            "reopened_sample_complete": reopened_complete,
-            "reopened_mean_positive": reopened_positive,
-            "reopened_robust": reopened_robust,
-            "min_settled": MIN_SETTLED_PER_HORIZON,
-            "min_admit_settled": MIN_ADMIT_SETTLED_PER_HORIZON,
-            "min_block_settled": MIN_BLOCK_SETTLED_PER_HORIZON,
-            "min_long_settled": MIN_LONG_SETTLED_PER_HORIZON,
-            "min_short_settled": MIN_SHORT_SETTLED_PER_HORIZON,
-            "min_markets": MIN_MARKETS_PER_HORIZON,
-            "min_reopened_long_trend_settled": (
-                MIN_REOPENED_LONG_TREND_SETTLED_PER_HORIZON
-            ),
-            "min_reopened_long_trend_markets": (
-                MIN_REOPENED_LONG_TREND_MARKETS_PER_HORIZON
-            ),
-            "changes_execution": False,
-            "changes_risk_limits": False,
-            "changes_candidate_readiness": False,
-        },
+        "investigation_readiness": readiness,
     }
     if include_stop_path:
         result["reopened_long_trend_stop_path"] = {
@@ -1147,6 +1177,7 @@ def _summary(
     pending_opportunity_count: int,
     integrity_clean: bool,
     include_stop_path: bool = True,
+    include_stop_readiness: bool = True,
 ) -> dict[str, object]:
     row_values = tuple(rows)
     decisions = Counter(
@@ -1173,6 +1204,7 @@ def _summary(
             horizon_ms=horizon_ms,
             integrity_clean=integrity_clean,
             include_stop_path=include_stop_path,
+            include_stop_readiness=include_stop_readiness,
         )
         for horizon_ms in FORWARD_HORIZONS_MS
     }
@@ -1261,13 +1293,24 @@ def validate_long_trend_carveout_ledger(
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
     )
+    pre_stop_readiness_summary = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_stop_readiness=False,
+    )
     legacy_summary = _summary(
         rows,
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
         include_stop_path=False,
+        include_stop_readiness=False,
     )
-    if raw.get("summary") not in (current_summary, legacy_summary):
+    if raw.get("summary") not in (
+        current_summary,
+        pre_stop_readiness_summary,
+        legacy_summary,
+    ):
         raise ProspectiveLongTrendCarveoutLedgerError(
             "carveout summary does not reconcile"
         )
