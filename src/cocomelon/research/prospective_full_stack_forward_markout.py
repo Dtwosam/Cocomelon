@@ -733,6 +733,9 @@ def prospective_full_stack_forward_markout_summary(
     risk_rejected_integrity_last_miss_at_ms: int | None = None
     long_trend_carveout_momentum_integrity_misses = 0
     risk_rejected_long_trend_carveout_momentum_integrity_misses = 0
+    risk_rejected_long_trend_carveout_integrity_last_miss_at_ms: (
+        int | None
+    ) = None
     risk_rejected_reason_counts: Counter[str] = Counter()
     block_layer_counts: Counter[str] = Counter()
     decision_counts: Counter[str] = Counter()
@@ -892,6 +895,15 @@ def prospective_full_stack_forward_markout_summary(
                         long_trend_carveout_momentum_integrity_misses += 1
                     else:
                         risk_rejected_long_trend_carveout_momentum_integrity_misses += 1
+                        risk_rejected_long_trend_carveout_integrity_last_miss_at_ms = max(
+                            evidence.opportunity_timestamp_ms,
+                            (
+                                risk_rejected_long_trend_carveout_integrity_last_miss_at_ms
+                                if risk_rejected_long_trend_carveout_integrity_last_miss_at_ms
+                                is not None
+                                else evidence.opportunity_timestamp_ms
+                            ),
+                        )
                     carveout_decision = None
                     carveout_block_layer = None
                     carveout_momentum_reason = (
@@ -1070,6 +1082,20 @@ def prospective_full_stack_forward_markout_summary(
             ),
         )
     )
+    risk_rejected_long_trend_integrity_last_miss_at_ms = max(
+        (
+            value
+            for value in (
+                risk_rejected_integrity_last_miss_at_ms,
+                risk_rejected_long_trend_carveout_integrity_last_miss_at_ms,
+            )
+            if value is not None
+        ),
+        default=None,
+    )
+    risk_rejected_long_trend_carveout[
+        "integrity_last_miss_at_ms"
+    ] = risk_rejected_long_trend_integrity_last_miss_at_ms
     return {
         "research_only": True,
         "execution_authority": False,
