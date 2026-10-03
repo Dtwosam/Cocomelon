@@ -99,10 +99,17 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
     assert "ARTIFACT_HEAD_SHA" in source
     assert 'status = run.get("status")' in source
     assert (
-        'status == "completed" and run.get("conclusion") != "success"'
+        'run.get("conclusion") not in {"success", "failure"}'
         in source
     )
-    assert "completed predecessor run must be successful" in source
+    assert (
+        "completed predecessor run must be success or failure"
+        in source
+    )
+    assert (
+        'run.get("conclusion") in {"success", "failure"}'
+        in source
+    )
     assert source.count("timeout-minutes: 30") >= 2
 
     measure_at = source.index(
@@ -141,6 +148,46 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
     )
     assert "run: rm -f continuous-paper-resume.tar.zst" in source
     assert durable_upload_at < fallback_dispatch_at
+
+
+def test_continuous_paper_failure_still_dispatches_exact_state() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    fast_at = source.index(
+        "- name: Queue exact successor from fast resume"
+    )
+    cleanup_at = source.index(
+        "- name: Remove local fast resume archive",
+        fast_at,
+    )
+    fast_block = source[fast_at:cleanup_at]
+    assert (
+        "if: ${{ always() && steps.guard.outputs.skip != 'true' "
+        "&& steps.fast_resume_upload.outcome == 'success' }}"
+        in fast_block
+    )
+
+    durable_at = source.index(
+        "- name: Upload durable continuous paper state"
+    )
+    fallback_at = source.index(
+        "- name: Queue fallback exact successor continuous paper worker",
+        durable_at,
+    )
+    assert "id: durable_state_upload" in source[
+        durable_at:fallback_at
+    ]
+    fallback_block = source[fallback_at:]
+    assert (
+        "if: ${{ always() && steps.guard.outputs.skip != 'true' "
+        "&& steps.fast_resume_dispatch.outcome != 'success' "
+        "&& steps.durable_state_upload.outcome == 'success' }}"
+        in fallback_block
+    )
+    assert (
+        'run.get("conclusion") in {"success", "failure"}'
+        in source
+    )
 
 
 def test_continuous_paper_upgrade_watchdog_does_not_require_heartbeat() -> None:
