@@ -4483,3 +4483,16 @@ The claim is deliberately narrow: a survivor means no captured causal mark cross
 This overlay changes no strategy threshold, risk veto, risk limit, sizing rule, execution behavior, candidate readiness, promotion state, or live-order authority. Existing Issue #774 rows remain untouched.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Stop-gated LONG+trend carveout readiness — 2026-10-03
+
+The LONG+trend carveout ledger already reported whether reopened opportunities crossed or survived the original decision-time stop, but that evidence was descriptive only: the execution-shadow investigation gate could still pass with no stop-path coverage.
+
+The gate now requires the existing forward-return and robustness conditions plus complete observed stop-path coverage for the reopened LONG+trend sample at every fixed horizon. Among those evaluable reopened opportunities, observed path survivors must strictly outnumber observed stop crossings. This reuses the existing reopened sample floor of at least 10 opportunities across at least 4 markets instead of introducing a looser parallel sample.
+
+Previously published ledger artifacts remain valid through an explicit pre-stop-readiness compatibility summary. Immutable rows are unchanged.
+
+Passing this gate still authorizes only deeper paper execution-shadow investigation. It does not change the frozen entry stack, risk limits, sizing, execution, candidate readiness, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**

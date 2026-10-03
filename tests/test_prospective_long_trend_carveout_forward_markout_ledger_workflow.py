@@ -59,6 +59,17 @@ def test_long_trend_carveout_workflow_binds_exact_paper_source() -> None:
     assert 'row.get("long_trend_carveout_stop_path")' in source
 
 
+def test_long_trend_carveout_workflow_requires_stop_survival_for_review() -> None:
+    source = _source()
+
+    assert "Stop complete?" in source
+    assert "Survivor majority?" in source
+    assert '"stop_path_complete_for_reopened_sample"' in source
+    assert '"stop_survivor_majority"' in source
+    assert "strictly more survivors than observed stop crossings" in source
+    assert "Stop-path survival is descriptive only and is not part" not in source
+
+
 def test_long_trend_carveout_workflow_restores_append_only_ledger() -> None:
     source = _source()
 
@@ -127,9 +138,13 @@ def test_long_trend_carveout_status_surfaces_stop_path_survival() -> None:
     assert "Stop survived" in source
     assert 'stop_path["crossing_fraction"]' in source
     assert 'stop_path["median_time_to_stop_ms"]' in source
-    assert "Stop-path survival is descriptive only" in source
+    assert (
+        "Stop-path evidence reports only observed causal marks"
+        in source
+    )
     assert "does not model unseen intramillisecond prices" in source
-    assert "is not part of the existing investigation gate" in source
+    assert "is not part of the existing investigation gate" not in source
+    assert "complete observed stop-path coverage" in source
 
 
 def test_long_trend_carveout_non_success_wake_falls_back() -> None:

@@ -363,6 +363,16 @@ def test_carveout_ledger_accepts_pre_stop_path_summary() -> None:
     for item in horizons.values():
         assert isinstance(item, dict)
         item.pop("reopened_long_trend_stop_path")
+        readiness = item["investigation_readiness"]
+        assert isinstance(readiness, dict)
+        for key in (
+            "stop_path_complete_for_reopened_sample",
+            "stop_survivor_majority",
+            "stop_evaluable",
+            "stop_crossings",
+            "stop_survivors",
+        ):
+            readiness.pop(key)
 
     digest_payload = {
         key: value
@@ -381,6 +391,51 @@ def test_carveout_ledger_accepts_pre_stop_path_summary() -> None:
 
     validated = validate_long_trend_carveout_ledger(legacy)
     assert validated["row_count"] == 1
+
+
+def test_carveout_ledger_accepts_pre_stop_readiness_summary() -> None:
+    ledger = _update(
+        _summary(_ready_economic_rows(stop_crossings=4))
+    )
+    legacy = deepcopy(ledger)
+    summary = legacy["summary"]
+    assert isinstance(summary, dict)
+    horizons = summary["horizons"]
+    assert isinstance(horizons, dict)
+    for item in horizons.values():
+        assert isinstance(item, dict)
+        readiness = item["investigation_readiness"]
+        assert isinstance(readiness, dict)
+        for key in (
+            "stop_path_complete_for_reopened_sample",
+            "stop_survivor_majority",
+            "stop_evaluable",
+            "stop_crossings",
+            "stop_survivors",
+        ):
+            readiness.pop(key)
+        readiness["ready_for_execution_shadow_investigation"] = True
+    summary[
+        "all_horizons_ready_for_execution_shadow_investigation"
+    ] = True
+
+    digest_payload = {
+        key: value
+        for key, value in legacy.items()
+        if key != "ledger_sha256"
+    }
+    legacy["ledger_sha256"] = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    validated = validate_long_trend_carveout_ledger(legacy)
+    assert validated["row_count"] == 20
 
 
 def test_carveout_ledger_refuses_terminal_history_rewrite() -> None:
@@ -432,21 +487,28 @@ def test_carveout_ledger_rejects_rank_block_becoming_admit() -> None:
         _update(_summary([row]))
 
 
-def test_carveout_ledger_ready_only_for_execution_shadow_investigation() -> None:
+def _ready_economic_rows(
+    *,
+    stop_crossings: int | None,
+) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     markets = ("SOL", "ETH", "BTC", "HYPE")
     for index in range(10):
-        rows.append(
-            _row(
-                f"reopen-{index}",
-                timestamp_ms=START + index + 1,
-                market=markets[index % len(markets)],
-                direction="long",
-                combined_reason="long_trend",
-                carveout_decision="ADMIT",
-                returns=("0.01", "0.02", "0.03"),
-            )
+        row = _row(
+            f"reopen-{index}",
+            timestamp_ms=START + index + 1,
+            market=markets[index % len(markets)],
+            direction="long",
+            combined_reason="long_trend",
+            carveout_decision="ADMIT",
+            returns=("0.01", "0.02", "0.03"),
         )
+        if stop_crossings is not None:
+            row["long_trend_carveout_stop_path"] = _stop_path(
+                timestamp_ms=START + index + 1,
+                crossed=index < stop_crossings,
+            )
+        rows.append(row)
     for index in range(10):
         rows.append(
             _row(
@@ -459,8 +521,13 @@ def test_carveout_ledger_ready_only_for_execution_shadow_investigation() -> None
                 returns=("-0.01", "-0.02", "-0.03"),
             )
         )
+    return rows
 
-    ledger = _update(_summary(rows))
+
+def test_carveout_ledger_ready_only_with_stop_survivor_majority() -> None:
+    ledger = _update(
+        _summary(_ready_economic_rows(stop_crossings=4))
+    )
     summary = ledger["summary"]
     assert (
         summary[
@@ -474,9 +541,54 @@ def test_carveout_ledger_ready_only_for_execution_shadow_investigation() -> None
             readiness["ready_for_execution_shadow_investigation"]
             is True
         )
+        assert (
+            readiness["stop_path_complete_for_reopened_sample"]
+            is True
+        )
+        assert readiness["stop_survivor_majority"] is True
+        assert readiness["stop_evaluable"] == 10
+        assert readiness["stop_crossings"] == 4
+        assert readiness["stop_survivors"] == 6
         assert readiness["changes_execution"] is False
         assert readiness["changes_risk_limits"] is False
         assert readiness["changes_candidate_readiness"] is False
+
+
+def test_carveout_ledger_not_ready_without_stop_path_coverage() -> None:
+    ledger = _update(
+        _summary(_ready_economic_rows(stop_crossings=None))
+    )
+    for item in ledger["summary"]["horizons"].values():
+        readiness = item["investigation_readiness"]
+        assert (
+            readiness["ready_for_execution_shadow_investigation"]
+            is False
+        )
+        assert (
+            readiness["stop_path_complete_for_reopened_sample"]
+            is False
+        )
+        assert readiness["stop_survivor_majority"] is False
+        assert readiness["stop_evaluable"] == 0
+
+
+def test_carveout_ledger_not_ready_without_survivor_majority() -> None:
+    ledger = _update(
+        _summary(_ready_economic_rows(stop_crossings=5))
+    )
+    for item in ledger["summary"]["horizons"].values():
+        readiness = item["investigation_readiness"]
+        assert (
+            readiness["ready_for_execution_shadow_investigation"]
+            is False
+        )
+        assert (
+            readiness["stop_path_complete_for_reopened_sample"]
+            is True
+        )
+        assert readiness["stop_survivor_majority"] is False
+        assert readiness["stop_crossings"] == 5
+        assert readiness["stop_survivors"] == 5
 
 
 def test_carveout_ledger_authority_drift_fails_closed() -> None:
