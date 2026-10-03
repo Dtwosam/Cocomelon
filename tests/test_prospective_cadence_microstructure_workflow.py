@@ -91,7 +91,11 @@ def test_prospective_audit_catches_up_missed_success_events() -> None:
         in source
     )
     assert "latest_success_with_cadence_artifacts" in source
-    assert '.path == ".github/workflows/continuous-paper.yml"' in source
+    assert (
+        'run.get("path") == ".github/workflows/continuous-paper.yml"'
+        in source
+    )
+    assert 'run.get("head_branch") == "main"' in source
     assert "SOURCE_RUN_ID=$source_run_id" in source
     assert "SOURCE_RUN_ATTEMPT=$source_run_attempt" in source
     assert "SOURCE_RESOLUTION_MODE=$resolution_mode" in source
