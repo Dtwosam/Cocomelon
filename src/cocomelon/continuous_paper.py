@@ -319,6 +319,13 @@ from cocomelon.research.prospective_full_stack_exit_capacity_reflow import (
 from cocomelon.research.prospective_full_stack_forward_markout import (
     prospective_full_stack_forward_markout_summary,
 )
+from cocomelon.research.prospective_drawdown_5m_execution import (
+    prospective_drawdown_5m_execution_summary,
+)
+from cocomelon.research.prospective_drawdown_5m_execution_source import (
+    ProspectiveDrawdown5mExecutionState,
+    prospective_drawdown_5m_execution_source,
+)
 from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
     prospective_long_trend_execution_shadow_source,
 )
@@ -412,6 +419,15 @@ PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME = (
 )
 PROSPECTIVE_LONG_TREND_EXECUTION_SHADOW_SOURCE_FILENAME = (
     "prospective-long-trend-execution-shadow-source.json"
+)
+PROSPECTIVE_DRAWDOWN_5M_EXECUTION_STATE_FILENAME = (
+    "prospective-drawdown-5m-execution-state.json"
+)
+PROSPECTIVE_DRAWDOWN_5M_EXECUTION_SOURCE_FILENAME = (
+    "prospective-drawdown-5m-execution-source.json"
+)
+PROSPECTIVE_DRAWDOWN_5M_EXECUTION_SUMMARY_FILENAME = (
+    "prospective-drawdown-5m-execution-summary.json"
 )
 PROSPECTIVE_FULL_STACK_CAPACITY_REFLOW_SUMMARY_FILENAME = (
     "prospective-full-stack-capacity-reflow-summary.json"
@@ -2482,6 +2498,33 @@ def _restore_prospective_replacement_exit_policy(
     except Exception as exc:
         return (
             ProspectiveReplacementExitPolicyState(
+                started_at_ms=started_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _restore_prospective_drawdown_5m_execution(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> tuple[ProspectiveDrawdown5mExecutionState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveDrawdown5mExecutionState(
+                started_at_ms=started_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveDrawdown5mExecutionState.from_payload(raw),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveDrawdown5mExecutionState(
                 started_at_ms=started_at_ms
             ),
             f"{type(exc).__name__}: {exc}",
@@ -8038,6 +8081,13 @@ async def run_continuous_paper_session(
         started_at_ms=started_at_ms,
     )
     (
+        prospective_drawdown_5m_execution_state,
+        prospective_drawdown_5m_execution_restore_error,
+    ) = _restore_prospective_drawdown_5m_execution(
+        root / PROSPECTIVE_DRAWDOWN_5M_EXECUTION_STATE_FILENAME,
+        started_at_ms=started_at_ms,
+    )
+    (
         prospective_side_conditioned_delay_state,
         _prospective_side_conditioned_delay_restore_error,
     ) = _restore_prospective_side_conditioned_delay(
@@ -8340,6 +8390,10 @@ async def run_continuous_paper_session(
                     (
                         root / PROSPECTIVE_REPLACEMENT_EXIT_POLICY_STATE_FILENAME,
                         prospective_replacement_exit_policy_state.payload(),
+                    ),
+                    (
+                        root / PROSPECTIVE_DRAWDOWN_5M_EXECUTION_STATE_FILENAME,
+                        prospective_drawdown_5m_execution_state.payload(),
                     ),
                     (
                         root / PROSPECTIVE_SIDE_CONDITIONED_DELAY_STATE_FILENAME,
@@ -9072,6 +9126,116 @@ async def run_continuous_paper_session(
             root
             / PROSPECTIVE_LONG_TREND_EXECUTION_SHADOW_SOURCE_FILENAME,
             long_trend_execution_shadow_source,
+        )
+        if prospective_drawdown_5m_execution_restore_error is not None:
+            drawdown_5m_execution_source = {
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "changes_execution": False,
+                "changes_risk_limits": False,
+                "changes_candidate_readiness": False,
+                "candidate_id": (
+                    prospective_drawdown_5m_execution_state.candidate_id
+                ),
+                "started_at_ms": (
+                    prospective_drawdown_5m_execution_state.started_at_ms
+                ),
+                "exit_horizon_ms": (
+                    prospective_drawdown_5m_execution_state.exit_horizon_ms
+                ),
+                "error": (
+                    "state restore failed: "
+                    + prospective_drawdown_5m_execution_restore_error
+                ),
+            }
+        else:
+            try:
+                drawdown_5m_execution_source = (
+                    prospective_drawdown_5m_execution_source(
+                        full_stack_forward_markout,
+                        opening_opportunity_store.iter_records(),
+                        opening_opportunity_exit_book_store.iter_records(),
+                        replacement_funding_store.iter_records(),
+                        replay_config.execution,
+                        prospective_drawdown_5m_execution_state,
+                    )
+                )
+            except Exception as exc:
+                drawdown_5m_execution_source = {
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "changes_execution": False,
+                    "changes_risk_limits": False,
+                    "changes_candidate_readiness": False,
+                    "candidate_id": (
+                        prospective_drawdown_5m_execution_state.candidate_id
+                    ),
+                    "started_at_ms": (
+                        prospective_drawdown_5m_execution_state.started_at_ms
+                    ),
+                    "exit_horizon_ms": (
+                        prospective_drawdown_5m_execution_state.exit_horizon_ms
+                    ),
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+        _write_json_atomic(
+            root / PROSPECTIVE_DRAWDOWN_5M_EXECUTION_SOURCE_FILENAME,
+            drawdown_5m_execution_source,
+        )
+
+        if "source_sha256" in drawdown_5m_execution_source:
+            try:
+                drawdown_5m_execution_summary = (
+                    prospective_drawdown_5m_execution_summary(
+                        drawdown_5m_execution_source
+                    )
+                )
+            except Exception as exc:
+                drawdown_5m_execution_summary = {
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "changes_execution": False,
+                    "changes_risk_limits": False,
+                    "changes_candidate_readiness": False,
+                    "candidate_id": (
+                        prospective_drawdown_5m_execution_state.candidate_id
+                    ),
+                    "started_at_ms": (
+                        prospective_drawdown_5m_execution_state.started_at_ms
+                    ),
+                    "exit_horizon_ms": (
+                        prospective_drawdown_5m_execution_state.exit_horizon_ms
+                    ),
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+        else:
+            drawdown_5m_execution_summary = {
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "changes_execution": False,
+                "changes_risk_limits": False,
+                "changes_candidate_readiness": False,
+                "candidate_id": (
+                    prospective_drawdown_5m_execution_state.candidate_id
+                ),
+                "started_at_ms": (
+                    prospective_drawdown_5m_execution_state.started_at_ms
+                ),
+                "exit_horizon_ms": (
+                    prospective_drawdown_5m_execution_state.exit_horizon_ms
+                ),
+                "error": drawdown_5m_execution_source.get(
+                    "error",
+                    "drawdown 5m execution source unavailable",
+                ),
+            }
+        _write_json_atomic(
+            root / PROSPECTIVE_DRAWDOWN_5M_EXECUTION_SUMMARY_FILENAME,
+            drawdown_5m_execution_summary,
         )
         if profit_lock_execution_shadow.shadow is None:
             full_stack_entry_exit = {
