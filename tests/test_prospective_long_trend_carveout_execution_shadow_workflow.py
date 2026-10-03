@@ -71,6 +71,24 @@ def test_long_trend_execution_shadow_legacy_source_waits() -> None:
     assert "incompatible execution-shadow format" in compact
 
 
+def test_long_trend_execution_shadow_wait_status_preserves_metadata() -> None:
+    source = _source()
+    waiting = source.split(
+        "      - name: Publish waiting-for-source status",
+        1,
+    )[1].split(
+        "      - name: Evaluate captured execution shadow",
+        1,
+    )[0]
+
+    assert "python - <<'PY'" in waiting
+    assert "SOURCE_RUN_ID" in waiting
+    assert "SOURCE_RUN_ATTEMPT" in waiting
+    assert "SOURCE_RESOLUTION" in waiting
+    assert "WAIT_REASON" in waiting
+    assert "<<EOF" not in waiting
+
+
 def test_long_trend_execution_shadow_reuses_frozen_execution_path() -> None:
     source = _source()
 
