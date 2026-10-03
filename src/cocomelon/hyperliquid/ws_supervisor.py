@@ -105,6 +105,7 @@ class WebSocketSupervisor:
         self._last_server_message_ms: int | None = None
         self._reconnect_count = 0
         self._systemic_l2_stale_reconnect_count = 0
+        self._last_systemic_l2_stale_reconnect_ms: int | None = None
         self._duplicate_count = 0
         self._anomaly_count = 0
 
@@ -116,6 +117,9 @@ class WebSocketSupervisor:
             reconnect_count=self._reconnect_count,
             systemic_l2_stale_reconnect_count=(
                 self._systemic_l2_stale_reconnect_count
+            ),
+            last_systemic_l2_stale_reconnect_ms=(
+                self._last_systemic_l2_stale_reconnect_ms
             ),
             duplicate_count=self._duplicate_count,
             anomaly_count=self._anomaly_count,
@@ -198,6 +202,7 @@ class WebSocketSupervisor:
         ):
             return
         self._systemic_l2_stale_reconnect_count += 1
+        self._last_systemic_l2_stale_reconnect_ms = now_ms
         raise ConnectionError(
             "systemic l2 subscription staleness on active websocket"
         )
