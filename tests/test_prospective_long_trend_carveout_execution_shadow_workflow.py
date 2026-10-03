@@ -137,6 +137,16 @@ def test_long_trend_execution_shadow_requires_durable_gate() -> None:
         "all_horizons_ready_for_execution_shadow_investigation"
         in gate
     )
+    assert (
+        "effective_all_horizons_ready_for_execution_shadow_investigation"
+        in gate
+    )
+    assert "effective_integrity_scope" in gate
+    assert '"post_integrity_miss"' in gate
+    assert "durable post-integrity gate readiness is inconsistent" in gate
+    assert "durable cumulative gate readiness is inconsistent" in gate
+    assert 'integrity_scope = "legacy_cumulative"' in gate
+    assert 'echo "integrity_scope=$gate_integrity_scope"' in gate
 
     evaluate = source.split(
         "      - name: Evaluate captured execution shadow",
@@ -152,6 +162,8 @@ def test_long_trend_execution_shadow_requires_durable_gate() -> None:
         "the durable fast-markout investigation gate passes."
         in source
     )
+    assert "gate integrity scope" in source
+    assert "durable gate integrity scope" in source
 
 
 def test_long_trend_execution_shadow_reuses_frozen_execution_path() -> None:

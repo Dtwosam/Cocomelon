@@ -733,6 +733,9 @@ def prospective_full_stack_forward_markout_summary(
     risk_rejected_integrity_last_miss_at_ms: int | None = None
     long_trend_carveout_momentum_integrity_misses = 0
     risk_rejected_long_trend_carveout_momentum_integrity_misses = 0
+    carveout_momentum_last_miss_at_ms: (
+        int | None
+    ) = None
     risk_rejected_reason_counts: Counter[str] = Counter()
     block_layer_counts: Counter[str] = Counter()
     decision_counts: Counter[str] = Counter()
@@ -892,6 +895,15 @@ def prospective_full_stack_forward_markout_summary(
                         long_trend_carveout_momentum_integrity_misses += 1
                     else:
                         risk_rejected_long_trend_carveout_momentum_integrity_misses += 1
+                        carveout_momentum_last_miss_at_ms = max(
+                            evidence.opportunity_timestamp_ms,
+                            (
+                                carveout_momentum_last_miss_at_ms
+                                if carveout_momentum_last_miss_at_ms
+                                is not None
+                                else evidence.opportunity_timestamp_ms
+                            ),
+                        )
                     carveout_decision = None
                     carveout_block_layer = None
                     carveout_momentum_reason = (
@@ -1052,6 +1064,24 @@ def prospective_full_stack_forward_markout_summary(
         and risk_rejected_long_trend_carveout_momentum_integrity_misses
         == 0
     )
+    carveout_integrity_last_miss_at_ms = (
+        risk_rejected_integrity_last_miss_at_ms
+    )
+    if (
+        carveout_momentum_last_miss_at_ms
+        is not None
+        and (
+            carveout_integrity_last_miss_at_ms
+            is None
+            or (
+                carveout_momentum_last_miss_at_ms
+                > carveout_integrity_last_miss_at_ms
+            )
+        )
+    ):
+        carveout_integrity_last_miss_at_ms = (
+            carveout_momentum_last_miss_at_ms
+        )
     long_trend_carveout = _long_trend_carveout_summary(
         row_values,
         integrity_clean=long_trend_carveout_integrity_clean,
@@ -1113,6 +1143,9 @@ def prospective_full_stack_forward_markout_summary(
         ),
         "risk_rejected_integrity_last_miss_at_ms": (
             risk_rejected_integrity_last_miss_at_ms
+        ),
+        "risk_rejected_long_trend_carveout_integrity_last_miss_at_ms": (
+            carveout_integrity_last_miss_at_ms
         ),
         "risk_rejected_horizons": risk_rejected_horizons,
         "risk_rejected_long_trend_carveout": (

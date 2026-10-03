@@ -180,8 +180,14 @@ def _row(
     }
 
 
-def _summary(rows: list[dict[str, object]]) -> dict[str, object]:
-    return {
+def _summary(
+    rows: list[dict[str, object]],
+    *,
+    integrity_clean: bool = True,
+    last_miss_at_ms: int | None = None,
+    include_integrity_boundary: bool = True,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
         "enabled": True,
         "error": None,
         "research_only": True,
@@ -223,10 +229,15 @@ def _summary(rows: list[dict[str, object]]) -> dict[str, object]:
                 row["long_trend_carveout_decision"] == "BLOCK"
                 for row in rows
             ),
-            "integrity_clean": True,
+            "integrity_clean": integrity_clean,
         },
         "risk_rejected_rows": rows,
     }
+    if include_integrity_boundary:
+        payload[
+            "risk_rejected_long_trend_carveout_integrity_last_miss_at_ms"
+        ] = last_miss_at_ms
+    return payload
 
 
 def _update(
@@ -447,6 +458,11 @@ def test_carveout_ledger_accepts_pre_stop_path_summary() -> None:
     legacy = deepcopy(ledger)
     summary = legacy["summary"]
     assert isinstance(summary, dict)
+    summary.pop("post_integrity_miss")
+    summary.pop(
+        "effective_all_horizons_ready_for_execution_shadow_investigation"
+    )
+    summary.pop("effective_integrity_scope")
     horizons = summary["horizons"]
     assert isinstance(horizons, dict)
     for item in horizons.values():
@@ -489,6 +505,11 @@ def test_carveout_ledger_accepts_pre_stop_readiness_summary() -> None:
     legacy = deepcopy(ledger)
     summary = legacy["summary"]
     assert isinstance(summary, dict)
+    summary.pop("post_integrity_miss")
+    summary.pop(
+        "effective_all_horizons_ready_for_execution_shadow_investigation"
+    )
+    summary.pop("effective_integrity_scope")
     horizons = summary["horizons"]
     assert isinstance(horizons, dict)
     for item in horizons.values():
@@ -579,13 +600,14 @@ def test_carveout_ledger_rejects_rank_block_becoming_admit() -> None:
 def _ready_economic_rows(
     *,
     stop_crossings: int | None,
+    timestamp_offset_ms: int = 0,
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     markets = ("SOL", "ETH", "BTC", "HYPE")
     for index in range(10):
         row = _row(
             f"reopen-{index}",
-            timestamp_ms=START + index + 1,
+            timestamp_ms=START + timestamp_offset_ms + index + 1,
             market=markets[index % len(markets)],
             direction="long",
             combined_reason="long_trend",
@@ -594,7 +616,7 @@ def _ready_economic_rows(
         )
         if stop_crossings is not None:
             row["long_trend_carveout_stop_path"] = _stop_path(
-                timestamp_ms=START + index + 1,
+                timestamp_ms=START + timestamp_offset_ms + index + 1,
                 crossed=index < stop_crossings,
             )
         rows.append(row)
@@ -602,7 +624,7 @@ def _ready_economic_rows(
         rows.append(
             _row(
                 f"block-{index}",
-                timestamp_ms=START + 100 + index,
+                timestamp_ms=START + timestamp_offset_ms + 100 + index,
                 market=markets[index % len(markets)],
                 direction="short",
                 combined_reason="rank_above_10",
@@ -611,6 +633,102 @@ def _ready_economic_rows(
             )
         )
     return rows
+
+
+def test_carveout_ledger_post_integrity_suffix_reearns_full_gate() -> None:
+    dirty = _row(
+        "pre-integrity-miss",
+        timestamp_ms=START + 10,
+        market="SOL",
+        direction="long",
+        combined_reason="long_trend",
+        carveout_decision="ADMIT",
+        returns=("-0.20", "-0.20", "-0.20"),
+    )
+    dirty["long_trend_carveout_stop_path"] = _stop_path(
+        timestamp_ms=START + 10,
+        crossed=True,
+    )
+    clean = _ready_economic_rows(
+        stop_crossings=4,
+        timestamp_offset_ms=1_000,
+    )
+    source = _summary(
+        [dirty, *clean],
+        integrity_clean=False,
+        last_miss_at_ms=START + 500,
+    )
+
+    ledger = _update(source)
+    summary = ledger["summary"]
+
+    assert summary["integrity_clean"] is False
+    assert (
+        summary[
+            "all_horizons_ready_for_execution_shadow_investigation"
+        ]
+        is False
+    )
+    post = summary["post_integrity_miss"]
+    assert post["boundary_known"] is True
+    assert post["last_miss_at_ms"] == START + 500
+    assert post["started_at_ms"] == START + 501
+    assert post["terminal_opportunity_count"] == 20
+    assert (
+        post[
+            "all_horizons_ready_for_execution_shadow_investigation"
+        ]
+        is True
+    )
+    assert (
+        summary[
+            "effective_all_horizons_ready_for_execution_shadow_investigation"
+        ]
+        is True
+    )
+    assert summary["effective_integrity_scope"] == "post_integrity_miss"
+    assert ledger["source_history"][-1][
+        "integrity_last_miss_at_ms"
+    ] == START + 500
+    for item in post["horizons"].values():
+        readiness = item["investigation_readiness"]
+        assert readiness["integrity_clean"] is True
+        assert readiness["sample_complete"] is True
+        assert readiness["reopened_sample_complete"] is True
+        assert readiness["reopened_robust"] is True
+        assert readiness["stop_path_complete_for_reopened_sample"] is True
+        assert readiness["stop_survivor_majority"] is True
+    validate_long_trend_carveout_ledger(ledger)
+
+
+def test_carveout_ledger_dirty_legacy_source_cannot_claim_clean_suffix() -> None:
+    source = _summary(
+        _ready_economic_rows(stop_crossings=4),
+        integrity_clean=False,
+        include_integrity_boundary=False,
+    )
+
+    ledger = _update(source)
+    summary = ledger["summary"]
+    post = summary["post_integrity_miss"]
+
+    assert summary["integrity_clean"] is False
+    assert post["boundary_known"] is False
+    assert post["started_at_ms"] is None
+    assert post["terminal_opportunity_count"] == 0
+    assert (
+        post[
+            "all_horizons_ready_for_execution_shadow_investigation"
+        ]
+        is False
+    )
+    assert (
+        summary[
+            "effective_all_horizons_ready_for_execution_shadow_investigation"
+        ]
+        is False
+    )
+    assert summary["effective_integrity_scope"] == "none"
 
 
 def test_carveout_ledger_ready_only_with_stop_survivor_majority() -> None:

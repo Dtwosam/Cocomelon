@@ -67,15 +67,17 @@ def _record_feature(
     *,
     market: str,
     timestamp_ms: int,
-    return_1h: str,
-    day_return: str,
+    return_1h: str | None,
+    day_return: str | None,
 ) -> str:
     snapshot = FeatureSnapshot(
         market=_market(market),
         as_of_ms=timestamp_ms,
         source_received_at_ms=timestamp_ms,
         schema_version=1,
-        day_return=Decimal(day_return),
+        day_return=(
+            Decimal(day_return) if day_return is not None else None
+        ),
         funding=Decimal("0"),
         open_interest=Decimal("100"),
         day_notional_volume=Decimal("1000000"),
@@ -84,7 +86,9 @@ def _record_feature(
         mark_oracle_dislocation_bps=Decimal("0"),
         return_5m=None,
         return_15m=None,
-        return_1h=Decimal(return_1h),
+        return_1h=(
+            Decimal(return_1h) if return_1h is not None else None
+        ),
         return_4h=None,
         realized_vol_15m=None,
         range_expansion_15m=None,
@@ -635,11 +639,74 @@ def test_risk_rejected_long_trend_carveout_runs_downstream_stack(
     assert carveout["admitted"] == 1
     assert carveout["blocked"] == 0
     assert carveout["integrity_clean"] is True
+    assert (
+        result[
+            "risk_rejected_long_trend_carveout_integrity_last_miss_at_ms"
+        ]
+        is None
+    )
     one_hour = carveout["horizons"]["3600000"]
     assert one_hour["admit"]["settled"] == 1
     assert one_hour["admit"]["mean_directional_return"] == "0.03"
     readiness = one_hour["review_readiness"]
     assert readiness["changes_closed_trade_readiness_gate"] is False
+
+
+def test_risk_rejected_long_trend_tracks_candidate_only_integrity_miss(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    combined, two_strike, momentum = _states()
+    incomplete_feature = _record_feature(
+        store,
+        market="SOL",
+        timestamp_ms=START + 1_400,
+        return_1h=None,
+        day_return="0.05",
+    )
+    rejected = _opportunity(
+        suffix="risk-long-trend-incomplete-feature",
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=START + 1_500,
+        feature_snapshot_id=incomplete_feature,
+        lead_strategy="trend",
+        approved=False,
+    )
+    rejected = replace(
+        rejected,
+        baseline_risk_reason_codes=("weekly_drawdown_lockout",),
+    )
+
+    result = prospective_full_stack_forward_markout_summary(
+        (rejected,),
+        (_path(rejected, returns=("0.01", "0.02", "0.03")),),
+        (),
+        store,
+        combined,
+        two_strike,
+        momentum,
+    )
+
+    assert result["risk_rejected_integrity_clean"] is True
+    assert result["risk_rejected_integrity_last_miss_at_ms"] is None
+    carveout = result["risk_rejected_long_trend_carveout"]
+    assert isinstance(carveout, dict)
+    assert carveout["integrity_clean"] is False
+    assert carveout["momentum_feature_integrity_misses"] == 1
+    assert (
+        result[
+            "risk_rejected_long_trend_carveout_integrity_last_miss_at_ms"
+        ]
+        == rejected.opportunity_timestamp_ms
+    )
+    rows = result["risk_rejected_rows"]
+    assert isinstance(rows, list)
+    assert rows[0]["long_trend_carveout_decision"] is None
+    assert (
+        rows[0]["long_trend_carveout_momentum_reason"]
+        == "incomplete_feature_fail_open"
+    )
 
 
 def test_long_trend_carveout_stop_path_records_early_crossing(
@@ -766,6 +833,12 @@ def test_risk_rejected_integrity_is_isolated_from_candidate_readiness(
     assert result["risk_rejected_integrity_clean"] is False
     assert result["risk_rejected_integrity_last_miss_at_ms"] == (
         rejected.opportunity_timestamp_ms
+    )
+    assert (
+        result[
+            "risk_rejected_long_trend_carveout_integrity_last_miss_at_ms"
+        ]
+        == rejected.opportunity_timestamp_ms
     )
     horizons = result["horizons"]
     assert isinstance(horizons, dict)
