@@ -504,6 +504,7 @@ jobs:
               ).isoformat()
 
           previous = os.environ["PREVIOUS_WORKFLOW_RUN_ID"] or "none"
+          investigation = summary["risk_budget_stop_investigation"]
           lines = [
               "## Risk-rejected observed stop-path ledger",
               "",
@@ -519,6 +520,23 @@ jobs:
               f"- risk reason counts: `{summary['risk_reason_counts']}`",
               f"- rows SHA-256: `{ledger['rows_sha256']}`",
               f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
+              "",
+              "### Risk-budget stop-survival gate",
+              "",
+              f"- scope: `{investigation['scope']}`",
+              f"- ready reasons: `{investigation['ready_reasons']}`",
+              (
+                  "- minimum evaluable / markets / LONG / SHORT per horizon: "
+                  f"`{investigation['min_evaluable_per_horizon']} / "
+                  f"{investigation['min_markets_per_horizon']} / "
+                  f"{investigation['min_long_evaluable_per_horizon']} / "
+                  f"{investigation['min_short_evaluable_per_horizon']}`"
+              ),
+              (
+                  "- changes risk limits / execution authority: "
+                  f"`{investigation['changes_risk_limits']} / "
+                  f"{investigation['changes_execution']}`"
+              ),
               "",
               "### Fixed stop-path horizons",
               "",
@@ -578,11 +596,56 @@ jobs:
                       )
               lines.append("")
 
+          lines.append("### Stop-survival readiness by risk reason")
+          lines.append("")
+          for reason, details in sorted(
+              investigation["by_reason"].items()
+          ):
+              lines.append(
+                  "- {reason}: ready={ready}".format(
+                      reason=reason,
+                      ready=details[
+                          "ready_for_risk_budget_stop_investigation"
+                      ],
+                  )
+              )
+              for horizon_ms in ledger["forward_horizons_ms"]:
+                  item = details["horizons"][str(horizon_ms)]
+                  lines.append(
+                      "  - {minutes}m: eval={evaluable}, "
+                      "markets={markets}, LONG={long_count}, "
+                      "SHORT={short_count}, survivors={survivors}, "
+                      "crossings={crossings}, margin={margin}, "
+                      "LOO-opp={loo_opp}, LOO-market={loo_market}, "
+                      "coverage={coverage}, ready={ready}".format(
+                          minutes=horizon_ms // 60000,
+                          evaluable=item["evaluable"],
+                          markets=item["market_count"],
+                          long_count=item["long_evaluable"],
+                          short_count=item["short_evaluable"],
+                          survivors=item["survivors"],
+                          crossings=item["crossings"],
+                          margin=item["survival_margin"],
+                          loo_opp=item[
+                              "leave_one_opportunity_min_survival_margin"
+                          ],
+                          loo_market=item[
+                              "leave_one_market_min_survival_margin"
+                          ],
+                          coverage=item["coverage_complete"],
+                          ready=item[
+                              "ready_for_risk_budget_stop_investigation"
+                          ],
+                      )
+                  )
+          lines.append("")
+
           lines.extend(
               [
                   "Claim scope is deliberately narrow: this ledger reports only observed causal mark crossings against the original decision-time stop.",
                   "A survivor means no captured causal mark crossed the stop before that horizon. It does not prove the unseen intrablock path stayed clear.",
                   "The overlay does not simulate stop fill price, slippage, funding, sizing, portfolio capacity, or a complete counterfactual trade lifecycle.",
+                  "This stop-survival gate is necessary but not sufficient for any risk-budget investigation: the separate return/economic gate in Issue #774 must also pass. Neither gate can relax risk by itself.",
                   "Pending or missing-path opportunities remain unfrozen. Every previously published terminal overlay row must remain byte-for-byte equivalent after canonicalization.",
                   "",
                   "**Execution authority:** `false`",
