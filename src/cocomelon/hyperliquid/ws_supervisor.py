@@ -189,11 +189,11 @@ class WebSocketSupervisor:
             self._stale_after_ms
             + self._systemic_l2_stale_reconnect_grace_ms
         )
-        stale_count = sum(
+        silent_count = sum(
             (
-                (anchor := self._l2_freshness_anchor_ms(stream_id))
+                (last_received_ms := self._last_stream_message.get(stream_id))
                 is not None
-                and now_ms - anchor >= reconnect_after_ms
+                and now_ms - last_received_ms >= reconnect_after_ms
             )
             for stream_id in stream_ids
         )
@@ -202,7 +202,7 @@ class WebSocketSupervisor:
             if len(stream_ids) == 1
             else max(2, math.ceil(len(stream_ids) * fraction))
         )
-        return stale_count >= minimum_stale
+        return silent_count >= minimum_stale
 
     def _raise_if_systemic_l2_stale(
         self,
@@ -304,6 +304,12 @@ class WebSocketSupervisor:
         events = normalize_ws_message(raw, receive_time=self._utcnow())
         for event in events:
             stream_id = event_stream_id(event)
+            # Receive-time stream liveness is distinct from book-state
+            # freshness. Even an exact duplicate proves the subscription
+            # delivered a message now, so refresh the liveness clock before
+            # replay deduplication. Exchange-time freshness remains strict
+            # below and still drives stale-book gaps/eligibility.
+            self._last_stream_message[stream_id] = now_ms
             if not self._remember(stream_id, event.event_key):
                 self._duplicate_count += 1
                 continue
@@ -328,7 +334,6 @@ class WebSocketSupervisor:
 
             if exchange_time is not None:
                 self._last_exchange_time[stream_id] = exchange_time
-            self._last_stream_message[stream_id] = now_ms
             if (
                 event.kind is StreamKind.L2_BOOK
                 and self._l2_stream_is_stale(

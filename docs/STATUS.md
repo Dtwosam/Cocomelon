@@ -4586,3 +4586,14 @@ The redundant lanes now keep the existing 15-second L2 freshness ceiling but no 
 Server-silence recovery, outer REST reseeding, full-group replacement recovery, stale-data fail-closed behavior, strategy thresholds, risk limits, sizing, stops, readiness, promotion, and live-order authority are unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Separate L2 subscription liveness from book freshness — 2026-10-03
+
+The staggered-lane successor showed that synchronized teardown was reduced: before its first full-group recovery, lane 0 was disconnected/reconnecting while lane 1 remained connected. However, lane 1 was still classified as stale even while server traffic continued, revealing that the supervisor's systemic reconnect watchdog was using L2 exchange timestamps as a proxy for subscription liveness.
+
+The websocket supervisor now maintains two distinct clocks. Exchange-time age continues to drive strict stale-book gaps and decision eligibility. Receive-time message age drives only the systemic-subscription reconnect watchdog. Exact duplicate L2 snapshots are still deduplicated before replay processing, but their arrival now refreshes receive-time liveness because they prove the subscription delivered a message.
+
+This prevents a live L2 subscription from being torn down merely because its book exchange timestamp has not advanced. It does not make an old book eligible, does not close a stale-book gap, and does not change the existing 15-second freshness ceiling, REST recovery, strategy, risk, sizing, stops, readiness, promotion, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
