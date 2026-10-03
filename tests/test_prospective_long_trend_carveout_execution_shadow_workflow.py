@@ -14,6 +14,14 @@ def _source() -> str:
 def test_long_trend_execution_shadow_workflow_is_research_only() -> None:
     source = _source()
 
+    assert r'\\n      - "' not in source
+    assert (
+        '      - ".github/workflows/prospective-long-trend-execution-shadow.yml"\n'
+        '      - "src/cocomelon/research/'
+        'prospective_long_trend_carveout_execution_shadow.py"\n'
+        '      - "scripts/evaluate_prospective_long_trend_execution_shadow.py"'
+        in source
+    )
     assert "Prospective LONG+Trend Execution Shadow" in source
     assert 'SHADOW_ISSUE: "828"' in source
     assert "actions: read" in source
