@@ -359,8 +359,9 @@ jobs:
           )"
           mapfile -t gate_runs < <(
             printf '%s' "$runs_json" | python -c '
-          import json, sys
+          import json, os, sys
           payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
           runs = sorted(
               payload.get("workflow_runs", []),
               key=lambda item: item.get("updated_at") or "",
@@ -368,7 +369,16 @@ jobs:
           )
           for run in runs:
               run_id = run.get("id")
-              if isinstance(run_id, int):
+              if (
+                  isinstance(run_id, int)
+                  and run.get("path")
+                  == ".github/workflows/prospective-long-trend-carveout-fast-markout-ledger.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and (run.get("head_repository") or {}).get("full_name")
+                  == repo
+              ):
                   print(run_id)
           '
           )
