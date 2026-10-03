@@ -53,6 +53,7 @@ from cocomelon.continuous_paper import (
     _latest_epoch_stale_l2_market_keys,
     _load_checkpoint,
     _monitor_event_loop_lag,
+    _next_predecision_l2_refresh,
     _opening_fill_liquidity_payload,
     _opening_rank_attribution_payload,
     _pipeline_l2_recovery_plan,
@@ -1857,13 +1858,88 @@ def test_continuous_context_poll_has_freshness_headroom() -> None:
     assert config.context_poll_seconds * 1000 < 60_000
     assert config.websocket_server_silence_timeout_ms == 15_000
     assert config.websocket_redundant_lane_reconnect_stagger_ms == 5_000
+    assert config.predecision_l2_refresh_lead_ms == 10_000
     assert "--context-poll-seconds 30" in workflow
     assert "--websocket-server-silence-timeout-ms 15000" in workflow
     assert (
         "--websocket-redundant-lane-reconnect-stagger-ms 5000"
         in workflow
     )
+    assert "--predecision-l2-refresh-lead-ms 10000" in workflow
     assert "--context-poll-seconds 60" not in workflow
+
+
+def test_predecision_l2_refresh_schedule_uses_decision_grace() -> None:
+    refresh_at, evaluated_at = _next_predecision_l2_refresh(
+        1_810_000,
+        decision_grace_ms=30_000,
+        lead_ms=10_000,
+    )
+    assert refresh_at == 1_820_000
+    assert evaluated_at == 1_830_000
+
+    refresh_at, evaluated_at = _next_predecision_l2_refresh(
+        1_825_000,
+        decision_grace_ms=30_000,
+        lead_ms=10_000,
+    )
+    assert refresh_at == 1_825_000
+    assert evaluated_at == 1_830_000
+
+    refresh_at, evaluated_at = _next_predecision_l2_refresh(
+        1_830_000,
+        decision_grace_ms=30_000,
+        lead_ms=10_000,
+    )
+    assert refresh_at == 2_720_000
+    assert evaluated_at == 2_730_000
+
+
+def test_predecision_l2_refresh_schedule_rejects_invalid_inputs() -> None:
+    with pytest.raises(ValueError, match="now_ms"):
+        _next_predecision_l2_refresh(
+            -1,
+            decision_grace_ms=30_000,
+            lead_ms=10_000,
+        )
+    with pytest.raises(ValueError, match="decision_grace_ms"):
+        _next_predecision_l2_refresh(
+            0,
+            decision_grace_ms=0,
+            lead_ms=10_000,
+        )
+    with pytest.raises(ValueError, match="lead_ms"):
+        _next_predecision_l2_refresh(
+            0,
+            decision_grace_ms=30_000,
+            lead_ms=30_000,
+        )
+
+
+def test_predecision_l2_refresh_runs_before_decision_wakeup_recovery() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    wait_index = source.index(
+        "await asyncio.wait_for(\n"
+        "                        decision_epoch_wakeup.wait()"
+    )
+    refresh_index = source.index(
+        "pump.event_loop_phase = \"predecision_l2_refresh\"",
+        wait_index,
+    )
+    reseed_index = source.index(
+        "await _reseed_l2_books_via_rest(",
+        refresh_index,
+    )
+    recovery_index = source.index(
+        "await recover_systemic_l2_if_needed()",
+        reseed_index,
+    )
+
+    assert wait_index < refresh_index < reseed_index < recovery_index
+    assert "predecision_l2_refresh_late_completions" in source
+    assert "next_predecision_evaluated_at_ms" in source
 
 
 def test_startup_warmup_seeds_before_fresh_context_starts_decisions() -> None:
@@ -1911,6 +1987,16 @@ def test_continuous_config_requires_non_negative_lane_reconnect_stagger() -> Non
     ):
         ContinuousPaperConfig(
             websocket_redundant_lane_reconnect_stagger_ms=-1,
+        )
+
+
+def test_continuous_config_requires_positive_predecision_l2_lead() -> None:
+    with pytest.raises(
+        ValueError,
+        match="predecision_l2_refresh_lead_ms",
+    ):
+        ContinuousPaperConfig(
+            predecision_l2_refresh_lead_ms=0,
         )
 
 
