@@ -10,6 +10,7 @@ from cocomelon.research.prospective_long_trend_carveout_execution_shadow import 
     evaluate_long_trend_carveout_execution_shadow,
 )
 from cocomelon.research.prospective_long_trend_carveout_forward_markout_ledger import (
+    ProspectiveLongTrendCarveoutLedgerError,
     load_long_trend_carveout_ledger,
 )
 
@@ -68,7 +69,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             durable_gate_ready=gate_ready,
             durable_gate_ledger_sha256=gate_digest,
         )
-    except ProspectiveLongTrendExecutionShadowError as exc:
+    except (
+        ProspectiveLongTrendExecutionShadowError,
+        ProspectiveLongTrendCarveoutLedgerError,
+    ) as exc:
         raise SystemExit(str(exc)) from exc
 
     args.json_out.write_text(
