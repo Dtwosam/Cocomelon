@@ -34,10 +34,12 @@ def test_exact_path_export_binds_exact_source_artifact() -> None:
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
     assert (
-        'artifact_name="continuous-paper-state-$source_run_id-$source_attempt"'
+        'local expected_name="continuous-paper-state-'
+        '$candidate_run_id-$candidate_attempt"'
         in source
     )
-    assert "expected exactly one non-expired source artifact" in source
+    assert "latest_successful_with_state_artifact" in source
+    assert "expected at most one non-expired source artifact" in source
 
 
 def test_exact_path_export_streams_only_small_research_slice() -> None:

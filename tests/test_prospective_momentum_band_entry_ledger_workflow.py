@@ -55,10 +55,11 @@ def test_momentum_band_ledger_binds_exact_compact_source() -> None:
         in source
     )
     assert (
-        'artifact_name="continuous-paper-learning-source-'
-        '$run_id-$run_attempt"'
+        'local expected_name="continuous-paper-learning-source-'
+        '$candidate_run_id-$candidate_attempt"'
         in source
     )
+    assert "latest_successful_with_compact_artifact" in source
     assert "source artifact digest is missing or invalid" in source
     assert "journal.sqlite3" in source
     assert "prospective-momentum-band-entry-state.json" in source

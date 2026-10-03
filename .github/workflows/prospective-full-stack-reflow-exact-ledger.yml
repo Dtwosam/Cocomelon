@@ -107,6 +107,82 @@ jobs:
             exit 1
           fi
 
+          artifact_for_run() {
+            local candidate_run_id="$1"
+            local candidate_attempt="$2"
+            local expected_name="continuous-paper-learning-source-$candidate_run_id-$candidate_attempt"
+            local artifacts_json
+            artifacts_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/artifacts?per_page=100"
+            )"
+            printf '%s' "$artifacts_json" |
+            ARTIFACT_NAME="$expected_name" python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          name = os.environ["ARTIFACT_NAME"]
+          matches = [
+              item for item in payload.get("artifacts", [])
+              if item.get("name") == name and item.get("expired") is False
+          ]
+          if not matches:
+              raise SystemExit(0)
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected at most one non-expired source artifact named {name}"
+              )
+          item = matches[0]
+          digest = item.get("digest")
+          if not isinstance(digest, str) or not digest.startswith("sha256:"):
+              raise SystemExit("source artifact digest is missing or invalid")
+          print(item["id"], item["name"], digest, sep="\t")
+          '
+          }
+
+          artifact_line="$(artifact_for_run "$run_id" "$run_attempt")"
+          if [ -z "$artifact_line" ] && [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            runs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=50"
+            )"
+            mapfile -t artifact_candidates < <(
+              printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in payload.get("workflow_runs", []):
+              if (
+                  run.get("path") == ".github/workflows/continuous-paper.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and (run.get("head_repository") or {}).get("full_name") == repo
+                  and isinstance(run.get("id"), int)
+                  and isinstance(run.get("run_attempt"), int)
+              ):
+                  print(run["id"], run["run_attempt"], sep="\t")
+          '
+            )
+            for candidate in "${artifact_candidates[@]}"; do
+              IFS=$'\t' read -r candidate_run_id candidate_attempt <<<"$candidate"
+              if [ "$candidate_run_id" = "$run_id" ] && [ "$candidate_attempt" = "$run_attempt" ]; then
+                continue
+              fi
+              candidate_artifact_line="$(
+                artifact_for_run "$candidate_run_id" "$candidate_attempt"
+              )"
+              if [ -n "$candidate_artifact_line" ]; then
+                run_id="$candidate_run_id"
+                run_attempt="$candidate_attempt"
+                artifact_line="$candidate_artifact_line"
+                resolution_mode="latest_successful_with_compact_artifact"
+                break
+              fi
+            done
+          fi
+          if [ -z "$artifact_line" ]; then
+            echo "selected source has no authenticated compact artifact" >&2
+            exit 1
+          fi
+
           run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
           head_sha="$(
             printf '%s' "$run_json" |
@@ -127,34 +203,6 @@ jobs:
           if not isinstance(sha, str) or len(sha) != 40:
               raise SystemExit("source head sha is invalid")
           print(sha)
-          '
-          )"
-
-          artifact_name="continuous-paper-learning-source-$run_id-$run_attempt"
-          artifacts_json="$(
-            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
-          )"
-          artifact_line="$(
-            printf '%s' "$artifacts_json" |
-            ARTIFACT_NAME="$artifact_name" python -c '
-          import json, os, sys
-          payload = json.load(sys.stdin)
-          name = os.environ["ARTIFACT_NAME"]
-          matches = [
-              item
-              for item in payload.get("artifacts", [])
-              if item.get("name") == name
-              and item.get("expired") is False
-          ]
-          if len(matches) != 1:
-              raise SystemExit(
-                  f"expected exactly one non-expired source artifact named {name}"
-              )
-          item = matches[0]
-          digest = item.get("digest")
-          if not isinstance(digest, str) or not digest.startswith("sha256:"):
-              raise SystemExit("source artifact digest is missing or invalid")
-          print(item["id"], item["name"], digest, sep="\t")
           '
           )"
           IFS=$'\t' read -r artifact_id artifact_name artifact_digest <<<"$artifact_line"

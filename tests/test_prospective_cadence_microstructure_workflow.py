@@ -85,8 +85,17 @@ def test_prospective_audit_catches_up_missed_success_events() -> None:
     assert "EVENT_SOURCE_CONCLUSION" in source
     assert 'EVENT_SOURCE_CONCLUSION" == "success"' in source
     assert "latest_success_catchup" in source
-    assert "actions/runs?status=success&per_page=100" in source
-    assert '.path == ".github/workflows/continuous-paper.yml"' in source
+    assert (
+        "actions/workflows/continuous-paper.yml/runs?"
+        "branch=main&status=completed&per_page=100"
+        in source
+    )
+    assert "latest_success_with_cadence_artifacts" in source
+    assert (
+        'run.get("path") == ".github/workflows/continuous-paper.yml"'
+        in source
+    )
+    assert 'run.get("head_branch") == "main"' in source
     assert "SOURCE_RUN_ID=$source_run_id" in source
     assert "SOURCE_RUN_ATTEMPT=$source_run_attempt" in source
     assert "SOURCE_RESOLUTION_MODE=$resolution_mode" in source
