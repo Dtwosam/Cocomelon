@@ -116,6 +116,7 @@ class WebSocketSupervisor:
         self._systemic_l2_stale_reconnect_count = 0
         self._systemic_l2_targeted_resubscribe_count = 0
         self._systemic_l2_targeted_resubscribe_streak = 0
+        self._pending_l2_targeted_recovery_streams: set[str] = set()
         self._duplicate_count = 0
         self._anomaly_count = 0
 
@@ -215,7 +216,6 @@ class WebSocketSupervisor:
         if not self._systemic_l2_stale_while_server_active(
             now_ms=now_ms
         ):
-            self._systemic_l2_targeted_resubscribe_streak = 0
             return
         stale_subscriptions = tuple(
             subscription
@@ -233,6 +233,7 @@ class WebSocketSupervisor:
             self._systemic_l2_targeted_resubscribe_streak
             < self._max_systemic_l2_targeted_resubscribes
         ):
+            targeted_stream_ids: set[str] = set()
             for subscription in stale_subscriptions:
                 stream_id = subscription_id(subscription)
                 await connection.send_json(
@@ -244,6 +245,10 @@ class WebSocketSupervisor:
                 self._last_exchange_time.pop(stream_id, None)
                 self._last_stream_message[stream_id] = now_ms
                 self._clear_l2_dedup_state(stream_id)
+                targeted_stream_ids.add(stream_id)
+            self._pending_l2_targeted_recovery_streams = (
+                targeted_stream_ids
+            )
             self._systemic_l2_targeted_resubscribe_count += 1
             self._systemic_l2_targeted_resubscribe_streak += 1
             return
@@ -366,6 +371,16 @@ class WebSocketSupervisor:
             self._last_stream_message[stream_id] = now_ms
             if (
                 event.kind is StreamKind.L2_BOOK
+                and stream_id
+                in self._pending_l2_targeted_recovery_streams
+            ):
+                self._pending_l2_targeted_recovery_streams.discard(
+                    stream_id
+                )
+                if not self._pending_l2_targeted_recovery_streams:
+                    self._systemic_l2_targeted_resubscribe_streak = 0
+            if (
+                event.kind is StreamKind.L2_BOOK
                 and self._l2_stream_is_stale(
                     stream_id,
                     now_ms=now_ms,
@@ -389,6 +404,7 @@ class WebSocketSupervisor:
             self._last_stream_message[stream_id] = session_started_ms
             self._clear_l2_dedup_state(stream_id)
         self._systemic_l2_targeted_resubscribe_streak = 0
+        self._pending_l2_targeted_recovery_streams.clear()
 
     async def _session(
         self,
@@ -480,9 +496,9 @@ class WebSocketSupervisor:
             now_ms = self._clock_ms()
             await self._open_l2_stale_gaps_if_needed(now_ms)
             await self._recover_systemic_l2_stale(
-                    connection,
-                    now_ms=now_ms,
-                )
+                connection,
+                now_ms=now_ms,
+            )
             if now_ms >= next_heartbeat_ms:
                 await connection.send_json({"method": "ping"})
                 next_heartbeat_ms = (
