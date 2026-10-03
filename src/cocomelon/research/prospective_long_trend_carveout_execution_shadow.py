@@ -8,6 +8,7 @@ from decimal import Decimal
 from typing import Final, cast
 
 from cocomelon.domain.execution import PaperExecutionConfig
+from cocomelon.domain.risk import RiskRequest
 from cocomelon.evidence.openings import conservative_cost_estimate
 from cocomelon.execution.ioc import simulate_ioc
 from cocomelon.execution.planner import PlanningRejection, plan_opening_order
@@ -151,7 +152,7 @@ def _execution_config_compatible(
 
 def _neutralize_weekly_drawdown_only(
     evidence: ContinuousPaperOpeningOpportunityEvidence,
-):
+) -> tuple[RiskRequest, Decimal]:
     if (
         evidence.baseline_risk_approved
         or evidence.baseline_risk_reason_codes
