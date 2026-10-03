@@ -100,6 +100,55 @@ def test_long_trend_execution_shadow_wait_status_preserves_metadata() -> None:
     assert "<<EOF" not in waiting
 
 
+def test_long_trend_execution_shadow_requires_durable_gate() -> None:
+    source = _source()
+
+    assert (
+        '      - "Prospective LONG+Trend Carveout Fast-Markout Ledger"'
+        in source
+    )
+    assert "EVENT_WORKFLOW_NAME" in source
+    assert "latest_successful_after_gate_ledger_wake" in source
+
+    gate = source.split(
+        "      - name: Resolve durable execution-shadow gate",
+        1,
+    )[1].split(
+        "      - name: Publish waiting-for-gate status",
+        1,
+    )[0]
+    assert (
+        "prospective-long-trend-carveout-fast-markout-ledger.yml/runs"
+        in gate
+    )
+    assert (
+        "prospective-long-trend-carveout-fast-markout-ledger.json"
+        in gate
+    )
+    assert "durable gate artifact digest mismatch" in gate
+    assert "durable gate ledger digest mismatch" in gate
+    assert "durable gate candidate lineage mismatch" in gate
+    assert (
+        "all_horizons_ready_for_execution_shadow_investigation"
+        in gate
+    )
+
+    evaluate = source.split(
+        "      - name: Evaluate captured execution shadow",
+        1,
+    )[1].split(
+        "      - name: Publish execution-shadow status",
+        1,
+    )[0]
+    assert "steps.gate.outputs.ready == 'true'" in evaluate
+    assert "waiting for durable execution-shadow gate" in source
+    assert (
+        "No counterfactual fill or PnL evidence is credited until "
+        "the durable fast-markout investigation gate passes."
+        in source
+    )
+
+
 def test_long_trend_execution_shadow_reuses_frozen_execution_path() -> None:
     source = _source()
 
@@ -124,3 +173,8 @@ def test_long_trend_execution_shadow_uploads_deterministic_summary() -> None:
         in source
     )
     assert "retention-days: 90" in source
+    upload = source.split(
+        "      - uses: actions/upload-artifact@v7",
+        1,
+    )[1]
+    assert "steps.gate.outputs.ready == 'true'" in upload
