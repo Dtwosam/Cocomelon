@@ -199,9 +199,9 @@ def test_systemic_l2_stale_on_active_socket_forces_reconnect() -> None:
             (7_000, trade(1, 7_000)),
         ]
         second_rows: list[tuple[int, object]] = [
-            (8_000, book_for("BTC", 8_000)),
-            (8_001, book_for("ETH", 8_001)),
-            (8_002, ConnectionError("bounded end")),
+            (8_000, trade(2, 8_000)),
+            (8_001, book_for("BTC", 8_001)),
+            (8_002, book_for("ETH", 8_002)),
         ]
 
         class ClockedConnection(FakeConnection):

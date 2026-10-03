@@ -328,6 +328,15 @@ class WebSocketSupervisor:
                 )
             await self._emit_event(event)
 
+    def _reset_l2_freshness_for_session(
+        self,
+        *,
+        session_started_ms: int,
+    ) -> None:
+        for stream_id in self._l2_stream_ids():
+            self._last_exchange_time.pop(stream_id, None)
+            self._last_stream_message[stream_id] = session_started_ms
+
     async def _session(
         self,
         connection: WsConnection,
@@ -338,6 +347,9 @@ class WebSocketSupervisor:
         received = 0
         heartbeat_ms = max(1, int(self._heartbeat_seconds * 1000))
         session_started_ms = self._clock_ms()
+        self._reset_l2_freshness_for_session(
+            session_started_ms=session_started_ms
+        )
         last_session_message_ms: int | None = None
         next_heartbeat_ms = session_started_ms + heartbeat_ms
         while max_messages is None or received < max_messages:

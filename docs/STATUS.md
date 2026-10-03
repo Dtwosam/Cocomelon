@@ -4537,3 +4537,16 @@ A dedicated `systemic_l2_stale_reconnect_count` is exposed per lane so Issue #46
 No L2 freshness threshold, eligibility rule, strategy threshold, risk veto, sizing rule, stop, readiness gate, promotion state, or live-order authority is relaxed.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Reset L2 freshness on reconnect before outer escalation — 2026-10-03
+
+Worker `37120841453` on `bd6ee2c` exposed a recovery coordination loop: lane-level systemic-L2 reconnects were followed by repeated full-group recoveries and REST reseeds. The pre-recovery telemetry showed both lanes reconnecting while the outer group simultaneously treated their temporarily cleared readiness sets as systemically unhealthy.
+
+The websocket supervisor now resets only its L2 freshness anchors at the start of each new socket session. Old exchange timestamps cannot immediately poison a fresh reconnect; each L2 subscription gets one existing freshness window to deliver a real snapshot. Readiness remains revoked until genuine fresh L2 data arrives, so the runtime still fails closed for trading.
+
+The outer supervisor-group health check now escalates only when the same markets are actually stale across every redundant lane. Temporary missing readiness during reconnect no longer causes an immediate full-group rebuild; replacement-group startup still requires every selected market to become ready, and decision-time missing/stale deep data remains ineligible.
+
+No freshness ceiling, eligibility threshold, strategy rule, risk limit, sizing rule, stop, promotion state, or live-order authority is relaxed.
+
+**LIVE TRADING: DISABLED.**

@@ -1440,10 +1440,7 @@ class _SupervisorGroup:
             market
             for market in self.required_market_keys
             if all(
-                (
-                    f"l2Book:{market}" in stale_by_lane[lane]
-                    or market not in self.ready_market_keys[lane]
-                )
+                f"l2Book:{market}" in stale_by_lane[lane]
                 for lane in range(len(self.supervisors))
             )
         )
