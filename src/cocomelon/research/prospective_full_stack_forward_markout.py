@@ -730,6 +730,7 @@ def prospective_full_stack_forward_markout_summary(
     risk_rejected_missing_rank = 0
     risk_rejected_stale_rank = 0
     risk_rejected_momentum_feature_integrity_misses = 0
+    risk_rejected_integrity_last_miss_at_ms: int | None = None
     long_trend_carveout_momentum_integrity_misses = 0
     risk_rejected_long_trend_carveout_momentum_integrity_misses = 0
     risk_rejected_reason_counts: Counter[str] = Counter()
@@ -755,6 +756,12 @@ def prospective_full_stack_forward_markout_summary(
                 missing_rank += 1
             else:
                 risk_rejected_missing_rank += 1
+                risk_rejected_integrity_last_miss_at_ms = max(
+                    evidence.opportunity_timestamp_ms,
+                    risk_rejected_integrity_last_miss_at_ms
+                    if risk_rejected_integrity_last_miss_at_ms is not None
+                    else evidence.opportunity_timestamp_ms,
+                )
             continue
         rank_age_ms = evidence.opportunity_timestamp_ms - observed_at
         if rank_age_ms < 0:
@@ -766,6 +773,12 @@ def prospective_full_stack_forward_markout_summary(
                 stale_rank += 1
             else:
                 risk_rejected_stale_rank += 1
+                risk_rejected_integrity_last_miss_at_ms = max(
+                    evidence.opportunity_timestamp_ms,
+                    risk_rejected_integrity_last_miss_at_ms
+                    if risk_rejected_integrity_last_miss_at_ms is not None
+                    else evidence.opportunity_timestamp_ms,
+                )
             continue
 
         request = evidence.risk_request_object
@@ -823,6 +836,12 @@ def prospective_full_stack_forward_markout_summary(
                     momentum_feature_integrity_misses += 1
                 else:
                     risk_rejected_momentum_feature_integrity_misses += 1
+                    risk_rejected_integrity_last_miss_at_ms = max(
+                        evidence.opportunity_timestamp_ms,
+                        risk_rejected_integrity_last_miss_at_ms
+                        if risk_rejected_integrity_last_miss_at_ms is not None
+                        else evidence.opportunity_timestamp_ms,
+                    )
                 continue
             if raw_decision not in {"ADMIT", "BLOCK"}:
                 raise ProspectiveFullStackForwardMarkoutError(
@@ -1091,6 +1110,9 @@ def prospective_full_stack_forward_markout_summary(
         ),
         "risk_rejected_integrity_clean": (
             risk_rejected_integrity_clean
+        ),
+        "risk_rejected_integrity_last_miss_at_ms": (
+            risk_rejected_integrity_last_miss_at_ms
         ),
         "risk_rejected_horizons": risk_rejected_horizons,
         "risk_rejected_long_trend_carveout": (
