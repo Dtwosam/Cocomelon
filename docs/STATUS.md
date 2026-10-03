@@ -4634,3 +4634,16 @@ The default escalation window is derived from the existing reconnect stagger: wi
 No book freshness threshold, strategy threshold, risk rule, sizing rule, stop, readiness gate, promotion state, or live-order authority is relaxed.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Proactive L2 failover freshness headroom — 2026-10-03
+
+Worker `37134013144` confirmed that stagger-aware group recovery stopped whole-group churn while one redundant websocket lane remained healthy. However, its first decision epoch still saw seven `stale_book` rejections even though the healthy lane was fresh across all 20 markets. Hyperliquid documents `l2Book` as a snapshot feed pushed on each block subject to a minimum 0.5-second push interval, so a healthy lane should provide ample headroom before the existing 5-second eligibility ceiling.
+
+The websocket supervisor now uses an explicit failover headroom before the hard paper-trading freshness limit. With the current defaults, a lane is declared stale for failover purposes at 4 seconds while strategy eligibility continues to reject books only at 5 seconds. This gives the redundant mux one second to switch to the healthy lane and drain fresh standby snapshots before the decision pipeline reaches the trading stale threshold.
+
+The headroom is versioned as `websocket_l2_failover_headroom_ms=1000` in the continuous-paper configuration and workflow. It must be non-negative and smaller than the hard book-age ceiling.
+
+This changes only failover timing. The 5-second book freshness eligibility rule, 1-second execution-book limit, strategy logic, risk vetoes, sizing, stops, readiness, promotion state, and live-order authority remain unchanged.
+
+**LIVE TRADING: DISABLED.**

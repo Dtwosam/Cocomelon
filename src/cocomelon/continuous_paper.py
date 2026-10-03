@@ -456,6 +456,7 @@ class ContinuousPaperConfig:
     context_poll_seconds: int = 30
     websocket_server_silence_timeout_ms: int = 15_000
     websocket_redundant_lane_reconnect_stagger_ms: int = 5_000
+    websocket_l2_failover_headroom_ms: int = 1_000
     selection_refresh_seconds: int = 300
     checkpoint_seconds: int = 30
     warmup_5m_bars: int = 25
@@ -476,6 +477,10 @@ class ContinuousPaperConfig:
             raise ValueError(
                 "websocket_redundant_lane_reconnect_stagger_ms "
                 "must be non-negative"
+            )
+        if self.websocket_l2_failover_headroom_ms < 0:
+            raise ValueError(
+                "websocket_l2_failover_headroom_ms must be non-negative"
             )
         if self.selection_refresh_seconds < self.context_poll_seconds:
             raise ValueError("selection_refresh_seconds must be >= context_poll_seconds")
@@ -1293,6 +1298,22 @@ def _l2_event_fresh_for_promotion(
     received_at_ms = int(event.receive_time.timestamp() * 1000)
     age_ms = received_at_ms - event.exchange_time_ms
     return 0 <= age_ms <= max_book_age_ms
+
+
+def _l2_supervisor_stale_after_ms(
+    *,
+    max_book_age_ms: int,
+    failover_headroom_ms: int,
+) -> int:
+    if max_book_age_ms <= 0:
+        raise ValueError("max_book_age_ms must be positive")
+    if failover_headroom_ms < 0:
+        raise ValueError("failover_headroom_ms must be non-negative")
+    if failover_headroom_ms >= max_book_age_ms:
+        raise ValueError(
+            "failover_headroom_ms must be smaller than max_book_age_ms"
+        )
+    return max_book_age_ms - failover_headroom_ms
 
 
 def _is_systemic_l2_count(
@@ -8488,8 +8509,13 @@ async def run_continuous_paper_session(
                     gap_sink=lane_gap_sink,
                     clock_ms=utc_now_ms,
                     utcnow=lambda: datetime.now(UTC),
-                    stale_after_ms=(
-                        replay_config.eligibility.max_book_age_ms
+                    stale_after_ms=_l2_supervisor_stale_after_ms(
+                        max_book_age_ms=(
+                            replay_config.eligibility.max_book_age_ms
+                        ),
+                        failover_headroom_ms=(
+                            config.websocket_l2_failover_headroom_ms
+                        ),
                     ),
                     server_silence_timeout_ms=(
                         config.websocket_server_silence_timeout_ms

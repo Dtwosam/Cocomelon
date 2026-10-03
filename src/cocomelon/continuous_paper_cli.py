@@ -26,6 +26,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=5_000,
     )
+    parser.add_argument(
+        "--websocket-l2-failover-headroom-ms",
+        type=int,
+        default=1_000,
+    )
     parser.add_argument("--selection-refresh-seconds", type=int, default=300)
     parser.add_argument("--checkpoint-seconds", type=int, default=30)
     parser.add_argument("--stop-file", type=Path)
@@ -47,6 +52,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         ),
         websocket_redundant_lane_reconnect_stagger_ms=(
             args.websocket_redundant_lane_reconnect_stagger_ms
+        ),
+        websocket_l2_failover_headroom_ms=(
+            args.websocket_l2_failover_headroom_ms
         ),
         selection_refresh_seconds=args.selection_refresh_seconds,
         checkpoint_seconds=args.checkpoint_seconds,

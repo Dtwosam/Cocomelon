@@ -50,6 +50,7 @@ from cocomelon.continuous_paper import (
     _is_systemic_l2_failure,
     _iter_until_stop,
     _l2_event_fresh_for_promotion,
+    _l2_supervisor_stale_after_ms,
     _latest_epoch_stale_l2_market_keys,
     _load_checkpoint,
     _monitor_event_loop_lag,
@@ -1846,9 +1847,10 @@ def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
     assert "pump.stale_l2_recovery_attempts += 1" in source
     assert "pump.stale_l2_recovery_promotions += 1" in source
     assert "stale_l2_recovery_readiness_failures += 1" in source
+    assert "stale_after_ms=_l2_supervisor_stale_after_ms(" in source
     assert (
-        "stale_after_ms=(\n"
-        "                        replay_config.eligibility.max_book_age_ms"
+        "failover_headroom_ms=(\n"
+        "                            config.websocket_l2_failover_headroom_ms"
         in source
     )
     assert "_l2_event_fresh_for_promotion(" in source
@@ -1929,12 +1931,14 @@ def test_continuous_context_poll_has_freshness_headroom() -> None:
     assert config.context_poll_seconds * 1000 < 60_000
     assert config.websocket_server_silence_timeout_ms == 15_000
     assert config.websocket_redundant_lane_reconnect_stagger_ms == 5_000
+    assert config.websocket_l2_failover_headroom_ms == 1_000
     assert "--context-poll-seconds 30" in workflow
     assert "--websocket-server-silence-timeout-ms 15000" in workflow
     assert (
         "--websocket-redundant-lane-reconnect-stagger-ms 5000"
         in workflow
     )
+    assert "--websocket-l2-failover-headroom-ms 1000" in workflow
     assert "--context-poll-seconds 60" not in workflow
 
 
@@ -1983,6 +1987,32 @@ def test_continuous_config_requires_non_negative_lane_reconnect_stagger() -> Non
     ):
         ContinuousPaperConfig(
             websocket_redundant_lane_reconnect_stagger_ms=-1,
+        )
+
+
+def test_continuous_config_requires_non_negative_l2_failover_headroom() -> None:
+    with pytest.raises(
+        ValueError,
+        match="websocket_l2_failover_headroom_ms",
+    ):
+        ContinuousPaperConfig(
+            websocket_l2_failover_headroom_ms=-1,
+        )
+
+
+def test_l2_supervisor_failover_has_freshness_headroom() -> None:
+    assert _l2_supervisor_stale_after_ms(
+        max_book_age_ms=5_000,
+        failover_headroom_ms=1_000,
+    ) == 4_000
+
+    with pytest.raises(
+        ValueError,
+        match="smaller than max_book_age_ms",
+    ):
+        _l2_supervisor_stale_after_ms(
+            max_book_age_ms=5_000,
+            failover_headroom_ms=5_000,
         )
 
 
