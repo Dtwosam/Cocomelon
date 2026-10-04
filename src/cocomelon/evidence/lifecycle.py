@@ -212,7 +212,9 @@ class _OpenTradeLifecycle:
     funding: dict[str, FundingAccrual] = field(default_factory=dict)
     marks: dict[str, ReplayRecord] = field(default_factory=dict)
     checkpoint_low_mark: ReplayRecord | None = None
+    checkpoint_low_mark_price: Decimal | None = None
     checkpoint_high_mark: ReplayRecord | None = None
+    checkpoint_high_mark_price: Decimal | None = None
     checkpoint_latest_by_boundary: dict[int, ReplayRecord] = field(
         default_factory=dict
     )
@@ -446,20 +448,26 @@ class BaselineReplayPipeline:
     ) -> None:
         price = cls._checkpoint_mark_price(record)
         low = lifecycle.checkpoint_low_mark
+        low_price = lifecycle.checkpoint_low_mark_price
         if (
             low is None
+            or low_price is None
             or (price, record.sort_key)
-            < (cls._checkpoint_mark_price(low), low.sort_key)
+            < (low_price, low.sort_key)
         ):
             lifecycle.checkpoint_low_mark = record
+            lifecycle.checkpoint_low_mark_price = price
 
         high = lifecycle.checkpoint_high_mark
+        high_price = lifecycle.checkpoint_high_mark_price
         if (
             high is None
+            or high_price is None
             or (price, record.sort_key)
-            > (cls._checkpoint_mark_price(high), high.sort_key)
+            > (high_price, high.sort_key)
         ):
             lifecycle.checkpoint_high_mark = record
+            lifecycle.checkpoint_high_mark_price = price
 
         boundary_ms = (
             (record.available_at_ms + HOUR_MS - 1)
@@ -480,7 +488,9 @@ class BaselineReplayPipeline:
         lifecycle: _OpenTradeLifecycle,
     ) -> None:
         lifecycle.checkpoint_low_mark = None
+        lifecycle.checkpoint_low_mark_price = None
         lifecycle.checkpoint_high_mark = None
+        lifecycle.checkpoint_high_mark_price = None
         lifecycle.checkpoint_latest_by_boundary.clear()
         for record in lifecycle.marks.values():
             cls._update_checkpoint_mark_summary(lifecycle, record)
