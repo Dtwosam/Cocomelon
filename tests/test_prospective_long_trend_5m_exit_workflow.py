@@ -108,7 +108,8 @@ def test_long_trend_5m_cli_reads_durable_state_and_frozen_source() -> None:
     assert "opening-opportunities" in source
     assert "opening-opportunity-exit-books" in source
     assert "replacement-funding-boundaries" in source
-    assert "_validate_long_trend_execution_source" in source
+    assert "_execution_config_from_durable_long_trend_source" in source
+    assert "execution_config_sha256" in source
     assert "FROZEN_STARTED_AT_MS" in source
     assert "candidate_investigation_ready" in source
 
