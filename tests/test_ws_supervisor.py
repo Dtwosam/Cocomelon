@@ -172,11 +172,8 @@ def test_reconnect_accepts_same_l2_snapshot_as_new_session_bootstrap() -> None:
             max_messages_per_session=2,
         )
 
-        assert [event.event_key for event in events] == [
-            events[0].event_key,
-            events[0].event_key,
-        ]
         assert len(events) == 2
+        assert events[0].event_key == events[1].event_key
         assert supervisor.health.duplicate_count == 0
         assert supervisor.health.reconnect_count == 1
         assert sleeps == [1.0]
