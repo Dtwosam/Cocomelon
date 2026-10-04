@@ -13,9 +13,11 @@ import pytest
 
 from cocomelon.continuous_paper import (
     RUN_ID,
+    UPGRADE_DEFERRED_RESEARCH_FILENAMES,
     ContinuousPaperConfig,
     _account_lifecycle_bridge_payload,
     _clean_evidence_runway_payload,
+    _clear_upgrade_deferred_research,
     _closed_trade_concentration_payload,
     _closed_trade_friction_payload,
     _closed_trade_robustness_payload,
@@ -4547,6 +4549,50 @@ def test_stop_aware_iterator_stops_before_starting_more_work(
 
     assert observed == [1]
     assert _stop_requested(stop_path) is True
+
+
+def test_upgrade_handoff_clears_only_derived_research_summaries(
+    tmp_path: Path,
+) -> None:
+    for filename in UPGRADE_DEFERRED_RESEARCH_FILENAMES:
+        (tmp_path / filename).write_text("stale", encoding="utf-8")
+    runtime_state = tmp_path / "runtime-state.json"
+    runtime_state.write_text('{"state":"keep"}', encoding="utf-8")
+    journal = tmp_path / "journal.sqlite3"
+    journal.write_bytes(b"keep")
+
+    _clear_upgrade_deferred_research(tmp_path)
+
+    assert all(
+        not (tmp_path / filename).exists()
+        for filename in UPGRADE_DEFERRED_RESEARCH_FILENAMES
+    )
+    assert runtime_state.read_text(encoding="utf-8") == '{"state":"keep"}'
+    assert journal.read_bytes() == b"keep"
+
+
+def test_upgrade_handoff_skips_terminal_derived_research() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    upgrade_at = source.index(
+        'if exit_reason == "upgrade_requested":'
+    )
+    clear_at = source.index(
+        "_clear_upgrade_deferred_research(root)",
+        upgrade_at,
+    )
+    heavy_at = source.index(
+        "_prospective_consecutive_loss_cooldown_shadow_payload(",
+        clear_at,
+    )
+    summary_at = source.index(
+        "summary = ContinuousPaperSummary(",
+        heavy_at,
+    )
+
+    assert upgrade_at < clear_at < heavy_at < summary_at
+    assert "else:" in source[clear_at:heavy_at]
 
 
 def test_continuous_runtime_honors_upgrade_stop_file_contract() -> None:
