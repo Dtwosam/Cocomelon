@@ -6059,6 +6059,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "connected": True,
                     "reconnect_count": 7,
                     "systemic_l2_stale_reconnect_count": 6,
+                    "stale_deadline_buffered_message_count": 12,
                     "duplicate_count": 5,
                     "anomaly_count": 1,
                     "last_server_message_ms": 1_699_999_999_900,
@@ -6089,6 +6090,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "connected": False,
                     "reconnect_count": 11,
                     "systemic_l2_stale_reconnect_count": 8,
+                    "stale_deadline_buffered_message_count": 15,
                     "duplicate_count": 9,
                     "anomaly_count": 0,
                     "last_server_message_ms": 1_699_999_998_000,
@@ -6138,6 +6140,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                         "connected": True,
                         "reconnect_count": 0,
                         "systemic_l2_stale_reconnect_count": 0,
+                        "stale_deadline_buffered_message_count": 2,
                         "duplicate_count": 1,
                         "anomaly_count": 0,
                         "last_server_message_age_ms": 90,
@@ -6159,6 +6162,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                         "connected": True,
                         "reconnect_count": 0,
                         "systemic_l2_stale_reconnect_count": 0,
+                        "stale_deadline_buffered_message_count": 3,
                         "duplicate_count": 0,
                         "anomaly_count": 0,
                         "last_server_message_age_ms": 80,
@@ -6346,7 +6350,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert (
         "L2 lane 0: connected=true, ready=20, stale=16, "
         "missing-ready=0, reconnects=7, l2-stale-reconnects=6, "
-        "server-age=100ms"
+        "deadline-drains=12, server-age=100ms"
         in rendered
     )
     assert "L2 lane 0 stale markets: AAVE, ADA" in rendered
@@ -6363,7 +6367,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert (
         "L2 lane 1: connected=false, ready=18, stale=15, "
         "missing-ready=2, reconnects=11, l2-stale-reconnects=8, "
-        "server-age=2000ms"
+        "deadline-drains=15, server-age=2000ms"
         in rendered
     )
     assert "L2 lane 1 missing-ready markets: DOGE, ENA" in rendered
@@ -6382,14 +6386,14 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert (
         "pre-recovery L2 lane 0: connected=true, ready=20, stale=0, "
         "missing-ready=0, reconnects=0, l2-stale-reconnects=0, "
-        "server-age=90ms, "
+        "deadline-drains=2, server-age=90ms, "
         "age-min/max=600/700ms, current-age-min/max=650/850ms"
         in rendered
     )
     assert (
         "pre-recovery L2 lane 1: connected=true, ready=20, stale=0, "
         "missing-ready=0, reconnects=0, l2-stale-reconnects=0, "
-        "server-age=80ms, "
+        "deadline-drains=3, server-age=80ms, "
         "age-min/max=590/690ms, current-age-min/max=700/900ms"
         in rendered
     )
