@@ -4686,3 +4686,14 @@ The evaluator treats v2's captured config as authoritative for risk/planner/visi
 This prevents future execution-model changes from being silently mixed into the same counterfactual evidence. The change is provenance-only: it does not alter the paper trader's execution config, risk limits, strategy, sizing, stops, readiness, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+### Live clean-breakeven shadow preview — 2026-10-04
+
+The profit-lock execution shadow remains the strongest mature exit challenger in current evidence: the durable `breakeven_after_0_5r` shadow is review-ready on its touched predecessor sample with a positive, leave-one-trade and leave-one-market robust PnL/R delta. The separate clean prospective gate remains correctly blocked by insufficient future sample and therefore still has no execution or promotion authority.
+
+The continuous-paper operational heartbeat now exposes a deliberately small preview of that clean prospective candidate for currently open positions. It reports only candidate identity/start, clean open-position counts, activation/trigger counts, and per-position activation/trigger state plus the breakeven candidate stop once activated. It reads only current open rule state and does not serialize historical shadow outcomes into the hot heartbeat path.
+
+This is observability only. It does not move the actual paper stop, alter strategy/risk/sizing/execution, lower the clean prospective evidence gate, grant candidate readiness, promote a strategy, or enable live orders.
+
+**LIVE TRADING: DISABLED.**
+
