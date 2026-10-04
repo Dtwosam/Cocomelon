@@ -8000,7 +8000,8 @@ async def run_continuous_paper_session(
                     end_ms=now_ms,
                 )
                 received_at_ms = utc_now_ms()
-                rates = normalize_funding_history(
+                rates = await asyncio.to_thread(
+                    normalize_funding_history,
                     market,
                     raw,
                     received_at_ms=received_at_ms,
@@ -8084,7 +8085,8 @@ async def run_continuous_paper_session(
                         "",
                     )
                     received_at_ms = utc_now_ms()
-                    snapshots = normalize_meta_and_asset_ctxs(
+                    snapshots = await asyncio.to_thread(
+                        normalize_meta_and_asset_ctxs,
                         "",
                         raw,
                         received_at_ms=received_at_ms,
@@ -8461,11 +8463,13 @@ async def run_continuous_paper_session(
                     end_ms=now_ms,
                 )
                 received_at_ms = utc_now_ms()
-                for rate in normalize_funding_history(
+                rates = await asyncio.to_thread(
+                    normalize_funding_history,
                     position.market,
                     raw,
                     received_at_ms=received_at_ms,
-                ):
+                )
+                for rate in rates:
                     await pump.process(
                         _record_from_public(funding_rate_record_event(rate))
                     )

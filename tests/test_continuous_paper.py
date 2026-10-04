@@ -2053,6 +2053,40 @@ def test_bulk_market_normalization_runs_off_event_loop() -> None:
     assert "await asyncio.to_thread(\n        normalize_meta_and_asset_ctxs" in refresh
     assert "await asyncio.to_thread(\n                normalize_candles" in warmup
 
+    runtime = source.split(
+        "async def run_continuous_paper_session(",
+        1,
+    )[1]
+    oracle_window = runtime.split(
+        "async def capture_replacement_funding_oracles()",
+        1,
+    )[1].split(
+        "original_stop_book_capture =",
+        1,
+    )[0]
+    assert "snapshots = await asyncio.to_thread(" in oracle_window
+    assert "normalize_meta_and_asset_ctxs," in oracle_window
+
+    replacement_funding_window = runtime.split(
+        "async def capture_due_replacement_funding(",
+        1,
+    )[1].split(
+        "async def capture_replacement_funding_oracles()",
+        1,
+    )[0]
+    assert "rates = await asyncio.to_thread(" in replacement_funding_window
+    assert "normalize_funding_history," in replacement_funding_window
+
+    position_funding_window = runtime.split(
+        "async def refresh_funding() -> None:",
+        1,
+    )[1].split(
+        "await refresh_funding()",
+        1,
+    )[0]
+    assert "rates = await asyncio.to_thread(" in position_funding_window
+    assert "normalize_funding_history," in position_funding_window
+
 
 def test_continuous_context_poll_has_freshness_headroom() -> None:
     config = ContinuousPaperConfig()
@@ -2539,10 +2573,19 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         precise_raw_at,
     )
     precise_normalize_at = source.index(
-        "snapshots = normalize_meta_and_asset_ctxs(",
+        "snapshots = await asyncio.to_thread(",
         precise_received_at,
     )
-    assert precise_raw_at < precise_received_at < precise_normalize_at
+    precise_normalizer_at = source.index(
+        "normalize_meta_and_asset_ctxs,",
+        precise_normalize_at,
+    )
+    assert (
+        precise_raw_at
+        < precise_received_at
+        < precise_normalize_at
+        < precise_normalizer_at
+    )
     assert "capture_due_replacement_funding(" in source
     assert "reader.funding_history" in source
     assert "funding_boundary_for_record_time(" in source
