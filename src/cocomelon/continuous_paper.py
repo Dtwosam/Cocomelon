@@ -9040,6 +9040,7 @@ async def run_continuous_paper_session(
                         lane
                         * config.websocket_redundant_lane_reconnect_stagger_ms
                     ),
+                    max_systemic_l2_targeted_resubscribes=1,
                 )
                 supervisors.append(supervisor)
                 tasks.append(
