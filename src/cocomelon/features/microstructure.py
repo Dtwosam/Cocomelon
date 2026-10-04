@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 
-from cocomelon.domain.stream import StreamEvent, StreamKind
+from cocomelon.domain.stream import StreamEvent, StreamKind, l2_book_age_ms
 
 BPS = Decimal("10000")
 ZERO = Decimal("0")
@@ -57,10 +57,10 @@ def calculate_microstructure_features(
         raise ValueError("as_of_ms must be non-negative")
     if not depth_band_bps.is_finite() or depth_band_bps <= ZERO:
         raise ValueError("depth_band_bps must be finite and positive")
-    if event.exchange_time_ms is None:
-        raise ValueError("L2 event exchange_time_ms is required")
-    if event.exchange_time_ms > as_of_ms:
-        raise ValueError("L2 exchange timestamp is in the future")
+    book_age_ms = l2_book_age_ms(
+        event,
+        as_of_ms=as_of_ms,
+    )
 
     bids = _levels(event.payload, "bids")
     asks = _levels(event.payload, "asks")
@@ -79,8 +79,6 @@ def calculate_microstructure_features(
     total_depth = bid_depth + ask_depth
     imbalance = None if total_depth <= ZERO else (bid_depth - ask_depth) / total_depth
     source_received_at_ms = int(event.receive_time.timestamp() * 1000)
-    if source_received_at_ms > as_of_ms:
-        raise ValueError("L2 event was received after as_of_ms")
 
     return MicrostructureFeatureValues(
         source_received_at_ms=source_received_at_ms,
@@ -91,5 +89,5 @@ def calculate_microstructure_features(
         bid_depth_25bps=bid_depth,
         ask_depth_25bps=ask_depth,
         book_imbalance=imbalance,
-        book_age_ms=as_of_ms - event.exchange_time_ms,
+        book_age_ms=book_age_ms,
     )
