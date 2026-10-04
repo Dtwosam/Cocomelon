@@ -3829,7 +3829,8 @@ async def _refresh_native_market_snapshots(
         "",
     )
     received_at_ms = clock_ms()
-    snapshots = normalize_meta_and_asset_ctxs(
+    snapshots = await asyncio.to_thread(
+        normalize_meta_and_asset_ctxs,
         "",
         raw,
         received_at_ms=received_at_ms,
@@ -3979,7 +3980,8 @@ async def _warmup_market(
         )
         received_at_ms = utc_now_ms()
         output.extend(
-            normalize_candles(
+            await asyncio.to_thread(
+                normalize_candles,
                 market,
                 raw,
                 received_at_ms=received_at_ms,
