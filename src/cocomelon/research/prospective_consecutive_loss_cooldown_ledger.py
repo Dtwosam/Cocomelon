@@ -402,6 +402,7 @@ def _canonical_option(
     if not risk_approved:
         if (
             not risk_reasons
+            or "risk_approved" in risk_reasons
             or planning_approved
             or planning_rejection is not None
             or execution_result is not None
@@ -410,25 +411,29 @@ def _canonical_option(
             raise ProspectiveConsecutiveLossCooldownLedgerError(
                 "risk-rejected cooldown option is inconsistent"
             )
-    elif not planning_approved:
-        if (
-            risk_reasons
-            or planning_rejection is None
-            or execution_result is not None
-            or filled_quantity is not None
-        ):
-            raise ProspectiveConsecutiveLossCooldownLedgerError(
-                "planning-rejected cooldown option is inconsistent"
-            )
     else:
-        if risk_reasons or planning_rejection is not None:
+        if risk_reasons != ["risk_approved"]:
             raise ProspectiveConsecutiveLossCooldownLedgerError(
-                "planned cooldown option carries rejection evidence"
+                "approved cooldown option risk reason drift"
             )
-        if execution_result is None:
-            raise ProspectiveConsecutiveLossCooldownLedgerError(
-                "planned cooldown option is missing execution result"
-            )
+        if not planning_approved:
+            if (
+                planning_rejection is None
+                or execution_result is not None
+                or filled_quantity is not None
+            ):
+                raise ProspectiveConsecutiveLossCooldownLedgerError(
+                    "planning-rejected cooldown option is inconsistent"
+                )
+        else:
+            if planning_rejection is not None:
+                raise ProspectiveConsecutiveLossCooldownLedgerError(
+                    "planned cooldown option carries planning rejection"
+                )
+            if execution_result is None:
+                raise ProspectiveConsecutiveLossCooldownLedgerError(
+                    "planned cooldown option is missing execution result"
+                )
 
     return {
         "opportunity_id": opportunity_id,
