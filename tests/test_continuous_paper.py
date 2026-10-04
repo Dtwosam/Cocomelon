@@ -1715,9 +1715,9 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
             {"BTC", "ETH", "SOL"},
             {"BTC", "ETH"},
         ),
-        l2_exchange_age_ms_by_market=(
-            {"BTC": -250, "ETH": 80, "SOL": 120},
-            {"BTC": -300, "ETH": 90, "SOL": 140},
+        l2_exchange_time_ms_by_market=(
+            {"BTC": 10_250, "ETH": 9_920, "SOL": 9_880},
+            {"BTC": 10_300, "ETH": 9_910, "SOL": 9_860},
         ),
     )
 
