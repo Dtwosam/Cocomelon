@@ -8277,6 +8277,7 @@ async def run_continuous_paper_session(
                     _record_from_public(candle_record_event(candle)),
                     evaluate_decisions=False,
                 )
+                await _cooperative_stream_yield()
 
         if not _stop_requested(stop_path):
             (
@@ -9098,6 +9099,7 @@ async def run_continuous_paper_session(
                             await pump.process(
                                 _record_from_public(candle_record_event(candle))
                             )
+                            await _cooperative_stream_yield()
                     if desired_keys != selected_keys:
                         pump.shortlist_rotation_attempts += 1
                         replacement_group = await start_supervisors(
