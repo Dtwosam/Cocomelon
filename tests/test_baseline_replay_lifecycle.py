@@ -646,11 +646,11 @@ def test_funding_oracle_index_compacts_same_hour_and_preserves_lookup(
         ),
     )
 
-    indexed = pipeline._oracle_by_funding_boundary[  # noqa: SLF001
+    indexed = pipeline._oracle_by_funding_boundary[
         MARKET.canonical
     ]
     assert tuple(indexed) == (BOUNDARY_MS,)
-    before_boundary = pipeline._oracle_before(  # noqa: SLF001
+    before_boundary = pipeline._oracle_before(
         MARKET,
         BOUNDARY_MS,
     )
@@ -671,18 +671,18 @@ def test_funding_oracle_index_compacts_same_hour_and_preserves_lookup(
         ),
     )
 
-    indexed = pipeline._oracle_by_funding_boundary[  # noqa: SLF001
+    indexed = pipeline._oracle_by_funding_boundary[
         MARKET.canonical
     ]
     assert tuple(sorted(indexed)) == (
         BOUNDARY_MS,
         BOUNDARY_MS + 3_600_000,
     )
-    assert pipeline._oracle_before(  # noqa: SLF001
+    assert pipeline._oracle_before(
         MARKET,
         BOUNDARY_MS,
     ) == before_boundary
-    after_boundary = pipeline._oracle_before(  # noqa: SLF001
+    after_boundary = pipeline._oracle_before(
         MARKET,
         BOUNDARY_MS + 3_600_000,
     )
