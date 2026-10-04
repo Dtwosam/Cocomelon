@@ -4234,6 +4234,7 @@ class _RecordPump:
         self.last_stale_l2_recovery_trigger: dict[str, object] | None = None
         self.record_pump_max_process_ms = 0
         self.record_pump_max_lock_wait_ms = 0
+        self.record_pump_max_process_ms_by_component: dict[str, int] = {}
         self.record_pump_slow_record_count = 0
         self.record_pump_last_slow_record: dict[str, object] | None = None
         self.startup_component_ms: dict[str, int] = {}
@@ -4321,6 +4322,23 @@ class _RecordPump:
                     payload_json=record.payload_json,
                     event_kind=record.event_kind,
                 )
+            component_ms: dict[str, int] = {}
+
+            def finish_component(name: str, started: float) -> None:
+                elapsed_ms = max(
+                    0,
+                    int((loop.time() - started) * 1000),
+                )
+                component_ms[name] = elapsed_ms
+                self.record_pump_max_process_ms_by_component[name] = max(
+                    self.record_pump_max_process_ms_by_component.get(
+                        name,
+                        0,
+                    ),
+                    elapsed_ms,
+                )
+
+            component_started = loop.time()
             if evaluate_decisions:
                 observations = self.pipeline.on_record(
                     record,
@@ -4332,10 +4350,16 @@ class _RecordPump:
                     available,
                     evaluate_decisions=False,
                 )
+            finish_component("pipeline_on_record", component_started)
+
+            component_started = loop.time()
             for observation in observations:
                 self.journal.record_observation(observation)
+            finish_component("journal_observations", component_started)
             if observations:
                 self.last_observation = observations[-1]
+
+            component_started = loop.time()
             if self.entry_mid_markout_shadow is not None:
                 provider = self._position_provider
                 if provider is None:
@@ -4347,7 +4371,14 @@ class _RecordPump:
                     provider(),
                     now_ms=available,
                 )
-            for trade in self.pipeline.finalize(available):
+            finish_component("entry_mid_markout_shadow", component_started)
+
+            component_started = loop.time()
+            finalized_trades = self.pipeline.finalize(available)
+            finish_component("pipeline_finalize", component_started)
+
+            component_started = loop.time()
+            for trade in finalized_trades:
                 if trade.trade_id in self._known_trade_ids:
                     continue
                 self.journal.record_trade(trade)
@@ -4359,6 +4390,9 @@ class _RecordPump:
                 self._recent_closed_trades.append(trade)
                 self.closed_trades += 1
                 self.session_closed_trades += 1
+            finish_component("journal_trade_updates", component_started)
+
+            component_started = loop.time()
             if self.cadence_shadow is not None:
                 try:
                     self.cadence_shadow.observe(record, available)
@@ -4367,6 +4401,7 @@ class _RecordPump:
                         f"{type(exc).__name__}: {exc}"
                     )
                     self.cadence_shadow = None
+            finish_component("cadence_shadow", component_started)
             self.last_available_at_ms = available
             self.processed_records += 1
             self.journal_observations += len(observations)
@@ -4397,12 +4432,19 @@ class _RecordPump:
             )
             if process_ms >= 1_000:
                 self.record_pump_slow_record_count += 1
+                slowest_component = max(
+                    component_ms,
+                    key=component_ms.get,
+                    default=None,
+                )
                 self.record_pump_last_slow_record = {
                     "record_kind": record.record_kind.value,
                     "event_kind": record.event_kind,
                     "market": record.market,
                     "process_ms": process_ms,
                     "lock_wait_ms": lock_wait_ms,
+                    "component_ms": dict(sorted(component_ms.items())),
+                    "slowest_component": slowest_component,
                 }
 
     @property
@@ -6872,6 +6914,9 @@ def _live_status_payload(
         "duplicate_records_dropped": pump.duplicate_records_dropped,
         "record_pump_max_process_ms": pump.record_pump_max_process_ms,
         "record_pump_max_lock_wait_ms": pump.record_pump_max_lock_wait_ms,
+        "record_pump_max_process_ms_by_component": dict(
+            sorted(pump.record_pump_max_process_ms_by_component.items())
+        ),
         "record_pump_slow_record_count": pump.record_pump_slow_record_count,
         "record_pump_last_slow_record": pump.record_pump_last_slow_record,
         "startup_component_ms": dict(
