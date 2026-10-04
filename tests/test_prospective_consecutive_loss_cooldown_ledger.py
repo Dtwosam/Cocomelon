@@ -198,7 +198,7 @@ def test_cooldown_ledger_accepts_planning_rejection_after_risk_approval() -> Non
     )
 
     rows = ledger["rows"]
-    assert isinstance(rows, list)
+    assert isinstance(rows, tuple)
     assert len(rows) == 1
     assert rows[0]["counterfactual_risk_reason_codes"] == [
         "risk_approved"
