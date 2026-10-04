@@ -221,6 +221,55 @@ def _receive_ms(event: StreamEvent) -> int:
     return int(event.receive_time.timestamp() * 1000)
 
 
+def _compact_gap_intervals(
+    intervals: Sequence[tuple[int, int | None]],
+) -> list[tuple[int, int | None]]:
+    closed = sorted(
+        (started_ms, ended_ms)
+        for started_ms, ended_ms in intervals
+        if ended_ms is not None
+    )
+    open_intervals = sorted(
+        (
+            (started_ms, None)
+            for started_ms, ended_ms in intervals
+            if ended_ms is None
+        ),
+        key=lambda item: item[0],
+    )
+    compacted_closed: list[tuple[int, int]] = []
+    for started_ms, ended_ms in closed:
+        if ended_ms < started_ms:
+            raise ReplayInvariantError(
+                "data-gap ended_ms must be >= started_ms"
+            )
+        if (
+            not compacted_closed
+            or started_ms > compacted_closed[-1][1]
+        ):
+            compacted_closed.append((started_ms, ended_ms))
+            continue
+        previous_started_ms, previous_ended_ms = compacted_closed[-1]
+        compacted_closed[-1] = (
+            previous_started_ms,
+            max(previous_ended_ms, ended_ms),
+        )
+
+    compacted: list[tuple[int, int | None]] = [
+        (started_ms, ended_ms)
+        for started_ms, ended_ms in compacted_closed
+    ]
+    compacted.extend(open_intervals)
+    compacted.sort(
+        key=lambda item: (
+            item[0],
+            item[1] is None,
+            -1 if item[1] is None else item[1],
+        )
+    )
+    return compacted
+
+
 class BaselineReplayPipeline:
     def __init__(
         self,
@@ -604,7 +653,7 @@ class BaselineReplayPipeline:
             if started_ms < 0 or (ended_ms is not None and ended_ms < started_ms):
                 raise ReplayInvariantError("restored gap interval is invalid")
             restored.append((started_ms, ended_ms))
-        self._gap_intervals = restored
+        self._gap_intervals = _compact_gap_intervals(restored)
 
     def _new_exposure_allowed(self, timestamp_ms: int) -> bool:
         cutoff_ms = self._new_exposure_cutoff_ms
@@ -1115,6 +1164,10 @@ class BaselineReplayPipeline:
                 if interval not in self._gap_intervals:
                     self._gap_intervals.append(interval)
             else:
+                if ended_raw < started_raw:
+                    raise ReplayInvariantError(
+                        "data-gap ended_ms must be >= started_ms"
+                    )
                 open_interval = (started_raw, None)
                 if open_interval in self._gap_intervals:
                     self._gap_intervals[
@@ -1122,6 +1175,9 @@ class BaselineReplayPipeline:
                     ] = interval
                 elif interval not in self._gap_intervals:
                     self._gap_intervals.append(interval)
+                self._gap_intervals = _compact_gap_intervals(
+                    self._gap_intervals
+                )
 
         if evaluate_decisions:
             for epoch in self._decision_engine.observe(record, now_ms):
