@@ -268,6 +268,34 @@ def test_shadow_summary_payload_is_cached_until_state_changes() -> None:
     assert comparator.summary_payload_build_count == 2
 
 
+def test_shadow_state_reuses_cached_immutable_outcome_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    comparator = CadenceShadowComparator((MARKET,))
+    settled = settle_shadow_decision(
+        _sample(Direction.LONG),
+        exit_px=Decimal("101"),
+    )
+    comparator._outcomes.append(settled)
+
+    first = comparator.state_payload()
+
+    def fail_rebuild(_outcome: object) -> dict[str, object]:
+        raise AssertionError(
+            "settled outcome payload must be reused after first build"
+        )
+
+    monkeypatch.setattr(
+        "cocomelon.research.cadence_shadow._outcome_payload",
+        fail_rebuild,
+    )
+
+    second = comparator.state_payload()
+
+    assert second == first
+    assert second["outcomes"] == first["outcomes"]
+
+
 def test_shadow_state_round_trip_preserves_pending_and_settled_evidence() -> None:
     comparator = CadenceShadowComparator((MARKET,))
     pending = _sample(Direction.LONG)
