@@ -6058,6 +6058,9 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "missing_ready_l2_markets": [],
                     "stale_l2_market_count": 16,
                     "stale_l2_markets": ["AAVE", "ADA"],
+                    "l2_current_age_observed_market_count": 20,
+                    "l2_current_age_min_ms": 900,
+                    "l2_current_age_max_ms": 7_200,
                     "l2_exchange_age_observed_market_count": 20,
                     "l2_exchange_age_negative_market_count": 16,
                     "l2_exchange_age_min_ms": -420,
@@ -6085,6 +6088,9 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "missing_ready_l2_markets": ["DOGE", "ENA"],
                     "stale_l2_market_count": 15,
                     "stale_l2_markets": ["AAVE", "ADA", "DOGE"],
+                    "l2_current_age_observed_market_count": 20,
+                    "l2_current_age_min_ms": 1_100,
+                    "l2_current_age_max_ms": 7_800,
                     "l2_exchange_age_observed_market_count": 20,
                     "l2_exchange_age_negative_market_count": 15,
                     "l2_exchange_age_min_ms": -510,
@@ -6130,6 +6136,9 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                         "missing_ready_l2_markets": [],
                         "stale_l2_market_count": 0,
                         "stale_l2_markets": [],
+                        "l2_current_age_observed_market_count": 20,
+                        "l2_current_age_min_ms": 650,
+                        "l2_current_age_max_ms": 850,
                         "l2_exchange_age_observed_market_count": 20,
                         "l2_exchange_age_negative_market_count": 0,
                         "l2_exchange_age_min_ms": 600,
@@ -6148,6 +6157,9 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                         "missing_ready_l2_markets": [],
                         "stale_l2_market_count": 0,
                         "stale_l2_markets": [],
+                        "l2_current_age_observed_market_count": 20,
+                        "l2_current_age_min_ms": 700,
+                        "l2_current_age_max_ms": 900,
                         "l2_exchange_age_observed_market_count": 20,
                         "l2_exchange_age_negative_market_count": 0,
                         "l2_exchange_age_min_ms": 590,
@@ -6315,7 +6327,8 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert "L2 lane 0 stale markets: AAVE, ADA" in rendered
     assert (
         "L2-age-observed=20, negative-age=16, "
-        "age-min/max=-420/85ms"
+        "age-min/max=-420/85ms, current-age-observed=20, "
+        "current-age-min/max=900/7200ms"
         in rendered
     )
     assert (
@@ -6331,7 +6344,8 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert "L2 lane 1 missing-ready markets: DOGE, ENA" in rendered
     assert (
         "L2-age-observed=20, negative-age=15, "
-        "age-min/max=-510/120ms"
+        "age-min/max=-510/120ms, current-age-observed=20, "
+        "current-age-min/max=1100/7800ms"
         in rendered
     )
     assert (
@@ -6344,14 +6358,14 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "pre-recovery L2 lane 0: connected=true, ready=20, stale=0, "
         "missing-ready=0, reconnects=0, l2-stale-reconnects=0, "
         "server-age=90ms, "
-        "age-min/max=600/700ms"
+        "age-min/max=600/700ms, current-age-min/max=650/850ms"
         in rendered
     )
     assert (
         "pre-recovery L2 lane 1: connected=true, ready=20, stale=0, "
         "missing-ready=0, reconnects=0, l2-stale-reconnects=0, "
         "server-age=80ms, "
-        "age-min/max=590/690ms"
+        "age-min/max=590/690ms, current-age-min/max=700/900ms"
         in rendered
     )
     assert "research telemetry deferred: true" in rendered
