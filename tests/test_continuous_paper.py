@@ -2287,12 +2287,12 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         'PROSPECTIVE_SIDE_CONDITIONED_DELAY_STATE_FILENAME = (' in source
     )
     assert "_restore_prospective_side_conditioned_delay(" in source
-    assert "prospective_side_conditioned_delay_state.payload()" in source
+    assert "prospective_side_conditioned_delay_state.payload" in source
     assert (
         'ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME = (' in source
     )
     assert '"adaptive_delay_selector": adaptive_delay_selector' in source
-    assert "adaptive_delay_selector_state.payload()" in source
+    assert "adaptive_delay_selector_state.payload" in source
     assert "adaptive_delay_selector_summary(" in source
     assert (
         'FILL_AWARE_DELAY_SELECTOR_STATE_FILENAME = (' in source
@@ -2301,7 +2301,7 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         '"fill_aware_delay_selector": fill_aware_delay_selector'
         in source
     )
-    assert "fill_aware_delay_selector_state.payload()" in source
+    assert "fill_aware_delay_selector_state.payload" in source
     assert "fill_aware_delay_selector_summary(" in source
     assert (
         'DELAY_SELECTOR_COMPARISON_STATE_FILENAME = (' in source
@@ -2310,19 +2310,19 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         '"delay_selector_comparison": delay_selector_comparison'
         in source
     )
-    assert "delay_selector_comparison_state.payload()" in source
+    assert "delay_selector_comparison_state.payload" in source
     assert "delay_selector_comparison_summary(" in source
     assert (
         '"prospective_top10_rank_filter": (' in source
     )
-    assert "prospective_top10_rank_filter_state.payload()" in source
+    assert "prospective_top10_rank_filter_state.payload" in source
     assert (
         'PROSPECTIVE_TRADE_QUALITY_STATE_FILENAME = (' in source
     )
     assert '"prospective_trade_quality": prospective_trade_quality' in source
-    assert "prospective_trade_quality_state.payload()" in source
+    assert "prospective_trade_quality_state.payload" in source
     assert "prospective_trade_quality_summary(" in source
-    assert "prospective_combined_entry_filter_state.payload()" in source
+    assert "prospective_combined_entry_filter_state.payload" in source
     assert (
         '"prospective_combined_entry_filter": (' in source
     )
@@ -2332,7 +2332,7 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     )
     assert "prospective-momentum-band-entry-state.json" in source
     assert "_restore_prospective_momentum_band_entry(" in source
-    assert "prospective_momentum_band_entry_state.payload()" in source
+    assert "prospective_momentum_band_entry_state.payload" in source
     assert '"prospective_momentum_band_entry": (' in source
     assert "evaluate_prospective_momentum_band_entry(" in source
     assert (
@@ -2347,8 +2347,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     )
     assert "prospective-breakeven-profit-lock-state.json" in source
     assert "_restore_prospective_breakeven_profit_lock(" in source
-    assert "prospective_breakeven_profit_lock_state.payload()" in source
-    assert "prospective_two_strike_stop_filter_state.payload()" in source
+    assert "prospective_breakeven_profit_lock_state.payload" in source
+    assert "prospective_two_strike_stop_filter_state.payload" in source
     assert (
         '"prospective_two_strike_stop_filter": (' in source
     )
@@ -2400,7 +2400,7 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "prospective_replacement_exit_readiness(" in source
     assert '"prospective_replacement_exit_readiness": (' in source
     assert "_restore_prospective_replacement_exit_policy(" in source
-    assert "prospective_replacement_exit_policy_state.payload()" in source
+    assert "prospective_replacement_exit_policy_state.payload" in source
     realized_pnl_call = source.index(
         "evaluate_prospective_capacity_reflow_realized_pnl("
     )
@@ -2510,7 +2510,7 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "entry_decision_age_summary(" in source
     assert 'DRAWDOWN_STATE_FILENAME = "drawdown-state.json"' in source
     assert '"drawdown": drawdown' in source
-    assert "drawdown_tracker.state_payload()" in source
+    assert "drawdown_tracker.state_payload" in source
     assert "drawdown_tracker.observe(" in source
     assert '"entry_markout": entry_markout' in source
     assert '"entry_markout_predictiveness": (' in source
