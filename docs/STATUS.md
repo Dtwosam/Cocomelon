@@ -4697,3 +4697,13 @@ This is observability only. It does not move the actual paper stop, alter strate
 
 **LIVE TRADING: DISABLED.**
 
+### Lazy equity-state restart dedup — 2026-10-04
+
+Continuous-paper replay construction no longer preloads every historical evaluation equity account-state ID at restart. The prior indexed-column optimization removed payload decoding but still left startup cost proportional to the full accumulated equity-fact history.
+
+The replay pipeline now starts with an empty session-local dedup set. When an account state is first observed in the resumed session, the evaluation store performs a covered indexed lookup on the existing unique `(replay_run_id, account_state_id)` identity; historical states are reused and new states are recorded exactly as before. Regression coverage forbids both full equity payload iteration and account-state-ID iteration during pipeline construction while preserving the existing restart-idempotency contract.
+
+This changes restart performance only. Evaluation fact identity, strategy, risk, sizing, stops, paper execution, readiness, promotion state, and live-order authority are unchanged.
+
+**LIVE TRADING: DISABLED.**
+
