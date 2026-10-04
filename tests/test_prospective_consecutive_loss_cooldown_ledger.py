@@ -117,7 +117,7 @@ def _filled_option(
             )
         ),
         "counterfactual_risk_approved": True,
-        "counterfactual_risk_reason_codes": [],
+        "counterfactual_risk_reason_codes": ["risk_approved"],
         "planning_approved": True,
         "planning_rejection": None,
         "execution_result": "filled",
@@ -172,6 +172,30 @@ def _summary(
         "candidate_eligible_cooldown_rejections": len(options),
         "option_results": options,
     }
+
+
+def test_cooldown_ledger_rejects_veto_reason_on_approved_option() -> None:
+    state = ProspectiveConsecutiveLossCooldownShadowState(
+        frozen_at_ms=900_000
+    )
+    option = _filled_option(state, "1")
+    option["counterfactual_risk_reason_codes"] = [
+        "aggregate_risk_limit"
+    ]
+
+    with pytest.raises(
+        ProspectiveConsecutiveLossCooldownLedgerError,
+        match="approved cooldown option risk reason drift",
+    ):
+        update_cooldown_ledger(
+            _summary(state, [option]),
+            state,
+            previous=None,
+            source_paper_run_id=9,
+            source_paper_run_attempt=1,
+            source_artifact_name="learning-9-1",
+            source_artifact_digest=_digest("approved-drift"),
+        )
 
 
 def test_cooldown_ledger_appends_only_terminal_rows() -> None:
