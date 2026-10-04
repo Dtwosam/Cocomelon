@@ -4451,6 +4451,7 @@ async def _reseed_l2_books_via_rest(
     *,
     max_book_age_ms: int,
     clock_ms: Callable[[], int] = utc_now_ms,
+    stop_requested: Callable[[], bool] | None = None,
 ) -> tuple[int, int]:
     if max_book_age_ms <= 0:
         raise ValueError("max_book_age_ms must be positive")
@@ -4458,7 +4459,10 @@ async def _reseed_l2_books_via_rest(
     refreshed = 0
     failed = 0
     seen: set[str] = set()
+    should_stop = stop_requested or (lambda: False)
     for market in markets:
+        if should_stop():
+            break
         if market.canonical in seen:
             continue
         seen.add(market.canonical)
@@ -4467,6 +4471,8 @@ async def _reseed_l2_books_via_rest(
                 reader.l2_book,
                 market,
             )
+            if should_stop():
+                break
             received_at_ms = clock_ms()
             book = normalize_l2_book_snapshot(
                 market,
@@ -9172,23 +9178,6 @@ async def run_continuous_paper_session(
                 for market in selected
                 if market.canonical in unhealthy_market_keys
             )
-            pump.stale_l2_rest_reseed_attempts += 1
-            (
-                reseeded_books,
-                reseed_failures,
-            ) = await _reseed_l2_books_via_rest(
-                reader,
-                reseed_markets,
-                pump,
-                max_book_age_ms=(
-                    replay_config.eligibility.max_book_age_ms
-                ),
-            )
-            pump.stale_l2_rest_reseed_books += reseeded_books
-            pump.stale_l2_rest_reseed_failures += (
-                reseed_failures
-            )
-
             pump.stale_l2_recovery_attempts += 1
             replacement_group = await start_supervisors(
                 selected,
@@ -9203,9 +9192,32 @@ async def run_continuous_paper_session(
                 supervisor_group = replacement_group
                 pump.stale_l2_recovery_promotions += 1
                 await _cancel_supervisor_group(previous_group)
-            else:
-                pump.stale_l2_recovery_readiness_failures += 1
-                await _cancel_supervisor_group(replacement_group)
+                return True
+
+            pump.stale_l2_recovery_readiness_failures += 1
+            await _cancel_supervisor_group(replacement_group)
+
+            # A fully ready replacement group has already delivered fresh
+            # L2 books through the normal event sink, so REST reseeding would
+            # only duplicate expensive recovery work. Use REST strictly as a
+            # fallback when websocket replacement cannot establish readiness.
+            pump.stale_l2_rest_reseed_attempts += 1
+            (
+                reseeded_books,
+                reseed_failures,
+            ) = await _reseed_l2_books_via_rest(
+                reader,
+                reseed_markets,
+                pump,
+                max_book_age_ms=(
+                    replay_config.eligibility.max_book_age_ms
+                ),
+                stop_requested=lambda: _stop_requested(stop_path),
+            )
+            pump.stale_l2_rest_reseed_books += reseeded_books
+            pump.stale_l2_rest_reseed_failures += (
+                reseed_failures
+            )
             return True
 
         exit_reason = "duration_elapsed"
