@@ -62,7 +62,7 @@ class WebSocketSupervisor:
         server_silence_timeout_ms: int | None = None,
         systemic_l2_stale_reconnect_fraction: float | None = None,
         systemic_l2_stale_reconnect_grace_ms: int = 0,
-        max_systemic_l2_targeted_resubscribes: int = 1,
+        max_systemic_l2_targeted_resubscribes: int = 0,
         dedup_size: int = 2048,
     ) -> None:
         if heartbeat_seconds <= 0:
@@ -87,9 +87,9 @@ class WebSocketSupervisor:
             raise ValueError(
                 "systemic_l2_stale_reconnect_grace_ms must be non-negative"
             )
-        if max_systemic_l2_targeted_resubscribes <= 0:
+        if max_systemic_l2_targeted_resubscribes < 0:
             raise ValueError(
-                "max_systemic_l2_targeted_resubscribes must be positive"
+                "max_systemic_l2_targeted_resubscribes must be non-negative"
             )
         if dedup_size <= 0:
             raise ValueError("dedup_size must be positive")
