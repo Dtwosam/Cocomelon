@@ -2053,6 +2053,26 @@ def test_bulk_market_normalization_runs_off_event_loop() -> None:
     assert "await asyncio.to_thread(\n        normalize_meta_and_asset_ctxs" in refresh
     assert "await asyncio.to_thread(\n                normalize_candles" in warmup
 
+    runtime = source.split(
+        "async def run_continuous_paper_session(",
+        1,
+    )[1]
+    assert runtime.count(
+        "await asyncio.to_thread(\n"
+        "                    normalize_meta_and_asset_ctxs"
+    ) >= 1
+    assert runtime.count(
+        "await asyncio.to_thread(\n"
+        "                    normalize_funding_history"
+    ) >= 1
+    assert runtime.count(
+        "await asyncio.to_thread(\n"
+        "                    normalize_funding_history"
+    ) + runtime.count(
+        "await asyncio.to_thread(\n"
+        "                    normalize_meta_and_asset_ctxs"
+    ) >= 2
+
 
 def test_continuous_context_poll_has_freshness_headroom() -> None:
     config = ContinuousPaperConfig()
