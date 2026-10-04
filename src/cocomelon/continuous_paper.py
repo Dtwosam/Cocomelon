@@ -7250,6 +7250,12 @@ def _operational_live_status_payload(
         "checkpoint_snapshot_slowest_component_ms": (
             pump.checkpoint_snapshot_slowest_component_ms
         ),
+        "checkpoint_cadence_state_serializations": (
+            pump.checkpoint_cadence_state_serializations
+        ),
+        "checkpoint_cadence_state_skips": (
+            pump.checkpoint_cadence_state_skips
+        ),
         "checkpoint_background_starts": pump.checkpoint_background_starts,
         "checkpoint_background_skips": pump.checkpoint_background_skips,
         "event_loop_phase": pump.event_loop_phase,
