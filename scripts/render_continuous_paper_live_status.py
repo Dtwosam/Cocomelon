@@ -9752,6 +9752,11 @@ def _render_operational_live_status(
                 f"{payload.get('checkpoint_snapshot_max_ms_by_component', {})}"
             ),
             (
+                "- checkpoint slowest snapshot component / max: "
+                f"{payload.get('checkpoint_snapshot_slowest_component')} / "
+                f"{payload.get('checkpoint_snapshot_slowest_component_ms', 0)}ms"
+            ),
+            (
                 "- event-loop phase / max lag / slow>=1s / samples: "
                 f"{payload.get('event_loop_phase', 'unknown')} / "
                 f"{payload.get('event_loop_max_lag_ms', 0)}ms / "
