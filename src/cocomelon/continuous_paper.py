@@ -1580,6 +1580,20 @@ def _supervisor_group_health_payload(
             for market in sorted(exchange_age_by_market)
             if market in group.required_market_keys
         )
+        current_l2_age_by_market = {
+            market: age_ms
+            for market in sorted(group.required_market_keys)
+            if (
+                age_ms := supervisor.l2_freshness_age_ms(
+                    f"l2Book:{market}",
+                    now_ms=now_ms,
+                )
+            )
+            is not None
+        }
+        observed_current_l2_ages = tuple(
+            current_l2_age_by_market.values()
+        )
         negative_exchange_age_markets = tuple(
             sorted(
                 market
@@ -1622,6 +1636,22 @@ def _supervisor_group_health_payload(
                 ),
                 "stale_l2_market_count": len(stale_markets),
                 "stale_l2_markets": list(stale_markets),
+                "l2_current_age_observed_market_count": len(
+                    observed_current_l2_ages
+                ),
+                "l2_current_age_min_ms": (
+                    None
+                    if not observed_current_l2_ages
+                    else min(observed_current_l2_ages)
+                ),
+                "l2_current_age_max_ms": (
+                    None
+                    if not observed_current_l2_ages
+                    else max(observed_current_l2_ages)
+                ),
+                "l2_current_age_ms_by_market": dict(
+                    current_l2_age_by_market
+                ),
                 "l2_exchange_age_observed_market_count": len(
                     observed_exchange_ages
                 ),
