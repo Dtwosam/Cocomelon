@@ -19,7 +19,8 @@ from cocomelon.research.continuous_paper_replacement_funding import (
 
 SCHEMA_VERSION: Final = 1
 SOURCE_KIND: Final = "prospective-long-trend-5m-exit-source-v1"
-CANDIDATE_ID: Final = "prospective-reopened-long-trend-5m-exit-v1"\nFROZEN_STARTED_AT_MS: Final = 1_791_103_620_000
+CANDIDATE_ID: Final = "prospective-reopened-long-trend-5m-exit-v1"
+FROZEN_STARTED_AT_MS: Final = 1_791_103_620_000
 EXIT_HORIZON_MS: Final = 300_000
 WEEKLY_DRAWDOWN_REASON: Final = "weekly_drawdown_lockout"
 
