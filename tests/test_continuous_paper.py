@@ -1416,6 +1416,8 @@ def test_runtime_checkpoints_write_off_event_loop_single_flight() -> None:
     assert '"cadence_shadow_summary"' in source
     assert '"cadence_shadow_state"' in source
     assert '"checkpoint_snapshot_max_ms_by_component"' in source
+    assert "checkpoint_snapshot_slowest_component" in source
+    assert "checkpoint_snapshot_slowest_component_ms" in source
     assert '"checkpoint_payloads_total"' in source
     assert '"prospective_entry_filter_state"' in source
     assert '"prospective_trade_quality_state"' in source

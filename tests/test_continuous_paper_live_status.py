@@ -5992,6 +5992,8 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
             "cadence_shadow_state": 12,
             "pipeline_checkpoint": 3,
         },
+        "checkpoint_snapshot_slowest_component": "cadence_shadow_state",
+        "checkpoint_snapshot_slowest_component_ms": 12,
         "checkpoint_background_starts": 4,
         "checkpoint_background_skips": 2,
         "event_loop_phase": "rank_refresh",
@@ -6269,6 +6271,11 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert (
         "checkpoint snapshot max by component: "
         "{'cadence_shadow_state': 12, 'pipeline_checkpoint': 3}"
+        in rendered
+    )
+    assert (
+        "checkpoint slowest snapshot component / max: "
+        "cadence_shadow_state / 12ms"
         in rendered
     )
     assert (
