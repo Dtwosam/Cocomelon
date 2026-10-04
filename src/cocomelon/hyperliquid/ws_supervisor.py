@@ -368,6 +368,8 @@ class WebSocketSupervisor:
         for stream_id in self._l2_stream_ids():
             self._last_exchange_time.pop(stream_id, None)
             self._last_stream_message[stream_id] = session_started_ms
+            self._recent_keys.pop(stream_id, None)
+            self._recent_key_sets.pop(stream_id, None)
 
     async def _session(
         self,
