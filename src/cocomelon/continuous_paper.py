@@ -4031,6 +4031,8 @@ class _RecordPump:
         self.checkpoint_max_snapshot_ms = 0
         self.checkpoint_max_background_write_ms = 0
         self.checkpoint_snapshot_max_ms_by_component: dict[str, int] = {}
+        self.checkpoint_snapshot_slowest_component: str | None = None
+        self.checkpoint_snapshot_slowest_component_ms = 0
         self.checkpoint_background_starts = 0
         self.checkpoint_background_skips = 0
         self.event_loop_phase = "startup"
@@ -6660,6 +6662,12 @@ def _live_status_payload(
                 pump.checkpoint_snapshot_max_ms_by_component.items()
             )
         ),
+        "checkpoint_snapshot_slowest_component": (
+            pump.checkpoint_snapshot_slowest_component
+        ),
+        "checkpoint_snapshot_slowest_component_ms": (
+            pump.checkpoint_snapshot_slowest_component_ms
+        ),
         "checkpoint_background_starts": pump.checkpoint_background_starts,
         "checkpoint_background_skips": pump.checkpoint_background_skips,
         "event_loop_phase": pump.event_loop_phase,
@@ -8315,6 +8323,9 @@ async def run_continuous_paper_session(
                     pump.checkpoint_snapshot_max_ms_by_component.get(name, 0),
                     elapsed_ms,
                 )
+                if elapsed_ms > pump.checkpoint_snapshot_slowest_component_ms:
+                    pump.checkpoint_snapshot_slowest_component = name
+                    pump.checkpoint_snapshot_slowest_component_ms = elapsed_ms
                 return value
 
             checkpoint_timestamp_ms = utc_now_ms()
