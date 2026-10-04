@@ -900,14 +900,17 @@ class BaselineReplayPipeline:
             market.canonical,
             {},
         )
-        eligible_boundaries = tuple(
-            value
-            for value in market_oracles
-            if value <= boundary_ms
+        latest_boundary = max(
+            (
+                value
+                for value in market_oracles
+                if value <= boundary_ms
+            ),
+            default=None,
         )
-        if not eligible_boundaries:
+        if latest_boundary is None:
             return None
-        return market_oracles[max(eligible_boundaries)]
+        return market_oracles[latest_boundary]
 
     def _due_funding(self, now_ms: int) -> tuple[JournalObservation, ...]:
         observations: list[JournalObservation] = []
