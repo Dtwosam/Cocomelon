@@ -848,6 +848,14 @@ def test_l2_staleness_uses_exchange_time_not_recent_receive() -> None:
             max_messages_per_session=1,
         )
 
+        assert supervisor.l2_freshness_age_ms(
+            "l2Book:BTC",
+            now_ms=10_000,
+        ) == 9_000
+        assert supervisor.l2_freshness_age_ms(
+            "l2Book:ETH",
+            now_ms=10_000,
+        ) is None
         assert supervisor.stale_l2_streams(now_ms=10_000) == (
             "l2Book:BTC",
         )
