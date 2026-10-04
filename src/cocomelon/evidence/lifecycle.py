@@ -327,7 +327,10 @@ class BaselineReplayPipeline:
         self._latest_evaluation: dict[str, EpochMarketEvaluation] = {}
         self._lifecycles: dict[str, _OpenTradeLifecycle] = {}
         self._completed: dict[str, TradeJournalEntry] = {}
-        self._oracle_history: dict[str, list[StreamEvent]] = {}
+        self._oracle_by_funding_boundary: dict[
+            str,
+            dict[int, StreamEvent],
+        ] = {}
         self._latest_mark: dict[str, StreamEvent] = {}
         self._funding_resolved: set[tuple[str, int]] = set()
         self._funding_gaps: set[tuple[str, int]] = set()
@@ -686,15 +689,15 @@ class BaselineReplayPipeline:
                 replay_record_stream_event(record)
             )
         if restored_oracles:
-            history = self._oracle_history.setdefault(market_key, [])
-            history.extend(restored_oracles)
-            history.sort(
+            for oracle in restored_oracles:
+                self._record_funding_oracle(oracle)
+            self._latest_mark[market_key] = max(
+                restored_oracles,
                 key=lambda item: (
                     _receive_ms(item),
                     item.event_key,
-                )
+                ),
             )
-            self._latest_mark[market_key] = history[-1]
         for accrual in funding_accruals:
             if accrual.market != checkpoint.market:
                 raise ReplayInvariantError("restored funding market mismatch")
@@ -834,15 +837,39 @@ class BaselineReplayPipeline:
             marks[position.market] = mark
         return marks
 
+    @staticmethod
+    def _funding_oracle_boundary_ms(event: StreamEvent) -> int:
+        receive_ms = _receive_ms(event)
+        return (
+            (receive_ms + HOUR_MS - 1)
+            // HOUR_MS
+            * HOUR_MS
+        )
+
+    def _record_funding_oracle(
+        self,
+        event: StreamEvent,
+    ) -> None:
+        market_oracles = self._oracle_by_funding_boundary.setdefault(
+            event.market.canonical,
+            {},
+        )
+        boundary_ms = self._funding_oracle_boundary_ms(event)
+        existing = market_oracles.get(boundary_ms)
+        if (
+            existing is None
+            or (_receive_ms(event), event.event_key)
+            > (_receive_ms(existing), existing.event_key)
+        ):
+            market_oracles[boundary_ms] = event
+
     def _mark_account(
         self,
         record: ReplayRecord,
         event: StreamEvent,
         now_ms: int,
     ) -> tuple[JournalObservation, ...]:
-        history = self._oracle_history.setdefault(event.market.canonical, [])
-        history.append(event)
-        history.sort(key=lambda item: (_receive_ms(item), item.event_key))
+        self._record_funding_oracle(event)
         self._latest_mark[event.market.canonical] = event
 
         lifecycle = self._lifecycles.get(event.market.canonical)
@@ -864,15 +891,26 @@ class BaselineReplayPipeline:
         self._execution.mark_account_to_market(marks, timestamp_ms=now_ms)
         return (self._account_observation(EquityFactKind.MARK),)
 
-    def _oracle_before(self, market: MarketId, boundary_ms: int) -> StreamEvent | None:
-        candidates = tuple(
-            event
-            for event in self._oracle_history.get(market.canonical, [])
-            if _receive_ms(event) <= boundary_ms
+    def _oracle_before(
+        self,
+        market: MarketId,
+        boundary_ms: int,
+    ) -> StreamEvent | None:
+        market_oracles = self._oracle_by_funding_boundary.get(
+            market.canonical,
+            {},
         )
-        if not candidates:
+        latest_boundary = max(
+            (
+                value
+                for value in market_oracles
+                if value <= boundary_ms
+            ),
+            default=None,
+        )
+        if latest_boundary is None:
             return None
-        return max(candidates, key=lambda item: (_receive_ms(item), item.event_key))
+        return market_oracles[latest_boundary]
 
     def _due_funding(self, now_ms: int) -> tuple[JournalObservation, ...]:
         observations: list[JournalObservation] = []
