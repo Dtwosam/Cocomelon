@@ -17,6 +17,15 @@ def test_cooldown_ledger_workflow_is_research_only() -> None:
     assert "Prospective Consecutive-Loss Cooldown Ledger" in source
     assert "push:" in source
     assert (
+        '"src/cocomelon/research/'
+        'prospective_consecutive_loss_cooldown_ledger.py"'
+        in source
+    )
+    assert (
+        '"scripts/update_prospective_consecutive_loss_cooldown_ledger.py"'
+        in source
+    )
+    assert (
         '"Continuous Mainnet Paper Trader"'
         in source
     )
