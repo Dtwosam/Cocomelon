@@ -123,9 +123,8 @@ class WebSocketSupervisor:
         self._reconnect_count = 0
         self._systemic_l2_stale_reconnect_count = 0
         self._systemic_l2_targeted_resubscribe_count = 0
-        self._systemic_l2_targeted_resubscribe_attempts = 0
+        self._systemic_l2_targeted_resubscribe_streak = 0
         self._pending_l2_targeted_recovery_streams: set[str] = set()
-        self._l2_targeted_recovery_started_ms: int | None = None
         self._stale_deadline_buffered_message_count = 0
         self._duplicate_count = 0
         self._anomaly_count = 0
@@ -263,17 +262,18 @@ class WebSocketSupervisor:
         self._recent_keys.pop(stream_id, None)
         self._recent_key_sets.pop(stream_id, None)
 
-    def _reset_targeted_l2_recovery(self) -> None:
-        self._systemic_l2_targeted_resubscribe_attempts = 0
-        self._pending_l2_targeted_recovery_streams.clear()
-        self._l2_targeted_recovery_started_ms = None
-
-    def _stale_l2_subscriptions(
+    async def _recover_systemic_l2_stale(
         self,
+        connection: WsConnection,
         *,
         now_ms: int,
-    ) -> tuple[Subscription, ...]:
-        return tuple(
+    ) -> None:
+        if not self._systemic_l2_stale_while_server_active(
+            now_ms=now_ms
+        ):
+            return
+
+        stale_subscriptions = tuple(
             subscription
             for subscription in sorted(
                 self._subscriptions,
@@ -285,42 +285,11 @@ class WebSocketSupervisor:
                 now_ms=now_ms,
             )
         )
-
-    async def _recover_systemic_l2_stale(
-        self,
-        connection: WsConnection,
-        *,
-        now_ms: int,
-    ) -> None:
-        systemic_stale = self._systemic_l2_stale_while_server_active(
-            now_ms=now_ms
-        )
-        if self._pending_l2_targeted_recovery_streams:
-            started_ms = self._l2_targeted_recovery_started_ms
-            if started_ms is None:
-                raise RuntimeError(
-                    "targeted L2 recovery is missing its start time"
-                )
-            if now_ms - started_ms < self._stale_after_ms:
-                return
-            if not systemic_stale:
-                self._reset_targeted_l2_recovery()
-                return
-            self._pending_l2_targeted_recovery_streams.clear()
-            self._l2_targeted_recovery_started_ms = None
-
-        if not systemic_stale:
-            return
-
         if (
-            self._systemic_l2_targeted_resubscribe_attempts
+            stale_subscriptions
+            and self._systemic_l2_targeted_resubscribe_streak
             < self._max_systemic_l2_targeted_resubscribes
         ):
-            stale_subscriptions = self._stale_l2_subscriptions(
-                now_ms=now_ms
-            )
-            if not stale_subscriptions:
-                return
             targeted_stream_ids: set[str] = set()
             for subscription in stale_subscriptions:
                 stream_id = subscription_id(subscription)
@@ -330,24 +299,21 @@ class WebSocketSupervisor:
                 await connection.send_json(
                     subscribe_message(subscription)
                 )
-                # A replacement subscription may replay the same bootstrap
-                # snapshot, so clear only lane-local dedup state. Keep the
-                # old freshness anchors intact until a genuinely fresh
-                # exchange-timestamped L2 event arrives.
+                self._last_exchange_time.pop(stream_id, None)
+                self._last_stream_message[stream_id] = now_ms
                 self._clear_l2_dedup_state(stream_id)
                 targeted_stream_ids.add(stream_id)
             self._pending_l2_targeted_recovery_streams = (
                 targeted_stream_ids
             )
-            self._l2_targeted_recovery_started_ms = now_ms
-            self._systemic_l2_targeted_resubscribe_attempts += 1
             self._systemic_l2_targeted_resubscribe_count += 1
+            self._systemic_l2_targeted_resubscribe_streak += 1
             return
 
         self._systemic_l2_stale_reconnect_count += 1
-        self._reset_targeted_l2_recovery()
+        self._systemic_l2_targeted_resubscribe_streak = 0
         raise ConnectionError(
-            "systemic l2 subscription staleness after targeted recovery"
+            "systemic l2 subscription staleness after targeted resubscribe"
         )
 
     async def _open_l2_stale_gaps_if_needed(
@@ -466,30 +432,29 @@ class WebSocketSupervisor:
 
             if exchange_time is not None:
                 self._last_exchange_time[stream_id] = exchange_time
-            l2_is_stale = (
+            if (
+                event.kind is StreamKind.L2_BOOK
+                and stream_id
+                in self._pending_l2_targeted_recovery_streams
+            ):
+                self._pending_l2_targeted_recovery_streams.discard(
+                    stream_id
+                )
+                if not self._pending_l2_targeted_recovery_streams:
+                    self._systemic_l2_targeted_resubscribe_streak = 0
+            if (
                 event.kind is StreamKind.L2_BOOK
                 and self._l2_stream_is_stale(
                     stream_id,
                     now_ms=now_ms,
                 )
-            )
-            if l2_is_stale:
+            ):
                 await self._open_l2_stale_gaps_if_needed(now_ms)
             else:
                 await self._close_gap_if_needed(
                     stream_id,
                     now_ms,
                 )
-                if (
-                    event.kind is StreamKind.L2_BOOK
-                    and stream_id
-                    in self._pending_l2_targeted_recovery_streams
-                ):
-                    self._pending_l2_targeted_recovery_streams.discard(
-                        stream_id
-                    )
-                    if not self._pending_l2_targeted_recovery_streams:
-                        self._reset_targeted_l2_recovery()
             await self._emit_event(event)
 
     def _reset_l2_freshness_for_session(
@@ -501,7 +466,8 @@ class WebSocketSupervisor:
             self._last_exchange_time.pop(stream_id, None)
             self._last_stream_message[stream_id] = session_started_ms
             self._clear_l2_dedup_state(stream_id)
-        self._reset_targeted_l2_recovery()
+        self._systemic_l2_targeted_resubscribe_streak = 0
+        self._pending_l2_targeted_recovery_streams.clear()
 
     async def _session(
         self,
