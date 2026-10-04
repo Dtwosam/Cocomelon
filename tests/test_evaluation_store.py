@@ -42,9 +42,10 @@ def equity_fact(
     *,
     state_id: str = "state-1",
     timestamp_ms: int = 1_000,
+    replay_run_id: str = "run-1",
 ) -> AccountEquityFact:
     return AccountEquityFact(
-        replay_run_id="run-1",
+        replay_run_id=replay_run_id,
         account_state_id=state_id,
         timestamp_ms=timestamp_ms,
         kind=EquityFactKind.MARK,
@@ -109,6 +110,37 @@ def test_equity_fact_round_trips_and_run_filter_is_deterministic(tmp_path: Path)
     reopened = EvaluationFactStore(path)
     assert tuple(reopened.iter_equity_facts("run-1")) == (earlier, later)
     reopened.close()
+
+
+def test_equity_account_state_id_scan_avoids_payload_materialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = EvaluationFactStore(tmp_path / "evaluation.sqlite3")
+    store.record_equity_fact(
+        equity_fact(state_id="state-1", timestamp_ms=1_000)
+    )
+    store.record_equity_fact(
+        equity_fact(state_id="state-2", timestamp_ms=2_000)
+    )
+    store.record_equity_fact(
+        equity_fact(
+            state_id="other-state",
+            timestamp_ms=3_000,
+            replay_run_id="run-2",
+        )
+    )
+
+    def fail_load(_fact_id: str) -> AccountEquityFact | None:
+        raise AssertionError("indexed state-id scan must not decode payloads")
+
+    monkeypatch.setattr(store, "load_equity_fact", fail_load)
+
+    assert set(store.iter_equity_account_state_ids("run-1")) == {
+        "state-1",
+        "state-2",
+    }
+    store.close()
 
 
 def test_decision_fact_iteration_is_chronological_then_id(tmp_path: Path) -> None:
