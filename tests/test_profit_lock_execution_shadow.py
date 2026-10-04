@@ -193,6 +193,36 @@ def _shadow(*, started_at_ms: int = 500) -> ProfitLockExecutionShadow:
     )
 
 
+def test_open_rule_state_payloads_are_lightweight_and_current() -> None:
+    position = _position()
+    shadow = _shadow()
+
+    shadow.observe_mark(
+        (position,),
+        _mark("105", 1_500),
+        now_ms=1_500,
+    )
+
+    rows = shadow.open_rule_state_payloads(RULE.rule_id)
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["opening_plan_id"] == position.opening_plan_id
+    assert row["market"] == MARKET.canonical
+    assert row["side"] == "long"
+    assert row["entry_price"] == "100"
+    assert row["opened_at_ms"] == 1_000
+    assert row["eligible"] is True
+    rule = row["rule"]
+    assert isinstance(rule, dict)
+    assert rule["rule_id"] == RULE.rule_id
+    assert rule["activated_at_ms"] == 1_500
+    assert rule["triggered_at_ms"] is None
+
+    with pytest.raises(ValueError, match="unknown profit-lock rule"):
+        shadow.open_rule_state_payloads("missing-rule")
+
+
 def test_execution_shadow_waits_for_latency_then_uses_visible_book() -> None:
     position = _position()
     shadow = _shadow()

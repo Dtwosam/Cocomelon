@@ -259,6 +259,9 @@ from cocomelon.research.profit_lock_readiness import (
     profit_lock_readiness,
 )
 from cocomelon.research.prospective_breakeven_profit_lock import (
+    RULE_ID as PROSPECTIVE_BREAKEVEN_RULE_ID,
+)
+from cocomelon.research.prospective_breakeven_profit_lock import (
     ProspectiveBreakevenProfitLockState,
 )
 from cocomelon.research.prospective_candidate_stack_overlap import (
@@ -1119,6 +1122,103 @@ class _ContinuousProfitLockExecutionShadowSink:
         )
         payload["error"] = self.error
         return payload
+
+    def prospective_breakeven_operational_preview(
+        self,
+        state: ProspectiveBreakevenProfitLockState,
+    ) -> dict[str, object]:
+        base: dict[str, object] = {
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+        }
+        if self.shadow is None:
+            return {
+                **base,
+                "enabled": False,
+                "error": self.error or "profit-lock execution shadow unavailable",
+                "clean_open_positions": 0,
+                "activated_open_positions": 0,
+                "triggered_open_positions": 0,
+                "excluded_pre_start_open_positions": 0,
+                "positions": [],
+            }
+        try:
+            raw_rows = self.shadow.open_rule_state_payloads(
+                PROSPECTIVE_BREAKEVEN_RULE_ID
+            )
+            clean_rows: list[dict[str, object]] = []
+            excluded = 0
+            for raw in raw_rows:
+                opened_at_ms = raw.get("opened_at_ms")
+                if (
+                    isinstance(opened_at_ms, bool)
+                    or not isinstance(opened_at_ms, int)
+                ):
+                    raise RuntimeError(
+                        "profit-lock open preview has invalid opened_at_ms"
+                    )
+                if opened_at_ms < state.started_at_ms:
+                    excluded += 1
+                    continue
+                rule = raw.get("rule")
+                if not isinstance(rule, dict):
+                    raise RuntimeError(
+                        "profit-lock open preview has invalid rule state"
+                    )
+                activated_at_ms = rule.get("activated_at_ms")
+                triggered_at_ms = rule.get("triggered_at_ms")
+                activated = activated_at_ms is not None
+                triggered = triggered_at_ms is not None
+                clean_rows.append(
+                    {
+                        "opening_plan_id": raw.get("opening_plan_id"),
+                        "market": raw.get("market"),
+                        "side": raw.get("side"),
+                        "opened_at_ms": opened_at_ms,
+                        "eligible": raw.get("eligible"),
+                        "exclusion_reason": raw.get("exclusion_reason"),
+                        "activated": activated,
+                        "activated_at_ms": activated_at_ms,
+                        "triggered": triggered,
+                        "triggered_at_ms": triggered_at_ms,
+                        "candidate_stop_price": (
+                            raw.get("entry_price")
+                            if activated
+                            else None
+                        ),
+                        "remaining_quantity": rule.get(
+                            "remaining_quantity"
+                        ),
+                    }
+                )
+        except Exception as exc:
+            return {
+                **base,
+                "enabled": False,
+                "error": f"{type(exc).__name__}: {exc}",
+                "clean_open_positions": 0,
+                "activated_open_positions": 0,
+                "triggered_open_positions": 0,
+                "excluded_pre_start_open_positions": 0,
+                "positions": [],
+            }
+        return {
+            **base,
+            "enabled": True,
+            "error": None,
+            "clean_open_positions": len(clean_rows),
+            "activated_open_positions": sum(
+                row["activated"] is True for row in clean_rows
+            ),
+            "triggered_open_positions": sum(
+                row["triggered"] is True for row in clean_rows
+            ),
+            "excluded_pre_start_open_positions": excluded,
+            "positions": clean_rows,
+        }
 
 
 class _ContinuousEntryMidMarkoutSink:
@@ -7258,6 +7358,12 @@ def _operational_live_status_payload(
     *,
     timestamp_ms: int,
     l2_supervisor_group: _SupervisorGroup | None = None,
+    profit_lock_execution_shadow: (
+        _ContinuousProfitLockExecutionShadowSink | None
+    ) = None,
+    prospective_breakeven_profit_lock_state: (
+        ProspectiveBreakevenProfitLockState | None
+    ) = None,
 ) -> dict[str, object]:
     positions: list[dict[str, object]] = []
     for position in execution.account.positions:
@@ -7353,6 +7459,19 @@ def _operational_live_status_payload(
         "paper_only": True,
         "live_orders": False,
         "research_telemetry_deferred": True,
+        "prospective_breakeven_preview": (
+            None
+            if (
+                profit_lock_execution_shadow is None
+                or prospective_breakeven_profit_lock_state is None
+            )
+            else (
+                profit_lock_execution_shadow
+                .prospective_breakeven_operational_preview(
+                    prospective_breakeven_profit_lock_state
+                )
+            )
+        ),
         "selected_market_count": len(selected_markets),
         "selected_markets": [
             market.canonical for market in selected_markets
@@ -7574,6 +7693,12 @@ def _emit_operational_live_status(
     *,
     timestamp_ms: int,
     l2_supervisor_group: _SupervisorGroup | None = None,
+    profit_lock_execution_shadow: (
+        _ContinuousProfitLockExecutionShadowSink | None
+    ) = None,
+    prospective_breakeven_profit_lock_state: (
+        ProspectiveBreakevenProfitLockState | None
+    ) = None,
 ) -> None:
     payload = _operational_live_status_payload(
         execution,
@@ -7582,6 +7707,10 @@ def _emit_operational_live_status(
         risk_limits,
         timestamp_ms=timestamp_ms,
         l2_supervisor_group=l2_supervisor_group,
+        profit_lock_execution_shadow=profit_lock_execution_shadow,
+        prospective_breakeven_profit_lock_state=(
+            prospective_breakeven_profit_lock_state
+        ),
     )
     print(
         "COCOMELON_PAPER_HEARTBEAT "
@@ -8966,6 +9095,10 @@ async def run_continuous_paper_session(
                 selected,
                 replay_config.risk_limits,
                 timestamp_ms=utc_now_ms(),
+                profit_lock_execution_shadow=profit_lock_execution_shadow,
+                prospective_breakeven_profit_lock_state=(
+                    prospective_breakeven_profit_lock_state
+                ),
             )
 
         async def connection_factory() -> Any:
@@ -9289,6 +9422,12 @@ async def run_continuous_paper_session(
                         replay_config.risk_limits,
                         timestamp_ms=now_ms,
                         l2_supervisor_group=supervisor_group,
+                        profit_lock_execution_shadow=(
+                            profit_lock_execution_shadow
+                        ),
+                        prospective_breakeven_profit_lock_state=(
+                            prospective_breakeven_profit_lock_state
+                        ),
                     )
 
                 if now_ms < next_context_poll_ms:
@@ -9318,6 +9457,12 @@ async def run_continuous_paper_session(
                         replay_config.risk_limits,
                         timestamp_ms=utc_now_ms(),
                         l2_supervisor_group=supervisor_group,
+                        profit_lock_execution_shadow=(
+                            profit_lock_execution_shadow
+                        ),
+                        prospective_breakeven_profit_lock_state=(
+                            prospective_breakeven_profit_lock_state
+                        ),
                     )
                     # Keep the previous context timestamps untouched.
                     # Eligibility will fail closed as they age, and the next
@@ -9464,6 +9609,10 @@ async def run_continuous_paper_session(
                     replay_config.risk_limits,
                     timestamp_ms=now_ms,
                     l2_supervisor_group=supervisor_group,
+                    profit_lock_execution_shadow=profit_lock_execution_shadow,
+                    prospective_breakeven_profit_lock_state=(
+                        prospective_breakeven_profit_lock_state
+                    ),
                 )
 
                 pump.event_loop_phase = "control_wait"

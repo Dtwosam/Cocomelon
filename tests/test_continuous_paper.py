@@ -121,6 +121,9 @@ from cocomelon.research.delayed_entry_execution_shadow import (
 from cocomelon.research.profit_lock_execution_shadow import (
     ProfitLockExecutionShadow,
 )
+from cocomelon.research.prospective_breakeven_profit_lock import (
+    ProspectiveBreakevenProfitLockState,
+)
 from cocomelon.research.prospective_momentum_band_entry import (
     EMBARGO_MS as MOMENTUM_BAND_EMBARGO_MS,
 )
@@ -3394,6 +3397,90 @@ def test_profit_lock_execution_shadow_sink_fails_open() -> None:
     assert payload["research_only"] is True
     assert payload["execution_authority"] is False
     assert payload["error"] == "RuntimeError: shadow boom"
+
+
+def test_profit_lock_sink_exposes_clean_breakeven_open_preview() -> None:
+    state = ProspectiveBreakevenProfitLockState(
+        frozen_at_ms=100,
+    )
+    clean_start = state.started_at_ms
+
+    class Shadow:
+        def open_rule_state_payloads(
+            self,
+            rule_id: str,
+        ) -> tuple[dict[str, object], ...]:
+            assert rule_id == "breakeven_after_0_5r"
+            return (
+                {
+                    "opening_plan_id": "old",
+                    "market": "OLD",
+                    "side": "long",
+                    "entry_price": "1",
+                    "planned_risk": "5",
+                    "opened_at_ms": clean_start - 1,
+                    "eligible": True,
+                    "exclusion_reason": None,
+                    "rule": {
+                        "remaining_quantity": "1",
+                        "activated_at_ms": None,
+                        "triggered_at_ms": None,
+                    },
+                },
+                {
+                    "opening_plan_id": "chip",
+                    "market": "CHIP",
+                    "side": "long",
+                    "entry_price": "0.0482",
+                    "planned_risk": "7",
+                    "opened_at_ms": clean_start,
+                    "eligible": True,
+                    "exclusion_reason": None,
+                    "rule": {
+                        "remaining_quantity": "4963",
+                        "activated_at_ms": clean_start + 1_000,
+                        "triggered_at_ms": None,
+                    },
+                },
+                {
+                    "opening_plan_id": "aero",
+                    "market": "AERO",
+                    "side": "short",
+                    "entry_price": "0.8625",
+                    "planned_risk": "17",
+                    "opened_at_ms": clean_start + 2_000,
+                    "eligible": True,
+                    "exclusion_reason": None,
+                    "rule": {
+                        "remaining_quantity": "0",
+                        "activated_at_ms": clean_start + 3_000,
+                        "triggered_at_ms": clean_start + 4_000,
+                    },
+                },
+            )
+
+    sink = _ContinuousProfitLockExecutionShadowSink(
+        Shadow(),  # type: ignore[arg-type]
+        opening_plan_loader=lambda _plan_id: None,
+    )
+
+    payload = sink.prospective_breakeven_operational_preview(state)
+
+    assert payload["enabled"] is True
+    assert payload["candidate_id"] == state.candidate_id
+    assert payload["clean_open_positions"] == 2
+    assert payload["activated_open_positions"] == 2
+    assert payload["triggered_open_positions"] == 1
+    assert payload["excluded_pre_start_open_positions"] == 1
+    rows = payload["positions"]
+    assert isinstance(rows, list)
+    assert rows[0]["market"] == "CHIP"
+    assert rows[0]["candidate_stop_price"] == "0.0482"
+    assert rows[0]["activated"] is True
+    assert rows[0]["triggered"] is False
+    assert rows[1]["market"] == "AERO"
+    assert rows[1]["candidate_stop_price"] == "0.8625"
+    assert rows[1]["triggered"] is True
 
 
 def test_delayed_entry_pair_fill_weighted_telemetry_fails_open(
