@@ -125,6 +125,71 @@ def test_reconnect_resubscribes_and_closes_gap_on_recovery() -> None:
     asyncio.run(run())
 
 
+def test_reconnect_accepts_same_l2_snapshot_as_new_session_bootstrap() -> None:
+    async def run() -> None:
+        same_book = book(1_000)
+        first = FakeConnection(
+            [same_book, ConnectionError("drop")]
+        )
+        second = FakeConnection(
+            [same_book, ConnectionError("bounded end")]
+        )
+        pool = [first, second]
+        events: list[StreamEvent] = []
+        gaps: list[DataGap] = []
+        sleeps: list[float] = []
+        now = [1_000]
+
+        async def factory() -> FakeConnection:
+            return pool.pop(0)
+
+        async def event_sink(event: StreamEvent) -> None:
+            events.append(event)
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        async def fake_sleep(value: float) -> None:
+            sleeps.append(value)
+            now[0] += 1_000
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "l2Book", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime.fromtimestamp(
+                now[0] / 1000,
+                tz=UTC,
+            ),
+            sleep=fake_sleep,
+            stale_after_ms=5_000,
+        )
+
+        await supervisor.run(
+            max_sessions=2,
+            max_messages_per_session=2,
+        )
+
+        assert [event.event_key for event in events] == [
+            events[0].event_key,
+            events[0].event_key,
+        ]
+        assert len(events) == 2
+        assert supervisor.health.duplicate_count == 0
+        assert supervisor.health.reconnect_count == 1
+        assert sleeps == [1.0]
+        assert any(
+            gap.stream_id == "l2Book:BTC"
+            and gap.reason == "recovered"
+            and gap.ended_ms is not None
+            for gap in gaps
+        )
+
+    asyncio.run(run())
+
+
 def test_server_silence_forces_reconnect() -> None:
     async def run() -> None:
         first = HangingConnection([])
