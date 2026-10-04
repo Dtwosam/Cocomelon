@@ -1396,13 +1396,13 @@ def test_runtime_checkpoints_write_off_event_loop_single_flight() -> None:
         "pump.checkpoint_background_skips += 1",
         background_index,
     )
-    thread_index = source.index(
-        "await asyncio.to_thread(",
+    cooperative_index = source.index(
+        "await _write_json_payload_batch_cooperatively(",
         background_index,
     )
     runtime_index = source.index(
         "await maybe_start_background_checkpoint()",
-        thread_index,
+        cooperative_index,
     )
     deadline_index = source.index(
         "utc_now_ms()\n"
@@ -1418,7 +1418,7 @@ def test_runtime_checkpoints_write_off_event_loop_single_flight() -> None:
         snapshot_index
         < background_index
         < skip_index
-        < thread_index
+        < cooperative_index
         < runtime_index
         < deadline_index
         < flush_index
