@@ -4029,6 +4029,8 @@ class _RecordPump:
         self.record_pump_last_slow_record: dict[str, object] | None = None
         self.checkpoint_max_snapshot_ms = 0
         self.checkpoint_max_background_write_ms = 0
+        self.checkpoint_last_component_ms: dict[str, int] = {}
+        self.checkpoint_max_component_ms: dict[str, int] = {}
         self.checkpoint_background_starts = 0
         self.checkpoint_background_skips = 0
         self.event_loop_phase = "startup"
@@ -6653,6 +6655,12 @@ def _live_status_payload(
         "checkpoint_max_background_write_ms": (
             pump.checkpoint_max_background_write_ms
         ),
+        "checkpoint_last_component_ms": dict(
+            sorted(pump.checkpoint_last_component_ms.items())
+        ),
+        "checkpoint_max_component_ms": dict(
+            sorted(pump.checkpoint_max_component_ms.items())
+        ),
         "checkpoint_background_starts": pump.checkpoint_background_starts,
         "checkpoint_background_skips": pump.checkpoint_background_skips,
         "event_loop_phase": pump.event_loop_phase,
@@ -7215,6 +7223,12 @@ def _operational_live_status_payload(
         "checkpoint_max_snapshot_ms": pump.checkpoint_max_snapshot_ms,
         "checkpoint_max_background_write_ms": (
             pump.checkpoint_max_background_write_ms
+        ),
+        "checkpoint_last_component_ms": dict(
+            sorted(pump.checkpoint_last_component_ms.items())
+        ),
+        "checkpoint_max_component_ms": dict(
+            sorted(pump.checkpoint_max_component_ms.items())
         ),
         "checkpoint_background_starts": pump.checkpoint_background_starts,
         "checkpoint_background_skips": pump.checkpoint_background_skips,
@@ -8293,25 +8307,57 @@ async def run_continuous_paper_session(
             now_ms=utc_now_ms()
         )
 
+        def timed_checkpoint_component[T](
+            name: str,
+            builder: Callable[[], T],
+        ) -> T:
+            loop = asyncio.get_running_loop()
+            started = loop.time()
+            result = builder()
+            elapsed_ms = max(
+                0,
+                int((loop.time() - started) * 1000),
+            )
+            pump.checkpoint_last_component_ms[name] = elapsed_ms
+            pump.checkpoint_max_component_ms[name] = max(
+                pump.checkpoint_max_component_ms.get(name, 0),
+                elapsed_ms,
+            )
+            return result
+
         def checkpoint_payloads() -> tuple[tuple[Path, object], ...]:
             checkpoint_timestamp_ms = utc_now_ms()
-            drawdown_tracker.observe(
-                execution.account.equity,
-                timestamp_ms=checkpoint_timestamp_ms,
+            timed_checkpoint_component(
+                "drawdown_observe",
+                lambda: drawdown_tracker.observe(
+                    execution.account.equity,
+                    timestamp_ms=checkpoint_timestamp_ms,
+                ),
             )
-            trade_path_sink.checkpoint(pipeline.open_lifecycle_mark_paths)
+            timed_checkpoint_component(
+                "trade_path_checkpoint",
+                lambda: trade_path_sink.checkpoint(
+                    pipeline.open_lifecycle_mark_paths
+                ),
+            )
             payloads: list[tuple[Path, object]] = [
                 (
                     checkpoint_path,
-                    _checkpoint_payload(
-                        pipeline,
-                        last_available_at_ms=pump.last_available_at_ms,
-                        selected_markets=selected,
+                    timed_checkpoint_component(
+                        "checkpoint_payload",
+                        lambda: _checkpoint_payload(
+                            pipeline,
+                            last_available_at_ms=pump.last_available_at_ms,
+                            selected_markets=selected,
+                        ),
                     ),
                 ),
                 (
                     root / CADENCE_SHADOW_FILENAME,
-                    pump.cadence_shadow_payload(),
+                    timed_checkpoint_component(
+                        "cadence_payloads",
+                        pump.cadence_shadow_payload,
+                    ),
                 ),
             ]
             if pump.cadence_shadow is not None:
@@ -8342,8 +8388,12 @@ async def run_continuous_paper_session(
                         delayed_entry_120s_execution_shadow.shadow.state_payload(),
                     )
                 )
-            payloads.extend(
-                (
+
+            def prospective_state_payloads() -> tuple[
+                tuple[Path, object],
+                ...,
+            ]:
+                return (
                     (
                         root / PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME,
                         prospective_entry_filter_state.payload(),
@@ -8406,6 +8456,12 @@ async def run_continuous_paper_session(
                         root / DELAY_SELECTOR_COMPARISON_STATE_FILENAME,
                         delay_selector_comparison_state.payload(),
                     ),
+                )
+
+            payloads.extend(
+                timed_checkpoint_component(
+                    "prospective_state_payloads",
+                    prospective_state_payloads,
                 )
             )
             if entry_mid_markout_shadow.shadow is not None:
