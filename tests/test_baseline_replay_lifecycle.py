@@ -349,17 +349,17 @@ def test_closed_gap_update_preserves_restored_open_identity_and_compacts(
         tmp_path,
         suffix="compact-closed-gap",
     )
+    open_started_ms = EVALUATED_AT_MS + 100
     pipeline.restore_gap_intervals(
         (
-            (100, 200),
-            (180, 260),
-            (300, None),
+            (EVALUATED_AT_MS - 1_000, EVALUATED_AT_MS + 150),
+            (open_started_ms, None),
         )
     )
     closed_gap = _gap_record(
-        300,
-        360,
-        event_key="gap-close-300",
+        open_started_ms,
+        EVALUATED_AT_MS + 300,
+        event_key="gap-close-restored-open",
     )
 
     pipeline.on_record(
@@ -369,8 +369,7 @@ def test_closed_gap_update_preserves_restored_open_identity_and_compacts(
     )
 
     assert pipeline.known_gap_intervals == (
-        (100, 260),
-        (300, 360),
+        (EVALUATED_AT_MS - 1_000, EVALUATED_AT_MS + 300),
     )
 
     execution.close()
