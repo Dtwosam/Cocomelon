@@ -2153,7 +2153,7 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"net_r": str(trade.net_r)' in source
     assert '"exit_reason": trade.exit_reason' in source
     assert 'CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"' in source
-    assert "pump.cadence_shadow.state_payload()" in source
+    assert "pump.cadence_shadow.state_payload" in source
     assert 'ContinuousPaperTradePathStore(root / "trade-paths")' in source
     assert 'OriginalStopBookEvidenceStore(' in source
     assert 'root / "original-stop-books"' in source
@@ -2243,10 +2243,10 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "delayed_entry_same_exit_contribution(" in source
     assert "delayed_entry_fill_weighted_contribution(" in source
     assert "delayed_entry_pair_fill_weighted_summary(" in source
-    assert "profit_lock_execution_shadow.shadow.state_payload()" in source
-    assert "delayed_entry_execution_shadow.shadow.state_payload()" in source
+    assert "profit_lock_execution_shadow.shadow.state_payload" in source
+    assert "delayed_entry_execution_shadow.shadow.state_payload" in source
     assert (
-        "delayed_entry_120s_execution_shadow.shadow.state_payload()"
+        "delayed_entry_120s_execution_shadow.shadow.state_payload"
         in source
     )
     assert "profit_lock_execution_readiness(payload)" in source
@@ -2524,7 +2524,7 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     )
     assert 'entry_mid_markout_shadow=' in source
     assert '"entry_mid_markout_shadow": entry_mid_markout' in source
-    assert "entry_mid_markout_shadow.shadow.state_payload()" in source
+    assert "entry_mid_markout_shadow.shadow.state_payload" in source
 
 
 def test_account_lifecycle_bridge_telemetry_fails_open(
