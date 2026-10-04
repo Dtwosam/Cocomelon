@@ -9313,6 +9313,15 @@ def _render_operational_live_status(
     )
     if not isinstance(latest_eligibility, dict):
         latest_eligibility = {}
+    breakeven_preview = payload.get(
+        "prospective_breakeven_preview",
+        {},
+    )
+    if not isinstance(breakeven_preview, dict):
+        breakeven_preview = {}
+    breakeven_positions = breakeven_preview.get("positions", [])
+    if not isinstance(breakeven_positions, list):
+        breakeven_positions = []
     l2_health = payload.get("l2_supervisor_health", {})
     if not isinstance(l2_health, dict):
         l2_health = {}
@@ -9649,6 +9658,76 @@ def _render_operational_live_status(
             )
     else:
         lines.append("_No open paper positions in this heartbeat._")
+
+    if breakeven_preview:
+        lines.extend(
+            [
+                "",
+                "### Breakeven stop shadow",
+                "",
+                (
+                    "> Research-only preview. It does not change the paper "
+                    "position stop or grant execution authority."
+                ),
+                (
+                    "- candidate / clean start ms: "
+                    f"{breakeven_preview.get('candidate_id', 'unknown')} / "
+                    f"{breakeven_preview.get('started_at_ms')}"
+                ),
+                (
+                    "- clean open / activated / triggered / pre-start excluded: "
+                    f"{breakeven_preview.get('clean_open_positions', 0)} / "
+                    f"{breakeven_preview.get('activated_open_positions', 0)} / "
+                    f"{breakeven_preview.get('triggered_open_positions', 0)} / "
+                    f"{breakeven_preview.get('excluded_pre_start_open_positions', 0)}"
+                ),
+            ]
+        )
+        if breakeven_preview.get("enabled") is not True:
+            lines.append(
+                "- shadow unavailable: "
+                f"{breakeven_preview.get('error') or 'unknown error'}"
+            )
+        elif breakeven_positions:
+            lines.extend(
+                [
+                    (
+                        "| Market | Side | Eligible | Activated | Triggered | "
+                        "Candidate stop | Remaining qty |"
+                    ),
+                    (
+                        "| --- | --- | --- | --- | --- | ---: | ---: |"
+                    ),
+                ]
+            )
+            for raw in breakeven_positions:
+                if not isinstance(raw, dict):
+                    raise ValueError(
+                        "breakeven preview position must be an object"
+                    )
+                lines.append(
+                    "| {market} | {side} | {eligible} | {activated} | "
+                    "{triggered} | {candidate_stop} | {remaining} |".format(
+                        market=raw.get("market"),
+                        side=raw.get("side"),
+                        eligible=str(bool(raw.get("eligible"))).lower(),
+                        activated=str(
+                            bool(raw.get("activated"))
+                        ).lower(),
+                        triggered=str(
+                            bool(raw.get("triggered"))
+                        ).lower(),
+                        candidate_stop=(
+                            raw.get("candidate_stop_price")
+                            if raw.get("candidate_stop_price") is not None
+                            else "n/a"
+                        ),
+                        remaining=raw.get(
+                            "remaining_quantity",
+                            "n/a",
+                        ),
+                    )
+                )
 
     lines.extend(["", "### Recent closed trades", ""])
     if recent_closed:
