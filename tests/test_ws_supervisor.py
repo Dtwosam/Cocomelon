@@ -238,6 +238,62 @@ def test_server_silence_forces_reconnect() -> None:
     asyncio.run(run())
 
 
+def test_overdue_l2_deadline_drains_buffered_fresh_book() -> None:
+    async def run() -> None:
+        clock_calls = 0
+
+        def clock_ms() -> int:
+            nonlocal clock_calls
+            clock_calls += 1
+            return 1_000 if clock_calls <= 6 else 7_000
+
+        connection = FakeConnection(
+            [book(1_000), book(7_000)]
+        )
+        events: list[StreamEvent] = []
+        gaps: list[DataGap] = []
+
+        async def factory() -> FakeConnection:
+            return connection
+
+        async def event_sink(event: StreamEvent) -> None:
+            events.append(event)
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "l2Book", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=clock_ms,
+            utcnow=lambda: datetime.fromtimestamp(
+                (1_000 if clock_calls <= 6 else 7_000) / 1000,
+                tz=UTC,
+            ),
+            stale_after_ms=5_000,
+            systemic_l2_stale_reconnect_fraction=1.0,
+        )
+
+        await supervisor.run(
+            max_sessions=1,
+            max_messages_per_session=2,
+        )
+
+        assert len(events) == 2
+        assert supervisor.health.reconnect_count == 0
+        assert supervisor.health.systemic_l2_stale_reconnect_count == 0
+        assert supervisor.stale_deadline_buffered_message_count == 1
+        assert not any(
+            gap.reason == "stale"
+            and gap.stream_id == "l2Book:BTC"
+            for gap in gaps
+        )
+
+    asyncio.run(run())
+
+
 def test_systemic_l2_stale_on_active_socket_forces_reconnect() -> None:
     async def run() -> None:
         now = [1_000]
