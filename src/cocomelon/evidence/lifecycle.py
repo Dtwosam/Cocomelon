@@ -728,17 +728,13 @@ class BaselineReplayPipeline:
     ) -> JournalObservation:
         account = self._execution.account
         if account.state_id not in self._recorded_account_states:
-            if not self._facts.has_equity_account_state(
-                self._run_id,
-                account.state_id,
-            ):
-                self._facts.record_equity_fact(
-                    account_equity_fact(
-                        account,
-                        replay_run_id=self._run_id,
-                        kind=kind,
-                    )
+            self._facts.record_equity_fact_if_new_account_state(
+                account_equity_fact(
+                    account,
+                    replay_run_id=self._run_id,
+                    kind=kind,
                 )
+            )
             self._recorded_account_states.add(account.state_id)
         return observation_from_account_state(account, replay_run_id=self._run_id)
 
