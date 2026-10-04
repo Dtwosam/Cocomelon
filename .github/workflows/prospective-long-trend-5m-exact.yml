@@ -1,0 +1,340 @@
+name: Prospective Reopened LONG Trend 5m Exact Evidence
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-long-trend-5m-exact.yml"
+      - "src/cocomelon/research/prospective_long_trend_5m_exit.py"
+      - "src/cocomelon/research/prospective_long_trend_5m_exit_source.py"
+      - "scripts/evaluate_prospective_long_trend_5m_exit.py"
+  workflow_run:
+    workflows:
+      - "Continuous Mainnet Paper Trader"
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed Continuous Mainnet Paper Trader run ID
+        required: true
+        type: string
+      source_run_attempt:
+        description: Exact source run attempt
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: prospective-reopened-long-trend-5m-exact
+  cancel-in-progress: false
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      EVIDENCE_ISSUE: "844"
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e .
+
+      - name: Resolve exact artifact-bearing paper state
+        id: source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
+          EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt || '' }}
+          INPUT_RUN_ID: ${{ inputs.source_run_id || '' }}
+          INPUT_RUN_ATTEMPT: ${{ inputs.source_run_attempt || '' }}
+        run: |
+          set -euo pipefail
+
+          run_id=""
+          run_attempt=""
+          resolution_mode=""
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_id="$INPUT_RUN_ID"
+            run_attempt="$INPUT_RUN_ATTEMPT"
+            resolution_mode="manual_exact"
+          elif [ "$EVENT_NAME" = "workflow_run" ] && [ "$EVENT_CONCLUSION" = "success" ]; then
+            run_id="$EVENT_RUN_ID"
+            run_attempt="$EVENT_RUN_ATTEMPT"
+            resolution_mode="successful_event"
+          fi
+
+          artifact_for_run() {
+            local candidate_run_id="$1"
+            local candidate_attempt="$2"
+            local expected_name="continuous-paper-state-$candidate_run_id-$candidate_attempt"
+            local artifacts_json
+            artifacts_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/artifacts?per_page=100"
+            )"
+            printf '%s' "$artifacts_json" |
+            ARTIFACT_NAME="$expected_name" python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          name = os.environ["ARTIFACT_NAME"]
+          matches = [
+              item for item in payload.get("artifacts", [])
+              if item.get("name") == name and item.get("expired") is False
+          ]
+          if not matches:
+              raise SystemExit(0)
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected at most one non-expired state artifact named {name}"
+              )
+          item = matches[0]
+          digest = item.get("digest")
+          if not isinstance(digest, str) or not digest.startswith("sha256:"):
+              raise SystemExit("state artifact digest is missing or invalid")
+          print(item["id"], item["name"], digest, sep="\t")
+          '
+          }
+
+          artifact_line=""
+          if [[ "$run_id" =~ ^[0-9]+$ && "$run_attempt" =~ ^[0-9]+$ ]]; then
+            artifact_line="$(artifact_for_run "$run_id" "$run_attempt")"
+          fi
+
+          if [ -z "$artifact_line" ]; then
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "manual source has no authenticated durable state artifact" >&2
+              exit 1
+            fi
+
+            runs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=50"
+            )"
+            mapfile -t artifact_candidates < <(
+              printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in payload.get("workflow_runs", []):
+              if (
+                  run.get("path") == ".github/workflows/continuous-paper.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and (run.get("head_repository") or {}).get("full_name") == repo
+                  and isinstance(run.get("id"), int)
+                  and isinstance(run.get("run_attempt"), int)
+              ):
+                  print(run["id"], run["run_attempt"], sep="\t")
+          '
+            )
+            for candidate in "${artifact_candidates[@]}"; do
+              IFS=$'\t' read -r candidate_run_id candidate_attempt <<<"$candidate"
+              candidate_artifact_line="$(
+                artifact_for_run "$candidate_run_id" "$candidate_attempt"
+              )"
+              if [ -n "$candidate_artifact_line" ]; then
+                run_id="$candidate_run_id"
+                run_attempt="$candidate_attempt"
+                artifact_line="$candidate_artifact_line"
+                resolution_mode="latest_successful_with_state_artifact"
+                break
+              fi
+            done
+          fi
+
+          if [ -z "$artifact_line" ]; then
+            echo "no authenticated durable paper state is available" >&2
+            exit 1
+          fi
+          if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
+            echo "source paper run identity is invalid" >&2
+            exit 1
+          fi
+
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+          head_sha="$(
+            printf '%s' "$run_json" |
+            SOURCE_ATTEMPT="$run_attempt" python -c '
+          import json, os, sys
+          run = json.load(sys.stdin)
+          if run.get("path") != ".github/workflows/continuous-paper.yml":
+              raise SystemExit("source workflow path mismatch")
+          if run.get("head_branch") != "main":
+              raise SystemExit("source run must be from main")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("source run must be completed successfully")
+          if str(run.get("run_attempt")) != os.environ["SOURCE_ATTEMPT"]:
+              raise SystemExit("source run attempt mismatch")
+          if (run.get("head_repository") or {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("source repository mismatch")
+          sha = run.get("head_sha")
+          if not isinstance(sha, str) or len(sha) != 40:
+              raise SystemExit("source head sha is invalid")
+          print(sha)
+          '
+          )"
+          IFS=$'\t' read -r artifact_id artifact_name artifact_digest <<<"$artifact_line"
+
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$artifact_digest" >> "$GITHUB_OUTPUT"
+          echo "resolution_mode=$resolution_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Download authenticated durable state
+        id: state
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.source.outputs.artifact_id }}
+          ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/long-trend-5m-artifact /tmp/long-trend-5m-state
+          mkdir -p /tmp/long-trend-5m-artifact /tmp/long-trend-5m-state
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/long-trend-5m-state.zip
+          actual_digest="sha256:$(sha256sum /tmp/long-trend-5m-state.zip | cut -d' ' -f1)"
+          if [ "$actual_digest" != "$ARTIFACT_DIGEST" ]; then
+            echo "state artifact digest mismatch" >&2
+            exit 1
+          fi
+          unzip -q /tmp/long-trend-5m-state.zip             -d /tmp/long-trend-5m-artifact
+          tar_path="$(
+            find /tmp/long-trend-5m-artifact               -type f               -name continuous-paper-state.tar               -print -quit
+          )"
+          if [ -z "$tar_path" ]; then
+            echo "durable paper state tar is missing" >&2
+            exit 1
+          fi
+          tar -xf "$tar_path" -C /tmp/long-trend-5m-state
+
+          for required in             prospective-full-stack-forward-markout-summary.json             prospective-long-trend-execution-shadow-source.json
+          do
+            test -s "/tmp/long-trend-5m-state/$required"
+          done
+          test -d /tmp/long-trend-5m-state/opening-opportunities/records
+          test -d /tmp/long-trend-5m-state/opening-opportunity-exit-books/records
+          test -d /tmp/long-trend-5m-state/replacement-funding-boundaries/records
+          echo "root=/tmp/long-trend-5m-state" >> "$GITHUB_OUTPUT"
+
+      - name: Evaluate exact LONG trend 5m candidate
+        id: evaluate
+        shell: bash
+        env:
+          STATE_ROOT: ${{ steps.state.outputs.root }}
+        run: |
+          set -euo pipefail
+          python scripts/evaluate_prospective_long_trend_5m_exit.py             "$STATE_ROOT"             --source-out prospective-long-trend-5m-exit-source.json             --json-out prospective-long-trend-5m-exit-summary.json
+
+      - name: Publish exact LONG trend 5m evidence
+        shell: bash
+        env:
+          ISSUE_NUMBER: ${{ env.EVIDENCE_ISSUE }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          SOURCE_HEAD_SHA: ${{ steps.source.outputs.head_sha }}
+          SOURCE_ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
+          SOURCE_ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
+          SOURCE_RESOLUTION: ${{ steps.source.outputs.resolution_mode }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          summary = json.loads(
+              Path(
+                  "prospective-long-trend-5m-exit-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          robustness = summary["robustness"]
+          ready = summary["candidate_investigation_ready"] is True
+          status = (
+              "INVESTIGATION GATE PASSED"
+              if ready
+              else "COLLECTING / GATE NOT MET"
+          )
+          lines = [
+              "## Reopened LONG+trend exact 5m evidence",
+              "",
+              f"**Status:** {status}",
+              "",
+              f"- source paper run / attempt: `{os.environ['SOURCE_RUN_ID']} / {os.environ['SOURCE_RUN_ATTEMPT']}`",
+              f"- source head SHA: `{os.environ['SOURCE_HEAD_SHA']}`",
+              f"- source resolution: `{os.environ['SOURCE_RESOLUTION']}`",
+              f"- source artifact: `{os.environ['SOURCE_ARTIFACT_NAME']}`",
+              f"- source artifact digest: `{os.environ['SOURCE_ARTIFACT_DIGEST']}`",
+              f"- candidate: `{summary['candidate_id']}`",
+              f"- frozen validation start ms: `{summary['started_at_ms']}`",
+              "",
+              "### Exact 5m economics",
+              "",
+              f"- source opportunities: `{summary['source_opportunities']}`",
+              f"- counterfactual risk approvals: `{summary['counterfactual_risk_approvals']}`",
+              f"- counterfactual risk rejections: `{summary['counterfactual_risk_rejections']}`",
+              f"- entry fills: `{summary['entry_fills']}`",
+              f"- observed stop survivors / crossings / incomplete: `{summary['observed_stop_survivor_options']} / {summary['observed_stop_crossing_options']} / {summary['observed_stop_path_incomplete_options']}`",
+              f"- complete 5m exits: `{summary['complete_five_minute_exits']}`",
+              f"- exact realized-PnL options: `{summary['exact_realized_pnl_options']}`",
+              f"- wins / losses / breakeven: `{summary['wins']} / {summary['losses']} / {summary['breakeven']}`",
+              f"- total exact realized PnL: `{summary['total_exact_realized_pnl']}`",
+              f"- mean exact realized PnL: `{summary['mean_exact_realized_pnl']}`",
+              f"- profit factor: `{summary['profit_factor']}`",
+              "",
+              "### Robustness gate",
+              "",
+              f"- exact options / required: `{robustness['exact_option_count']} / {robustness['minimum_exact_options']}`",
+              f"- markets / required: `{robustness['market_count']} / {robustness['minimum_markets']}`",
+              f"- minimum sample met: `{robustness['minimum_sample_met']}`",
+              f"- leave-one-trade min PnL / positive: `{robustness['leave_one_option_out_min_pnl']} / {robustness['positive_after_removing_any_one_option']}`",
+              f"- leave-one-market min PnL / positive: `{robustness['leave_one_market_out_min_pnl']} / {robustness['positive_after_removing_any_one_market']}`",
+              f"- chronological half PnL: `{robustness['chronological_first_half_pnl']} / {robustness['chronological_second_half_pnl']}`",
+              f"- chronological halves positive: `{robustness['chronological_halves_positive']}`",
+              f"- investigation gate passed: `{ready}`",
+              "",
+              (
+                  "This is a post-freeze exact-execution validation of the "
+                  "reopened pure LONG+trend segment. Passing permits only "
+                  "deeper research; it does not relax the weekly drawdown "
+                  "lockout or authorize promotion/live execution."
+              ),
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**Changes risk limits:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/long-trend-5m-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER"             -f body="$(cat /tmp/long-trend-5m-status.md)"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: prospective-long-trend-5m-exact-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            prospective-long-trend-5m-exit-source.json
+            prospective-long-trend-5m-exit-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
