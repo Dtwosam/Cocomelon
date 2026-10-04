@@ -1603,6 +1603,45 @@ class _SupervisorGroup:
             )
         )
 
+    def effective_ready_l2_market_keys_by_lane(
+        self,
+        *,
+        now_ms: int,
+    ) -> tuple[frozenset[str], ...]:
+        if len(self.supervisors) != len(self.ready_market_keys):
+            raise RuntimeError(
+                "supervisor and L2 readiness lane counts differ"
+            )
+        if not self.l2_exchange_age_ms_by_market:
+            return tuple(
+                frozenset(self.required_market_keys & ready)
+                for ready in self.ready_market_keys
+            )
+        if len(self.l2_exchange_age_ms_by_market) != len(
+            self.supervisors
+        ):
+            raise RuntimeError(
+                "supervisor and L2 exchange-age lane counts differ"
+            )
+        stale_by_lane = tuple(
+            set(supervisor.stale_l2_streams(now_ms=now_ms))
+            for supervisor in self.supervisors
+        )
+        return tuple(
+            frozenset(
+                market
+                for market, exchange_age_ms in (
+                    self.l2_exchange_age_ms_by_market[lane].items()
+                )
+                if (
+                    market in self.required_market_keys
+                    and exchange_age_ms >= 0
+                    and f"l2Book:{market}" not in stale_by_lane[lane]
+                )
+            )
+            for lane in range(len(self.supervisors))
+        )
+
     def unhealthy_l2_market_keys(
         self,
         *,
@@ -1672,23 +1711,16 @@ def _supervisor_group_health_payload(
     *,
     now_ms: int,
 ) -> dict[str, object]:
-    if len(group.supervisors) != len(group.ready_market_keys):
-        raise RuntimeError(
-            "supervisor and L2 readiness lane counts differ"
+    effective_ready_by_lane = (
+        group.effective_ready_l2_market_keys_by_lane(
+            now_ms=now_ms
         )
-    if (
-        group.l2_exchange_age_ms_by_market
-        and len(group.l2_exchange_age_ms_by_market)
-        != len(group.supervisors)
-    ):
-        raise RuntimeError(
-            "supervisor and L2 exchange-age lane counts differ"
-        )
+    )
     lanes: list[dict[str, object]] = []
     for lane, (supervisor, ready) in enumerate(
         zip(
             group.supervisors,
-            group.ready_market_keys,
+            effective_ready_by_lane,
             strict=True,
         )
     ):
@@ -1852,9 +1884,14 @@ async def _wait_supervisor_group_ready(
     while True:
         if any(task.done() for task in group.tasks):
             return False
+        ready_by_lane = (
+            group.effective_ready_l2_market_keys_by_lane(
+                now_ms=utc_now_ms()
+            )
+        )
         if all(
             group.required_market_keys <= ready
-            for ready in group.ready_market_keys
+            for ready in ready_by_lane
         ):
             return True
         if loop.time() >= deadline:
