@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -460,14 +461,14 @@ class ContinuousPaperOpeningOpportunityPathStore:
             )
         )
 
-    def observe(
+    def _updated_paths_for_mark(
         self,
         *,
         market: str,
         observed_at_ms: int,
         mark_px: Decimal,
         source: str,
-    ) -> int:
+    ) -> tuple[ContinuousPaperOpeningOpportunityPath, ...]:
         _require_nonempty(market, "market")
         if observed_at_ms < 0:
             raise ValueError("observed_at_ms must be non-negative")
@@ -476,7 +477,7 @@ class ContinuousPaperOpeningOpportunityPathStore:
             mark_px=mark_px,
             source=source,
         )
-        recorded = 0
+        updates: list[ContinuousPaperOpeningOpportunityPath] = []
         market_paths = tuple(
             sorted(
                 self._active_by_market.get(market, {}).values(),
@@ -514,24 +515,62 @@ class ContinuousPaperOpeningOpportunityPathStore:
                 raise ContinuousPaperOpeningOpportunityPathError(
                     "OPENING_OPPORTUNITY_PATH_MARK_OUT_OF_ORDER"
                 )
-            updated = ContinuousPaperOpeningOpportunityPath(
-                opportunity_id=current.opportunity_id,
-                market=current.market,
-                direction=current.direction,
-                opportunity_timestamp_ms=(
-                    current.opportunity_timestamp_ms
-                ),
-                max_path_age_ms=current.max_path_age_ms,
-                max_completion_lag_ms=(
-                    current.max_completion_lag_ms
-                ),
-                marks=(*current.marks, mark),
-                schema_version=current.schema_version,
+            updates.append(
+                ContinuousPaperOpeningOpportunityPath(
+                    opportunity_id=current.opportunity_id,
+                    market=current.market,
+                    direction=current.direction,
+                    opportunity_timestamp_ms=(
+                        current.opportunity_timestamp_ms
+                    ),
+                    max_path_age_ms=current.max_path_age_ms,
+                    max_completion_lag_ms=(
+                        current.max_completion_lag_ms
+                    ),
+                    marks=(*current.marks, mark),
+                    schema_version=current.schema_version,
+                )
             )
+        return tuple(updates)
+
+    def observe(
+        self,
+        *,
+        market: str,
+        observed_at_ms: int,
+        mark_px: Decimal,
+        source: str,
+    ) -> int:
+        updates = self._updated_paths_for_mark(
+            market=market,
+            observed_at_ms=observed_at_ms,
+            mark_px=mark_px,
+            source=source,
+        )
+        for updated in updates:
             self._write(updated)
             self._index_path(updated)
-            recorded += 1
-        return recorded
+        return len(updates)
+
+    async def observe_cooperatively(
+        self,
+        *,
+        market: str,
+        observed_at_ms: int,
+        mark_px: Decimal,
+        source: str,
+    ) -> int:
+        updates = self._updated_paths_for_mark(
+            market=market,
+            observed_at_ms=observed_at_ms,
+            mark_px=mark_px,
+            source=source,
+        )
+        for updated in updates:
+            await asyncio.to_thread(self._write, updated)
+            self._index_path(updated)
+            await asyncio.sleep(0)
+        return len(updates)
 
     @property
     def record_count(self) -> int:

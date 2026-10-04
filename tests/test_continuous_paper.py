@@ -2549,7 +2549,11 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"replacement_funding_evidence": {' in source
     assert '"required_boundaries": (' in source
     assert '"captured_boundaries": replacement_funding_store.record_count' in source
-    assert "opening_opportunity_sink.observe_snapshots(" in source
+    assert (
+        "await opening_opportunity_sink.observe_snapshots_cooperatively("
+        in source
+    )
+    assert "await self._path_store.observe_cooperatively(" in source
     assert "capture_due_exit_books(" in source
     assert "reader.l2_book" in source
     assert "normalize_l2_book_snapshot(" in source

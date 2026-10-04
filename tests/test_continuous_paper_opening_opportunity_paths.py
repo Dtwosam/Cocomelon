@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from decimal import Decimal
 from pathlib import Path
 
@@ -71,6 +72,50 @@ def test_forward_path_store_is_durable_and_market_scoped(tmp_path: Path) -> None
     assert restored.record_count == 1
     assert restored.complete_count == 0
     assert len(restored.state_digest) == 64
+
+
+def test_forward_path_cooperative_observe_matches_durable_semantics(
+    tmp_path: Path,
+) -> None:
+    store = ContinuousPaperOpeningOpportunityPathStore(
+        tmp_path / "paths",
+        max_path_age_ms=1_000,
+        max_completion_lag_ms=200,
+    )
+    store.register(
+        opportunity_id="opp-1",
+        market="BTC",
+        direction="long",
+        opportunity_timestamp_ms=10_000,
+    )
+    store.register(
+        opportunity_id="opp-2",
+        market="BTC",
+        direction="short",
+        opportunity_timestamp_ms=10_000,
+    )
+
+    recorded = asyncio.run(
+        store.observe_cooperatively(
+            market="BTC",
+            observed_at_ms=10_100,
+            mark_px=Decimal("101"),
+            source="metaAndAssetCtxs",
+        )
+    )
+
+    assert recorded == 2
+    restored = ContinuousPaperOpeningOpportunityPathStore(
+        tmp_path / "paths",
+        max_path_age_ms=1_000,
+        max_completion_lag_ms=200,
+    )
+    for opportunity_id in ("opp-1", "opp-2"):
+        path = restored.load(opportunity_id)
+        assert path is not None
+        assert tuple(mark.observed_at_ms for mark in path.marks) == (
+            10_100,
+        )
 
 
 def test_forward_path_completes_on_first_mark_at_or_after_horizon(
