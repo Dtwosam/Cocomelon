@@ -9748,6 +9748,19 @@ def _render_operational_live_status(
                 f"{payload.get('checkpoint_background_skips', 0)}"
             ),
             (
+                "- checkpoint background max by file: "
+                f"{payload.get('checkpoint_background_max_ms_by_file', {})}"
+            ),
+            (
+                "- checkpoint background max bytes by file: "
+                f"{payload.get('checkpoint_background_max_bytes_by_file', {})}"
+            ),
+            (
+                "- checkpoint slowest background file / max: "
+                f"{payload.get('checkpoint_background_slowest_file')} / "
+                f"{payload.get('checkpoint_background_slowest_file_ms', 0)}ms"
+            ),
+            (
                 "- checkpoint snapshot max by component: "
                 f"{payload.get('checkpoint_snapshot_max_ms_by_component', {})}"
             ),
