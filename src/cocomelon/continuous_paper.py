@@ -1608,14 +1608,14 @@ class _SupervisorGroup:
         *,
         now_ms: int,
     ) -> tuple[frozenset[str], ...]:
-        if len(self.supervisors) != len(self.ready_market_keys):
-            raise RuntimeError(
-                "supervisor and L2 readiness lane counts differ"
-            )
         if not self.l2_exchange_age_ms_by_market:
             return tuple(
                 frozenset(self.required_market_keys & ready)
                 for ready in self.ready_market_keys
+            )
+        if len(self.supervisors) != len(self.ready_market_keys):
+            raise RuntimeError(
+                "supervisor and L2 readiness lane counts differ"
             )
         if len(self.l2_exchange_age_ms_by_market) != len(
             self.supervisors
