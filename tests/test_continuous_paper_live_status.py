@@ -5988,6 +5988,10 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "record_pump_slow_record_count": 3,
         "checkpoint_max_snapshot_ms": 14,
         "checkpoint_max_background_write_ms": 82_000,
+        "checkpoint_snapshot_max_ms_by_component": {
+            "cadence_shadow_state": 12,
+            "pipeline_checkpoint": 3,
+        },
         "checkpoint_background_starts": 4,
         "checkpoint_background_skips": 2,
         "event_loop_phase": "rank_refresh",
@@ -6260,6 +6264,11 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert (
         "checkpoint max snapshot / background write / starts / skips: "
         "14ms / 82000ms / 4 / 2"
+        in rendered
+    )
+    assert (
+        "checkpoint snapshot max by component: "
+        "{'cadence_shadow_state': 12, 'pipeline_checkpoint': 3}"
         in rendered
     )
     assert (

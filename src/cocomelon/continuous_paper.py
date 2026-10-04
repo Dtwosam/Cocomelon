@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, replace
@@ -4029,6 +4030,7 @@ class _RecordPump:
         self.record_pump_last_slow_record: dict[str, object] | None = None
         self.checkpoint_max_snapshot_ms = 0
         self.checkpoint_max_background_write_ms = 0
+        self.checkpoint_snapshot_max_ms_by_component: dict[str, int] = {}
         self.checkpoint_background_starts = 0
         self.checkpoint_background_skips = 0
         self.event_loop_phase = "startup"
@@ -6653,6 +6655,11 @@ def _live_status_payload(
         "checkpoint_max_background_write_ms": (
             pump.checkpoint_max_background_write_ms
         ),
+        "checkpoint_snapshot_max_ms_by_component": dict(
+            sorted(
+                pump.checkpoint_snapshot_max_ms_by_component.items()
+            )
+        ),
         "checkpoint_background_starts": pump.checkpoint_background_starts,
         "checkpoint_background_skips": pump.checkpoint_background_skips,
         "event_loop_phase": pump.event_loop_phase,
@@ -8294,52 +8301,94 @@ async def run_continuous_paper_session(
         )
 
         def checkpoint_payloads() -> tuple[tuple[Path, object], ...]:
+            def timed_component(
+                name: str,
+                factory: Callable[[], object],
+            ) -> object:
+                started = time.perf_counter()
+                value = factory()
+                elapsed_ms = max(
+                    0,
+                    int((time.perf_counter() - started) * 1000),
+                )
+                pump.checkpoint_snapshot_max_ms_by_component[name] = max(
+                    pump.checkpoint_snapshot_max_ms_by_component.get(name, 0),
+                    elapsed_ms,
+                )
+                return value
+
             checkpoint_timestamp_ms = utc_now_ms()
-            drawdown_tracker.observe(
-                execution.account.equity,
-                timestamp_ms=checkpoint_timestamp_ms,
+            timed_component(
+                "drawdown_observe",
+                lambda: drawdown_tracker.observe(
+                    execution.account.equity,
+                    timestamp_ms=checkpoint_timestamp_ms,
+                ),
             )
-            trade_path_sink.checkpoint(pipeline.open_lifecycle_mark_paths)
+            timed_component(
+                "trade_path_checkpoint",
+                lambda: trade_path_sink.checkpoint(
+                    pipeline.open_lifecycle_mark_paths
+                ),
+            )
             payloads: list[tuple[Path, object]] = [
                 (
                     checkpoint_path,
-                    _checkpoint_payload(
-                        pipeline,
-                        last_available_at_ms=pump.last_available_at_ms,
-                        selected_markets=selected,
+                    timed_component(
+                        "pipeline_checkpoint",
+                        lambda: _checkpoint_payload(
+                            pipeline,
+                            last_available_at_ms=pump.last_available_at_ms,
+                            selected_markets=selected,
+                        ),
                     ),
                 ),
                 (
                     root / CADENCE_SHADOW_FILENAME,
-                    pump.cadence_shadow_payload(),
+                    timed_component(
+                        "cadence_shadow_summary",
+                        pump.cadence_shadow_payload,
+                    ),
                 ),
             ]
             if pump.cadence_shadow is not None:
                 payloads.append(
                     (
                         root / CADENCE_SHADOW_STATE_FILENAME,
-                        pump.cadence_shadow.state_payload(),
+                        timed_component(
+                            "cadence_shadow_state",
+                            pump.cadence_shadow.state_payload,
+                        ),
                     )
                 )
             if profit_lock_execution_shadow.shadow is not None:
                 payloads.append(
                     (
                         root / PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME,
-                        profit_lock_execution_shadow.shadow.state_payload(),
+                        timed_component(
+                            "profit_lock_shadow_state",
+                            profit_lock_execution_shadow.shadow.state_payload,
+                        ),
                     )
                 )
             if delayed_entry_execution_shadow.shadow is not None:
                 payloads.append(
                     (
                         root / DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME,
-                        delayed_entry_execution_shadow.shadow.state_payload(),
+                        timed_component(
+                            "delayed_entry_shadow_state",
+                            delayed_entry_execution_shadow.shadow.state_payload,
+                        ),
                     )
                 )
             if delayed_entry_120s_execution_shadow.shadow is not None:
                 payloads.append(
                     (
                         root / DELAYED_ENTRY_120S_EXECUTION_SHADOW_STATE_FILENAME,
-                        delayed_entry_120s_execution_shadow.shadow.state_payload(),
+                        timed_component(
+                            "delayed_entry_120s_shadow_state",
+                            delayed_entry_120s_execution_shadow.shadow.state_payload,
+                        ),
                     )
                 )
             payloads.extend(
@@ -8412,7 +8461,10 @@ async def run_continuous_paper_session(
                 payloads.append(
                     (
                         root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
-                        entry_mid_markout_shadow.shadow.state_payload(),
+                        timed_component(
+                            "entry_mid_markout_shadow_state",
+                            entry_mid_markout_shadow.shadow.state_payload,
+                        ),
                     )
                 )
             payloads.append(
