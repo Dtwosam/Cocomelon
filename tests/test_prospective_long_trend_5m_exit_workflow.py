@@ -33,6 +33,14 @@ def test_long_trend_5m_workflow_is_research_only() -> None:
     assert "**LIVE TRADING: DISABLED.**" in source
 
 
+def test_long_trend_5m_workflow_has_periodic_artifact_catchup() -> None:
+    source = _source()
+
+    assert "  schedule:" in source
+    assert '    - cron: "17 * * * *"' in source
+    assert "latest_successful_with_state_artifact" in source
+
+
 def test_long_trend_5m_workflow_uses_authenticated_durable_state() -> None:
     source = _source()
 
