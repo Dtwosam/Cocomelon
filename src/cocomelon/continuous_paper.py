@@ -259,8 +259,8 @@ from cocomelon.research.profit_lock_readiness import (
     profit_lock_readiness,
 )
 from cocomelon.research.prospective_breakeven_profit_lock import (
-    RULE_ID as PROSPECTIVE_BREAKEVEN_RULE_ID,
     ProspectiveBreakevenProfitLockState,
+    RULE_ID as PROSPECTIVE_BREAKEVEN_RULE_ID,
 )
 from cocomelon.research.prospective_candidate_stack_overlap import (
     prospective_candidate_stack_overlap_summary,
