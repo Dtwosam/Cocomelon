@@ -336,9 +336,7 @@ class BaselineReplayPipeline:
         self._funding_gaps: set[tuple[str, int]] = set()
         self._funding_inconsistent = False
         self._gap_intervals: list[tuple[int, int | None]] = []
-        self._recorded_account_states: set[str] = set(
-            self._facts.iter_equity_account_state_ids(self._run_id)
-        )
+        self._recorded_account_states: set[str] = set()
         self._initial_observation_emitted = False
         self._decision_epochs = 0
         self._last_decision_boundary_ms: int | None = None
@@ -730,13 +728,17 @@ class BaselineReplayPipeline:
     ) -> JournalObservation:
         account = self._execution.account
         if account.state_id not in self._recorded_account_states:
-            self._facts.record_equity_fact(
-                account_equity_fact(
-                    account,
-                    replay_run_id=self._run_id,
-                    kind=kind,
+            if not self._facts.has_equity_account_state(
+                self._run_id,
+                account.state_id,
+            ):
+                self._facts.record_equity_fact(
+                    account_equity_fact(
+                        account,
+                        replay_run_id=self._run_id,
+                        kind=kind,
+                    )
                 )
-            )
             self._recorded_account_states.add(account.state_id)
         return observation_from_account_state(account, replay_run_id=self._run_id)
 
