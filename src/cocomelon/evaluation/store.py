@@ -392,6 +392,68 @@ class EvaluationFactStore:
                 raise EvaluationConsistencyError("decision fact disappeared during iteration")
             yield fact
 
+    def record_equity_fact_if_new_account_state(
+        self,
+        fact: AccountEquityFact,
+    ) -> bool:
+        payload = self._canonical_equity_fact(fact)
+        try:
+            self.connection.execute("BEGIN IMMEDIATE")
+            inserted = self.connection.execute(
+                """
+                INSERT OR IGNORE INTO evaluation_equity_facts(
+                    fact_id, replay_run_id, account_state_id, timestamp_ms, payload_json
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    fact.fact_id,
+                    fact.replay_run_id,
+                    fact.account_state_id,
+                    fact.timestamp_ms,
+                    payload,
+                ),
+            )
+            if inserted.rowcount == 1:
+                self.connection.commit()
+                return True
+
+            by_state = self.connection.execute(
+                """
+                SELECT 1
+                FROM evaluation_equity_facts
+                WHERE replay_run_id = ? AND account_state_id = ?
+                LIMIT 1
+                """,
+                (fact.replay_run_id, fact.account_state_id),
+            ).fetchone()
+            if by_state is not None:
+                self.connection.commit()
+                return False
+
+            existing = self.connection.execute(
+                """
+                SELECT payload_json
+                FROM evaluation_equity_facts
+                WHERE fact_id = ?
+                """,
+                (fact.fact_id,),
+            ).fetchone()
+            if existing is not None:
+                if existing[0] != payload:
+                    raise EvaluationConsistencyError(
+                        f"conflicting evaluation equity fact: {fact.fact_id}"
+                    )
+                self.connection.commit()
+                return False
+
+            raise EvaluationConsistencyError(
+                "evaluation equity fact insert was ignored without "
+                "an account-state or fact-id match"
+            )
+        except Exception:
+            self.connection.rollback()
+            raise
+
     def load_equity_fact(self, fact_id: str) -> AccountEquityFact | None:
         row = self.connection.execute(
             "SELECT payload_json FROM evaluation_equity_facts WHERE fact_id = ?",
