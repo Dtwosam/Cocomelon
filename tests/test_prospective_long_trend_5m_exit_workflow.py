@@ -75,6 +75,9 @@ def test_long_trend_5m_workflow_publishes_exact_economics_and_gate() -> None:
     assert "evaluate_prospective_long_trend_5m_exit.py" in source
     assert "observed stop survivors / crossings / incomplete" in source
     assert "exact realized-PnL options" in source
+    assert "total gross realized PnL" in source
+    assert "total entry / exit fee drag" in source
+    assert "gross return / fee drag / net return on entry notional" in source
     assert "total exact realized PnL" in source
     assert "profit factor" in source
     assert "leave-one-trade min PnL / positive" in source
