@@ -858,6 +858,48 @@ def prospective_long_trend_5m_exit_summary(
         (value for value in exact_pnls if value < ZERO),
         ZERO,
     )
+    exact_rows = tuple(
+        item
+        for item in result_tuple
+        if item["exact_realized_pnl"] is not None
+    )
+    total_entry_notional = sum(
+        (
+            Decimal(cast(str, item["entry_average_fill_price"]))
+            * Decimal(cast(str, item["entry_filled_quantity"]))
+            for item in exact_rows
+        ),
+        ZERO,
+    )
+    total_gross_realized_pnl = sum(
+        (
+            Decimal(cast(str, item["gross_realized_pnl"]))
+            for item in exact_rows
+        ),
+        ZERO,
+    )
+    total_entry_fees = sum(
+        (
+            Decimal(cast(str, item["entry_fee"]))
+            for item in exact_rows
+        ),
+        ZERO,
+    )
+    total_exit_fees = sum(
+        (
+            Decimal(cast(str, item["exit_fee"]))
+            for item in exact_rows
+        ),
+        ZERO,
+    )
+    total_funding_cash_pnl = sum(
+        (
+            Decimal(cast(str, item["funding_cash_pnl"]))
+            for item in exact_rows
+        ),
+        ZERO,
+    )
+    total_fee_drag = total_entry_fees + total_exit_fees
     config_payload = execution_config_payload(config)
     robustness = _exact_pnl_robustness(result_tuple)
 
@@ -939,6 +981,27 @@ def prospective_long_trend_5m_exit_summary(
         "breakeven": sum(value == ZERO for value in exact_pnls),
         "gross_profit": str(gross_profit),
         "gross_loss_abs": str(gross_loss_abs),
+        "total_entry_notional": str(total_entry_notional),
+        "total_gross_realized_pnl": str(total_gross_realized_pnl),
+        "total_entry_fees": str(total_entry_fees),
+        "total_exit_fees": str(total_exit_fees),
+        "total_fee_drag": str(total_fee_drag),
+        "total_funding_cash_pnl": str(total_funding_cash_pnl),
+        "gross_return_on_entry_notional": (
+            None
+            if total_entry_notional == ZERO
+            else str(total_gross_realized_pnl / total_entry_notional)
+        ),
+        "fee_drag_fraction_of_entry_notional": (
+            None
+            if total_entry_notional == ZERO
+            else str(total_fee_drag / total_entry_notional)
+        ),
+        "net_return_on_entry_notional": (
+            None
+            if total_entry_notional == ZERO
+            else str(sum(exact_pnls, ZERO) / total_entry_notional)
+        ),
         "profit_factor": (
             None
             if gross_loss_abs == ZERO
