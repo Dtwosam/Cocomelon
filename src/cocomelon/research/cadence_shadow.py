@@ -387,6 +387,15 @@ class CadenceShadowComparator:
             list[ShadowCadenceDecision],
         ] = defaultdict(list)
         self._outcomes: list[ShadowCadenceOutcome] = []
+        self._state_outcome_payload_cache: dict[
+            tuple[int, str, int],
+            tuple[ShadowCadenceOutcome, dict[str, object]],
+        ] = {}
+        self._state_outcome_order_cache: tuple[
+            ShadowCadenceOutcome,
+            ...,
+        ] = ()
+        self._state_outcome_order_cache_count = -1
         self._censored_count = 0
         self._skipped_missing_entry_px = 0
         self._skipped_missing_lead_strategy = 0
@@ -686,6 +695,45 @@ class CadenceShadowComparator:
             )
         )
 
+    def _state_outcome_payload(
+        self,
+        outcome: ShadowCadenceOutcome,
+    ) -> dict[str, object]:
+        key = _sample_key(outcome.sample)
+        cached = self._state_outcome_payload_cache.get(key)
+        if cached is not None and cached[0] == outcome:
+            return cached[1]
+        payload = _outcome_payload(outcome)
+        self._state_outcome_payload_cache[key] = (
+            outcome,
+            payload,
+        )
+        return payload
+
+    def _state_sorted_outcomes(
+        self,
+    ) -> tuple[ShadowCadenceOutcome, ...]:
+        if (
+            self._state_outcome_order_cache_count
+            != len(self._outcomes)
+        ):
+            self._state_outcome_order_cache = tuple(
+                sorted(
+                    self._outcomes,
+                    key=lambda item: (
+                        item.sample.target_end_ms,
+                        item.sample.market.canonical,
+                        item.sample.cadence_ms,
+                        item.sample.decision_id,
+                        item.sample.horizon_ms,
+                    ),
+                )
+            )
+            self._state_outcome_order_cache_count = len(
+                self._outcomes
+            )
+        return self._state_outcome_order_cache
+
     def state_payload(self) -> dict[str, object]:
         pending = sorted(
             (
@@ -701,16 +749,7 @@ class CadenceShadowComparator:
                 item.horizon_ms,
             ),
         )
-        outcomes = sorted(
-            self._outcomes,
-            key=lambda item: (
-                item.sample.target_end_ms,
-                item.sample.market.canonical,
-                item.sample.cadence_ms,
-                item.sample.decision_id,
-                item.sample.horizon_ms,
-            ),
-        )
+        outcomes = self._state_sorted_outcomes()
         return {
             "schema_version": CADENCE_SHADOW_STATE_SCHEMA_VERSION,
             "horizons_ms": list(self._horizons_ms),
@@ -756,7 +795,10 @@ class CadenceShadowComparator:
                 for cadence_ms, decision_id in sorted(self._seen_decisions)
             ],
             "pending": [_sample_payload(sample) for sample in pending],
-            "outcomes": [_outcome_payload(outcome) for outcome in outcomes],
+            "outcomes": [
+                self._state_outcome_payload(outcome)
+                for outcome in outcomes
+            ],
             "censored_count": self._censored_count,
             "skipped_missing_entry_px": self._skipped_missing_entry_px,
             "skipped_missing_lead_strategy": (
@@ -896,6 +938,9 @@ class CadenceShadowComparator:
         self._seen_decisions = seen
         self._pending = pending
         self._outcomes = list(outcomes)
+        self._state_outcome_payload_cache.clear()
+        self._state_outcome_order_cache = ()
+        self._state_outcome_order_cache_count = -1
         self._censored_count = censored_count
         self._skipped_missing_entry_px = skipped_entry
         self._skipped_missing_lead_strategy = skipped_strategy
