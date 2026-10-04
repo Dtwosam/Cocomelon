@@ -391,7 +391,42 @@ jobs:
           set -euo pipefail
           last_status_publish=0
 
+          request_runtime_handoff() {
+            local trader_pid="$1"
+            local replacement_run="$2"
+
+            echo "::notice::newer continuous-paper push run $replacement_run is waiting; requesting graceful handoff independently of heartbeat"
+            touch /tmp/continuous-paper-upgrade-requested
+
+            for _ in $(seq 1 120); do
+              if ! kill -0 "$trader_pid" 2>/dev/null; then
+                return 0
+              fi
+              sleep 1
+            done
+
+            echo "::warning::continuous-paper runtime did not honor graceful handoff within 120s; interrupting worker"
+            kill -INT "$trader_pid" 2>/dev/null || return 0
+            for _ in $(seq 1 30); do
+              if ! kill -0 "$trader_pid" 2>/dev/null; then
+                return 0
+              fi
+              sleep 1
+            done
+
+            echo "::error::continuous-paper runtime remained alive after SIGINT; terminating worker so durable state handoff can proceed"
+            kill -TERM "$trader_pid" 2>/dev/null || return 0
+            for _ in $(seq 1 10); do
+              if ! kill -0 "$trader_pid" 2>/dev/null; then
+                return 0
+              fi
+              sleep 1
+            done
+            kill -KILL "$trader_pid" 2>/dev/null || true
+          }
+
           watch_for_newer_runtime_run() {
+            local trader_pid="$1"
             while true; do
               sleep 60
               if ! runs_json="$(
@@ -430,16 +465,28 @@ jobs:
           '
               )"
               if [ -n "$replacement_run" ]; then
-                echo "::notice::newer continuous-paper push run $replacement_run is waiting; requesting graceful handoff independently of heartbeat"
-                touch /tmp/continuous-paper-upgrade-requested
+                request_runtime_handoff "$trader_pid" "$replacement_run"
                 return 0
               fi
             done
           }
 
-          watch_for_newer_runtime_run &
-          upgrade_watch_pid=$!
-          trap 'kill "$upgrade_watch_pid" 2>/dev/null || true' EXIT
+          output_fifo="/tmp/continuous-paper-output-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          rm -f "$output_fifo"
+          mkfifo "$output_fifo"
+          trader_pid=""
+          upgrade_watch_pid=""
+
+          cleanup_runtime_processes() {
+            if [ -n "$upgrade_watch_pid" ]; then
+              kill "$upgrade_watch_pid" 2>/dev/null || true
+            fi
+            if [ -n "$trader_pid" ] && kill -0 "$trader_pid" 2>/dev/null; then
+              kill -TERM "$trader_pid" 2>/dev/null || true
+            fi
+            rm -f "$output_fifo"
+          }
+          trap cleanup_runtime_processes EXIT
 
           cocomelon-continuous-paper \
             --state-root "$STATE_ROOT" \
@@ -455,7 +502,14 @@ jobs:
             --worker-run-id "$GITHUB_RUN_ID" \
             --worker-run-attempt "$GITHUB_RUN_ATTEMPT" \
             --worker-head-sha "$GITHUB_SHA" \
-            | while IFS= read -r line; do
+            > "$output_fifo" &
+          trader_pid=$!
+
+          watch_for_newer_runtime_run "$trader_pid" &
+          upgrade_watch_pid=$!
+
+          set +e
+          while IFS= read -r line; do
                 printf '%s\n' "$line"
                 if [[ "$line" != COCOMELON_PAPER_HEARTBEAT\ * ]]; then
                   continue
@@ -488,7 +542,26 @@ jobs:
                 else
                   echo "::warning::failed to render continuous paper live status"
                 fi
-              done | tee continuous-paper-session.json
+              done < "$output_fifo" | tee continuous-paper-session.json
+          pipeline_status=("${PIPESTATUS[@]}")
+          wait "$trader_pid"
+          trader_status=$?
+          set -e
+
+          reader_status="${pipeline_status[0]}"
+          tee_status="${pipeline_status[1]}"
+          if (( trader_status != 0 )); then
+            echo "::error::continuous-paper runtime exited with status $trader_status"
+            exit "$trader_status"
+          fi
+          if (( reader_status != 0 )); then
+            echo "::error::continuous-paper heartbeat reader exited with status $reader_status"
+            exit "$reader_status"
+          fi
+          if (( tee_status != 0 )); then
+            echo "::error::continuous-paper session tee exited with status $tee_status"
+            exit "$tee_status"
+          fi
 
       - name: Measure durable continuous paper state
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
