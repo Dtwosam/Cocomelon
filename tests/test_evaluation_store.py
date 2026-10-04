@@ -112,6 +112,28 @@ def test_equity_fact_round_trips_and_run_filter_is_deterministic(tmp_path: Path)
     reopened.close()
 
 
+def test_equity_account_state_lookup_uses_indexed_identity_columns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = EvaluationFactStore(tmp_path / "evaluation.sqlite3")
+    store.record_equity_fact(
+        equity_fact(state_id="state-1", timestamp_ms=1_000)
+    )
+
+    def fail_load(_fact_id: str) -> AccountEquityFact | None:
+        raise AssertionError(
+            "account-state existence lookup must not decode payloads"
+        )
+
+    monkeypatch.setattr(store, "load_equity_fact", fail_load)
+
+    assert store.has_equity_account_state("run-1", "state-1") is True
+    assert store.has_equity_account_state("run-1", "missing") is False
+    assert store.has_equity_account_state("run-2", "state-1") is False
+    store.close()
+
+
 def test_equity_account_state_id_scan_avoids_payload_materialization(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
