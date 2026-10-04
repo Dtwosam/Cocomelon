@@ -360,6 +360,13 @@ class ContinuousPaperTradePathStore:
         self.open_root = self.root / "open"
         self.records_root.mkdir(parents=True, exist_ok=True)
         self.open_root.mkdir(parents=True, exist_ok=True)
+        self._open_cache: dict[
+            str,
+            tuple[
+                dict[str, object],
+                tuple[ContinuousPaperTradePathMark, ...],
+            ],
+        ] = {}
 
     @staticmethod
     def _record_name(identity: str, suffix: str) -> str:
@@ -413,6 +420,10 @@ class ContinuousPaperTradePathStore:
         self,
         opening_plan_id: str,
     ) -> tuple[dict[str, object] | None, tuple[ContinuousPaperTradePathMark, ...]]:
+        cached = self._open_cache.get(opening_plan_id)
+        if cached is not None:
+            return cached
+
         path = self._open_path(opening_plan_id)
         if not path.exists():
             return None, ()
@@ -488,7 +499,9 @@ class ContinuousPaperTradePathStore:
             mark_payload = dict(raw)
             mark_payload.pop("kind")
             marks.append(ContinuousPaperTradePathMark.from_dict(mark_payload))
-        return header, _merge_marks(marks)
+        merged_marks = _merge_marks(marks)
+        self._open_cache[opening_plan_id] = (header, merged_marks)
+        return header, merged_marks
 
     def checkpoint_open_path(
         self,
@@ -598,6 +611,10 @@ class ContinuousPaperTradePathStore:
                     )
                 handle.flush()
                 os.fsync(handle.fileno())
+            self._open_cache[opening_plan_id] = (
+                expected_header,
+                current_marks,
+            )
             return len(new_marks)
 
         if new_marks:
@@ -611,6 +628,9 @@ class ContinuousPaperTradePathStore:
                     )
                 handle.flush()
                 os.fsync(handle.fileno())
+        if header is None:
+            header = expected_header
+        self._open_cache[opening_plan_id] = (header, current_marks)
         return len(new_marks)
 
     def record(self, trade_path: ContinuousPaperTradePath) -> bool:
@@ -684,6 +704,7 @@ class ContinuousPaperTradePathStore:
         open_path = self._open_path(trade.opening_plan_id)
         if open_path.exists():
             open_path.unlink()
+        self._open_cache.pop(trade.opening_plan_id, None)
         return created
 
     def iter_payloads(self) -> tuple[dict[str, object], ...]:
