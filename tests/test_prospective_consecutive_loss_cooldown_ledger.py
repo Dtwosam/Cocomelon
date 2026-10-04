@@ -174,6 +174,39 @@ def _summary(
     }
 
 
+def test_cooldown_ledger_accepts_planning_rejection_after_risk_approval() -> None:
+    state = ProspectiveConsecutiveLossCooldownShadowState(
+        frozen_at_ms=850_000
+    )
+    option = _filled_option(state, "1")
+    option["planning_approved"] = False
+    option["planning_rejection"] = "below_venue_min_notional"
+    option["execution_result"] = None
+    option["filled_quantity"] = None
+    option["average_fill_price"] = None
+    option["entry_fee"] = None
+    option["markouts"] = {}
+
+    ledger = update_cooldown_ledger(
+        _summary(state, [option]),
+        state,
+        previous=None,
+        source_paper_run_id=8,
+        source_paper_run_attempt=1,
+        source_artifact_name="learning-8-1",
+        source_artifact_digest=_digest("planning-rejection"),
+    )
+
+    rows = ledger["rows"]
+    assert isinstance(rows, list)
+    assert len(rows) == 1
+    assert rows[0]["counterfactual_risk_reason_codes"] == [
+        "risk_approved"
+    ]
+    assert rows[0]["planning_rejection"] == "below_venue_min_notional"
+    assert rows[0]["terminal"] is True
+
+
 def test_cooldown_ledger_rejects_veto_reason_on_approved_option() -> None:
     state = ProspectiveConsecutiveLossCooldownShadowState(
         frozen_at_ms=900_000
