@@ -4033,6 +4033,8 @@ class _RecordPump:
         self.checkpoint_snapshot_max_ms_by_component: dict[str, int] = {}
         self.checkpoint_snapshot_slowest_component: str | None = None
         self.checkpoint_snapshot_slowest_component_ms = 0
+        self.checkpoint_cadence_state_serializations = 0
+        self.checkpoint_cadence_state_skips = 0
         self.checkpoint_background_starts = 0
         self.checkpoint_background_skips = 0
         self.event_loop_phase = "startup"
@@ -6668,6 +6670,12 @@ def _live_status_payload(
         "checkpoint_snapshot_slowest_component_ms": (
             pump.checkpoint_snapshot_slowest_component_ms
         ),
+        "checkpoint_cadence_state_serializations": (
+            pump.checkpoint_cadence_state_serializations
+        ),
+        "checkpoint_cadence_state_skips": (
+            pump.checkpoint_cadence_state_skips
+        ),
         "checkpoint_background_starts": pump.checkpoint_background_starts,
         "checkpoint_background_skips": pump.checkpoint_background_skips,
         "event_loop_phase": pump.event_loop_phase,
@@ -8210,10 +8218,16 @@ async def run_continuous_paper_session(
         )
         pipeline.restore_gap_intervals(gap_intervals)
         _restore_open_lifecycles(pipeline, execution, checkpoints)
+        cadence_shadow_state_path = (
+            root / CADENCE_SHADOW_STATE_FILENAME
+        )
         cadence_shadow = _restore_cadence_shadow(
-            root / CADENCE_SHADOW_STATE_FILENAME,
+            cadence_shadow_state_path,
             selected,
             replay_config=replay_config,
+        )
+        cadence_shadow_persisted_revision: int | None = (
+            0 if cadence_shadow.state_restored else None
         )
         decision_epoch_wakeup = asyncio.Event()
         pump = _RecordPump(
@@ -8319,7 +8333,10 @@ async def run_continuous_paper_session(
             now_ms=utc_now_ms()
         )
 
-        def checkpoint_payloads() -> tuple[tuple[Path, object], ...]:
+        def checkpoint_payloads() -> tuple[
+            tuple[tuple[Path, object], ...],
+            int | None,
+        ]:
             def timed_component(
                 name: str,
                 factory: Callable[[], object],
@@ -8373,16 +8390,23 @@ async def run_continuous_paper_session(
                     ),
                 ),
             ]
+            cadence_revision_to_persist: int | None = None
             if pump.cadence_shadow is not None:
-                payloads.append(
-                    (
-                        root / CADENCE_SHADOW_STATE_FILENAME,
-                        timed_component(
-                            "cadence_shadow_state",
-                            pump.cadence_shadow.state_payload,
-                        ),
+                cadence_revision = pump.cadence_shadow.state_revision
+                if cadence_revision != cadence_shadow_persisted_revision:
+                    payloads.append(
+                        (
+                            cadence_shadow_state_path,
+                            timed_component(
+                                "cadence_shadow_state",
+                                pump.cadence_shadow.state_payload,
+                            ),
+                        )
                     )
-                )
+                    cadence_revision_to_persist = cadence_revision
+                    pump.checkpoint_cadence_state_serializations += 1
+                else:
+                    pump.checkpoint_cadence_state_skips += 1
             if profit_lock_execution_shadow.shadow is not None:
                 payloads.append(
                     (
@@ -8543,12 +8567,14 @@ async def run_continuous_paper_session(
                     ),
                 )
             )
-            return tuple(payloads)
+            return tuple(payloads), cadence_revision_to_persist
 
         def persist_checkpoint_sync() -> None:
-            _write_json_payload_batch_atomic(
-                checkpoint_payloads()
-            )
+            nonlocal cadence_shadow_persisted_revision
+            payloads, cadence_revision = checkpoint_payloads()
+            _write_json_payload_batch_atomic(payloads)
+            if cadence_revision is not None:
+                cadence_shadow_persisted_revision = cadence_revision
 
         checkpoint_write_task: asyncio.Task[None] | None = None
 
@@ -8563,7 +8589,7 @@ async def run_continuous_paper_session(
 
             loop = asyncio.get_running_loop()
             snapshot_started = loop.time()
-            payloads = checkpoint_payloads()
+            payloads, cadence_revision = checkpoint_payloads()
             snapshot_ms = max(
                 0,
                 int((loop.time() - snapshot_started) * 1000),
@@ -8583,11 +8609,14 @@ async def run_continuous_paper_session(
             )
 
             async def write_snapshot() -> None:
+                nonlocal cadence_shadow_persisted_revision
                 write_started = loop.time()
                 await asyncio.to_thread(
                     _write_json_payload_batch_atomic,
                     payloads,
                 )
+                if cadence_revision is not None:
+                    cadence_shadow_persisted_revision = cadence_revision
                 write_ms = max(
                     0,
                     int((loop.time() - write_started) * 1000),
