@@ -509,6 +509,19 @@ class WebSocketSupervisor:
                     await connection.close()
                 self._connected = False
 
+    def l2_freshness_age_ms(
+        self,
+        stream_id: str,
+        *,
+        now_ms: int,
+    ) -> int | None:
+        if stream_id not in self._l2_stream_ids():
+            return None
+        anchor = self._l2_freshness_anchor_ms(stream_id)
+        if anchor is None:
+            return None
+        return now_ms - anchor
+
     def l2_stale_overage_ms(
         self,
         stream_id: str,
