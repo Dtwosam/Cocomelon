@@ -1098,6 +1098,36 @@ class ProfitLockExecutionShadow:
             "book_event_keys": list(state.book_event_keys),
         }
 
+    def open_rule_state_payloads(
+        self,
+        rule_id: str,
+    ) -> tuple[dict[str, object], ...]:
+        if rule_id not in {rule.rule_id for rule in self._rules}:
+            raise ValueError(
+                f"unknown profit-lock rule for open-state preview: {rule_id}"
+            )
+        rows: list[dict[str, object]] = []
+        for state in sorted(
+            self._positions.values(),
+            key=lambda item: item.opening_plan_id,
+        ):
+            rows.append(
+                {
+                    "opening_plan_id": state.opening_plan_id,
+                    "market": state.market.canonical,
+                    "side": state.side.value,
+                    "entry_price": str(state.entry_price),
+                    "planned_risk": str(state.planned_risk),
+                    "opened_at_ms": state.opened_at_ms,
+                    "eligible": state.eligible,
+                    "exclusion_reason": state.exclusion_reason,
+                    "rule": self._rule_state_payload(
+                        state.rules[rule_id]
+                    ),
+                }
+            )
+        return tuple(rows)
+
     def state_payload(self) -> dict[str, object]:
         positions = []
         for state in sorted(
