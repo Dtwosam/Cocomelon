@@ -16,6 +16,9 @@ from cocomelon.research.continuous_paper_opening_opportunity_exit_books import (
 from cocomelon.research.continuous_paper_replacement_funding import (
     ReplacementFundingBoundaryEvidence,
 )
+from cocomelon.research.prospective_full_stack_forward_markout import (
+    LONG_TREND_CARVEOUT_CANDIDATE_ID,
+)
 
 SCHEMA_VERSION: Final = 1
 SOURCE_KIND: Final = "prospective-long-trend-5m-exit-source-v1"
@@ -186,7 +189,7 @@ def _is_candidate_row(raw: dict[str, object]) -> bool:
         and raw.get("stack_decision") == "BLOCK"
         and raw.get("block_layer") == "combined"
         and raw.get("long_trend_carveout_candidate_id")
-        == "prospective-top10-two-strike-momentum-no-long-trend-v1"
+        == LONG_TREND_CARVEOUT_CANDIDATE_ID
         and raw.get("long_trend_carveout_decision") == "ADMIT"
         and raw.get("long_trend_carveout_block_layer") == "none"
         and isinstance(reasons, (list, tuple))
