@@ -8943,8 +8943,7 @@ async def run_continuous_paper_session(
                 if previous_task is not None:
                     await previous_task
                 await (
-                    opening_opportunity_sink
-                    .observe_snapshots_cooperatively(
+                    opening_opportunity_sink.observe_snapshots_cooperatively(
                         snapshots_for_research
                     )
                 )
