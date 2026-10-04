@@ -2092,22 +2092,48 @@ def _checkpoint_payload(
     }
 
 
-def _write_json_atomic(path: Path, payload: object) -> None:
+def _write_json_atomic(
+    path: Path,
+    payload: object,
+) -> tuple[int, int]:
+    started = time.perf_counter()
     path.parent.mkdir(parents=True, exist_ok=True)
     encoded = (
-        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
         + "\n"
-    )
+    ).encode("utf-8")
     temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(encoded, encoding="utf-8")
+    temporary.write_bytes(encoded)
     os.replace(temporary, path)
+    elapsed_ms = max(
+        0,
+        int((time.perf_counter() - started) * 1000),
+    )
+    return elapsed_ms, len(encoded)
 
 
 def _write_json_payload_batch_atomic(
     payloads: Sequence[tuple[Path, object]],
-) -> None:
+) -> tuple[dict[str, int], dict[str, int]]:
+    max_ms_by_file: dict[str, int] = {}
+    max_bytes_by_file: dict[str, int] = {}
     for path, payload in payloads:
-        _write_json_atomic(path, payload)
+        elapsed_ms, encoded_bytes = _write_json_atomic(path, payload)
+        key = path.name
+        max_ms_by_file[key] = max(
+            max_ms_by_file.get(key, 0),
+            elapsed_ms,
+        )
+        max_bytes_by_file[key] = max(
+            max_bytes_by_file.get(key, 0),
+            encoded_bytes,
+        )
+    return max_ms_by_file, max_bytes_by_file
 
 
 def _load_checkpoint(path: Path) -> tuple[
@@ -4030,6 +4056,10 @@ class _RecordPump:
         self.record_pump_last_slow_record: dict[str, object] | None = None
         self.checkpoint_max_snapshot_ms = 0
         self.checkpoint_max_background_write_ms = 0
+        self.checkpoint_background_max_ms_by_file: dict[str, int] = {}
+        self.checkpoint_background_max_bytes_by_file: dict[str, int] = {}
+        self.checkpoint_background_slowest_file: str | None = None
+        self.checkpoint_background_slowest_file_ms = 0
         self.checkpoint_snapshot_max_ms_by_component: dict[str, int] = {}
         self.checkpoint_snapshot_slowest_component: str | None = None
         self.checkpoint_snapshot_slowest_component_ms = 0
@@ -6659,6 +6689,18 @@ def _live_status_payload(
         "checkpoint_max_background_write_ms": (
             pump.checkpoint_max_background_write_ms
         ),
+        "checkpoint_background_max_ms_by_file": dict(
+            sorted(pump.checkpoint_background_max_ms_by_file.items())
+        ),
+        "checkpoint_background_max_bytes_by_file": dict(
+            sorted(pump.checkpoint_background_max_bytes_by_file.items())
+        ),
+        "checkpoint_background_slowest_file": (
+            pump.checkpoint_background_slowest_file
+        ),
+        "checkpoint_background_slowest_file_ms": (
+            pump.checkpoint_background_slowest_file_ms
+        ),
         "checkpoint_snapshot_max_ms_by_component": dict(
             sorted(
                 pump.checkpoint_snapshot_max_ms_by_component.items()
@@ -7238,6 +7280,18 @@ def _operational_live_status_payload(
         "checkpoint_max_snapshot_ms": pump.checkpoint_max_snapshot_ms,
         "checkpoint_max_background_write_ms": (
             pump.checkpoint_max_background_write_ms
+        ),
+        "checkpoint_background_max_ms_by_file": dict(
+            sorted(pump.checkpoint_background_max_ms_by_file.items())
+        ),
+        "checkpoint_background_max_bytes_by_file": dict(
+            sorted(pump.checkpoint_background_max_bytes_by_file.items())
+        ),
+        "checkpoint_background_slowest_file": (
+            pump.checkpoint_background_slowest_file
+        ),
+        "checkpoint_background_slowest_file_ms": (
+            pump.checkpoint_background_slowest_file_ms
         ),
         "checkpoint_snapshot_max_ms_by_component": dict(
             sorted(
@@ -8617,10 +8671,36 @@ async def run_continuous_paper_session(
             async def write_snapshot() -> None:
                 nonlocal cadence_shadow_persisted_revision
                 write_started = loop.time()
-                await asyncio.to_thread(
+                (
+                    write_ms_by_file,
+                    write_bytes_by_file,
+                ) = await asyncio.to_thread(
                     _write_json_payload_batch_atomic,
                     payloads,
                 )
+                for file_name, file_ms in write_ms_by_file.items():
+                    previous_ms = (
+                        pump.checkpoint_background_max_ms_by_file.get(
+                            file_name,
+                            0,
+                        )
+                    )
+                    pump.checkpoint_background_max_ms_by_file[
+                        file_name
+                    ] = max(previous_ms, file_ms)
+                    if file_ms > pump.checkpoint_background_slowest_file_ms:
+                        pump.checkpoint_background_slowest_file = file_name
+                        pump.checkpoint_background_slowest_file_ms = file_ms
+                for file_name, file_bytes in write_bytes_by_file.items():
+                    previous_bytes = (
+                        pump.checkpoint_background_max_bytes_by_file.get(
+                            file_name,
+                            0,
+                        )
+                    )
+                    pump.checkpoint_background_max_bytes_by_file[
+                        file_name
+                    ] = max(previous_bytes, file_bytes)
                 if cadence_revision is not None:
                     cadence_shadow_persisted_revision = cadence_revision
                 write_ms = max(
