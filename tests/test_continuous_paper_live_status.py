@@ -6255,6 +6255,35 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                 "planned_risk": "10",
             }
         ],
+        "prospective_breakeven_preview": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": "prospective-breakeven-after-0_5r-v1",
+            "started_at_ms": 1_699_000_000_000,
+            "clean_open_positions": 1,
+            "activated_open_positions": 1,
+            "triggered_open_positions": 0,
+            "excluded_pre_start_open_positions": 0,
+            "positions": [
+                {
+                    "opening_plan_id": "plan-btc",
+                    "market": "BTC",
+                    "side": "long",
+                    "opened_at_ms": 1_699_900_000_000,
+                    "eligible": True,
+                    "exclusion_reason": None,
+                    "activated": True,
+                    "activated_at_ms": 1_699_950_000_000,
+                    "triggered": False,
+                    "triggered_at_ms": None,
+                    "candidate_stop_price": "100000",
+                    "remaining_quantity": "0.01",
+                }
+            ],
+            "error": None,
+        },
         "recent_closed_trades": [],
         "last_observation": {
             "kind": "execution",
@@ -6273,6 +6302,17 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert "Operational heartbeat only" in rendered
     assert "Worker run: 123" in rendered
     assert "BTC" in rendered
+    assert "### Breakeven stop shadow" in rendered
+    assert "Research-only preview" in rendered
+    assert (
+        "clean open / activated / triggered / pre-start excluded: "
+        "1 / 1 / 0 / 0"
+        in rendered
+    )
+    assert (
+        "| BTC | long | true | true | false | 100000 | 0.01 |"
+        in rendered
+    )
     assert "latest eligibility markets / rankable / deep-ready: 20 / 20 / 4" in rendered
     assert "latest eligibility reasons: missing_deep_data=14, stale_book=2" in rendered
     assert "latest stale-book age coverage / reason count: `2 / 2`" in rendered
