@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Sequence
 from decimal import Decimal
-from typing import Final
+from typing import Final, cast
 
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.strategy import Direction
