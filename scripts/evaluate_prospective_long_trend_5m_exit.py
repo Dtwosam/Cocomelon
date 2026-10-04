@@ -4,8 +4,6 @@ import argparse
 import json
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import TypeVar
-
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityEvidence,
 )
@@ -29,14 +27,11 @@ from cocomelon.research.prospective_long_trend_carveout_execution_shadow import 
     _validate_source as _validate_long_trend_execution_source,
 )
 
-T = TypeVar("T")
-
-
 def _read_json(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _records(
+def _records[T](
     root: Path,
     parser: Callable[[object], T],
 ) -> tuple[T, ...]:
