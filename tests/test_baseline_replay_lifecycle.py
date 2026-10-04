@@ -312,6 +312,44 @@ def _run_records(
     return tuple(observations)
 
 
+def test_account_observation_does_not_pre_read_equity_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline, execution, facts = _pipeline(
+        tmp_path,
+        suffix="one-step-equity-state",
+    )
+
+    def fail_pre_read(
+        _replay_run_id: str,
+        _account_state_id: str,
+    ) -> bool:
+        raise AssertionError(
+            "account observation must use one-step state insertion"
+        )
+
+    monkeypatch.setattr(
+        facts,
+        "has_equity_account_state",
+        fail_pre_read,
+    )
+
+    observations = pipeline.on_record(
+        _snapshot_record(),
+        EVALUATED_AT_MS - 1_000,
+    )
+
+    assert any(
+        observation.kind.value == "account_state"
+        for observation in observations
+    )
+    assert len(tuple(facts.iter_equity_facts(RUN_ID))) == 1
+
+    execution.close()
+    facts.close()
+
+
 def test_restore_gap_intervals_compacts_closed_history_and_preserves_open_starts(
     tmp_path: Path,
 ) -> None:
