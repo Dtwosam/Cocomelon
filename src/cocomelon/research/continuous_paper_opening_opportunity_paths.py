@@ -143,12 +143,15 @@ class ContinuousPaperOpeningOpportunityPath:
                 "unsupported opening opportunity path schema"
             )
         previous_ms: int | None = None
+        horizon_mark_count = 0
+        expires_at_ms = self.expires_at_ms
+        completion_deadline_ms = self.completion_deadline_ms
         for mark in self.marks:
             if mark.observed_at_ms < self.opportunity_timestamp_ms:
                 raise ValueError(
                     "opening opportunity path mark precedes opportunity"
                 )
-            if mark.observed_at_ms > self.completion_deadline_ms:
+            if mark.observed_at_ms > completion_deadline_ms:
                 raise ValueError(
                     "opening opportunity path mark follows completion deadline"
                 )
@@ -159,17 +162,13 @@ class ContinuousPaperOpeningOpportunityPath:
                 raise ValueError(
                     "opening opportunity path marks must be strictly ordered"
                 )
+            if mark.observed_at_ms >= expires_at_ms:
+                horizon_mark_count += 1
             previous_ms = mark.observed_at_ms
-        if self.complete:
-            horizon_marks = tuple(
-                mark
-                for mark in self.marks
-                if mark.observed_at_ms >= self.expires_at_ms
+        if horizon_mark_count > 1:
+            raise ValueError(
+                "complete opportunity path must stop at first horizon mark"
             )
-            if len(horizon_marks) != 1:
-                raise ValueError(
-                    "complete opportunity path must stop at first horizon mark"
-                )
 
     @property
     def expires_at_ms(self) -> int:
@@ -181,9 +180,9 @@ class ContinuousPaperOpeningOpportunityPath:
 
     @property
     def complete(self) -> bool:
-        return any(
-            mark.observed_at_ms >= self.expires_at_ms
-            for mark in self.marks
+        return bool(
+            self.marks
+            and self.marks[-1].observed_at_ms >= self.expires_at_ms
         )
 
     def to_dict(self) -> dict[str, object]:

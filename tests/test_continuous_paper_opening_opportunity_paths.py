@@ -8,9 +8,62 @@ from pathlib import Path
 import pytest
 
 from cocomelon.research.continuous_paper_opening_opportunity_paths import (
+    ContinuousPaperOpeningOpportunityPath,
     ContinuousPaperOpeningOpportunityPathError,
+    ContinuousPaperOpeningOpportunityPathMark,
     ContinuousPaperOpeningOpportunityPathStore,
 )
+
+
+def test_forward_path_completeness_preserves_first_horizon_invariant() -> None:
+    before_horizon = ContinuousPaperOpeningOpportunityPathMark(
+        observed_at_ms=10_900,
+        mark_px=Decimal("101"),
+        source="metaAndAssetCtxs",
+    )
+    at_horizon = ContinuousPaperOpeningOpportunityPathMark(
+        observed_at_ms=11_000,
+        mark_px=Decimal("102"),
+        source="metaAndAssetCtxs",
+    )
+    after_horizon = ContinuousPaperOpeningOpportunityPathMark(
+        observed_at_ms=11_100,
+        mark_px=Decimal("103"),
+        source="metaAndAssetCtxs",
+    )
+
+    incomplete = ContinuousPaperOpeningOpportunityPath(
+        opportunity_id="opp-incomplete",
+        market="BTC",
+        direction="long",
+        opportunity_timestamp_ms=10_000,
+        max_path_age_ms=1_000,
+        max_completion_lag_ms=200,
+        marks=(before_horizon,),
+    )
+    assert incomplete.complete is False
+
+    complete = ContinuousPaperOpeningOpportunityPath(
+        opportunity_id="opp-complete",
+        market="BTC",
+        direction="long",
+        opportunity_timestamp_ms=10_000,
+        max_path_age_ms=1_000,
+        max_completion_lag_ms=200,
+        marks=(before_horizon, at_horizon),
+    )
+    assert complete.complete is True
+
+    with pytest.raises(ValueError, match="first horizon mark"):
+        ContinuousPaperOpeningOpportunityPath(
+            opportunity_id="opp-invalid",
+            market="BTC",
+            direction="long",
+            opportunity_timestamp_ms=10_000,
+            max_path_age_ms=1_000,
+            max_completion_lag_ms=200,
+            marks=(before_horizon, at_horizon, after_horizon),
+        )
 
 
 def test_forward_path_store_is_durable_and_market_scoped(tmp_path: Path) -> None:
