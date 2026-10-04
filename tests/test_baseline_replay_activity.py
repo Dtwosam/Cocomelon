@@ -4,6 +4,8 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.domain.features import (
     EligibilityDecision,
@@ -197,6 +199,43 @@ class ScriptedDecisionEngine:
 
     def flush(self, _end_ms: int) -> tuple[DecisionEpoch, ...]:
         return ()
+
+
+def test_baseline_pipeline_restore_avoids_full_equity_fact_materialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = BaselineReplayConfig(execution=PaperExecutionConfig())
+    execution = PaperExecutionAdapter(
+        tmp_path / "execution-fast-restore.sqlite3",
+        config.execution,
+        starting_cash=config.starting_cash,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+    )
+    facts = EvaluationFactStore(tmp_path / "facts-fast-restore.sqlite3")
+
+    def fail_full_scan(
+        _replay_run_id: str | None = None,
+    ) -> object:
+        raise AssertionError(
+            "pipeline restore must not materialize full equity facts"
+        )
+
+    monkeypatch.setattr(facts, "iter_equity_facts", fail_full_scan)
+
+    try:
+        BaselineReplayPipeline(
+            config,
+            execution,
+            facts,
+            selected_markets=(MARKET,),
+            replay_run_id=RUN_ID,
+            evidence_class=EvidenceClass.MICROSTRUCTURE,
+            decision_engine=ScriptedDecisionEngine(config),
+        )
+    finally:
+        execution.close()
+        facts.close()
 
 
 def test_baseline_pipeline_reports_fill_and_open_position_before_trade_closes(tmp_path) -> None:
