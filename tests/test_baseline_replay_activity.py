@@ -218,10 +218,15 @@ def test_baseline_pipeline_restore_avoids_full_equity_fact_materialization(
         _replay_run_id: str | None = None,
     ) -> object:
         raise AssertionError(
-            "pipeline restore must not materialize full equity facts"
+            "pipeline restore must not scan historical equity facts"
         )
 
     monkeypatch.setattr(facts, "iter_equity_facts", fail_full_scan)
+    monkeypatch.setattr(
+        facts,
+        "iter_equity_account_state_ids",
+        fail_full_scan,
+    )
 
     try:
         BaselineReplayPipeline(
