@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from decimal import Decimal
 from pathlib import Path
 
@@ -116,6 +117,49 @@ def test_forward_path_cooperative_observe_matches_durable_semantics(
         assert tuple(mark.observed_at_ms for mark in path.marks) == (
             10_100,
         )
+
+
+def test_forward_path_cooperative_rebuild_runs_off_event_loop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ContinuousPaperOpeningOpportunityPathStore(
+        tmp_path / "paths",
+        max_path_age_ms=1_000,
+        max_completion_lag_ms=200,
+    )
+    store.register(
+        opportunity_id="opp-1",
+        market="BTC",
+        direction="long",
+        opportunity_timestamp_ms=10_000,
+    )
+    caller_thread = threading.get_ident()
+    rebuild_threads: list[int] = []
+    original = store._updated_paths_for_mark_from_snapshot
+
+    def capture_thread(*args: object, **kwargs: object):
+        rebuild_threads.append(threading.get_ident())
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        store,
+        "_updated_paths_for_mark_from_snapshot",
+        capture_thread,
+    )
+
+    recorded = asyncio.run(
+        store.observe_cooperatively(
+            market="BTC",
+            observed_at_ms=10_100,
+            mark_px=Decimal("101"),
+            source="metaAndAssetCtxs",
+        )
+    )
+
+    assert recorded == 1
+    assert rebuild_threads
+    assert all(thread_id != caller_thread for thread_id in rebuild_threads)
 
 
 def test_forward_path_completes_on_first_mark_at_or_after_horizon(
