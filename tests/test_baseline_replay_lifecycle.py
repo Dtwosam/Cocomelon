@@ -61,6 +61,33 @@ def _record(
     )
 
 
+def _gap_record(
+    started_ms: int,
+    ended_ms: int | None,
+    *,
+    event_key: str,
+) -> ReplayRecord:
+    return ReplayRecord(
+        record_kind=SourceRecordKind.DATA_GAP,
+        available_at_ms=started_ms,
+        source="hyperliquid-mainnet-public-fixture",
+        schema_version=1,
+        market=None,
+        exchange_time_ms=None,
+        event_key=event_key,
+        payload_json=json.dumps(
+            {
+                "ended_ms": ended_ms,
+                "reason": "fixture",
+                "started_ms": started_ms,
+                "stream_id": "l2Book:BTC",
+            },
+            sort_keys=True,
+        ),
+        event_kind=None,
+    )
+
+
 def _snapshot_record() -> ReplayRecord:
     return _record(
         kind="market_snapshot",
@@ -282,6 +309,72 @@ def _run_records(
     for record in records:
         observations.extend(pipeline.on_record(record, record.available_at_ms))
     return tuple(observations)
+
+
+def test_restore_gap_intervals_compacts_closed_history_and_preserves_open_starts(
+    tmp_path: Path,
+) -> None:
+    pipeline, execution, facts = _pipeline(
+        tmp_path,
+        suffix="compact-restored-gaps",
+    )
+
+    pipeline.restore_gap_intervals(
+        (
+            (100, 200),
+            (150, 250),
+            (100, 200),
+            (300, 350),
+            (320, 375),
+            (400, None),
+            (450, None),
+        )
+    )
+
+    assert pipeline.known_gap_intervals == (
+        (100, 250),
+        (300, 375),
+        (400, None),
+        (450, None),
+    )
+
+    execution.close()
+    facts.close()
+
+
+def test_closed_gap_update_preserves_restored_open_identity_and_compacts(
+    tmp_path: Path,
+) -> None:
+    pipeline, execution, facts = _pipeline(
+        tmp_path,
+        suffix="compact-closed-gap",
+    )
+    pipeline.restore_gap_intervals(
+        (
+            (100, 200),
+            (180, 260),
+            (300, None),
+        )
+    )
+    closed_gap = _gap_record(
+        300,
+        360,
+        event_key="gap-close-300",
+    )
+
+    pipeline.on_record(
+        closed_gap,
+        closed_gap.available_at_ms,
+        evaluate_decisions=False,
+    )
+
+    assert pipeline.known_gap_intervals == (
+        (100, 260),
+        (300, 360),
+    )
+
+    execution.close()
+    facts.close()
 
 
 def test_long_lifecycle_applies_funding_closes_and_records_evaluation_facts(
