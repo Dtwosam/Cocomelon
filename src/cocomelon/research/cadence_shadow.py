@@ -988,7 +988,7 @@ class CadenceShadowComparator:
             for samples in self._pending.values()
             for sample in samples
         )
-        payload = {
+        payload: dict[str, object] = {
             "shadow_only": True,
             "execution_authority": False,
             "session_only": False,
