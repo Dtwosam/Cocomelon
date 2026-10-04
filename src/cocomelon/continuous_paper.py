@@ -7882,24 +7882,46 @@ async def run_continuous_paper_session(
     record_startup_component("facts_open", component_started)
 
     research_state_started = time.perf_counter()
+
+    component_started = time.perf_counter()
     feature_store = LearningFeatureSnapshotStore(root / "learning-features")
+    record_startup_component("learning_feature_store", component_started)
+
+    component_started = time.perf_counter()
     opening_lineage_store = ContinuousPaperOpeningLineageStore(
         root / "opening-lineage"
     )
+    record_startup_component("opening_lineage_store", component_started)
+
+    component_started = time.perf_counter()
     opening_rank_store = ContinuousPaperOpeningRankStore(
         root / "opening-ranks"
     )
+    record_startup_component("opening_rank_store", component_started)
+
+    component_started = time.perf_counter()
     opening_fill_liquidity_store = OpeningFillLiquidityStore(
         root / "opening-fill-liquidity"
+    )
+    record_startup_component(
+        "opening_fill_liquidity_store",
+        component_started,
     )
     opening_fill_liquidity_sink = (
         _ContinuousOpeningFillLiquiditySink(
             opening_fill_liquidity_store
         )
     )
+    component_started = time.perf_counter()
     opening_opportunity_store = ContinuousPaperOpeningOpportunityStore(
         root / "opening-opportunities"
     )
+    record_startup_component(
+        "opening_opportunity_store",
+        component_started,
+    )
+
+    component_started = time.perf_counter()
     opening_opportunity_path_store = (
         ContinuousPaperOpeningOpportunityPathStore(
             root / "opening-opportunity-paths",
@@ -7907,6 +7929,12 @@ async def run_continuous_paper_session(
             max_completion_lag_ms=DEFAULT_MAX_COMPLETION_LAG_MS,
         )
     )
+    record_startup_component(
+        "opening_opportunity_path_store",
+        component_started,
+    )
+
+    component_started = time.perf_counter()
     opening_opportunity_exit_book_store = (
         ContinuousPaperOpeningOpportunityExitBookStore(
             root / "opening-opportunity-exit-books",
@@ -7915,6 +7943,12 @@ async def run_continuous_paper_session(
             max_capture_lag_ms=MAX_FORWARD_MARKOUT_LAG_MS,
         )
     )
+    record_startup_component(
+        "opening_opportunity_exit_book_store",
+        component_started,
+    )
+
+    component_started = time.perf_counter()
     replacement_funding_store = ContinuousPaperReplacementFundingStore(
         root / "replacement-funding-boundaries",
         capture_started_at_ms=started_at_ms,
@@ -7930,9 +7964,19 @@ async def run_continuous_paper_session(
             replay_config.execution.funding_reconciliation_grace_ms
         ),
     )
+    record_startup_component(
+        "replacement_funding_store",
+        component_started,
+    )
+
+    component_started = time.perf_counter()
     original_stop_book_store = OriginalStopBookEvidenceStore(
         root / "original-stop-books",
         started_at_ms=started_at_ms,
+    )
+    record_startup_component(
+        "original_stop_book_store",
+        component_started,
     )
     rank_tracker = LatestCoarseRankTracker()
     opening_opportunity_sink = _ContinuousOpeningOpportunitySink(
@@ -7942,7 +7986,9 @@ async def run_continuous_paper_session(
         replacement_funding_store,
         rank_tracker,
     )
+    component_started = time.perf_counter()
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
+    record_startup_component("trade_path_store", component_started)
     trade_path_sink = _ContinuousTradePathSink(trade_path_store)
 
     async def capture_due_exit_books(
