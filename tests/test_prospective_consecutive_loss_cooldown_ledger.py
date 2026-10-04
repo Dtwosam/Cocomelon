@@ -117,7 +117,7 @@ def _filled_option(
             )
         ),
         "counterfactual_risk_approved": True,
-        "counterfactual_risk_reason_codes": [],
+        "counterfactual_risk_reason_codes": ["risk_approved"],
         "planning_approved": True,
         "planning_rejection": None,
         "execution_result": "filled",
@@ -172,6 +172,63 @@ def _summary(
         "candidate_eligible_cooldown_rejections": len(options),
         "option_results": options,
     }
+
+
+def test_cooldown_ledger_accepts_planning_rejection_after_risk_approval() -> None:
+    state = ProspectiveConsecutiveLossCooldownShadowState(
+        frozen_at_ms=850_000
+    )
+    option = _filled_option(state, "1")
+    option["planning_approved"] = False
+    option["planning_rejection"] = "below_venue_min_notional"
+    option["execution_result"] = None
+    option["filled_quantity"] = None
+    option["average_fill_price"] = None
+    option["entry_fee"] = None
+    option["markouts"] = {}
+
+    ledger = update_cooldown_ledger(
+        _summary(state, [option]),
+        state,
+        previous=None,
+        source_paper_run_id=8,
+        source_paper_run_attempt=1,
+        source_artifact_name="learning-8-1",
+        source_artifact_digest=_digest("planning-rejection"),
+    )
+
+    rows = ledger["rows"]
+    assert isinstance(rows, tuple)
+    assert len(rows) == 1
+    assert rows[0]["counterfactual_risk_reason_codes"] == [
+        "risk_approved"
+    ]
+    assert rows[0]["planning_rejection"] == "below_venue_min_notional"
+    assert rows[0]["terminal"] is True
+
+
+def test_cooldown_ledger_rejects_veto_reason_on_approved_option() -> None:
+    state = ProspectiveConsecutiveLossCooldownShadowState(
+        frozen_at_ms=900_000
+    )
+    option = _filled_option(state, "1")
+    option["counterfactual_risk_reason_codes"] = [
+        "aggregate_risk_limit"
+    ]
+
+    with pytest.raises(
+        ProspectiveConsecutiveLossCooldownLedgerError,
+        match="approved cooldown option risk reason drift",
+    ):
+        update_cooldown_ledger(
+            _summary(state, [option]),
+            state,
+            previous=None,
+            source_paper_run_id=9,
+            source_paper_run_attempt=1,
+            source_artifact_name="learning-9-1",
+            source_artifact_digest=_digest("approved-drift"),
+        )
 
 
 def test_cooldown_ledger_appends_only_terminal_rows() -> None:

@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - ".github/workflows/prospective-consecutive-loss-cooldown-ledger.yml"
+      - "src/cocomelon/research/prospective_consecutive_loss_cooldown_ledger.py"
+      - "scripts/update_prospective_consecutive_loss_cooldown_ledger.py"
   workflow_run:
     workflows:
       - "Continuous Mainnet Paper Trader"
