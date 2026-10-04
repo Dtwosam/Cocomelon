@@ -365,7 +365,6 @@ def test_closed_gap_update_preserves_restored_open_identity_and_compacts(
     pipeline.on_record(
         closed_gap,
         closed_gap.available_at_ms,
-        evaluate_decisions=False,
     )
 
     assert pipeline.known_gap_intervals == (
