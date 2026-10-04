@@ -4475,6 +4475,47 @@ def test_delayed_entry_stop_l2_telemetry_fails_open(
     assert payload["error"] == "RuntimeError: stop l2 boom"
 
 
+def test_opening_path_research_runs_off_fresh_context_critical_path() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+
+    scheduler_at = source.index(
+        "def schedule_opening_path_observe("
+    )
+    scheduler_end = source.index(
+        "async def flush_opening_path_observe()",
+        scheduler_at,
+    )
+    scheduler = source[scheduler_at:scheduler_end]
+    assert "previous_task = opening_path_observe_task" in scheduler
+    assert "snapshots_for_research = dict(snapshot_batch)" in scheduler
+    assert "await previous_task" in scheduler
+    assert (
+        "opening_opportunity_sink.observe_snapshots_cooperatively("
+        in scheduler
+    )
+    assert "asyncio.create_task(" in scheduler
+
+    refresh_at = source.index(
+        'pump.event_loop_phase = "path_observe_schedule"'
+    )
+    refresh_end = source.index(
+        'pump.event_loop_phase = "exit_book_capture"',
+        refresh_at,
+    )
+    refresh = source[refresh_at:refresh_end]
+    assert "schedule_opening_path_observe(refreshed)" in refresh
+    assert "await opening_opportunity_sink" not in refresh
+
+    flush_at = source.index("await flush_opening_path_observe()")
+    final_checkpoint_at = source.index(
+        "persist_checkpoint_sync()",
+        flush_at,
+    )
+    assert flush_at < final_checkpoint_at
+
+
 def test_runtime_exposes_cadence_opportunity_learning() -> None:
     source = Path("src/cocomelon/continuous_paper.py").read_text(
         encoding="utf-8"
