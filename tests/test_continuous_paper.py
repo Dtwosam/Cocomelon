@@ -1678,6 +1678,7 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
         ) -> None:
             self._stale = stale
             self._current_age_ms_by_market = current_age_ms_by_market
+            self.stale_deadline_buffered_message_count = 4
             self.health = SimpleNamespace(
                 connected=connected,
                 last_server_message_ms=last_server_message_ms,
@@ -1758,6 +1759,7 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
     assert lanes[0]["ready_l2_market_count"] == 3
     assert lanes[0]["stale_l2_market_count"] == 2
     assert lanes[0]["last_server_message_age_ms"] == 100
+    assert lanes[0]["stale_deadline_buffered_message_count"] == 4
     assert lanes[0]["l2_current_age_observed_market_count"] == 3
     assert lanes[0]["l2_current_age_min_ms"] == 500
     assert lanes[0]["l2_current_age_max_ms"] == 5_500
