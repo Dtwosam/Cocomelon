@@ -9344,7 +9344,9 @@ def _render_operational_live_status(
             "l2-stale-reconnects={l2_stale_reconnects}, "
             "server-age={server_age}ms, duplicates={duplicates}, "
             "anomalies={anomalies}, L2-age-observed={age_observed}, "
-            "negative-age={negative_age}, age-min/max={age_min}/{age_max}ms".format(
+            "negative-age={negative_age}, age-min/max={age_min}/{age_max}ms, "
+            "current-age-observed={current_age_observed}, "
+            "current-age-min/max={current_age_min}/{current_age_max}ms".format(
                 lane=raw_lane.get("lane", "?"),
                 connected=str(
                     bool(raw_lane.get("connected"))
@@ -9390,6 +9392,12 @@ def _render_operational_live_status(
                 ),
                 age_min=raw_lane.get("l2_exchange_age_min_ms"),
                 age_max=raw_lane.get("l2_exchange_age_max_ms"),
+                current_age_observed=raw_lane.get(
+                    "l2_current_age_observed_market_count",
+                    0,
+                ),
+                current_age_min=raw_lane.get("l2_current_age_min_ms"),
+                current_age_max=raw_lane.get("l2_current_age_max_ms"),
             )
         )
         if stale_markets:
@@ -9444,7 +9452,8 @@ def _render_operational_live_status(
                     "reconnects={reconnects}, "
                     "l2-stale-reconnects={l2_stale_reconnects}, "
                     "server-age={server_age}ms, "
-                    "age-min/max={age_min}/{age_max}ms".format(
+                    "age-min/max={age_min}/{age_max}ms, "
+                    "current-age-min/max={current_age_min}/{current_age_max}ms".format(
                         lane=raw_lane.get("lane", "?"),
                         connected=str(
                             bool(raw_lane.get("connected"))
@@ -9477,6 +9486,12 @@ def _render_operational_live_status(
                         ),
                         age_max=raw_lane.get(
                             "l2_exchange_age_max_ms"
+                        ),
+                        current_age_min=raw_lane.get(
+                            "l2_current_age_min_ms"
+                        ),
+                        current_age_max=raw_lane.get(
+                            "l2_current_age_max_ms"
                         ),
                     )
                 )
