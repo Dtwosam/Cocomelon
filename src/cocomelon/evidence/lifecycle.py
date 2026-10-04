@@ -211,6 +211,13 @@ class _OpenTradeLifecycle:
     actions: dict[tuple[str, int], PositionAction] = field(default_factory=dict)
     funding: dict[str, FundingAccrual] = field(default_factory=dict)
     marks: dict[str, ReplayRecord] = field(default_factory=dict)
+    checkpoint_low_mark: ReplayRecord | None = None
+    checkpoint_low_mark_price: Decimal | None = None
+    checkpoint_high_mark: ReplayRecord | None = None
+    checkpoint_high_mark_price: Decimal | None = None
+    checkpoint_latest_by_boundary: dict[int, ReplayRecord] = field(
+        default_factory=dict
+    )
 
     @property
     def market(self) -> MarketId:
@@ -414,59 +421,112 @@ class BaselineReplayPipeline:
         self._decision_engine.reconcile_markets(selected_markets)
 
     @staticmethod
+    def _checkpoint_mark_price(record: ReplayRecord) -> Decimal:
+        payload = record.payload
+        if not isinstance(payload, dict):
+            raise ReplayInvariantError(
+                "mark observation payload must be an object"
+            )
+        raw = payload.get("mark_px")
+        try:
+            value = Decimal(str(raw))
+        except Exception as exc:
+            raise ReplayInvariantError(
+                "mark observation price is invalid"
+            ) from exc
+        if not value.is_finite() or value <= ZERO:
+            raise ReplayInvariantError(
+                "mark observation price must be positive"
+            )
+        return value
+
+    @classmethod
+    def _update_checkpoint_mark_summary(
+        cls,
+        lifecycle: _OpenTradeLifecycle,
+        record: ReplayRecord,
+    ) -> None:
+        price = cls._checkpoint_mark_price(record)
+        low = lifecycle.checkpoint_low_mark
+        low_price = lifecycle.checkpoint_low_mark_price
+        if (
+            low is None
+            or low_price is None
+            or (price, record.sort_key)
+            < (low_price, low.sort_key)
+        ):
+            lifecycle.checkpoint_low_mark = record
+            lifecycle.checkpoint_low_mark_price = price
+
+        high = lifecycle.checkpoint_high_mark
+        high_price = lifecycle.checkpoint_high_mark_price
+        if (
+            high is None
+            or high_price is None
+            or (price, record.sort_key)
+            > (high_price, high.sort_key)
+        ):
+            lifecycle.checkpoint_high_mark = record
+            lifecycle.checkpoint_high_mark_price = price
+
+        boundary_ms = (
+            (record.available_at_ms + HOUR_MS - 1)
+            // HOUR_MS
+            * HOUR_MS
+        )
+        existing = lifecycle.checkpoint_latest_by_boundary.get(
+            boundary_ms
+        )
+        if existing is None or record.sort_key > existing.sort_key:
+            lifecycle.checkpoint_latest_by_boundary[
+                boundary_ms
+            ] = record
+
+    @classmethod
+    def _rebuild_checkpoint_mark_summary(
+        cls,
+        lifecycle: _OpenTradeLifecycle,
+    ) -> None:
+        lifecycle.checkpoint_low_mark = None
+        lifecycle.checkpoint_low_mark_price = None
+        lifecycle.checkpoint_high_mark = None
+        lifecycle.checkpoint_high_mark_price = None
+        lifecycle.checkpoint_latest_by_boundary.clear()
+        for record in lifecycle.marks.values():
+            cls._update_checkpoint_mark_summary(lifecycle, record)
+
+    @classmethod
+    def _record_lifecycle_mark(
+        cls,
+        lifecycle: _OpenTradeLifecycle,
+        record: ReplayRecord,
+    ) -> None:
+        event_key = record.event_key
+        if event_key is None:
+            raise ReplayInvariantError(
+                "lifecycle mark observation key missing"
+            )
+        existing = lifecycle.marks.get(event_key)
+        lifecycle.marks[event_key] = record
+        if existing is None:
+            cls._update_checkpoint_mark_summary(lifecycle, record)
+            return
+        if existing != record:
+            cls._rebuild_checkpoint_mark_summary(lifecycle)
+
+    @staticmethod
     def _checkpoint_marks(
         lifecycle: _OpenTradeLifecycle,
     ) -> tuple[ReplayRecord, ...]:
-        records = tuple(lifecycle.marks.values())
-        if len(records) <= 2:
-            return tuple(sorted(records, key=lambda record: record.sort_key))
-
-        def mark_price(record: ReplayRecord) -> Decimal:
-            payload = record.payload
-            if not isinstance(payload, dict):
-                raise ReplayInvariantError(
-                    "mark observation payload must be an object"
-                )
-            raw = payload.get("mark_px")
-            try:
-                value = Decimal(str(raw))
-            except Exception as exc:
-                raise ReplayInvariantError(
-                    "mark observation price is invalid"
-                ) from exc
-            if not value.is_finite() or value <= ZERO:
-                raise ReplayInvariantError(
-                    "mark observation price must be positive"
-                )
-            return value
-
-        low = min(
-            records,
-            key=lambda record: (mark_price(record), record.sort_key),
-        )
-        high = max(
-            records,
-            key=lambda record: (mark_price(record), record.sort_key),
-        )
-        retained = {low.event_key: low, high.event_key: high}
-
-        # Funding reconciliation needs the last asset context observed at or
-        # before each hourly boundary. Keep one such record per crossed hour
-        # so a worker handoff does not discard the exact oracle evidence while
-        # still bounding checkpoint growth.
-        latest_by_boundary: dict[int, ReplayRecord] = {}
-        for record in records:
-            boundary_ms = (
-                (record.available_at_ms + HOUR_MS - 1)
-                // HOUR_MS
-                * HOUR_MS
-            )
-            existing = latest_by_boundary.get(boundary_ms)
-            if existing is None or record.sort_key > existing.sort_key:
-                latest_by_boundary[boundary_ms] = record
-        for record in latest_by_boundary.values():
+        retained: dict[str | None, ReplayRecord] = {}
+        low = lifecycle.checkpoint_low_mark
+        high = lifecycle.checkpoint_high_mark
+        if low is not None:
+            retained[low.event_key] = low
+        if high is not None:
+            retained[high.event_key] = high
+        for record in lifecycle.checkpoint_latest_by_boundary.values():
             retained[record.event_key] = record
-
         return tuple(
             sorted(retained.values(), key=lambda record: record.sort_key)
         )
@@ -618,7 +678,10 @@ class BaselineReplayPipeline:
                 raise ReplayInvariantError(
                     "restored mark observation kind mismatch"
                 )
-            lifecycle.marks[record.event_key] = record
+            self._record_lifecycle_mark(
+                lifecycle,
+                record,
+            )
             restored_oracles.append(
                 replay_record_stream_event(record)
             )
@@ -784,7 +847,7 @@ class BaselineReplayPipeline:
 
         lifecycle = self._lifecycles.get(event.market.canonical)
         if lifecycle is not None and record.event_key is not None:
-            lifecycle.marks[record.event_key] = record
+            self._record_lifecycle_mark(lifecycle, record)
 
         if self._position_research_observer is not None:
             self._position_research_observer.observe_mark(

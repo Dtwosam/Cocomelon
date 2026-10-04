@@ -767,6 +767,66 @@ def test_checkpoint_keeps_hourly_funding_oracles_with_extrema(
     facts.close()
 
 
+def test_checkpoint_uses_incremental_mark_summary_without_rescan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline, execution, facts = _pipeline(
+        tmp_path,
+        suffix="checkpoint-incremental-summary",
+    )
+    second_boundary_ms = BOUNDARY_MS + 3_600_000
+    intermediate_ms = BOUNDARY_MS + 1_000_000
+    records = (
+        _snapshot_record(),
+        _trigger_record(),
+        _book(OPEN_BOOK_MS, bid="99.9", ask="100.1"),
+        _asset_ctx(ORACLE_MS, mark="100", oracle="100.1"),
+        _asset_ctx(BOUNDARY_MS + 100_000, mark="90", oracle="90.1"),
+        _asset_ctx(intermediate_ms, mark="105", oracle="105.1"),
+        _asset_ctx(BOUNDARY_MS + 2_000_000, mark="110", oracle="110.1"),
+        _asset_ctx(
+            second_boundary_ms - 500,
+            mark="95",
+            oracle="95.1",
+        ),
+    )
+    _run_records(pipeline, records)
+
+    full_path = pipeline.open_lifecycle_mark_paths
+    assert len(full_path) == 1
+    assert intermediate_ms in {
+        record.available_at_ms
+        for record in full_path[0].mark_observations
+    }
+
+    def fail_historical_mark_parse(_record: ReplayRecord) -> Decimal:
+        raise AssertionError(
+            "checkpoint snapshot must not rescan historical marks"
+        )
+
+    monkeypatch.setattr(
+        BaselineReplayPipeline,
+        "_checkpoint_mark_price",
+        staticmethod(fail_historical_mark_parse),
+    )
+
+    checkpoints = pipeline.open_lifecycle_checkpoints
+    assert len(checkpoints) == 1
+    retained_times = {
+        record.available_at_ms
+        for record in checkpoints[0].mark_observations
+    }
+    assert intermediate_ms not in retained_times
+    assert ORACLE_MS in retained_times
+    assert BOUNDARY_MS + 100_000 in retained_times
+    assert BOUNDARY_MS + 2_000_000 in retained_times
+    assert second_boundary_ms - 500 in retained_times
+
+    execution.close()
+    facts.close()
+
+
 def test_restored_open_lifecycle_reuses_oracle_for_funding_boundary(
     tmp_path: Path,
 ) -> None:
