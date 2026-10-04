@@ -300,6 +300,7 @@ class ContinuousPaperOpeningOpportunityPathStore:
             str,
             dict[str, ContinuousPaperOpeningOpportunityPath],
         ] = {}
+        self._cooperative_observe_lock = asyncio.Lock()
         self._load_index_from_disk()
 
     @staticmethod
@@ -461,8 +462,25 @@ class ContinuousPaperOpeningOpportunityPathStore:
             )
         )
 
-    def _updated_paths_for_mark(
+    def _active_market_paths_snapshot(
         self,
+        market: str,
+    ) -> tuple[ContinuousPaperOpeningOpportunityPath, ...]:
+        return tuple(
+            sorted(
+                self._active_by_market.get(market, {}).values(),
+                key=lambda item: (
+                    item.opportunity_timestamp_ms,
+                    item.opportunity_id,
+                ),
+            )
+        )
+
+    @staticmethod
+    def _updated_paths_for_mark_from_snapshot(
+        market_paths: tuple[
+            ContinuousPaperOpeningOpportunityPath, ...
+        ],
         *,
         market: str,
         observed_at_ms: int,
@@ -478,15 +496,6 @@ class ContinuousPaperOpeningOpportunityPathStore:
             source=source,
         )
         updates: list[ContinuousPaperOpeningOpportunityPath] = []
-        market_paths = tuple(
-            sorted(
-                self._active_by_market.get(market, {}).values(),
-                key=lambda item: (
-                    item.opportunity_timestamp_ms,
-                    item.opportunity_id,
-                ),
-            )
-        )
         for current in market_paths:
             if observed_at_ms < current.opportunity_timestamp_ms:
                 continue
@@ -541,7 +550,8 @@ class ContinuousPaperOpeningOpportunityPathStore:
         mark_px: Decimal,
         source: str,
     ) -> int:
-        updates = self._updated_paths_for_mark(
+        updates = self._updated_paths_for_mark_from_snapshot(
+            self._active_market_paths_snapshot(market),
             market=market,
             observed_at_ms=observed_at_ms,
             mark_px=mark_px,
@@ -560,17 +570,21 @@ class ContinuousPaperOpeningOpportunityPathStore:
         mark_px: Decimal,
         source: str,
     ) -> int:
-        updates = self._updated_paths_for_mark(
-            market=market,
-            observed_at_ms=observed_at_ms,
-            mark_px=mark_px,
-            source=source,
-        )
-        for updated in updates:
-            await asyncio.to_thread(self._write, updated)
-            self._index_path(updated)
-            await asyncio.sleep(0)
-        return len(updates)
+        async with self._cooperative_observe_lock:
+            market_paths = self._active_market_paths_snapshot(market)
+            updates = await asyncio.to_thread(
+                self._updated_paths_for_mark_from_snapshot,
+                market_paths,
+                market=market,
+                observed_at_ms=observed_at_ms,
+                mark_px=mark_px,
+                source=source,
+            )
+            for updated in updates:
+                await asyncio.to_thread(self._write, updated)
+                self._index_path(updated)
+                await asyncio.sleep(0)
+            return len(updates)
 
     @property
     def record_count(self) -> int:
