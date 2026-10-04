@@ -565,6 +565,94 @@ def test_full_stack_markout_reports_integrity_and_risk_exclusions(
     assert one_hour["changes_readiness_gate"] is False
 
 
+def test_approved_post_integrity_cohort_preserves_dirty_history(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    combined, two_strike, momentum = _states()
+    dirty_feature = _record_feature(
+        store,
+        market="BTC",
+        timestamp_ms=START + 900,
+        return_1h="-0.03",
+        day_return="-0.05",
+    )
+    clean_feature = _record_feature(
+        store,
+        market="SOL",
+        timestamp_ms=START + 1_900,
+        return_1h="0.03",
+        day_return="0.05",
+    )
+    dirty = _opportunity(
+        suffix="approved-dirty-rank",
+        market="BTC",
+        direction=Direction.SHORT,
+        timestamp_ms=START + 1_000,
+        feature_snapshot_id=dirty_feature,
+    )
+    dirty = replace(
+        dirty,
+        rank_observed_at_ms=None,
+        rank_ordinal=None,
+        rank_score=None,
+        rank_pool_size=None,
+        rank_reason_codes=(),
+    )
+    clean = _opportunity(
+        suffix="approved-clean-after-rank-miss",
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=START + 2_000,
+        feature_snapshot_id=clean_feature,
+        lead_strategy="trend",
+    )
+
+    result = prospective_full_stack_forward_markout_summary(
+        (dirty, clean),
+        (_path(clean, returns=("0.01", "0.02", "0.03")),),
+        (),
+        store,
+        combined,
+        two_strike,
+        momentum,
+    )
+
+    assert result["integrity_clean"] is False
+    assert result["missing_rank"] == 1
+    assert result["integrity_last_miss_at_ms"] == (
+        dirty.opportunity_timestamp_ms
+    )
+    post = result["post_integrity_miss"]
+    assert isinstance(post, dict)
+    assert post["boundary_known"] is True
+    assert post["last_miss_at_ms"] == dirty.opportunity_timestamp_ms
+    assert post["started_at_ms"] == dirty.opportunity_timestamp_ms + 1
+    assert post["evaluated"] == 1
+    assert post["admitted"] == 0
+    assert post["blocked"] == 1
+    one_hour = post["horizons"]["3600000"]
+    assert one_hour["review_readiness"]["integrity_clean"] is True
+
+    assert result["long_trend_carveout_integrity_last_miss_at_ms"] == (
+        dirty.opportunity_timestamp_ms
+    )
+    carveout_post = result["long_trend_carveout_post_integrity_miss"]
+    assert isinstance(carveout_post, dict)
+    assert carveout_post["evaluated"] == 1
+    assert carveout_post["admitted"] == 1
+    assert carveout_post["blocked"] == 0
+    carveout_one_hour = carveout_post["horizons"]["3600000"]
+    assert (
+        carveout_one_hour["admit"]["mean_directional_return"]
+        == "0.03"
+    )
+    assert (
+        carveout_one_hour["review_readiness"]["integrity_clean"]
+        is True
+    )
+
+
 def test_risk_rejected_long_trend_carveout_runs_downstream_stack(
     tmp_path: Path,
 ) -> None:

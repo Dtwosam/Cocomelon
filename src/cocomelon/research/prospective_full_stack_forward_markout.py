@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Sequence
 from decimal import Decimal
-from typing import Final
+from typing import Final, cast
 
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.strategy import Direction
@@ -690,6 +690,57 @@ def _long_trend_carveout_summary(
     }
 
 
+def _post_integrity_miss_summary(
+    rows: Sequence[dict[str, object]],
+    *,
+    overlap_started_at_ms: int,
+    last_miss_at_ms: int | None,
+    long_trend_carveout: bool = False,
+) -> dict[str, object]:
+    started_at_ms = (
+        overlap_started_at_ms
+        if last_miss_at_ms is None
+        else last_miss_at_ms + 1
+    )
+    clean_rows = tuple(
+        row
+        for row in rows
+        if cast(int, row["timestamp_ms"]) >= started_at_ms
+    )
+    evaluated_rows = (
+        _long_trend_carveout_rows(clean_rows)
+        if long_trend_carveout
+        else clean_rows
+    )
+    decisions = Counter(
+        str(row["stack_decision"]) for row in evaluated_rows
+    )
+    layers = Counter(str(row["block_layer"]) for row in evaluated_rows)
+    return {
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "descriptive_only": True,
+        "changes_readiness_gate": False,
+        "changes_closed_trade_readiness_gate": False,
+        "boundary_known": True,
+        "last_miss_at_ms": last_miss_at_ms,
+        "started_at_ms": started_at_ms,
+        "evaluated": len(evaluated_rows),
+        "admitted": decisions["ADMIT"],
+        "blocked": decisions["BLOCK"],
+        "block_layer_counts": dict(sorted(layers.items())),
+        "horizons": {
+            str(horizon_ms): _horizon_summary(
+                evaluated_rows,
+                horizon_ms=horizon_ms,
+                integrity_clean=True,
+            )
+            for horizon_ms in FORWARD_HORIZONS_MS
+        },
+    }
+
+
 def prospective_full_stack_forward_markout_summary(
     opportunities: Sequence[
         ContinuousPaperOpeningOpportunityEvidence
@@ -727,6 +778,8 @@ def prospective_full_stack_forward_markout_summary(
     missing_rank = 0
     stale_rank = 0
     momentum_feature_integrity_misses = 0
+    integrity_last_miss_at_ms: int | None = None
+    long_trend_carveout_momentum_last_miss_at_ms: int | None = None
     risk_rejected_missing_rank = 0
     risk_rejected_stale_rank = 0
     risk_rejected_momentum_feature_integrity_misses = 0
@@ -757,6 +810,12 @@ def prospective_full_stack_forward_markout_summary(
         if observed_at is None or ordinal is None:
             if risk_approved:
                 missing_rank += 1
+                integrity_last_miss_at_ms = max(
+                    evidence.opportunity_timestamp_ms,
+                    integrity_last_miss_at_ms
+                    if integrity_last_miss_at_ms is not None
+                    else evidence.opportunity_timestamp_ms,
+                )
             else:
                 risk_rejected_missing_rank += 1
                 risk_rejected_integrity_last_miss_at_ms = max(
@@ -774,6 +833,12 @@ def prospective_full_stack_forward_markout_summary(
         if rank_age_ms > MAX_ACCEPTED_RANK_AGE_MS:
             if risk_approved:
                 stale_rank += 1
+                integrity_last_miss_at_ms = max(
+                    evidence.opportunity_timestamp_ms,
+                    integrity_last_miss_at_ms
+                    if integrity_last_miss_at_ms is not None
+                    else evidence.opportunity_timestamp_ms,
+                )
             else:
                 risk_rejected_stale_rank += 1
                 risk_rejected_integrity_last_miss_at_ms = max(
@@ -837,6 +902,12 @@ def prospective_full_stack_forward_markout_summary(
             if raw_reason in MOMENTUM_INTEGRITY_REASONS:
                 if risk_approved:
                     momentum_feature_integrity_misses += 1
+                    integrity_last_miss_at_ms = max(
+                        evidence.opportunity_timestamp_ms,
+                        integrity_last_miss_at_ms
+                        if integrity_last_miss_at_ms is not None
+                        else evidence.opportunity_timestamp_ms,
+                    )
                 else:
                     risk_rejected_momentum_feature_integrity_misses += 1
                     risk_rejected_integrity_last_miss_at_ms = max(
@@ -893,6 +964,15 @@ def prospective_full_stack_forward_markout_summary(
                 if carveout_raw_reason in MOMENTUM_INTEGRITY_REASONS:
                     if risk_approved:
                         long_trend_carveout_momentum_integrity_misses += 1
+                        long_trend_carveout_momentum_last_miss_at_ms = max(
+                            evidence.opportunity_timestamp_ms,
+                            (
+                                long_trend_carveout_momentum_last_miss_at_ms
+                                if long_trend_carveout_momentum_last_miss_at_ms
+                                is not None
+                                else evidence.opportunity_timestamp_ms
+                            ),
+                        )
                     else:
                         risk_rejected_long_trend_carveout_momentum_integrity_misses += 1
                         carveout_momentum_last_miss_at_ms = max(
@@ -1064,6 +1144,35 @@ def prospective_full_stack_forward_markout_summary(
         and risk_rejected_long_trend_carveout_momentum_integrity_misses
         == 0
     )
+    long_trend_carveout_integrity_last_miss_at_ms = (
+        integrity_last_miss_at_ms
+    )
+    if (
+        long_trend_carveout_momentum_last_miss_at_ms is not None
+        and (
+            long_trend_carveout_integrity_last_miss_at_ms is None
+            or long_trend_carveout_momentum_last_miss_at_ms
+            > long_trend_carveout_integrity_last_miss_at_ms
+        )
+    ):
+        long_trend_carveout_integrity_last_miss_at_ms = (
+            long_trend_carveout_momentum_last_miss_at_ms
+        )
+    post_integrity_miss = _post_integrity_miss_summary(
+        row_values,
+        overlap_started_at_ms=overlap_start,
+        last_miss_at_ms=integrity_last_miss_at_ms,
+    )
+    long_trend_carveout_post_integrity_miss = (
+        _post_integrity_miss_summary(
+            row_values,
+            overlap_started_at_ms=overlap_start,
+            last_miss_at_ms=(
+                long_trend_carveout_integrity_last_miss_at_ms
+            ),
+            long_trend_carveout=True,
+        )
+    )
     carveout_integrity_last_miss_at_ms = (
         risk_rejected_integrity_last_miss_at_ms
     )
@@ -1162,6 +1271,14 @@ def prospective_full_stack_forward_markout_summary(
         "stack_blocked": decision_counts["BLOCK"],
         "block_layer_counts": dict(sorted(block_layer_counts.items())),
         "integrity_clean": integrity_clean,
+        "integrity_last_miss_at_ms": integrity_last_miss_at_ms,
+        "post_integrity_miss": post_integrity_miss,
+        "long_trend_carveout_integrity_last_miss_at_ms": (
+            long_trend_carveout_integrity_last_miss_at_ms
+        ),
+        "long_trend_carveout_post_integrity_miss": (
+            long_trend_carveout_post_integrity_miss
+        ),
         "long_trend_carveout": long_trend_carveout,
         "horizons": horizons,
         "rows": list(row_values),

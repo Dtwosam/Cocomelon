@@ -791,6 +791,53 @@ jobs:
                   "- block layers: "
                   f"{payload.get('block_layer_counts', {})}"
               )
+              post_integrity = payload.get("post_integrity_miss", {})
+              print(
+                  "- approved integrity last miss / clean start / evaluated / "
+                  "admit / block: "
+                  f"{payload.get('integrity_last_miss_at_ms')} / "
+                  f"{post_integrity.get('started_at_ms')} / "
+                  f"{post_integrity.get('evaluated', 0)} / "
+                  f"{post_integrity.get('admitted', 0)} / "
+                  f"{post_integrity.get('blocked', 0)}"
+              )
+              carveout_post = payload.get(
+                  "long_trend_carveout_post_integrity_miss",
+                  {},
+              )
+              print(
+                  "- long-trend carveout clean start / evaluated / admit / "
+                  "block: "
+                  f"{carveout_post.get('started_at_ms')} / "
+                  f"{carveout_post.get('evaluated', 0)} / "
+                  f"{carveout_post.get('admitted', 0)} / "
+                  f"{carveout_post.get('blocked', 0)}"
+              )
+              post_horizons = post_integrity.get("horizons", {})
+              carveout_post_horizons = carveout_post.get("horizons", {})
+              for horizon_ms in payload.get("forward_horizons_ms", []):
+                  post_item = post_horizons.get(str(horizon_ms), {})
+                  post_robust = post_item.get("spread_robustness", {})
+                  carveout_item = carveout_post_horizons.get(
+                      str(horizon_ms),
+                      {},
+                  )
+                  carveout_robust = carveout_item.get(
+                      "spread_robustness",
+                      {},
+                  )
+                  print(
+                      "- clean {minutes}m stack spread / carveout spread: "
+                      "{stack_spread} / {carveout_spread}".format(
+                          minutes=horizon_ms // 60000,
+                          stack_spread=post_robust.get(
+                              "admit_minus_block_mean_return"
+                          ),
+                          carveout_spread=carveout_robust.get(
+                              "admit_minus_block_mean_return"
+                          ),
+                      )
+                  )
               print(
                   "- risk-rejected opportunities / evaluated / stack admit / "
                   "stack block / integrity clean: "
