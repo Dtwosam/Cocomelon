@@ -988,6 +988,50 @@ def test_rest_l2_reseed_accepts_only_fresh_real_books() -> None:
     assert record.source == "hyperliquid-mainnet-info"
 
 
+def test_rest_l2_reseed_stops_after_inflight_request_without_mutation() -> None:
+    calls: list[str] = []
+
+    class Reader:
+        def l2_book(self, market: MarketId) -> object:
+            calls.append(market.canonical)
+            return {
+                "coin": market.coin,
+                "time": 9_999,
+                "levels": [
+                    [{"px": "100", "sz": "2", "n": 1}],
+                    [{"px": "101", "sz": "3", "n": 1}],
+                ],
+            }
+
+    class Pump:
+        def __init__(self) -> None:
+            self.records: list[ReplayRecord] = []
+
+        async def process(self, record: ReplayRecord) -> None:
+            self.records.append(record)
+
+    pump = Pump()
+    refreshed, failed = asyncio.run(
+        _reseed_l2_books_via_rest(
+            Reader(),  # type: ignore[arg-type]
+            (
+                MarketId("", "BTC"),
+                MarketId("", "ETH"),
+                MarketId("", "SOL"),
+            ),
+            pump,  # type: ignore[arg-type]
+            max_book_age_ms=5_000,
+            clock_ms=lambda: 10_000,
+            stop_requested=lambda: bool(calls),
+        )
+    )
+
+    assert calls == ["BTC"]
+    assert refreshed == 0
+    assert failed == 0
+    assert pump.records == []
+
+
 def test_pipeline_stale_l2_trigger_uses_latest_decision_epoch() -> None:
     activity = SessionDecisionActivity(
         decision_epochs=1,
@@ -1969,15 +2013,28 @@ def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
     recovery_index = source.index(
         "systemically_unhealthy_l2 = ("
     )
-    reseed_index = source.index(
-        "_reseed_l2_books_via_rest(",
-        recovery_index,
-    )
     replacement_index = source.index(
         "replacement_group = await start_supervisors(",
-        reseed_index,
+        recovery_index,
     )
-    assert recovery_index < reseed_index < replacement_index
+    replacement_ready_index = source.index(
+        "if replacement_ready:",
+        replacement_index,
+    )
+    reseed_index = source.index(
+        "_reseed_l2_books_via_rest(",
+        replacement_ready_index,
+    )
+    assert (
+        recovery_index
+        < replacement_index
+        < replacement_ready_index
+        < reseed_index
+    )
+    assert "stop_requested=lambda: _stop_requested(stop_path)" in source[
+        reseed_index:
+        source.index("return True", reseed_index) + len("return True")
+    ]
     rotation_index = source.index(
         "if (\n"
         "                    not systemically_unhealthy_l2\n"
