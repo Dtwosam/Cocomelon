@@ -4383,6 +4383,10 @@ def test_runtime_hot_path_uses_only_operational_heartbeat() -> None:
     )
     assert '"checkpoint_snapshot_slowest_component"' in operational
     assert '"checkpoint_snapshot_slowest_component_ms"' in operational
+    assert '"checkpoint_cadence_state_serializations"' in operational
+    assert '"checkpoint_cadence_state_skips"' in operational
+    assert "cadence_shadow.state_revision" in source
+    assert "cadence_shadow_persisted_revision" in source
     for field in (
         "stale_l2_recovery_attempts",
         "stale_l2_recovery_promotions",

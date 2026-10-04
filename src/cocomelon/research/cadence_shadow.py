@@ -391,6 +391,10 @@ class CadenceShadowComparator:
         self._skipped_missing_entry_px = 0
         self._skipped_missing_lead_strategy = 0
         self._seen_decisions: set[tuple[int, str]] = set()
+        self._state_revision = 0
+        self._summary_payload_cache: dict[str, object] | None = None
+        self._summary_payload_cache_revision = -1
+        self._summary_payload_build_count = 0
         self._state_restored = False
         self._state_restore_error: str | None = None
 
@@ -407,10 +411,14 @@ class CadenceShadowComparator:
         for engine in self._engines.values():
             engine.reconcile_markets(markets)
 
+        changed = False
         for key in tuple(self._pending):
             if key[0] in active:
                 continue
             self._censored_count += len(self._pending.pop(key))
+            changed = True
+        if changed:
+            self._state_revision += 1
 
     def _capture_epoch(
         self,
@@ -419,6 +427,7 @@ class CadenceShadowComparator:
         epoch: DecisionEpoch,
     ) -> None:
         counts = self._decision_counts[cadence_ms]
+        changed = False
         for evaluation in epoch.markets:
             decision_key = (
                 cadence_ms,
@@ -427,6 +436,7 @@ class CadenceShadowComparator:
             if decision_key in self._seen_decisions:
                 continue
             self._seen_decisions.add(decision_key)
+            changed = True
             direction = evaluation.decision.direction
             counts[direction.value] += 1
             if direction is Direction.NO_TRADE:
@@ -486,6 +496,8 @@ class CadenceShadowComparator:
                 self._pending[
                     (sample.market.canonical, sample.target_end_ms)
                 ].append(sample)
+        if changed:
+            self._state_revision += 1
 
     def _settle_candle(self, candle: Candle) -> None:
         close_boundary_ms = _five_minute_close_boundary_ms(candle)
@@ -498,6 +510,8 @@ class CadenceShadowComparator:
                     exit_px=candle.close_px,
                 )
             )
+        if samples:
+            self._state_revision += 1
 
     def observe(
         self,
@@ -644,6 +658,18 @@ class CadenceShadowComparator:
             }
             for label in labels
         }
+
+    @property
+    def state_revision(self) -> int:
+        return self._state_revision
+
+    @property
+    def state_restored(self) -> bool:
+        return self._state_restored
+
+    @property
+    def summary_payload_build_count(self) -> int:
+        return self._summary_payload_build_count
 
     @property
     def outcomes(self) -> tuple[ShadowCadenceOutcome, ...]:
@@ -873,6 +899,9 @@ class CadenceShadowComparator:
         self._censored_count = censored_count
         self._skipped_missing_entry_px = skipped_entry
         self._skipped_missing_lead_strategy = skipped_strategy
+        self._state_revision = 0
+        self._summary_payload_cache = None
+        self._summary_payload_cache_revision = -1
         self._state_restored = True
         self._state_restore_error = None
 
@@ -880,8 +909,16 @@ class CadenceShadowComparator:
         if not error.strip():
             raise ValueError("cadence shadow restore error must not be empty")
         self._state_restore_error = error
+        self._summary_payload_cache = None
+        self._summary_payload_cache_revision = -1
 
     def summary_payload(self) -> dict[str, object]:
+        if (
+            self._summary_payload_cache is not None
+            and self._summary_payload_cache_revision == self._state_revision
+        ):
+            return dict(self._summary_payload_cache)
+
         cadence_payload: dict[str, object] = {}
         for cadence_ms in SUPPORTED_CADENCES_MS:
             counts = self._decision_counts[cadence_ms]
@@ -951,7 +988,7 @@ class CadenceShadowComparator:
             for samples in self._pending.values()
             for sample in samples
         )
-        return {
+        payload: dict[str, object] = {
             "shadow_only": True,
             "execution_authority": False,
             "session_only": False,
@@ -985,3 +1022,7 @@ class CadenceShadowComparator:
                 self._skipped_missing_lead_strategy
             ),
         }
+        self._summary_payload_cache = payload
+        self._summary_payload_cache_revision = self._state_revision
+        self._summary_payload_build_count += 1
+        return dict(payload)
