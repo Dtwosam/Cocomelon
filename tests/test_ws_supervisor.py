@@ -574,21 +574,20 @@ def test_targeted_l2_resubscribe_falls_back_after_no_fresh_evidence() -> None:
     asyncio.run(run())
 
 
-def test_targeted_l2_resubscribe_limit_must_be_positive() -> None:
-    for value in (0, -1):
-        with pytest.raises(
-            ValueError,
-            match="max_systemic_l2_targeted_resubscribes",
-        ):
-            WebSocketSupervisor(
-                lambda: None,  # type: ignore[arg-type]
-                (),
-                event_sink=lambda _event: None,  # type: ignore[arg-type]
-                gap_sink=lambda _gap: None,  # type: ignore[arg-type]
-                clock_ms=lambda: 0,
-                utcnow=lambda: datetime.now(UTC),
-                max_systemic_l2_targeted_resubscribes=value,
-            )
+def test_targeted_l2_resubscribe_limit_must_be_non_negative() -> None:
+    with pytest.raises(
+        ValueError,
+        match="max_systemic_l2_targeted_resubscribes",
+    ):
+        WebSocketSupervisor(
+            lambda: None,  # type: ignore[arg-type]
+            (),
+            event_sink=lambda _event: None,  # type: ignore[arg-type]
+            gap_sink=lambda _gap: None,  # type: ignore[arg-type]
+            clock_ms=lambda: 0,
+            utcnow=lambda: datetime.now(UTC),
+            max_systemic_l2_targeted_resubscribes=-1,
+        )
 
 
 def test_systemic_l2_stale_on_active_socket_forces_reconnect() -> None:
