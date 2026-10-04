@@ -6389,14 +6389,16 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     )
     assert (
         "pre-recovery L2 lane 0: connected=true, ready=20, stale=0, "
-        "missing-ready=0, reconnects=0, l2-stale-reconnects=0, "
+        "missing-ready=0, reconnects=0, "
+        "l2-targeted-resubscribes=0, l2-stale-reconnects=0, "
         "deadline-drains=2, server-age=90ms, "
         "age-min/max=600/700ms, current-age-min/max=650/850ms"
         in rendered
     )
     assert (
         "pre-recovery L2 lane 1: connected=true, ready=20, stale=0, "
-        "missing-ready=0, reconnects=0, l2-stale-reconnects=0, "
+        "missing-ready=0, reconnects=0, "
+        "l2-targeted-resubscribes=0, l2-stale-reconnects=0, "
         "deadline-drains=3, server-age=80ms, "
         "age-min/max=590/690ms, current-age-min/max=700/900ms"
         in rendered
