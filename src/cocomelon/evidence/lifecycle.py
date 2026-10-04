@@ -787,14 +787,17 @@ class BaselineReplayPipeline:
         if lifecycle is not None and record.event_key is not None:
             lifecycle.marks[record.event_key] = record
 
+        positions = self._execution.account.positions
         if self._position_research_observer is not None:
             self._position_research_observer.observe_mark(
-                self._execution.account.positions,
+                positions,
                 event,
                 now_ms=now_ms,
             )
 
-        if not self._execution.account.positions:
+        if not positions:
+            return ()
+        if all(position.market != event.market for position in positions):
             return ()
         marks = self._all_current_marks(now_ms)
         if marks is None:
