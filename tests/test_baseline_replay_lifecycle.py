@@ -618,6 +618,83 @@ def test_unresolved_funding_boundary_emits_gap_and_marks_pipeline_inconsistent(
     facts.close()
 
 
+def test_funding_oracle_index_compacts_same_hour_and_preserves_lookup(
+    tmp_path: Path,
+) -> None:
+    pipeline, execution, facts = _pipeline(
+        tmp_path,
+        suffix="funding-oracle-hour-index",
+    )
+    mark_times = tuple(
+        OPEN_BOOK_MS + 50 + offset * 50
+        for offset in range(20)
+    )
+    _run_records(
+        pipeline,
+        (
+            _snapshot_record(),
+            _trigger_record(),
+            _book(OPEN_BOOK_MS, bid="99.9", ask="100.1"),
+            *(
+                _asset_ctx(
+                    timestamp_ms,
+                    mark=str(100 + offset),
+                    oracle=str(100 + offset),
+                )
+                for offset, timestamp_ms in enumerate(mark_times)
+            ),
+        ),
+    )
+
+    indexed = pipeline._oracle_by_funding_boundary[  # noqa: SLF001
+        MARKET.canonical
+    ]
+    assert tuple(indexed) == (BOUNDARY_MS,)
+    before_boundary = pipeline._oracle_before(  # noqa: SLF001
+        MARKET,
+        BOUNDARY_MS,
+    )
+    assert before_boundary is not None
+    assert before_boundary.event_key == (
+        f"active_asset_ctx:{MARKET.canonical}:{mark_times[-1]}"
+    )
+
+    after_boundary_ms = BOUNDARY_MS + 100
+    _run_records(
+        pipeline,
+        (
+            _asset_ctx(
+                after_boundary_ms,
+                mark="150",
+                oracle="150",
+            ),
+        ),
+    )
+
+    indexed = pipeline._oracle_by_funding_boundary[  # noqa: SLF001
+        MARKET.canonical
+    ]
+    assert tuple(sorted(indexed)) == (
+        BOUNDARY_MS,
+        BOUNDARY_MS + 3_600_000,
+    )
+    assert pipeline._oracle_before(  # noqa: SLF001
+        MARKET,
+        BOUNDARY_MS,
+    ) == before_boundary
+    after_boundary = pipeline._oracle_before(  # noqa: SLF001
+        MARKET,
+        BOUNDARY_MS + 3_600_000,
+    )
+    assert after_boundary is not None
+    assert after_boundary.event_key == (
+        f"active_asset_ctx:{MARKET.canonical}:{after_boundary_ms}"
+    )
+
+    execution.close()
+    facts.close()
+
+
 def test_identical_replay_restart_produces_identical_fact_ids(tmp_path: Path) -> None:
     records = (
         _snapshot_record(),
