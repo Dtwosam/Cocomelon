@@ -1612,6 +1612,9 @@ def _supervisor_group_health_payload(
                 "systemic_l2_stale_reconnect_count": (
                     health.systemic_l2_stale_reconnect_count
                 ),
+                "stale_deadline_buffered_message_count": (
+                    supervisor.stale_deadline_buffered_message_count
+                ),
                 "duplicate_count": health.duplicate_count,
                 "anomaly_count": health.anomaly_count,
                 "last_server_message_ms": (

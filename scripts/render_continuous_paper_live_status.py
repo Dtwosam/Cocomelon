@@ -9342,6 +9342,7 @@ def _render_operational_live_status(
             "- L2 lane {lane}: connected={connected}, ready={ready}, "
             "stale={stale}, missing-ready={missing}, reconnects={reconnects}, "
             "l2-stale-reconnects={l2_stale_reconnects}, "
+            "deadline-drains={deadline_drains}, "
             "server-age={server_age}ms, duplicates={duplicates}, "
             "anomalies={anomalies}, L2-age-observed={age_observed}, "
             "negative-age={negative_age}, age-min/max={age_min}/{age_max}ms, "
@@ -9369,6 +9370,10 @@ def _render_operational_live_status(
                 ),
                 l2_stale_reconnects=raw_lane.get(
                     "systemic_l2_stale_reconnect_count",
+                    0,
+                ),
+                deadline_drains=raw_lane.get(
+                    "stale_deadline_buffered_message_count",
                     0,
                 ),
                 server_age=raw_lane.get(
@@ -9451,6 +9456,7 @@ def _render_operational_live_status(
                     "ready={ready}, stale={stale}, missing-ready={missing}, "
                     "reconnects={reconnects}, "
                     "l2-stale-reconnects={l2_stale_reconnects}, "
+                    "deadline-drains={deadline_drains}, "
                     "server-age={server_age}ms, "
                     "age-min/max={age_min}/{age_max}ms, "
                     "current-age-min/max={current_age_min}/{current_age_max}ms".format(
@@ -9476,6 +9482,10 @@ def _render_operational_live_status(
                         ),
                         l2_stale_reconnects=raw_lane.get(
                             "systemic_l2_stale_reconnect_count",
+                            0,
+                        ),
+                        deadline_drains=raw_lane.get(
+                            "stale_deadline_buffered_message_count",
                             0,
                         ),
                         server_age=raw_lane.get(
