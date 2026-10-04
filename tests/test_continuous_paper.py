@@ -1410,6 +1410,12 @@ def test_runtime_checkpoints_write_off_event_loop_single_flight() -> None:
     assert source.count(
         "await maybe_start_background_checkpoint()"
     ) == 1
+    assert "def timed_component(" in source
+    assert '"trade_path_checkpoint"' in source
+    assert '"pipeline_checkpoint"' in source
+    assert '"cadence_shadow_summary"' in source
+    assert '"cadence_shadow_state"' in source
+    assert '"checkpoint_snapshot_max_ms_by_component"' in source
 
 
 def test_runtime_wakes_l2_recovery_on_completed_decision_epoch() -> None:
@@ -2138,6 +2144,7 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"latest_epoch_eligibility"' in source
     assert '"stale_book_age_ms_by_market"' in source
     assert '"session_risk"' in source
+    assert '"checkpoint_snapshot_max_ms_by_component"' in source
     assert '"open_planned_risk"' in source
     assert '"open_planned_risk_fraction_of_equity"' in source
     assert '"recent_closed_trades"' in source
