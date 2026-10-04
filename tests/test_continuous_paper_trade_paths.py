@@ -149,6 +149,53 @@ def test_trade_path_store_is_idempotent_and_conflict_detecting(
         store.record(conflict)
 
 
+def test_open_path_checkpoint_reuses_validated_in_memory_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ContinuousPaperTradePathStore(tmp_path / "trade-paths")
+    assert store.checkpoint_open_path(
+        opening_plan_id="plan-open",
+        market=MARKET,
+        opened_at_ms=1_000,
+        venue_max_leverage=Decimal("20"),
+        mark_observations=(_record(1_200, "101", "mark-1"),),
+    ) == 1
+
+    open_path = store._open_path("plan-open")
+    original_read_text = Path.read_text
+
+    def fail_open_path_read(
+        path: Path,
+        *args: object,
+        **kwargs: object,
+    ) -> str:
+        if path == open_path:
+            raise AssertionError(
+                "validated open trade path must not be reparsed"
+            )
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_open_path_read)
+
+    assert store.checkpoint_open_path(
+        opening_plan_id="plan-open",
+        market=MARKET,
+        opened_at_ms=1_000,
+        venue_max_leverage=Decimal("20"),
+        mark_observations=(
+            _record(1_200, "101", "mark-1"),
+            _record(1_500, "103", "mark-2"),
+        ),
+    ) == 1
+    assert store.finalize_trade(
+        _trade(),
+        (_record(1_900, "102", "mark-3"),),
+        (),
+    ) is True
+    assert store.open_path_count == 0
+
+
 def test_open_path_checkpoint_survives_store_restart_and_finalizes(
     tmp_path: Path,
 ) -> None:
