@@ -638,6 +638,9 @@ def test_full_stack_fast_markout_is_exported_and_runtime_watched() -> None:
     assert "risk-rejected opportunities / evaluated / stack admit" in source
     assert "risk-rejected reasons" in source
     assert "risk-rejected {minutes}m stack admit/block mean" in source
+    assert "approved integrity last miss / clean start / evaluated" in source
+    assert "long-trend carveout clean start / evaluated / admit" in source
+    assert "clean {minutes}m stack spread / carveout spread" in source
 
 
 def test_long_trend_execution_shadow_source_is_compact_and_watched() -> None:
