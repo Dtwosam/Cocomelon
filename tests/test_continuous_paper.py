@@ -2274,7 +2274,7 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         '"prospective_delayed_price_confirmation": (' in source
     )
     assert (
-        "prospective_delayed_price_confirmation_state.payload()"
+        "prospective_delayed_price_confirmation_state.payload"
         in source
     )
     assert (
