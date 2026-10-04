@@ -855,6 +855,23 @@ def test_websocket_lane_dispatch_yields_after_event_and_gap() -> None:
     )
 
 
+def test_market_warmup_loops_cooperatively_yield() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    warmup_fragments = source.split(
+        "for candle in await _warmup_market("
+    )[1:]
+    assert len(warmup_fragments) == 2
+    for fragment in warmup_fragments:
+        loop_body = fragment.split("\n\n", 1)[0]
+        assert "await pump.process(" in loop_body
+        assert "await _cooperative_stream_yield()" in loop_body
+        assert loop_body.index("await pump.process(") < (
+            loop_body.index("await _cooperative_stream_yield()")
+        )
+
+
 def test_event_loop_lag_monitor_records_blocking_phase() -> None:
     async def scenario() -> None:
         pump = SimpleNamespace(
