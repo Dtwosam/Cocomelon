@@ -2166,6 +2166,30 @@ def _write_json_payload_batch_atomic(
     return max_ms_by_file, max_bytes_by_file
 
 
+async def _write_json_payload_batch_cooperatively(
+    payloads: Sequence[tuple[Path, object]],
+) -> tuple[dict[str, int], dict[str, int]]:
+    max_ms_by_file: dict[str, int] = {}
+    max_bytes_by_file: dict[str, int] = {}
+    for path, payload in payloads:
+        elapsed_ms, encoded_bytes = await asyncio.to_thread(
+            _write_json_atomic,
+            path,
+            payload,
+        )
+        key = path.name
+        max_ms_by_file[key] = max(
+            max_ms_by_file.get(key, 0),
+            elapsed_ms,
+        )
+        max_bytes_by_file[key] = max(
+            max_bytes_by_file.get(key, 0),
+            encoded_bytes,
+        )
+        await asyncio.sleep(0)
+    return max_ms_by_file, max_bytes_by_file
+
+
 def _load_checkpoint(path: Path) -> tuple[
     tuple[OpenLifecycleCheckpoint, ...],
     tuple[tuple[int, int | None], ...],
@@ -8707,9 +8731,8 @@ async def run_continuous_paper_session(
                 (
                     write_ms_by_file,
                     write_bytes_by_file,
-                ) = await asyncio.to_thread(
-                    _write_json_payload_batch_atomic,
-                    payloads,
+                ) = await _write_json_payload_batch_cooperatively(
+                    payloads
                 )
                 for file_name, file_ms in write_ms_by_file.items():
                     previous_ms = (
