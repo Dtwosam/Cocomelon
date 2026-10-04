@@ -3,10 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 from pathlib import Path
 from typing import Any, Final
 
-SCHEMA_VERSION: Final = 1
+SCHEMA_VERSION: Final = 2
 DEFAULT_LARGEST_FILE_LIMIT: Final = 20
 
 
@@ -15,6 +16,30 @@ def _allocated_bytes(stat: os.stat_result) -> int:
     if isinstance(blocks, int) and blocks >= 0:
         return blocks * 512
     return stat.st_size
+
+
+def _sqlite_utilization(path: Path, root: Path) -> dict[str, int | str]:
+    connection = sqlite3.connect(
+        f"file:{path}?mode=ro",
+        uri=True,
+    )
+    try:
+        page_size = int(connection.execute("PRAGMA page_size").fetchone()[0])
+        page_count = int(connection.execute("PRAGMA page_count").fetchone()[0])
+        freelist_count = int(
+            connection.execute("PRAGMA freelist_count").fetchone()[0]
+        )
+    finally:
+        connection.close()
+    return {
+        "path": path.relative_to(root).as_posix(),
+        "page_size": page_size,
+        "page_count": page_count,
+        "freelist_count": freelist_count,
+        "page_bytes": page_size * page_count,
+        "freelist_bytes": page_size * freelist_count,
+        "live_page_bytes": page_size * max(0, page_count - freelist_count),
+    }
 
 
 def summarize_state(
@@ -32,6 +57,7 @@ def summarize_state(
     logical_bytes = 0
     allocated_bytes = 0
     file_count = 0
+    sqlite_databases: list[dict[str, int | str]] = []
 
     for path in root.rglob("*"):
         if path.is_symlink() or not path.is_file():
@@ -67,6 +93,10 @@ def summarize_state(
                 "allocated_bytes": allocated,
             }
         )
+        if path.suffix == ".sqlite3":
+            sqlite_databases.append(
+                _sqlite_utilization(path, root)
+            )
 
     ordered_top = sorted(
         top_level.values(),
@@ -90,6 +120,13 @@ def summarize_state(
         "file_count": file_count,
         "top_level": ordered_top,
         "largest_files": ordered_files,
+        "sqlite_databases": sorted(
+            sqlite_databases,
+            key=lambda item: (
+                -int(item["page_bytes"]),
+                str(item["path"]),
+            ),
+        ),
     }
 
 
@@ -151,6 +188,32 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 f"| `{item.get('path')}` | "
                 f"{item.get('logical_bytes')} | "
                 f"{item.get('allocated_bytes')} |"
+            )
+
+    lines.extend(
+        [
+            "",
+            "### SQLite page utilization",
+            "",
+            (
+                "| Database | Page bytes | Live-page bytes | "
+                "Freelist bytes | Free pages | Total pages |"
+            ),
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    raw_sqlite = summary.get("sqlite_databases")
+    if isinstance(raw_sqlite, list):
+        for item in raw_sqlite:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                f"| `{item.get('path')}` | "
+                f"{item.get('page_bytes')} | "
+                f"{item.get('live_page_bytes')} | "
+                f"{item.get('freelist_bytes')} | "
+                f"{item.get('freelist_count')} | "
+                f"{item.get('page_count')} |"
             )
     return "\n".join(lines) + "\n"
 
