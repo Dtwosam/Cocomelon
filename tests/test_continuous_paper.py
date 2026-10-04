@@ -2266,7 +2266,7 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         'PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME = (' in source
     )
     assert '"prospective_entry_filter": prospective_entry_filter' in source
-    assert "prospective_entry_filter_state.payload()" in source
+    assert "prospective_entry_filter_state.payload" in source
     assert (
         'PROSPECTIVE_DELAYED_PRICE_CONFIRM_STATE_FILENAME = (' in source
     )
@@ -4613,7 +4613,7 @@ def test_runtime_persists_weekly_drawdown_5m_candidate_source() -> None:
     )
     assert "prospective-weekly-drawdown-5m-exit-source.json" in source
     assert "_restore_prospective_weekly_drawdown_5m_exit(" in source
-    assert "prospective_weekly_drawdown_5m_exit_state.payload()" in source
+    assert "prospective_weekly_drawdown_5m_exit_state.payload" in source
     assert (
         "if prospective_weekly_drawdown_5m_exit_restore_error is not None:"
         in source
