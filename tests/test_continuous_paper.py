@@ -1684,6 +1684,7 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
                 last_server_message_ms=last_server_message_ms,
                 reconnect_count=reconnect_count,
                 systemic_l2_stale_reconnect_count=0,
+                systemic_l2_targeted_resubscribe_count=2,
                 duplicate_count=2,
                 anomaly_count=1,
             )
@@ -1783,6 +1784,7 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
     assert lanes[1]["last_server_message_age_ms"] == 1_000
     assert lanes[1]["reconnect_count"] == 5
     assert lanes[1]["systemic_l2_stale_reconnect_count"] == 0
+    assert lanes[1]["systemic_l2_targeted_resubscribe_count"] == 2
 
 
 def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
@@ -2194,6 +2196,7 @@ def test_runtime_staggers_redundant_l2_lane_reconnects() -> None:
         "                        * config.websocket_redundant_lane_reconnect_stagger_ms"
         in source
     )
+    assert "max_systemic_l2_targeted_resubscribes=1" in source
 
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:

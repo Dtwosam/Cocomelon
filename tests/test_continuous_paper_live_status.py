@@ -6059,6 +6059,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "connected": True,
                     "reconnect_count": 7,
                     "systemic_l2_stale_reconnect_count": 6,
+                    "systemic_l2_targeted_resubscribe_count": 4,
                     "stale_deadline_buffered_message_count": 12,
                     "duplicate_count": 5,
                     "anomaly_count": 1,
@@ -6090,6 +6091,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "connected": False,
                     "reconnect_count": 11,
                     "systemic_l2_stale_reconnect_count": 8,
+                    "systemic_l2_targeted_resubscribe_count": 5,
                     "stale_deadline_buffered_message_count": 15,
                     "duplicate_count": 9,
                     "anomaly_count": 0,
@@ -6349,7 +6351,8 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert "L2 supervisor unhealthy markets: 16 / 20" in rendered
     assert (
         "L2 lane 0: connected=true, ready=20, stale=16, "
-        "missing-ready=0, reconnects=7, l2-stale-reconnects=6, "
+        "missing-ready=0, reconnects=7, "
+        "l2-targeted-resubscribes=4, l2-stale-reconnects=6, "
         "deadline-drains=12, server-age=100ms"
         in rendered
     )
@@ -6366,7 +6369,8 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     )
     assert (
         "L2 lane 1: connected=false, ready=18, stale=15, "
-        "missing-ready=2, reconnects=11, l2-stale-reconnects=8, "
+        "missing-ready=2, reconnects=11, "
+        "l2-targeted-resubscribes=5, l2-stale-reconnects=8, "
         "deadline-drains=15, server-age=2000ms"
         in rendered
     )
@@ -6385,14 +6389,16 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     )
     assert (
         "pre-recovery L2 lane 0: connected=true, ready=20, stale=0, "
-        "missing-ready=0, reconnects=0, l2-stale-reconnects=0, "
+        "missing-ready=0, reconnects=0, "
+        "l2-targeted-resubscribes=0, l2-stale-reconnects=0, "
         "deadline-drains=2, server-age=90ms, "
         "age-min/max=600/700ms, current-age-min/max=650/850ms"
         in rendered
     )
     assert (
         "pre-recovery L2 lane 1: connected=true, ready=20, stale=0, "
-        "missing-ready=0, reconnects=0, l2-stale-reconnects=0, "
+        "missing-ready=0, reconnects=0, "
+        "l2-targeted-resubscribes=0, l2-stale-reconnects=0, "
         "deadline-drains=3, server-age=80ms, "
         "age-min/max=590/690ms, current-age-min/max=700/900ms"
         in rendered

@@ -1632,6 +1632,9 @@ def _supervisor_group_health_payload(
                 "systemic_l2_stale_reconnect_count": (
                     health.systemic_l2_stale_reconnect_count
                 ),
+                "systemic_l2_targeted_resubscribe_count": (
+                    health.systemic_l2_targeted_resubscribe_count
+                ),
                 "stale_deadline_buffered_message_count": (
                     supervisor.stale_deadline_buffered_message_count
                 ),
@@ -9040,6 +9043,7 @@ async def run_continuous_paper_session(
                         lane
                         * config.websocket_redundant_lane_reconnect_stagger_ms
                     ),
+                    max_systemic_l2_targeted_resubscribes=1,
                 )
                 supervisors.append(supervisor)
                 tasks.append(
