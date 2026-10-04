@@ -30,6 +30,7 @@ from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.replay.engine import ReplayInvariantError
 
 MARKET = MarketId("", "BTC")
+OTHER_MARKET = MarketId("", "ETH")
 RUN_ID = "phase9-lifecycle-run"
 EVALUATED_AT_MS = 3_598_000
 BOUNDARY_MS = 3_600_000
@@ -464,6 +465,96 @@ def test_opening_research_observer_receives_exact_ioc_book(
     )
     assert trace.submission.simulation is not None
     assert trace.submission.simulation.fills
+
+    execution.close()
+    facts.close()
+
+
+def test_unrelated_asset_context_does_not_rewrite_flat_account_state(
+    tmp_path: Path,
+) -> None:
+    observed_marks: list[str] = []
+
+    class Observer:
+        def observe_mark(
+            self,
+            positions: object,
+            mark_event: StreamEvent,
+            *,
+            now_ms: int,
+        ) -> None:
+            del positions, now_ms
+            observed_marks.append(mark_event.event_key)
+
+        def observe_book(
+            self,
+            positions: object,
+            instrument: object,
+            book: StreamEvent,
+            *,
+            reference_price: Decimal,
+            now_ms: int,
+        ) -> None:
+            del positions, instrument, book, reference_price, now_ms
+
+        def record_closed_trade(
+            self,
+            trade: TradeJournalEntry,
+        ) -> None:
+            del trade
+
+    pipeline, execution, facts = _pipeline(
+        tmp_path,
+        suffix="unrelated-mark",
+        position_research_observer=Observer(),
+    )
+    _run_records(
+        pipeline,
+        (
+            _snapshot_record(),
+            _trigger_record(),
+            _book(OPEN_BOOK_MS, bid="99.9", ask="100.1"),
+        ),
+    )
+    assert tuple(position.market for position in execution.account.positions) == (
+        MARKET,
+    )
+    state_id_before = execution.account.state_id
+    equity_before = execution.account.equity
+    facts_before = tuple(facts.iter_equity_facts(RUN_ID))
+
+    unrelated_ms = OPEN_BOOK_MS + 100
+    unrelated = ReplayRecord(
+        record_kind=SourceRecordKind.NORMALIZED_EVENT,
+        available_at_ms=unrelated_ms,
+        source="hyperliquid-mainnet-public-fixture",
+        schema_version=1,
+        market=OTHER_MARKET.canonical,
+        exchange_time_ms=None,
+        event_key=f"active_asset_ctx:{OTHER_MARKET.canonical}:{unrelated_ms}",
+        payload_json=json.dumps(
+            {
+                "mark_px": "200",
+                "mid_px": "200",
+                "oracle_px": "200",
+                "funding": "0",
+                "open_interest": "1000000",
+            },
+            sort_keys=True,
+        ),
+        event_kind="active_asset_ctx",
+    )
+
+    observations = pipeline.on_record(
+        unrelated,
+        unrelated.available_at_ms,
+    )
+
+    assert observations == ()
+    assert execution.account.state_id == state_id_before
+    assert execution.account.equity == equity_before
+    assert tuple(facts.iter_equity_facts(RUN_ID)) == facts_before
+    assert unrelated.event_key in observed_marks
 
     execution.close()
     facts.close()
