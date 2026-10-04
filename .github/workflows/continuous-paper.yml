@@ -1231,3 +1231,26 @@ jobs:
             --ref main \
             -f "source_run_id=$GITHUB_RUN_ID" \
             -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
+
+      - name: Fail closed on upgrade handoff source
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/session-summary.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          exit_reason="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/session-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          print(payload.get("exit_reason", ""))
+          PY
+          )"
+          if [ "$exit_reason" = "upgrade_requested" ]; then
+            echo "::error::upgrade handoff run is state-continuity only and must not be a successful research source"
+            exit 75
+          fi
