@@ -8420,6 +8420,7 @@ async def run_continuous_paper_session(
                 rank_tracker=rank_tracker,
             )
         )
+        component_started = time.perf_counter()
         pipeline = BaselineReplayPipeline(
             replay_config,
             execution,
@@ -8446,15 +8447,29 @@ async def run_continuous_paper_session(
                 )
             ),
         )
+        record_startup_component(
+            "pipeline_construct",
+            component_started,
+        )
+        component_started = time.perf_counter()
         pipeline.restore_gap_intervals(gap_intervals)
         _restore_open_lifecycles(pipeline, execution, checkpoints)
+        record_startup_component(
+            "open_lifecycle_restore",
+            component_started,
+        )
         cadence_shadow_state_path = (
             root / CADENCE_SHADOW_STATE_FILENAME
         )
+        component_started = time.perf_counter()
         cadence_shadow = _restore_cadence_shadow(
             cadence_shadow_state_path,
             selected,
             replay_config=replay_config,
+        )
+        record_startup_component(
+            "cadence_shadow_restore",
+            component_started,
         )
         cadence_shadow_persisted_revision: int | None = (
             0 if cadence_shadow.state_restored else None

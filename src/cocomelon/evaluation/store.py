@@ -437,6 +437,21 @@ class EvaluationFactStore:
             raise EvaluationConsistencyError("stored equity fact id does not match payload")
         return result
 
+    def iter_equity_account_state_ids(
+        self,
+        replay_run_id: str,
+    ) -> Iterator[str]:
+        rows = self.connection.execute(
+            """
+            SELECT account_state_id
+            FROM evaluation_equity_facts
+            WHERE replay_run_id = ?
+            """,
+            (replay_run_id,),
+        ).fetchall()
+        for row in rows:
+            yield str(row[0])
+
     def iter_equity_facts(
         self,
         replay_run_id: str | None = None,
