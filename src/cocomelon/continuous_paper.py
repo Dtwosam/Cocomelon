@@ -697,6 +697,26 @@ class _ContinuousOpeningOpportunitySink:
                     if self.path_error is None:
                         self.path_error = f"{type(exc).__name__}: {exc}"
 
+    async def observe_snapshots_cooperatively(
+        self,
+        snapshots: dict[str, PerpMarketSnapshot],
+    ) -> None:
+        for snapshot in snapshots.values():
+            mark_px = snapshot.context.mark_px
+            if mark_px is None:
+                continue
+            try:
+                await self._path_store.observe_cooperatively(
+                    market=snapshot.meta.market.canonical,
+                    observed_at_ms=snapshot.received_at_ms,
+                    mark_px=mark_px,
+                    source=snapshot.source,
+                )
+            except Exception as exc:
+                if self.path_error is None:
+                    self.path_error = f"{type(exc).__name__}: {exc}"
+            await asyncio.sleep(0)
+
 
 class _CompositeOpeningResearchObserver:
     def __init__(
@@ -8397,7 +8417,9 @@ async def run_continuous_paper_session(
                 snapshots,
                 startup_context_received_at_ms,
             ) = await _refresh_native_market_snapshots(reader)
-            opening_opportunity_sink.observe_snapshots(snapshots)
+            await opening_opportunity_sink.observe_snapshots_cooperatively(
+                snapshots
+            )
             await capture_due_exit_books(
                 snapshots,
                 now_ms=startup_context_received_at_ms,
@@ -9155,7 +9177,9 @@ async def run_continuous_paper_session(
                     exit_reason = "upgrade_requested"
                     break
                 pump.event_loop_phase = "path_observe_snapshots"
-                opening_opportunity_sink.observe_snapshots(refreshed)
+                await opening_opportunity_sink.observe_snapshots_cooperatively(
+                    refreshed
+                )
                 pump.event_loop_phase = "exit_book_capture"
                 await capture_due_exit_books(
                     refreshed,
