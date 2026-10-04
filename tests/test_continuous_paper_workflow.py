@@ -208,8 +208,15 @@ def test_continuous_paper_upgrade_watchdog_does_not_require_heartbeat() -> None:
     assert "holding runtime push rendezvous for active worker handoff" in source
     assert "sleep 75" in source
     assert "requesting graceful handoff independently of heartbeat" in source
+    assert 'request_runtime_handoff "$trader_pid" "$replacement_run"' in source
+    assert "for _ in $(seq 1 120)" in source
+    assert 'kill -INT "$trader_pid"' in source
+    assert 'kill -TERM "$trader_pid"' in source
+    assert 'kill -KILL "$trader_pid"' in source
+    assert 'mkfifo "$output_fifo"' in source
+    assert 'watch_for_newer_runtime_run "$trader_pid" &' in source
     assert "upgrade_watch_pid=$!" in source
-    assert "trap 'kill \"$upgrade_watch_pid\"" in source
+    assert "trap cleanup_runtime_processes EXIT" in source
 
 
 def test_continuous_paper_worker_is_hard_locked_to_paper() -> None:
