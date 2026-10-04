@@ -5,6 +5,7 @@ import json
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityEvidence,
 )
@@ -13,6 +14,9 @@ from cocomelon.research.continuous_paper_opening_opportunity_exit_books import (
 )
 from cocomelon.research.continuous_paper_replacement_funding import (
     ReplacementFundingBoundaryEvidence,
+)
+from cocomelon.research.prospective_full_stack_forward_markout import (
+    LONG_TREND_CARVEOUT_CANDIDATE_ID,
 )
 from cocomelon.research.prospective_long_trend_5m_exit import (
     ProspectiveLongTrend5mExitError,
@@ -25,7 +29,17 @@ from cocomelon.research.prospective_long_trend_5m_exit_source import (
     prospective_long_trend_5m_exit_source,
 )
 from cocomelon.research.prospective_long_trend_carveout_execution_shadow import (
-    _validate_source as _validate_long_trend_execution_source,
+    _execution_config_from_payload,
+    _sha256,
+)
+from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
+    SCHEMA_VERSION as LONG_TREND_SOURCE_SCHEMA_VERSION,
+)
+from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
+    SOURCE_KIND as LONG_TREND_SOURCE_KIND,
+)
+from cocomelon.research.prospective_long_trend_carveout_execution_shadow_source import (
+    WEEKLY_DRAWDOWN_REASON,
 )
 
 
@@ -43,6 +57,44 @@ def _records[T](
     for path in sorted(root.glob("*.json")):
         rows.append(parser(_read_json(path)))
     return tuple(rows)
+
+
+def _execution_config_from_durable_long_trend_source(
+    raw: object,
+) -> PaperExecutionConfig:
+    if not isinstance(raw, dict):
+        raise ValueError("durable LONG+trend source must be an object")
+    if raw.get("schema_version") != LONG_TREND_SOURCE_SCHEMA_VERSION:
+        raise ValueError("durable LONG+trend source schema is unsupported")
+    if raw.get("kind") != LONG_TREND_SOURCE_KIND:
+        raise ValueError("durable LONG+trend source kind is unsupported")
+    if raw.get("candidate_id") != LONG_TREND_CARVEOUT_CANDIDATE_ID:
+        raise ValueError("durable LONG+trend candidate lineage mismatch")
+    if raw.get("baseline_risk_reason") != WEEKLY_DRAWDOWN_REASON:
+        raise ValueError("durable LONG+trend risk reason drift")
+    for key, expected in (
+        ("research_only", True),
+        ("execution_authority", False),
+        ("promotion_authority", False),
+        ("changes_execution", False),
+        ("changes_risk_limits", False),
+        ("changes_candidate_readiness", False),
+        ("durable_gate_required", True),
+    ):
+        if raw.get(key) is not expected:
+            raise ValueError(
+                f"durable LONG+trend authority drift: {key}"
+            )
+
+    config_payload = raw.get("execution_config")
+    config_sha256 = raw.get("execution_config_sha256")
+    if (
+        not isinstance(config_sha256, str)
+        or len(config_sha256) != 64
+        or _sha256(config_payload) != config_sha256
+    ):
+        raise ValueError("durable LONG+trend execution config digest mismatch")
+    return _execution_config_from_payload(config_payload)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -73,11 +125,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         long_trend_source = _read_json(
             root / "prospective-long-trend-execution-shadow-source.json"
         )
-        _rows, execution_config, _config_source, _schema = (
-            _validate_long_trend_execution_source(
-                long_trend_source,
-                legacy_config=None,
-            )
+        execution_config = _execution_config_from_durable_long_trend_source(
+            long_trend_source
         )
 
         opportunities = _records(
