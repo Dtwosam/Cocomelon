@@ -43,12 +43,13 @@ def equity_fact(
     state_id: str = "state-1",
     timestamp_ms: int = 1_000,
     replay_run_id: str = "run-1",
+    kind: EquityFactKind = EquityFactKind.MARK,
 ) -> AccountEquityFact:
     return AccountEquityFact(
         replay_run_id=replay_run_id,
         account_state_id=state_id,
         timestamp_ms=timestamp_ms,
-        kind=EquityFactKind.MARK,
+        kind=kind,
         equity=Decimal("10000"),
         cash=Decimal("10000"),
         unrealized_pnl=Decimal("0"),
@@ -110,6 +111,35 @@ def test_equity_fact_round_trips_and_run_filter_is_deterministic(tmp_path: Path)
     reopened = EvaluationFactStore(path)
     assert tuple(reopened.iter_equity_facts("run-1")) == (earlier, later)
     reopened.close()
+
+
+def test_new_equity_account_state_insert_is_single_step_and_idempotent(
+    tmp_path: Path,
+) -> None:
+    store = EvaluationFactStore(tmp_path / "evaluation.sqlite3")
+    original = equity_fact(
+        state_id="state-1",
+        timestamp_ms=1_000,
+        kind=EquityFactKind.MARK,
+    )
+    same_state_later_label = equity_fact(
+        state_id="state-1",
+        timestamp_ms=2_000,
+        kind=EquityFactKind.ACCOUNT_UPDATE,
+    )
+
+    assert (
+        store.record_equity_fact_if_new_account_state(original)
+        is True
+    )
+    assert (
+        store.record_equity_fact_if_new_account_state(
+            same_state_later_label
+        )
+        is False
+    )
+    assert tuple(store.iter_equity_facts("run-1")) == (original,)
+    store.close()
 
 
 def test_equity_account_state_lookup_uses_indexed_identity_columns(
