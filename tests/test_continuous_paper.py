@@ -1657,8 +1657,10 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
             connected: bool,
             last_server_message_ms: int | None,
             reconnect_count: int,
+            current_age_ms_by_market: dict[str, int],
         ) -> None:
             self._stale = stale
+            self._current_age_ms_by_market = current_age_ms_by_market
             self.health = SimpleNamespace(
                 connected=connected,
                 last_server_message_ms=last_server_message_ms,
@@ -1666,6 +1668,17 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
                 systemic_l2_stale_reconnect_count=0,
                 duplicate_count=2,
                 anomaly_count=1,
+            )
+
+        def l2_freshness_age_ms(
+            self,
+            stream_id: str,
+            *,
+            now_ms: int,
+        ) -> int | None:
+            del now_ms
+            return self._current_age_ms_by_market.get(
+                stream_id.removeprefix("l2Book:")
             )
 
         def stale_l2_streams(
@@ -1683,12 +1696,22 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
                 connected=True,
                 last_server_message_ms=9_900,
                 reconnect_count=3,
+                current_age_ms_by_market={
+                    "BTC": 500,
+                    "ETH": 4_500,
+                    "SOL": 5_500,
+                },
             ),  # type: ignore[arg-type]
             Lane(
                 ("l2Book:ETH",),
                 connected=False,
                 last_server_message_ms=9_000,
                 reconnect_count=5,
+                current_age_ms_by_market={
+                    "BTC": 700,
+                    "ETH": 4_800,
+                    "SOL": 6_000,
+                },
             ),  # type: ignore[arg-type]
         ),
         tasks=(),
@@ -1718,6 +1741,14 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
     assert lanes[0]["ready_l2_market_count"] == 3
     assert lanes[0]["stale_l2_market_count"] == 2
     assert lanes[0]["last_server_message_age_ms"] == 100
+    assert lanes[0]["l2_current_age_observed_market_count"] == 3
+    assert lanes[0]["l2_current_age_min_ms"] == 500
+    assert lanes[0]["l2_current_age_max_ms"] == 5_500
+    assert lanes[0]["l2_current_age_ms_by_market"] == {
+        "BTC": 500,
+        "ETH": 4_500,
+        "SOL": 5_500,
+    }
     assert lanes[0]["l2_exchange_age_observed_market_count"] == 3
     assert lanes[0]["l2_exchange_age_negative_market_count"] == 1
     assert lanes[0]["l2_exchange_age_min_ms"] == -250
