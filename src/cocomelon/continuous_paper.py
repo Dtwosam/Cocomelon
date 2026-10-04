@@ -4434,7 +4434,7 @@ class _RecordPump:
                 self.record_pump_slow_record_count += 1
                 slowest_component = max(
                     component_ms,
-                    key=component_ms.get,
+                    key=lambda name: component_ms[name],
                     default=None,
                 )
                 self.record_pump_last_slow_record = {
