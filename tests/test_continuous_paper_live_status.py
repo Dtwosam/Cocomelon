@@ -5988,6 +5988,14 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "record_pump_slow_record_count": 3,
         "checkpoint_max_snapshot_ms": 14,
         "checkpoint_max_background_write_ms": 82_000,
+        "checkpoint_last_component_ms": {
+            "checkpoint_payload": 3,
+            "trade_path_checkpoint": 7,
+        },
+        "checkpoint_max_component_ms": {
+            "checkpoint_payload": 11,
+            "trade_path_checkpoint": 13,
+        },
         "checkpoint_background_starts": 4,
         "checkpoint_background_skips": 2,
         "event_loop_phase": "rank_refresh",
@@ -6262,6 +6270,12 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "14ms / 82000ms / 4 / 2"
         in rendered
     )
+    assert "checkpoint last component ms:" in rendered
+    assert "'checkpoint_payload': 3" in rendered
+    assert "'trade_path_checkpoint': 7" in rendered
+    assert "checkpoint max component ms:" in rendered
+    assert "'checkpoint_payload': 11" in rendered
+    assert "'trade_path_checkpoint': 13" in rendered
     assert (
         "event-loop phase / max lag / slow>=1s / samples: "
         "rank_refresh / 91234ms / 2 / 88"
