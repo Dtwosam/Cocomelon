@@ -371,6 +371,11 @@ def _stop_requested(stop_path: Path | None) -> bool:
     return stop_path is not None and stop_path.exists()
 
 
+def _clear_upgrade_deferred_research(root: Path) -> None:
+    for filename in UPGRADE_DEFERRED_RESEARCH_FILENAMES:
+        (root / filename).unlink(missing_ok=True)
+
+
 def _iter_until_stop[T](
     items: Iterable[T],
     stop_path: Path | None,
@@ -383,6 +388,16 @@ def _iter_until_stop[T](
 
 CHECKPOINT_FILENAME = "runtime-state.json"
 SUMMARY_FILENAME = "session-summary.json"
+UPGRADE_DEFERRED_RESEARCH_FILENAMES = (
+    PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME,
+    PROSPECTIVE_MOMENTUM_BAND_FORWARD_MARKOUT_SUMMARY_FILENAME,
+    PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME,
+    PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_SOURCE_FILENAME,
+    PROSPECTIVE_LONG_TREND_EXECUTION_SHADOW_SOURCE_FILENAME,
+    PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME,
+    PROSPECTIVE_FULL_STACK_CAPACITY_REFLOW_SUMMARY_FILENAME,
+    PROSPECTIVE_FULL_STACK_EXIT_CAPACITY_REFLOW_SUMMARY_FILENAME,
+)
 CADENCE_SHADOW_FILENAME = "cadence-shadow-summary.json"
 CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"
 PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME = (
@@ -9703,233 +9718,197 @@ async def run_continuous_paper_session(
         await flush_background_checkpoint()
         persist_checkpoint_sync()
         ended_at_ms = utc_now_ms()
-        cooldown_shadow_summary = (
-            _prospective_consecutive_loss_cooldown_shadow_payload(
-                opening_opportunity_store,
-                opening_opportunity_path_store,
-                prospective_consecutive_loss_cooldown_shadow_state,
-                replay_config.execution,
-                restore_error=(
-                    prospective_consecutive_loss_cooldown_shadow_restore_error
-                ),
-            )
-        )
-        _write_json_atomic(
-            root
-            / PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME,
-            cooldown_shadow_summary,
-        )
-        full_stack_combined = _prospective_combined_entry_filter_payload(
-            journal,
-            facts,
-            opening_rank_store,
-            prospective_entry_filter_state,
-            prospective_top10_rank_filter_state,
-            prospective_combined_entry_filter_state,
-            restore_error=(
-                prospective_combined_entry_filter_restore_error
-            ),
-        )
-        full_stack_momentum = _prospective_momentum_band_entry_payload(
-            journal,
-            feature_store,
-            prospective_momentum_band_entry_state,
-            restore_error=(
-                prospective_momentum_band_entry_restore_error
-            ),
-        )
-        full_stack_two_strike = (
-            _prospective_two_strike_stop_filter_payload(
-                journal,
-                prospective_two_strike_stop_filter_state,
-                restore_error=(
-                    prospective_two_strike_stop_filter_restore_error
-                ),
-            )
-        )
-        momentum_band_forward_markout = (
-            _prospective_momentum_band_forward_markout_payload(
-                opening_opportunity_store,
-                opening_opportunity_path_store,
-                journal,
-                feature_store,
-                prospective_combined_entry_filter_state,
-                prospective_two_strike_stop_filter_state,
-                prospective_momentum_band_entry_state,
-            )
-        )
-        _write_json_atomic(
-            root
-            / PROSPECTIVE_MOMENTUM_BAND_FORWARD_MARKOUT_SUMMARY_FILENAME,
-            momentum_band_forward_markout,
-        )
-        full_stack_forward_markout = (
-            _prospective_full_stack_forward_markout_payload(
-                opening_opportunity_store,
-                opening_opportunity_path_store,
-                journal,
-                feature_store,
-                prospective_combined_entry_filter_state,
-                prospective_two_strike_stop_filter_state,
-                prospective_momentum_band_entry_state,
-            )
-        )
-        _write_json_atomic(
-            root
-            / PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME,
-            full_stack_forward_markout,
-        )
-        try:
-            if prospective_weekly_drawdown_5m_exit_restore_error is not None:
-                raise RuntimeError(
-                    "weekly-drawdown 5m candidate state restore failed: "
-                    + prospective_weekly_drawdown_5m_exit_restore_error
-                )
-            weekly_drawdown_5m_exit_source = (
-                prospective_weekly_drawdown_5m_exit_source(
-                    full_stack_forward_markout,
-                    opening_opportunity_store.iter_records(),
-                    opening_opportunity_exit_book_store.iter_records(),
-                    replacement_funding_store.iter_records(),
-                    replay_config.execution,
-                    prospective_weekly_drawdown_5m_exit_state,
-                )
-            )
-        except Exception as exc:
-            weekly_drawdown_5m_exit_source = {
-                "enabled": False,
-                "error": f"{type(exc).__name__}: {exc}",
-                "research_only": True,
-                "execution_authority": False,
-                "promotion_authority": False,
-                "changes_execution": False,
-                "changes_risk_limits": False,
-                "changes_candidate_readiness": False,
-                "candidate_id": (
-                    prospective_weekly_drawdown_5m_exit_state.candidate_id
-                ),
-                "started_at_ms": (
-                    prospective_weekly_drawdown_5m_exit_state.started_at_ms
-                ),
-                "state_restore_error": (
-                    prospective_weekly_drawdown_5m_exit_restore_error
-                ),
-            }
-        _write_json_atomic(
-            root / PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_SOURCE_FILENAME,
-            weekly_drawdown_5m_exit_source,
-        )
-        try:
-            long_trend_execution_shadow_source = (
-                prospective_long_trend_execution_shadow_source(
-                    full_stack_forward_markout,
-                    opening_opportunity_store.iter_records(),
-                    opening_opportunity_path_store.iter_paths(),
-                    replay_config.execution,
-                )
-            )
-        except Exception as exc:
-            long_trend_execution_shadow_source = {
-                "enabled": False,
-                "research_only": True,
-                "execution_authority": False,
-                "promotion_authority": False,
-                "changes_execution": False,
-                "changes_risk_limits": False,
-                "changes_candidate_readiness": False,
-                "durable_gate_required": True,
-                "error": f"{type(exc).__name__}: {exc}",
-            }
+        if exit_reason == "upgrade_requested":
+            _clear_upgrade_deferred_research(root)
         else:
-            long_trend_execution_shadow_source = dict(
-                long_trend_execution_shadow_source
-            )
-            long_trend_execution_shadow_source["enabled"] = True
-            long_trend_execution_shadow_source["error"] = None
-        _write_json_atomic(
-            root
-            / PROSPECTIVE_LONG_TREND_EXECUTION_SHADOW_SOURCE_FILENAME,
-            long_trend_execution_shadow_source,
-        )
-        if profit_lock_execution_shadow.shadow is None:
-            full_stack_entry_exit = {
-                "enabled": False,
-                "research_only": True,
-                "execution_authority": False,
-                "promotion_authority": False,
-                "descriptive_only": True,
-                "changes_readiness_gate": False,
-                "error": (
-                    profit_lock_execution_shadow.error
-                    or "profit-lock execution shadow unavailable"
-                ),
-            }
-        else:
-            full_stack_entry_exit = (
-                _prospective_full_stack_entry_exit_payload(
-                    journal,
-                    full_stack_combined,
-                    full_stack_two_strike,
-                    full_stack_momentum,
-                    profit_lock_execution_shadow.shadow.state_payload(),
-                    prospective_breakeven_profit_lock_state,
-                )
-            )
-        _write_json_atomic(
-            root / PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME,
-            full_stack_entry_exit,
-        )
-        full_stack_capacity_reflow = (
-            _prospective_full_stack_capacity_reflow_payload(
-                opening_opportunity_store,
-                opening_lineage_store,
-                journal,
-                feature_store,
-                prospective_combined_entry_filter_state,
-                prospective_two_strike_stop_filter_state,
-                prospective_momentum_band_entry_state,
-                full_stack_combined,
-                full_stack_two_strike,
-                full_stack_momentum,
-                opening_opportunity_exit_book_store,
-                replacement_funding_store,
-                replay_config.execution,
-                position_history_loader=lambda plan_id, through_ms: (
-                    execution.store.load_position_history(
-                        plan_id,
-                        through_ms=through_ms,
-                    )
-                ),
-            )
-        )
-        _write_json_atomic(
-            root / PROSPECTIVE_FULL_STACK_CAPACITY_REFLOW_SUMMARY_FILENAME,
-            full_stack_capacity_reflow,
-        )
-        if profit_lock_execution_shadow.shadow is None:
-            full_stack_exit_capacity_reflow = {
-                "enabled": False,
-                "research_only": True,
-                "execution_authority": False,
-                "promotion_authority": False,
-                "descriptive_only": True,
-                "changes_readiness_gate": False,
-                "error": (
-                    profit_lock_execution_shadow.error
-                    or "profit-lock execution shadow unavailable"
-                ),
-            }
-        else:
-            full_stack_exit_capacity_reflow = (
-                _prospective_full_stack_exit_capacity_reflow_payload(
+            cooldown_shadow_summary = (
+                _prospective_consecutive_loss_cooldown_shadow_payload(
                     opening_opportunity_store,
+                    opening_opportunity_path_store,
+                    prospective_consecutive_loss_cooldown_shadow_state,
+                    replay_config.execution,
+                    restore_error=(
+                        prospective_consecutive_loss_cooldown_shadow_restore_error
+                    ),
+                )
+            )
+            _write_json_atomic(
+                root
+                / PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME,
+                cooldown_shadow_summary,
+            )
+            full_stack_combined = _prospective_combined_entry_filter_payload(
+                journal,
+                facts,
+                opening_rank_store,
+                prospective_entry_filter_state,
+                prospective_top10_rank_filter_state,
+                prospective_combined_entry_filter_state,
+                restore_error=(
+                    prospective_combined_entry_filter_restore_error
+                ),
+            )
+            full_stack_momentum = _prospective_momentum_band_entry_payload(
+                journal,
+                feature_store,
+                prospective_momentum_band_entry_state,
+                restore_error=(
+                    prospective_momentum_band_entry_restore_error
+                ),
+            )
+            full_stack_two_strike = (
+                _prospective_two_strike_stop_filter_payload(
+                    journal,
+                    prospective_two_strike_stop_filter_state,
+                    restore_error=(
+                        prospective_two_strike_stop_filter_restore_error
+                    ),
+                )
+            )
+            momentum_band_forward_markout = (
+                _prospective_momentum_band_forward_markout_payload(
+                    opening_opportunity_store,
+                    opening_opportunity_path_store,
                     journal,
                     feature_store,
                     prospective_combined_entry_filter_state,
                     prospective_two_strike_stop_filter_state,
                     prospective_momentum_band_entry_state,
-                    full_stack_entry_exit,
-                    profit_lock_execution_shadow.shadow.state_payload(),
+                )
+            )
+            _write_json_atomic(
+                root
+                / PROSPECTIVE_MOMENTUM_BAND_FORWARD_MARKOUT_SUMMARY_FILENAME,
+                momentum_band_forward_markout,
+            )
+            full_stack_forward_markout = (
+                _prospective_full_stack_forward_markout_payload(
+                    opening_opportunity_store,
+                    opening_opportunity_path_store,
+                    journal,
+                    feature_store,
+                    prospective_combined_entry_filter_state,
+                    prospective_two_strike_stop_filter_state,
+                    prospective_momentum_band_entry_state,
+                )
+            )
+            _write_json_atomic(
+                root
+                / PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME,
+                full_stack_forward_markout,
+            )
+            try:
+                if prospective_weekly_drawdown_5m_exit_restore_error is not None:
+                    raise RuntimeError(
+                        "weekly-drawdown 5m candidate state restore failed: "
+                        + prospective_weekly_drawdown_5m_exit_restore_error
+                    )
+                weekly_drawdown_5m_exit_source = (
+                    prospective_weekly_drawdown_5m_exit_source(
+                        full_stack_forward_markout,
+                        opening_opportunity_store.iter_records(),
+                        opening_opportunity_exit_book_store.iter_records(),
+                        replacement_funding_store.iter_records(),
+                        replay_config.execution,
+                        prospective_weekly_drawdown_5m_exit_state,
+                    )
+                )
+            except Exception as exc:
+                weekly_drawdown_5m_exit_source = {
+                    "enabled": False,
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "changes_execution": False,
+                    "changes_risk_limits": False,
+                    "changes_candidate_readiness": False,
+                    "candidate_id": (
+                        prospective_weekly_drawdown_5m_exit_state.candidate_id
+                    ),
+                    "started_at_ms": (
+                        prospective_weekly_drawdown_5m_exit_state.started_at_ms
+                    ),
+                    "state_restore_error": (
+                        prospective_weekly_drawdown_5m_exit_restore_error
+                    ),
+                }
+            _write_json_atomic(
+                root / PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_SOURCE_FILENAME,
+                weekly_drawdown_5m_exit_source,
+            )
+            try:
+                long_trend_execution_shadow_source = (
+                    prospective_long_trend_execution_shadow_source(
+                        full_stack_forward_markout,
+                        opening_opportunity_store.iter_records(),
+                        opening_opportunity_path_store.iter_paths(),
+                        replay_config.execution,
+                    )
+                )
+            except Exception as exc:
+                long_trend_execution_shadow_source = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "changes_execution": False,
+                    "changes_risk_limits": False,
+                    "changes_candidate_readiness": False,
+                    "durable_gate_required": True,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            else:
+                long_trend_execution_shadow_source = dict(
+                    long_trend_execution_shadow_source
+                )
+                long_trend_execution_shadow_source["enabled"] = True
+                long_trend_execution_shadow_source["error"] = None
+            _write_json_atomic(
+                root
+                / PROSPECTIVE_LONG_TREND_EXECUTION_SHADOW_SOURCE_FILENAME,
+                long_trend_execution_shadow_source,
+            )
+            if profit_lock_execution_shadow.shadow is None:
+                full_stack_entry_exit = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "descriptive_only": True,
+                    "changes_readiness_gate": False,
+                    "error": (
+                        profit_lock_execution_shadow.error
+                        or "profit-lock execution shadow unavailable"
+                    ),
+                }
+            else:
+                full_stack_entry_exit = (
+                    _prospective_full_stack_entry_exit_payload(
+                        journal,
+                        full_stack_combined,
+                        full_stack_two_strike,
+                        full_stack_momentum,
+                        profit_lock_execution_shadow.shadow.state_payload(),
+                        prospective_breakeven_profit_lock_state,
+                    )
+                )
+            _write_json_atomic(
+                root / PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME,
+                full_stack_entry_exit,
+            )
+            full_stack_capacity_reflow = (
+                _prospective_full_stack_capacity_reflow_payload(
+                    opening_opportunity_store,
+                    opening_lineage_store,
+                    journal,
+                    feature_store,
+                    prospective_combined_entry_filter_state,
+                    prospective_two_strike_stop_filter_state,
+                    prospective_momentum_band_entry_state,
+                    full_stack_combined,
+                    full_stack_two_strike,
+                    full_stack_momentum,
                     opening_opportunity_exit_book_store,
                     replacement_funding_store,
                     replay_config.execution,
@@ -9941,11 +9920,50 @@ async def run_continuous_paper_session(
                     ),
                 )
             )
-        _write_json_atomic(
-            root
-            / PROSPECTIVE_FULL_STACK_EXIT_CAPACITY_REFLOW_SUMMARY_FILENAME,
-            full_stack_exit_capacity_reflow,
-        )
+            _write_json_atomic(
+                root / PROSPECTIVE_FULL_STACK_CAPACITY_REFLOW_SUMMARY_FILENAME,
+                full_stack_capacity_reflow,
+            )
+            if profit_lock_execution_shadow.shadow is None:
+                full_stack_exit_capacity_reflow = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "descriptive_only": True,
+                    "changes_readiness_gate": False,
+                    "error": (
+                        profit_lock_execution_shadow.error
+                        or "profit-lock execution shadow unavailable"
+                    ),
+                }
+            else:
+                full_stack_exit_capacity_reflow = (
+                    _prospective_full_stack_exit_capacity_reflow_payload(
+                        opening_opportunity_store,
+                        journal,
+                        feature_store,
+                        prospective_combined_entry_filter_state,
+                        prospective_two_strike_stop_filter_state,
+                        prospective_momentum_band_entry_state,
+                        full_stack_entry_exit,
+                        profit_lock_execution_shadow.shadow.state_payload(),
+                        opening_opportunity_exit_book_store,
+                        replacement_funding_store,
+                        replay_config.execution,
+                        position_history_loader=lambda plan_id, through_ms: (
+                            execution.store.load_position_history(
+                                plan_id,
+                                through_ms=through_ms,
+                            )
+                        ),
+                    )
+                )
+            _write_json_atomic(
+                root
+                / PROSPECTIVE_FULL_STACK_EXIT_CAPACITY_REFLOW_SUMMARY_FILENAME,
+                full_stack_exit_capacity_reflow,
+            )
         closed_trades = tuple(journal.iter_trades())
         summary = ContinuousPaperSummary(
             started_at_ms=started_at_ms,
