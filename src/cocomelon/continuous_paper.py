@@ -249,6 +249,9 @@ from cocomelon.research.profit_lock_execution_readiness import (
 from cocomelon.research.profit_lock_execution_readiness import (
     MIN_TRIGGERED_TRADES_PER_RULE as EXECUTION_MIN_TRIGGERED_TRADES_PER_RULE,
 )
+from cocomelon.research.profit_lock_activation_timeout import (
+    profit_lock_activation_timeout_summary,
+)
 from cocomelon.research.profit_lock_execution_shadow import (
     ProfitLockExecutionShadow,
 )
@@ -393,6 +396,9 @@ CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"
 PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME = (
     "profit-lock-execution-shadow-state.json"
 )
+PROFIT_LOCK_ACTIVATION_TIMEOUT_SUMMARY_FILENAME = (
+    "prospective-profit-lock-activation-timeout-summary.json"
+)
 PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-entry-filter-state.json"
 )
@@ -476,6 +482,7 @@ UPGRADE_DEFERRED_RESEARCH_FILENAMES = (
     PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME,
     PROSPECTIVE_MOMENTUM_BAND_FORWARD_MARKOUT_SUMMARY_FILENAME,
     PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME,
+    PROFIT_LOCK_ACTIVATION_TIMEOUT_SUMMARY_FILENAME,
     PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_SOURCE_FILENAME,
     PROSPECTIVE_LONG_TREND_EXECUTION_SHADOW_SOURCE_FILENAME,
     PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME,
@@ -2954,6 +2961,36 @@ def _prospective_momentum_band_forward_markout_payload(
             "changes_readiness_gate": False,
             "candidate_id": momentum_state.candidate_id,
             "overlap_started_at_ms": overlap_start,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
+def _profit_lock_activation_timeout_payload(
+    journal: JournalStore,
+    trade_path_store: ContinuousPaperTradePathStore,
+    execution_shadow_state: object,
+) -> dict[str, object]:
+    try:
+        payload = profit_lock_activation_timeout_summary(
+            tuple(journal.iter_trades()),
+            execution_shadow_state,
+            trade_path_store.iter_payloads(),
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "descriptive_only": True,
+            "changes_execution": False,
+            "changes_risk_limits": False,
+            "changes_candidate_readiness": False,
+            "candidate_family": "breakeven_activation_timeout",
             "error": f"{type(exc).__name__}: {exc}",
         }
     payload = dict(payload)
@@ -9833,6 +9870,32 @@ async def run_continuous_paper_session(
                 root
                 / PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME,
                 full_stack_forward_markout,
+            )
+            if profit_lock_execution_shadow.shadow is None:
+                activation_timeout = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "descriptive_only": True,
+                    "changes_execution": False,
+                    "changes_risk_limits": False,
+                    "changes_candidate_readiness": False,
+                    "candidate_family": "breakeven_activation_timeout",
+                    "error": (
+                        profit_lock_execution_shadow.error
+                        or "profit-lock execution shadow unavailable"
+                    ),
+                }
+            else:
+                activation_timeout = _profit_lock_activation_timeout_payload(
+                    journal,
+                    trade_path_store,
+                    profit_lock_execution_shadow.shadow.state_payload(),
+                )
+            _write_json_atomic(
+                root / PROFIT_LOCK_ACTIVATION_TIMEOUT_SUMMARY_FILENAME,
+                activation_timeout,
             )
             try:
                 if prospective_weekly_drawdown_5m_exit_restore_error is not None:
