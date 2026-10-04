@@ -2194,6 +2194,7 @@ def test_runtime_staggers_redundant_l2_lane_reconnects() -> None:
         "                        * config.websocket_redundant_lane_reconnect_stagger_ms"
         in source
     )
+    assert "max_systemic_l2_targeted_resubscribes=1" in source
 
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:
