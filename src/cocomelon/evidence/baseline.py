@@ -279,19 +279,11 @@ class RecordedStateBook:
 
     def _prune_micro_events(self, state: RecordedMarketState, now_ms: int) -> None:
         cutoff_ms = max(0, now_ms - self.microstructure_window_ms)
-        retained = sorted(
-            (
-                event
-                for event in state.micro_events
-                if int(event.receive_time.timestamp() * 1000) >= cutoff_ms
-            ),
-            key=lambda event: (
-                event.receive_time,
-                event.kind.value,
-                event.event_key,
-            ),
+        state.micro_events = deque(
+            event
+            for event in state.micro_events
+            if int(event.receive_time.timestamp() * 1000) >= cutoff_ms
         )
-        state.micro_events = deque(retained)
 
     def _apply_candle(self, state: RecordedMarketState, record: ReplayRecord) -> None:
         candle = replay_record_candle(record)
