@@ -219,6 +219,28 @@ def test_continuous_paper_upgrade_watchdog_does_not_require_heartbeat() -> None:
     assert "trap cleanup_runtime_processes EXIT" in source
 
 
+def test_upgrade_handoff_is_not_a_successful_research_source() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    fallback_at = source.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    fail_at = source.index(
+        "- name: Fail closed on upgrade handoff source"
+    )
+
+    assert fallback_at < fail_at
+    fail_block = source[fail_at:]
+    assert "session-summary.json" in fail_block
+    assert 'exit_reason == "upgrade_requested"' not in fail_block
+    assert '[ "$exit_reason" = "upgrade_requested" ]' in fail_block
+    assert "exit 75" in fail_block
+    assert (
+        "upgrade handoff run is state-continuity only "
+        "and must not be a successful research source"
+        in fail_block
+    )
+
+
 def test_continuous_paper_worker_is_hard_locked_to_paper() -> None:
     source = WORKFLOW.read_text(encoding="utf-8").lower()
     assert "cocomelon_execution_mode: paper" in source
