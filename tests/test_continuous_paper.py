@@ -754,6 +754,14 @@ def test_record_pump_drops_duplicate_event_keys() -> None:
     assert pipeline.calls == 1
     assert pump.processed_records == 1
     assert pump.duplicate_records_dropped == 1
+    assert set(pump.record_pump_max_process_ms_by_component) == {
+        "pipeline_on_record",
+        "journal_observations",
+        "entry_mid_markout_shadow",
+        "pipeline_finalize",
+        "journal_trade_updates",
+        "cadence_shadow",
+    }
 
 
 def test_record_pump_wakes_on_new_decision_epoch() -> None:
