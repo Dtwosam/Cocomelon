@@ -8,6 +8,9 @@ from enum import StrEnum
 from cocomelon.domain.market import MarketId
 
 
+MAX_L2_FUTURE_CLOCK_SKEW_MS = 60_000
+
+
 class StreamKind(StrEnum):
     ALL_MIDS = "all_mids"
     ACTIVE_ASSET_CTX = "active_asset_ctx"
@@ -38,6 +41,49 @@ class StreamEvent:
             raise ValueError("source must not be empty")
         if not self.event_key.strip():
             raise ValueError("event_key must not be empty")
+
+
+def l2_effective_exchange_time_ms(
+    event: StreamEvent,
+    *,
+    max_future_skew_ms: int = MAX_L2_FUTURE_CLOCK_SKEW_MS,
+) -> int | None:
+    if max_future_skew_ms < 0:
+        raise ValueError("max_future_skew_ms must be non-negative")
+    if event.kind is not StreamKind.L2_BOOK:
+        return None
+    exchange_time_ms = event.exchange_time_ms
+    if exchange_time_ms is None:
+        return None
+    received_at_ms = int(event.receive_time.timestamp() * 1000)
+    future_skew_ms = exchange_time_ms - received_at_ms
+    if future_skew_ms > max_future_skew_ms:
+        return None
+    return min(exchange_time_ms, received_at_ms)
+
+
+def l2_book_age_ms(
+    event: StreamEvent,
+    *,
+    as_of_ms: int,
+    max_future_skew_ms: int = MAX_L2_FUTURE_CLOCK_SKEW_MS,
+) -> int:
+    if event.kind is not StreamKind.L2_BOOK:
+        raise ValueError("L2 book age requires an L2 book event")
+    if as_of_ms < 0:
+        raise ValueError("as_of_ms must be non-negative")
+    if event.exchange_time_ms is None:
+        raise ValueError("L2 event exchange_time_ms is required")
+    received_at_ms = int(event.receive_time.timestamp() * 1000)
+    if received_at_ms > as_of_ms:
+        raise ValueError("L2 event was received after as_of_ms")
+    effective_exchange_time_ms = l2_effective_exchange_time_ms(
+        event,
+        max_future_skew_ms=max_future_skew_ms,
+    )
+    if effective_exchange_time_ms is None:
+        raise ValueError("L2 exchange timestamp is too far in the future")
+    return as_of_ms - effective_exchange_time_ms
 
 
 @dataclass(frozen=True, slots=True)
