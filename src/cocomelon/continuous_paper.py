@@ -7360,6 +7360,9 @@ def _operational_live_status_payload(
         "record_pump_max_lock_wait_ms": pump.record_pump_max_lock_wait_ms,
         "record_pump_slow_record_count": pump.record_pump_slow_record_count,
         "record_pump_last_slow_record": pump.record_pump_last_slow_record,
+        "startup_component_ms": dict(
+            sorted(pump.startup_component_ms.items())
+        ),
         "checkpoint_max_snapshot_ms": pump.checkpoint_max_snapshot_ms,
         "checkpoint_max_background_write_ms": (
             pump.checkpoint_max_background_write_ms
