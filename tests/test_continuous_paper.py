@@ -4375,6 +4375,10 @@ def test_runtime_hot_path_uses_only_operational_heartbeat() -> None:
     operational = source[operational_at:operational_end]
 
     assert '"heartbeat_scope": "operational"' in operational
+    assert (
+        '"checkpoint_snapshot_max_ms_by_component"'
+        in operational
+    )
     for field in (
         "stale_l2_recovery_attempts",
         "stale_l2_recovery_promotions",
