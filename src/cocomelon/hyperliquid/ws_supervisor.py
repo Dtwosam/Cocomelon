@@ -6,7 +6,14 @@ from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime
 
-from cocomelon.domain.stream import DataGap, FreshnessState, StreamEvent, StreamHealth, StreamKind
+from cocomelon.domain.stream import (
+    DataGap,
+    FreshnessState,
+    StreamEvent,
+    StreamHealth,
+    StreamKind,
+    l2_effective_exchange_time_ms,
+)
 from cocomelon.hyperliquid.ws_client import WsConnection
 from cocomelon.hyperliquid.ws_protocol import (
     WsProtocolError,
@@ -107,6 +114,7 @@ class WebSocketSupervisor:
         self._recent_keys: dict[str, deque[str]] = defaultdict(deque)
         self._recent_key_sets: dict[str, set[str]] = defaultdict(set)
         self._last_exchange_time: dict[str, int] = {}
+        self._last_l2_freshness_time: dict[str, int] = {}
         self._last_stream_message: dict[str, int] = {}
         self._open_gaps: dict[str, DataGap] = {}
         self._connected = False
@@ -139,9 +147,9 @@ class WebSocketSupervisor:
         )
 
     def _l2_freshness_anchor_ms(self, stream_id: str) -> int | None:
-        exchange_time = self._last_exchange_time.get(stream_id)
-        if exchange_time is not None:
-            return exchange_time
+        freshness_time = self._last_l2_freshness_time.get(stream_id)
+        if freshness_time is not None:
+            return freshness_time
         return self._last_stream_message.get(stream_id)
 
     def _l2_stream_is_stale(
@@ -199,9 +207,12 @@ class WebSocketSupervisor:
         )
         stale_payload_count = sum(
             (
-                (exchange_time_ms := self._last_exchange_time.get(stream_id))
+                (
+                    freshness_time_ms
+                    := self._last_l2_freshness_time.get(stream_id)
+                )
                 is not None
-                and now_ms - exchange_time_ms >= reconnect_after_ms
+                and now_ms - freshness_time_ms >= reconnect_after_ms
             )
             for stream_id in stream_ids
         )
@@ -345,6 +356,22 @@ class WebSocketSupervisor:
 
             if exchange_time is not None:
                 self._last_exchange_time[stream_id] = exchange_time
+            if event.kind is StreamKind.L2_BOOK:
+                freshness_time_ms = l2_effective_exchange_time_ms(event)
+                if freshness_time_ms is None:
+                    self._anomaly_count += 1
+                    await self._emit_gap(
+                        DataGap(
+                            stream_id=stream_id,
+                            started_ms=now_ms,
+                            ended_ms=now_ms,
+                            reason="future_exchange_time",
+                        )
+                    )
+                    continue
+                self._last_l2_freshness_time[
+                    stream_id
+                ] = freshness_time_ms
             if (
                 event.kind is StreamKind.L2_BOOK
                 and self._l2_stream_is_stale(
@@ -367,6 +394,7 @@ class WebSocketSupervisor:
     ) -> None:
         for stream_id in self._l2_stream_ids():
             self._last_exchange_time.pop(stream_id, None)
+            self._last_l2_freshness_time.pop(stream_id, None)
             self._last_stream_message[stream_id] = session_started_ms
             self._recent_keys.pop(stream_id, None)
             self._recent_key_sets.pop(stream_id, None)
