@@ -1412,6 +1412,22 @@ def test_runtime_checkpoints_write_off_event_loop_single_flight() -> None:
     ) == 1
 
 
+def test_runtime_profiles_checkpoint_snapshot_components() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "self.checkpoint_last_component_ms" in source
+    assert "self.checkpoint_max_component_ms" in source
+    assert "def timed_checkpoint_component" in source
+    assert '"checkpoint_payload"' in source
+    assert '"trade_path_checkpoint"' in source
+    assert '"cadence_payloads"' in source
+    assert '"prospective_state_payloads"' in source
+    assert '"checkpoint_last_component_ms"' in source
+    assert '"checkpoint_max_component_ms"' in source
+
+
 def test_runtime_wakes_l2_recovery_on_completed_decision_epoch() -> None:
     source = Path("src/cocomelon/continuous_paper.py").read_text(
         encoding="utf-8"
