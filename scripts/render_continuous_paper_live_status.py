@@ -9748,6 +9748,14 @@ def _render_operational_live_status(
                 f"{payload.get('checkpoint_background_skips', 0)}"
             ),
             (
+                "- checkpoint last component ms: "
+                f"{payload.get('checkpoint_last_component_ms', {})}"
+            ),
+            (
+                "- checkpoint max component ms: "
+                f"{payload.get('checkpoint_max_component_ms', {})}"
+            ),
+            (
                 "- event-loop phase / max lag / slow>=1s / samples: "
                 f"{payload.get('event_loop_phase', 'unknown')} / "
                 f"{payload.get('event_loop_max_lag_ms', 0)}ms / "
