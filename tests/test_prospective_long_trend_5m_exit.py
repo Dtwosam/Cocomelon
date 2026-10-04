@@ -438,7 +438,12 @@ def test_exact_five_minute_replay_is_research_only() -> None:
     assert result["entry_fills"] == 1
     assert result["complete_five_minute_exits"] == 1
     assert result["exact_realized_pnl_options"] == 1
+    assert Decimal(result["total_gross_realized_pnl"]) > 0
+    assert Decimal(result["total_fee_drag"]) > 0
     assert Decimal(result["total_exact_realized_pnl"]) > 0
+    assert result["gross_return_on_entry_notional"] is not None
+    assert result["fee_drag_fraction_of_entry_notional"] is not None
+    assert result["net_return_on_entry_notional"] is not None
     assert result["candidate_investigation_ready"] is False
     assert result["execution_authority"] is False
     assert result["promotion_authority"] is False
