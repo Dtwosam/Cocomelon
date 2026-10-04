@@ -225,6 +225,9 @@ jobs:
           tests/test_prospective_long_trend_carveout_forward_markout_ledger_workflow.py
           tests/test_prospective_long_trend_carveout_execution_shadow.py
           tests/test_prospective_long_trend_carveout_execution_shadow_workflow.py
+          tests/test_prospective_drawdown_5m_execution_source.py
+          tests/test_prospective_drawdown_5m_execution.py
+          tests/test_prospective_drawdown_5m_execution_integration.py
           tests/test_prospective_full_stack_matched_trade_ledger.py
           tests/test_prospective_full_stack_matched_trade_ledger_workflow.py
           tests/test_prospective_full_stack_capacity_reflow.py
