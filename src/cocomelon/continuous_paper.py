@@ -8396,109 +8396,109 @@ async def run_continuous_paper_session(
                     (
                         root / PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME,
                         timed_component(
-                        "prospective_entry_filter_state",
-                        prospective_entry_filter_state.payload,
-                    ),
+                            "prospective_entry_filter_state",
+                            prospective_entry_filter_state.payload,
+                        ),
                     ),
                     (
                         root / PROSPECTIVE_DELAYED_PRICE_CONFIRM_STATE_FILENAME,
                         timed_component(
-                        "prospective_delayed_price_confirmation_state",
-                        prospective_delayed_price_confirmation_state.payload,
-                    ),
+                            "prospective_delayed_price_confirmation_state",
+                            prospective_delayed_price_confirmation_state.payload,
+                        ),
                     ),
                     (
                         root / PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME,
                         timed_component(
-                        "prospective_top10_rank_filter_state",
-                        prospective_top10_rank_filter_state.payload,
-                    ),
+                            "prospective_top10_rank_filter_state",
+                            prospective_top10_rank_filter_state.payload,
+                        ),
                     ),
                     (
                         root / PROSPECTIVE_TRADE_QUALITY_STATE_FILENAME,
                         timed_component(
-                        "prospective_trade_quality_state",
-                        prospective_trade_quality_state.payload,
-                    ),
+                            "prospective_trade_quality_state",
+                            prospective_trade_quality_state.payload,
+                        ),
                     ),
                     (
                         root / PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME,
                         timed_component(
-                        "prospective_combined_entry_filter_state",
-                        prospective_combined_entry_filter_state.payload,
-                    ),
+                            "prospective_combined_entry_filter_state",
+                            prospective_combined_entry_filter_state.payload,
+                        ),
                     ),
                     (
                         root
                         / PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_STATE_FILENAME,
                         timed_component(
-                        "prospective_consecutive_loss_cooldown_shadow_state",
-                        prospective_consecutive_loss_cooldown_shadow_state.payload,
-                    ),
+                            "prospective_consecutive_loss_cooldown_shadow_state",
+                            prospective_consecutive_loss_cooldown_shadow_state.payload,
+                        ),
                     ),
                     (
                         root / PROSPECTIVE_BREAKEVEN_PROFIT_LOCK_STATE_FILENAME,
                         timed_component(
-                        "prospective_breakeven_profit_lock_state",
-                        prospective_breakeven_profit_lock_state.payload,
-                    ),
+                            "prospective_breakeven_profit_lock_state",
+                            prospective_breakeven_profit_lock_state.payload,
+                        ),
                     ),
                     (
                         root / PROSPECTIVE_MOMENTUM_BAND_ENTRY_STATE_FILENAME,
                         timed_component(
-                        "prospective_momentum_band_entry_state",
-                        prospective_momentum_band_entry_state.payload,
-                    ),
+                            "prospective_momentum_band_entry_state",
+                            prospective_momentum_band_entry_state.payload,
+                        ),
                     ),
                     (
                         root / PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME,
                         timed_component(
-                        "prospective_two_strike_stop_filter_state",
-                        prospective_two_strike_stop_filter_state.payload,
-                    ),
+                            "prospective_two_strike_stop_filter_state",
+                            prospective_two_strike_stop_filter_state.payload,
+                        ),
                     ),
                     (
                         root / PROSPECTIVE_REPLACEMENT_EXIT_POLICY_STATE_FILENAME,
                         timed_component(
-                        "prospective_replacement_exit_policy_state",
-                        prospective_replacement_exit_policy_state.payload,
-                    ),
+                            "prospective_replacement_exit_policy_state",
+                            prospective_replacement_exit_policy_state.payload,
+                        ),
                     ),
                     (
                         root
                         / PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_STATE_FILENAME,
                         timed_component(
-                        "prospective_weekly_drawdown_5m_exit_state",
-                        prospective_weekly_drawdown_5m_exit_state.payload,
-                    ),
+                            "prospective_weekly_drawdown_5m_exit_state",
+                            prospective_weekly_drawdown_5m_exit_state.payload,
+                        ),
                     ),
                     (
                         root / PROSPECTIVE_SIDE_CONDITIONED_DELAY_STATE_FILENAME,
                         timed_component(
-                        "prospective_side_conditioned_delay_state",
-                        prospective_side_conditioned_delay_state.payload,
-                    ),
+                            "prospective_side_conditioned_delay_state",
+                            prospective_side_conditioned_delay_state.payload,
+                        ),
                     ),
                     (
                         root / ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME,
                         timed_component(
-                        "adaptive_delay_selector_state",
-                        adaptive_delay_selector_state.payload,
-                    ),
+                            "adaptive_delay_selector_state",
+                            adaptive_delay_selector_state.payload,
+                        ),
                     ),
                     (
                         root / FILL_AWARE_DELAY_SELECTOR_STATE_FILENAME,
                         timed_component(
-                        "fill_aware_delay_selector_state",
-                        fill_aware_delay_selector_state.payload,
-                    ),
+                            "fill_aware_delay_selector_state",
+                            fill_aware_delay_selector_state.payload,
+                        ),
                     ),
                     (
                         root / DELAY_SELECTOR_COMPARISON_STATE_FILENAME,
                         timed_component(
-                        "delay_selector_comparison_state",
-                        delay_selector_comparison_state.payload,
-                    ),
+                            "delay_selector_comparison_state",
+                            delay_selector_comparison_state.payload,
+                        ),
                     ),
                 )
             )
@@ -8516,9 +8516,9 @@ async def run_continuous_paper_session(
                 (
                     root / DRAWDOWN_STATE_FILENAME,
                     timed_component(
-                    "drawdown_state",
-                    drawdown_tracker.state_payload,
-                ),
+                        "drawdown_state",
+                        drawdown_tracker.state_payload,
+                    ),
                 )
             )
             return tuple(payloads)
