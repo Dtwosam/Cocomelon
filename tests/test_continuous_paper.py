@@ -1998,6 +1998,29 @@ def test_context_refresh_timestamps_response_receipt() -> None:
     assert snapshots["BTC"].received_at_ms == 10_500
 
 
+def test_bulk_market_normalization_runs_off_event_loop() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    refresh = source.split(
+        "async def _refresh_native_market_snapshots(",
+        1,
+    )[1].split(
+        "def _watchlist_fallback_sort_key(",
+        1,
+    )[0]
+    warmup = source.split(
+        "async def _warmup_market(",
+        1,
+    )[1].split(
+        "class _RecordPump:",
+        1,
+    )[0]
+
+    assert "await asyncio.to_thread(\n        normalize_meta_and_asset_ctxs" in refresh
+    assert "await asyncio.to_thread(\n                normalize_candles" in warmup
+
+
 def test_continuous_context_poll_has_freshness_headroom() -> None:
     config = ContinuousPaperConfig()
     workflow = Path(
