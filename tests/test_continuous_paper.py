@@ -4381,6 +4381,8 @@ def test_runtime_hot_path_uses_only_operational_heartbeat() -> None:
         '"checkpoint_snapshot_max_ms_by_component"'
         in operational
     )
+    assert '"checkpoint_snapshot_slowest_component"' in operational
+    assert '"checkpoint_snapshot_slowest_component_ms"' in operational
     for field in (
         "stale_l2_recovery_attempts",
         "stale_l2_recovery_promotions",
