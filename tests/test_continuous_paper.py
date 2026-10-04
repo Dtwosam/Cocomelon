@@ -1814,7 +1814,12 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
     lanes = payload["lanes"]
     assert isinstance(lanes, list)
     assert lanes[0]["connected"] is True
-    assert lanes[0]["ready_l2_market_count"] == 3
+    assert lanes[0]["ready_l2_market_count"] == 0
+    assert lanes[0]["missing_ready_l2_markets"] == [
+        "BTC",
+        "ETH",
+        "SOL",
+    ]
     assert lanes[0]["stale_l2_market_count"] == 2
     assert lanes[0]["last_server_message_age_ms"] == 100
     assert lanes[0]["stale_deadline_buffered_message_count"] == 4
@@ -1837,11 +1842,53 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
         "SOL": 120,
     }
     assert lanes[1]["connected"] is False
-    assert lanes[1]["missing_ready_l2_markets"] == ["SOL"]
+    assert lanes[1]["ready_l2_market_count"] == 1
+    assert lanes[1]["missing_ready_l2_markets"] == ["BTC", "ETH"]
     assert lanes[1]["last_server_message_age_ms"] == 1_000
     assert lanes[1]["reconnect_count"] == 5
     assert lanes[1]["systemic_l2_stale_reconnect_count"] == 0
     assert lanes[1]["systemic_l2_targeted_resubscribe_count"] == 2
+
+
+def test_effective_l2_readiness_prefers_observed_fresh_evidence() -> None:
+    required = frozenset({"BTC", "ETH"})
+
+    class Lane:
+        def __init__(self, stale: tuple[str, ...]) -> None:
+            self._stale = stale
+
+        def stale_l2_streams(
+            self,
+            *,
+            now_ms: int,
+        ) -> tuple[str, ...]:
+            del now_ms
+            return self._stale
+
+    group = _SupervisorGroup(
+        supervisors=(
+            Lane(()),  # type: ignore[arg-type]
+            Lane(("l2Book:ETH",)),  # type: ignore[arg-type]
+        ),
+        tasks=(),
+        forward_gaps=asyncio.Event(),
+        required_market_keys=required,
+        ready_market_keys=(
+            set(),
+            {"BTC", "ETH"},
+        ),
+        l2_exchange_age_ms_by_market=(
+            {"BTC": 100, "ETH": 120},
+            {"BTC": 90, "ETH": 110},
+        ),
+    )
+
+    assert group.effective_ready_l2_market_keys_by_lane(
+        now_ms=10_000,
+    ) == (
+        frozenset({"BTC", "ETH"}),
+        frozenset({"BTC"}),
+    )
 
 
 def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
