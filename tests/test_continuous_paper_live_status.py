@@ -5985,6 +5985,12 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "duplicate_records_dropped": 7,
         "record_pump_max_process_ms": 82_000,
         "record_pump_max_lock_wait_ms": 81_500,
+        "record_pump_max_process_ms_by_component": {
+            "cadence_shadow": 15,
+            "journal_observations": 81_000,
+            "pipeline_finalize": 7,
+            "pipeline_on_record": 900,
+        },
         "record_pump_slow_record_count": 3,
         "checkpoint_max_snapshot_ms": 14,
         "checkpoint_max_background_write_ms": 82_000,
@@ -6329,6 +6335,12 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     )
     assert "duplicate records dropped: 7" in rendered
     assert "record pump max process / lock wait / slow>=1s: 82000ms / 81500ms / 3" in rendered
+    assert (
+        "record pump max by component: "
+        "{'cadence_shadow': 15, 'journal_observations': 81000, "
+        "'pipeline_finalize': 7, 'pipeline_on_record': 900}"
+        in rendered
+    )
     assert "last slow record pump:" in rendered
     assert "l2_book" in rendered
     assert (
