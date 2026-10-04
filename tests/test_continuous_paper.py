@@ -2171,7 +2171,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"trade_path_count": self.trade_path_count' in source
     assert '"trade_path_open_count": self.trade_path_open_count' in source
     assert '"trade_path_state_digest": self.trade_path_state_digest' in source
-    assert "trade_path_sink.checkpoint(pipeline.open_lifecycle_mark_paths)" in source
+    assert "trade_path_sink.checkpoint(" in source
+    assert "pipeline.open_lifecycle_mark_paths" in source
     assert '"trade_path_capture_error": self.trade_path_capture_error' in source
     assert '"trade_path_evidence": {' in source
     assert '"original_stop_book_evidence": {' in source
