@@ -8930,6 +8930,35 @@ async def run_continuous_paper_session(
                 await checkpoint_write_task
                 checkpoint_write_task = None
 
+        opening_path_observe_task: asyncio.Task[None] | None = None
+
+        def schedule_opening_path_observe(
+            snapshot_batch: dict[str, PerpMarketSnapshot],
+        ) -> None:
+            nonlocal opening_path_observe_task
+            previous_task = opening_path_observe_task
+            snapshots_for_research = dict(snapshot_batch)
+
+            async def observe_after_previous() -> None:
+                if previous_task is not None:
+                    await previous_task
+                await (
+                    opening_opportunity_sink
+                    .observe_snapshots_cooperatively(
+                        snapshots_for_research
+                    )
+                )
+
+            opening_path_observe_task = asyncio.create_task(
+                observe_after_previous()
+            )
+
+        async def flush_opening_path_observe() -> None:
+            nonlocal opening_path_observe_task
+            if opening_path_observe_task is not None:
+                await opening_path_observe_task
+                opening_path_observe_task = None
+
         persist_checkpoint_sync()
         if not _stop_requested(stop_path):
             _emit_operational_live_status(
@@ -9302,10 +9331,8 @@ async def run_continuous_paper_session(
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
-                pump.event_loop_phase = "path_observe_snapshots"
-                await opening_opportunity_sink.observe_snapshots_cooperatively(
-                    refreshed
-                )
+                pump.event_loop_phase = "path_observe_schedule"
+                schedule_opening_path_observe(refreshed)
                 pump.event_loop_phase = "exit_book_capture"
                 await capture_due_exit_books(
                     refreshed,
@@ -9467,6 +9494,7 @@ async def run_continuous_paper_session(
                 return_exceptions=True,
             )
 
+        await flush_opening_path_observe()
         await flush_background_checkpoint()
         persist_checkpoint_sync()
         ended_at_ms = utc_now_ms()
