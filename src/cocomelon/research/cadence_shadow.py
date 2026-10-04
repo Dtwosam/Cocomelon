@@ -392,6 +392,9 @@ class CadenceShadowComparator:
         self._skipped_missing_lead_strategy = 0
         self._seen_decisions: set[tuple[int, str]] = set()
         self._state_revision = 0
+        self._summary_payload_cache: dict[str, object] | None = None
+        self._summary_payload_cache_revision = -1
+        self._summary_payload_build_count = 0
         self._state_restored = False
         self._state_restore_error: str | None = None
 
@@ -665,6 +668,10 @@ class CadenceShadowComparator:
         return self._state_restored
 
     @property
+    def summary_payload_build_count(self) -> int:
+        return self._summary_payload_build_count
+
+    @property
     def outcomes(self) -> tuple[ShadowCadenceOutcome, ...]:
         return tuple(
             sorted(
@@ -893,6 +900,8 @@ class CadenceShadowComparator:
         self._skipped_missing_entry_px = skipped_entry
         self._skipped_missing_lead_strategy = skipped_strategy
         self._state_revision = 0
+        self._summary_payload_cache = None
+        self._summary_payload_cache_revision = -1
         self._state_restored = True
         self._state_restore_error = None
 
@@ -900,8 +909,16 @@ class CadenceShadowComparator:
         if not error.strip():
             raise ValueError("cadence shadow restore error must not be empty")
         self._state_restore_error = error
+        self._summary_payload_cache = None
+        self._summary_payload_cache_revision = -1
 
     def summary_payload(self) -> dict[str, object]:
+        if (
+            self._summary_payload_cache is not None
+            and self._summary_payload_cache_revision == self._state_revision
+        ):
+            return dict(self._summary_payload_cache)
+
         cadence_payload: dict[str, object] = {}
         for cadence_ms in SUPPORTED_CADENCES_MS:
             counts = self._decision_counts[cadence_ms]
@@ -971,7 +988,7 @@ class CadenceShadowComparator:
             for samples in self._pending.values()
             for sample in samples
         )
-        return {
+        payload = {
             "shadow_only": True,
             "execution_authority": False,
             "session_only": False,
@@ -1005,3 +1022,7 @@ class CadenceShadowComparator:
                 self._skipped_missing_lead_strategy
             ),
         }
+        self._summary_payload_cache = payload
+        self._summary_payload_cache_revision = self._state_revision
+        self._summary_payload_build_count += 1
+        return dict(payload)
