@@ -4133,6 +4133,7 @@ class _RecordPump:
         self.record_pump_max_lock_wait_ms = 0
         self.record_pump_slow_record_count = 0
         self.record_pump_last_slow_record: dict[str, object] | None = None
+        self.startup_component_ms: dict[str, int] = {}
         self.checkpoint_max_snapshot_ms = 0
         self.checkpoint_max_background_write_ms = 0
         self.checkpoint_background_max_ms_by_file: dict[str, int] = {}
@@ -6764,6 +6765,9 @@ def _live_status_payload(
         "record_pump_max_lock_wait_ms": pump.record_pump_max_lock_wait_ms,
         "record_pump_slow_record_count": pump.record_pump_slow_record_count,
         "record_pump_last_slow_record": pump.record_pump_last_slow_record,
+        "startup_component_ms": dict(
+            sorted(pump.startup_component_ms.items())
+        ),
         "checkpoint_max_snapshot_ms": pump.checkpoint_max_snapshot_ms,
         "checkpoint_max_background_write_ms": (
             pump.checkpoint_max_background_write_ms
@@ -7356,6 +7360,9 @@ def _operational_live_status_payload(
         "record_pump_max_lock_wait_ms": pump.record_pump_max_lock_wait_ms,
         "record_pump_slow_record_count": pump.record_pump_slow_record_count,
         "record_pump_last_slow_record": pump.record_pump_last_slow_record,
+        "startup_component_ms": dict(
+            sorted(pump.startup_component_ms.items())
+        ),
         "checkpoint_max_snapshot_ms": pump.checkpoint_max_snapshot_ms,
         "checkpoint_max_background_write_ms": (
             pump.checkpoint_max_background_write_ms
@@ -7836,37 +7843,85 @@ async def run_continuous_paper_session(
     if stop_path is not None and stop_path.exists():
         stop_path.unlink()
     started_at_ms = utc_now_ms()
+    startup_profile_started = time.perf_counter()
+    startup_component_ms: dict[str, int] = {}
+
+    def record_startup_component(
+        name: str,
+        component_started: float,
+    ) -> None:
+        startup_component_ms[name] = max(
+            0,
+            int((time.perf_counter() - component_started) * 1000),
+        )
+
     checkpoint_path = root / CHECKPOINT_FILENAME
-    checkpoints, gap_intervals, restored_available_at_ms = _load_checkpoint(checkpoint_path)
+    component_started = time.perf_counter()
+    checkpoints, gap_intervals, restored_available_at_ms = _load_checkpoint(
+        checkpoint_path
+    )
+    record_startup_component("checkpoint_load", component_started)
 
     reader = InfoClient(settings)
     replay_config = BaselineReplayConfig()
+    component_started = time.perf_counter()
     execution = PaperExecutionAdapter(
         root / "paper.sqlite3",
         replay_config.execution,
         starting_cash=Decimal("10000"),
         startup_timestamp_ms=started_at_ms,
     )
+    record_startup_component("execution_restore", component_started)
+
+    component_started = time.perf_counter()
     journal = JournalStore(root / "journal.sqlite3")
+    record_startup_component("journal_open", component_started)
+
+    component_started = time.perf_counter()
     facts = EvaluationFactStore(root / "facts.sqlite3")
+    record_startup_component("facts_open", component_started)
+
+    research_state_started = time.perf_counter()
+
+    component_started = time.perf_counter()
     feature_store = LearningFeatureSnapshotStore(root / "learning-features")
+    record_startup_component("learning_feature_store", component_started)
+
+    component_started = time.perf_counter()
     opening_lineage_store = ContinuousPaperOpeningLineageStore(
         root / "opening-lineage"
     )
+    record_startup_component("opening_lineage_store", component_started)
+
+    component_started = time.perf_counter()
     opening_rank_store = ContinuousPaperOpeningRankStore(
         root / "opening-ranks"
     )
+    record_startup_component("opening_rank_store", component_started)
+
+    component_started = time.perf_counter()
     opening_fill_liquidity_store = OpeningFillLiquidityStore(
         root / "opening-fill-liquidity"
+    )
+    record_startup_component(
+        "opening_fill_liquidity_store",
+        component_started,
     )
     opening_fill_liquidity_sink = (
         _ContinuousOpeningFillLiquiditySink(
             opening_fill_liquidity_store
         )
     )
+    component_started = time.perf_counter()
     opening_opportunity_store = ContinuousPaperOpeningOpportunityStore(
         root / "opening-opportunities"
     )
+    record_startup_component(
+        "opening_opportunity_store",
+        component_started,
+    )
+
+    component_started = time.perf_counter()
     opening_opportunity_path_store = (
         ContinuousPaperOpeningOpportunityPathStore(
             root / "opening-opportunity-paths",
@@ -7874,6 +7929,12 @@ async def run_continuous_paper_session(
             max_completion_lag_ms=DEFAULT_MAX_COMPLETION_LAG_MS,
         )
     )
+    record_startup_component(
+        "opening_opportunity_path_store",
+        component_started,
+    )
+
+    component_started = time.perf_counter()
     opening_opportunity_exit_book_store = (
         ContinuousPaperOpeningOpportunityExitBookStore(
             root / "opening-opportunity-exit-books",
@@ -7882,6 +7943,12 @@ async def run_continuous_paper_session(
             max_capture_lag_ms=MAX_FORWARD_MARKOUT_LAG_MS,
         )
     )
+    record_startup_component(
+        "opening_opportunity_exit_book_store",
+        component_started,
+    )
+
+    component_started = time.perf_counter()
     replacement_funding_store = ContinuousPaperReplacementFundingStore(
         root / "replacement-funding-boundaries",
         capture_started_at_ms=started_at_ms,
@@ -7897,9 +7964,19 @@ async def run_continuous_paper_session(
             replay_config.execution.funding_reconciliation_grace_ms
         ),
     )
+    record_startup_component(
+        "replacement_funding_store",
+        component_started,
+    )
+
+    component_started = time.perf_counter()
     original_stop_book_store = OriginalStopBookEvidenceStore(
         root / "original-stop-books",
         started_at_ms=started_at_ms,
+    )
+    record_startup_component(
+        "original_stop_book_store",
+        component_started,
     )
     rank_tracker = LatestCoarseRankTracker()
     opening_opportunity_sink = _ContinuousOpeningOpportunitySink(
@@ -7909,7 +7986,9 @@ async def run_continuous_paper_session(
         replacement_funding_store,
         rank_tracker,
     )
+    component_started = time.perf_counter()
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
+    record_startup_component("trade_path_store", component_started)
     trade_path_sink = _ContinuousTradePathSink(trade_path_store)
 
     async def capture_due_exit_books(
@@ -8284,6 +8363,10 @@ async def run_continuous_paper_session(
         root / DELAY_SELECTOR_COMPARISON_STATE_FILENAME,
         started_at_ms=started_at_ms,
     )
+    record_startup_component(
+        "research_state_restore",
+        research_state_started,
+    )
 
     event_loop_lag_task: asyncio.Task[None] | None = None
     try:
@@ -8293,6 +8376,7 @@ async def run_continuous_paper_session(
                 + ",".join(execution.health.reason_codes)
             )
 
+        component_started = time.perf_counter()
         (
             snapshots,
             initial_received_at_ms,
@@ -8320,7 +8404,12 @@ async def run_continuous_paper_session(
         )
         if not selected:
             raise RuntimeError("continuous paper scan produced no rankable native markets")
+        record_startup_component(
+            "initial_market_context",
+            component_started,
+        )
 
+        pipeline_restore_started = time.perf_counter()
         opening_lineage_sink = (
             None
             if runtime_identity is None
@@ -8370,7 +8459,12 @@ async def run_continuous_paper_session(
         cadence_shadow_persisted_revision: int | None = (
             0 if cadence_shadow.state_restored else None
         )
+        record_startup_component(
+            "pipeline_restore",
+            pipeline_restore_started,
+        )
         decision_epoch_wakeup = asyncio.Event()
+        component_started = time.perf_counter()
         pump = _RecordPump(
             pipeline,
             journal,
@@ -8380,6 +8474,15 @@ async def run_continuous_paper_session(
             position_provider=lambda: execution.account.positions,
             decision_epoch_wakeup=decision_epoch_wakeup,
         )
+        record_startup_component("record_pump_init", component_started)
+        startup_component_ms["pre_monitor_total"] = max(
+            0,
+            int(
+                (time.perf_counter() - startup_profile_started)
+                * 1000
+            ),
+        )
+        pump.startup_component_ms = dict(startup_component_ms)
         event_loop_lag_task = asyncio.create_task(
             _monitor_event_loop_lag(pump)
         )

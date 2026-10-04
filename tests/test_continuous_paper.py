@@ -4505,6 +4505,30 @@ def test_runtime_hot_path_uses_only_operational_heartbeat() -> None:
     assert '"checkpoint_snapshot_slowest_component_ms"' in operational
     assert '"checkpoint_cadence_state_serializations"' in operational
     assert '"checkpoint_cadence_state_skips"' in operational
+    assert '"startup_component_ms"' in operational
+    for component in (
+        "checkpoint_load",
+        "execution_restore",
+        "journal_open",
+        "facts_open",
+        "learning_feature_store",
+        "opening_lineage_store",
+        "opening_rank_store",
+        "opening_fill_liquidity_store",
+        "opening_opportunity_store",
+        "opening_opportunity_path_store",
+        "opening_opportunity_exit_book_store",
+        "replacement_funding_store",
+        "original_stop_book_store",
+        "trade_path_store",
+        "research_state_restore",
+        "initial_market_context",
+        "pipeline_restore",
+        "record_pump_init",
+        "pre_monitor_total",
+    ):
+        assert f'"{component}"' in source
+    assert "pump.startup_component_ms = dict(startup_component_ms)" in source
     assert "cadence_shadow.state_revision" in source
     assert "cadence_shadow_persisted_revision" in source
     for field in (
