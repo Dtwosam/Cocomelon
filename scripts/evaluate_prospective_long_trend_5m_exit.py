@@ -15,6 +15,9 @@ from cocomelon.research.continuous_paper_opening_opportunity_exit_books import (
 from cocomelon.research.continuous_paper_replacement_funding import (
     ReplacementFundingBoundaryEvidence,
 )
+from cocomelon.research.prospective_full_stack_forward_markout import (
+    LONG_TREND_CARVEOUT_CANDIDATE_ID,
+)
 from cocomelon.research.prospective_long_trend_5m_exit import (
     ProspectiveLongTrend5mExitError,
     prospective_long_trend_5m_exit_summary,
@@ -24,9 +27,6 @@ from cocomelon.research.prospective_long_trend_5m_exit_source import (
     ProspectiveLongTrend5mExitSourceError,
     ProspectiveLongTrend5mExitState,
     prospective_long_trend_5m_exit_source,
-)
-from cocomelon.research.prospective_full_stack_forward_markout import (
-    LONG_TREND_CARVEOUT_CANDIDATE_ID,
 )
 from cocomelon.research.prospective_long_trend_carveout_execution_shadow import (
     _execution_config_from_payload,
