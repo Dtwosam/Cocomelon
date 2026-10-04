@@ -231,6 +231,43 @@ def test_shadow_state_revision_tracks_only_durable_state_changes() -> None:
     assert restored.state_revision == 0
 
 
+def test_shadow_summary_payload_is_cached_until_state_changes() -> None:
+    comparator = CadenceShadowComparator((MARKET,))
+
+    first = comparator.summary_payload()
+    second = comparator.summary_payload()
+
+    assert first == second
+    assert comparator.summary_payload_build_count == 1
+
+    pending = _sample(Direction.LONG)
+    comparator._pending[
+        (pending.market.canonical, pending.target_end_ms)
+    ].append(pending)
+    target_start = pending.target_end_ms - FIVE_MINUTES_MS
+    comparator._settle_candle(
+        Candle(
+            market=MARKET,
+            interval="5m",
+            start_ms=target_start,
+            end_ms=pending.target_end_ms - 1,
+            open_px=Decimal("100"),
+            high_px=Decimal("102"),
+            low_px=Decimal("99"),
+            close_px=Decimal("101"),
+            volume=Decimal("10"),
+            trade_count=5,
+            source="hyperliquid-mainnet",
+            received_at_ms=pending.target_end_ms + 1_000,
+            schema_version=1,
+        )
+    )
+
+    third = comparator.summary_payload()
+    assert third["pending_outcome_count"] == 0
+    assert comparator.summary_payload_build_count == 2
+
+
 def test_shadow_state_round_trip_preserves_pending_and_settled_evidence() -> None:
     comparator = CadenceShadowComparator((MARKET,))
     pending = _sample(Direction.LONG)
