@@ -229,7 +229,7 @@ def test_fast_markout_ledger_rejects_changed_terminal_row() -> None:
 
     with pytest.raises(
         ProspectiveMomentumPullbackForwardMarkoutLedgerError,
-        match="previous terminal pullback markout row changed",
+        match="previous terminal momentum pullback markout row changed",
     ):
         update_momentum_pullback_forward_markout_ledger(
             _summary(state, [changed]),
