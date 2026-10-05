@@ -20,6 +20,7 @@ from cocomelon.domain.risk import (
 from cocomelon.domain.strategy import Direction, StrategyDecision
 from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.evidence.openings import conservative_cost_estimate
+from cocomelon.execution.funding import FUNDING_INTERVAL_MS
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityEvidence,
     _book_payload,
@@ -28,6 +29,9 @@ from cocomelon.research.continuous_paper_opening_opportunity import (
 )
 from cocomelon.research.continuous_paper_opening_opportunity_exit_books import (
     OpeningOpportunityExitBookEvidence,
+)
+from cocomelon.research.continuous_paper_replacement_funding import (
+    ReplacementFundingBoundaryEvidence,
 )
 from cocomelon.research.prospective_full_stack_forward_markout import (
     LONG_TREND_CARVEOUT_CANDIDATE_ID,
@@ -195,6 +199,40 @@ def _exit_book(
     )
 
 
+def _funding_evidence(
+    evidence: ContinuousPaperOpeningOpportunityEvidence,
+) -> tuple[ReplacementFundingBoundaryEvidence, ...]:
+    opened_at_ms = evidence.opportunity_timestamp_ms
+    closed_at_ms = opened_at_ms + EXIT_HORIZON_MS
+    first_boundary_ms = (
+        (opened_at_ms // FUNDING_INTERVAL_MS) + 1
+    ) * FUNDING_INTERVAL_MS
+    if first_boundary_ms > closed_at_ms:
+        return ()
+    return tuple(
+        ReplacementFundingBoundaryEvidence(
+            market=evidence.market,
+            boundary_ms=boundary_ms,
+            oracle_px=Decimal("100"),
+            oracle_observed_at_ms=boundary_ms - 100,
+            oracle_age_ms=100,
+            oracle_source="fixture",
+            oracle_schema_version=1,
+            funding_rate=Decimal("0"),
+            premium=Decimal("0"),
+            funding_time_ms=boundary_ms,
+            funding_received_at_ms=boundary_ms,
+            funding_source="fixture",
+            funding_schema_version=1,
+        )
+        for boundary_ms in range(
+            first_boundary_ms,
+            closed_at_ms + 1,
+            FUNDING_INTERVAL_MS,
+        )
+    )
+
+
 def _full_stack_summary(
     evidence: ContinuousPaperOpeningOpportunityEvidence,
     *,
@@ -315,7 +353,7 @@ def _source(
         ),
         (evidence,),
         (() if exit_book is None else (exit_book,)),
-        (),
+        _funding_evidence(evidence),
         PaperExecutionConfig(),
         state,
     )
