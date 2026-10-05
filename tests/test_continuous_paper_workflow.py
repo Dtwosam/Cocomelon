@@ -152,6 +152,14 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
     )
     assert durable_upload_at < first_terminal_research_upload_at
     assert durable_upload_at < fallback_dispatch_at
+    research_gate_at = source.index(
+        "- name: Fail closed on upgrade handoff source"
+    )
+    comparison_dispatch_at = source.index(
+        "- name: Queue exact LONG trend horizon comparison"
+    )
+    assert fallback_dispatch_at < research_gate_at < comparison_dispatch_at
+    assert comparison_dispatch_at < first_terminal_research_upload_at
 
 
 def test_continuous_paper_failure_still_dispatches_exact_state() -> None:
@@ -234,6 +242,7 @@ def test_upgrade_handoff_is_not_a_successful_research_source() -> None:
 
     assert fallback_at < fail_at
     fail_block = source[fail_at:]
+    assert "id: research_source_gate" in fail_block
     assert "session-summary.json" in fail_block
     assert 'exit_reason == "upgrade_requested"' not in fail_block
     assert '[ "$exit_reason" = "upgrade_requested" ]' in fail_block
@@ -243,6 +252,35 @@ def test_upgrade_handoff_is_not_a_successful_research_source() -> None:
         "and must not be a successful research source"
         in fail_block
     )
+
+
+def test_research_ready_durable_state_dispatches_exact_horizon_comparison() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    durable_at = source.index(
+        "- name: Upload durable continuous paper state"
+    )
+    gate_at = source.index(
+        "- name: Fail closed on upgrade handoff source"
+    )
+    dispatch_at = source.index(
+        "- name: Queue exact LONG trend horizon comparison"
+    )
+    terminal_research_at = source.index(
+        "- name: Upload cadence shadow research state"
+    )
+
+    assert durable_at < gate_at < dispatch_at < terminal_research_at
+    dispatch_block = source[dispatch_at:terminal_research_at]
+    assert "steps.research_source_gate.outcome == 'success'" in dispatch_block
+    assert "steps.durable_state_upload.outcome == 'success'" in dispatch_block
+    assert "continue-on-error: true" in dispatch_block
+    assert (
+        "gh workflow run "
+        "prospective-long-trend-exact-horizon-comparison.yml"
+        in dispatch_block
+    )
+    assert '-f "source_run_id=$GITHUB_RUN_ID"' in dispatch_block
+    assert '-f "source_run_attempt=$GITHUB_RUN_ATTEMPT"' in dispatch_block
 
 
 def test_continuous_paper_worker_is_hard_locked_to_paper() -> None:

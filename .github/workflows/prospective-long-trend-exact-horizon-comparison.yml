@@ -22,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       source_run_id:
-        description: Completed Continuous Mainnet Paper Trader run ID
+        description: Research-ready Continuous Mainnet Paper Trader run ID
         required: true
         type: string
       source_run_attempt:
@@ -116,19 +116,52 @@ jobs:
           '
           }
 
+          research_ready_for_run() {
+            local candidate_run_id="$1"
+            local jobs_json
+            jobs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/jobs?per_page=100"
+            )"
+            printf '%s' "$jobs_json" | python -c '
+          import json, sys
+          payload = json.load(sys.stdin)
+          paper_jobs = [
+              job for job in payload.get("jobs", [])
+              if job.get("name") == "paper"
+          ]
+          if len(paper_jobs) != 1:
+              raise SystemExit(0)
+          steps = {
+              step.get("name"): step.get("conclusion")
+              for step in paper_jobs[0].get("steps", [])
+          }
+          required = (
+              "Run continuous paper trader",
+              "Measure durable continuous paper state",
+              "Pack durable continuous paper state",
+              "Upload durable continuous paper state",
+              "Fail closed on upgrade handoff source",
+          )
+          if all(steps.get(name) == "success" for name in required):
+              print("ready")
+          '
+          }
+
           artifact_line=""
           if [[ "$run_id" =~ ^[0-9]+$ && "$run_attempt" =~ ^[0-9]+$ ]]; then
-            artifact_line="$(artifact_for_run "$run_id" "$run_attempt")"
+            if [ "$(research_ready_for_run "$run_id")" = "ready" ]; then
+              artifact_line="$(artifact_for_run "$run_id" "$run_attempt")"
+            fi
           fi
 
           if [ -z "$artifact_line" ]; then
             if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-              echo "manual source has no authenticated durable state artifact" >&2
+              echo "manual source is not research-ready or has no authenticated durable state artifact" >&2
               exit 1
             fi
 
             runs_json="$(
-              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=50"
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&per_page=50"
             )"
             mapfile -t artifact_candidates < <(
               printf '%s' "$runs_json" | python -c '
@@ -139,8 +172,7 @@ jobs:
               if (
                   run.get("path") == ".github/workflows/continuous-paper.yml"
                   and run.get("head_branch") == "main"
-                  and run.get("status") == "completed"
-                  and run.get("conclusion") == "success"
+                  and run.get("status") in {"in_progress", "completed"}
                   and (run.get("head_repository") or {}).get("full_name") == repo
                   and isinstance(run.get("id"), int)
                   and isinstance(run.get("run_attempt"), int)
@@ -150,6 +182,9 @@ jobs:
             )
             for candidate in "${artifact_candidates[@]}"; do
               IFS=$'\t' read -r candidate_run_id candidate_attempt <<<"$candidate"
+              if [ "$(research_ready_for_run "$candidate_run_id")" != "ready" ]; then
+                continue
+              fi
               candidate_artifact_line="$(
                 artifact_for_run "$candidate_run_id" "$candidate_attempt"
               )"
@@ -157,7 +192,7 @@ jobs:
                 run_id="$candidate_run_id"
                 run_attempt="$candidate_attempt"
                 artifact_line="$candidate_artifact_line"
-                resolution_mode="latest_successful_with_state_artifact"
+                resolution_mode="latest_research_ready_with_state_artifact"
                 break
               fi
             done
@@ -182,8 +217,8 @@ jobs:
               raise SystemExit("source workflow path mismatch")
           if run.get("head_branch") != "main":
               raise SystemExit("source run must be from main")
-          if run.get("status") != "completed" or run.get("conclusion") != "success":
-              raise SystemExit("source run must be completed successfully")
+          if run.get("status") not in {"in_progress", "completed"}:
+              raise SystemExit("source run status is not research-readable")
           if str(run.get("run_attempt")) != os.environ["SOURCE_ATTEMPT"]:
               raise SystemExit("source run attempt mismatch")
           if (run.get("head_repository") or {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:

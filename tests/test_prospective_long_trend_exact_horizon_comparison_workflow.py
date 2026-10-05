@@ -38,7 +38,7 @@ def test_exact_horizon_comparison_has_periodic_artifact_catchup() -> None:
 
     assert "  schedule:" in source
     assert '    - cron: "37 * * * *"' in source
-    assert "latest_successful_with_state_artifact" in source
+    assert "latest_research_ready_with_state_artifact" in source
     assert '      - "Continuous Mainnet Paper Trader"' in source
 
 
@@ -47,16 +47,41 @@ def test_exact_horizon_comparison_uses_authenticated_durable_state() -> None:
 
     assert "continuous-paper-state-" in source
     assert (
-        "manual source has no authenticated durable state artifact"
+        "manual source is not research-ready or has no authenticated "
+        "durable state artifact"
         in source
     )
+    assert "research_ready_for_run()" in source
+    assert '"Run continuous paper trader"' in source
+    assert '"Measure durable continuous paper state"' in source
+    assert '"Pack durable continuous paper state"' in source
+    assert '"Upload durable continuous paper state"' in source
+    assert '"Fail closed on upgrade handoff source"' in source
     assert 'run.get("head_branch") != "main"' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert 'run.get("status") not in {"in_progress", "completed"}' in source
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
     assert "state artifact digest is missing or invalid" in source
     assert "state artifact digest mismatch" in source
     assert "continuous-paper-state.tar" in source
+
+
+def test_exact_horizon_comparison_can_read_in_progress_research_ready_state() -> None:
+    source = _source()
+
+    assert (
+        'actions/workflows/continuous-paper.yml/runs?branch=main&per_page=50'
+        in source
+    )
+    assert (
+        'run.get("status") in {"in_progress", "completed"}'
+        in source
+    )
+    assert 'research_ready_for_run "$candidate_run_id"' in source
+    assert (
+        'resolution_mode="latest_research_ready_with_state_artifact"'
+        in source
+    )
 
 
 def test_exact_horizon_comparison_requires_shared_evidence_roots() -> None:
