@@ -45,6 +45,10 @@ from cocomelon.research.prospective_momentum_band_entry import (
 )
 from cocomelon.research.prospective_momentum_band_forward_markout import (
     prospective_momentum_band_forward_markout_summary,
+    prospective_momentum_pullback_forward_markout_summary,
+)
+from cocomelon.research.prospective_momentum_pullback_entry import (
+    ProspectiveMomentumPullbackEntryState,
 )
 from cocomelon.research.prospective_two_strike_stop_filter import (
     ProspectiveTwoStrikeStopFilterState,
@@ -66,6 +70,7 @@ def _record_feature(
     timestamp_ms: int,
     return_1h: str,
     day_return: str,
+    return_5m: str | None = None,
 ) -> str:
     snapshot = FeatureSnapshot(
         market=_market(market),
@@ -79,7 +84,9 @@ def _record_feature(
         oi_change_fraction=None,
         funding_change=None,
         mark_oracle_dislocation_bps=Decimal("0"),
-        return_5m=None,
+        return_5m=(
+            None if return_5m is None else Decimal(return_5m)
+        ),
         return_15m=None,
         return_1h=Decimal(return_1h),
         return_4h=None,
@@ -428,3 +435,100 @@ def test_momentum_forward_markout_excludes_base_stack_blocks(
     assert result["baseline_risk_rejected"] == 1
     assert result["base_combined_blocked"] == 1
     assert result["base_stack_risk_approved_evaluated"] == 0
+
+
+def test_pullback_forward_markout_separates_pullback_from_chase(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "pullback-features")
+    pullback = ProspectiveMomentumPullbackEntryState(
+        frozen_at_ms=START - EMBARGO_MS
+    )
+    admit_feature = _record_feature(
+        store,
+        market="SOL",
+        timestamp_ms=START + 900,
+        return_1h="0.03",
+        day_return="0.05",
+        return_5m="-0.005",
+    )
+    block_feature = _record_feature(
+        store,
+        market="ETH",
+        timestamp_ms=START + 1_900,
+        return_1h="0.03",
+        day_return="0.05",
+        return_5m="0.005",
+    )
+    admit = _opportunity(
+        suffix="pullback-admit",
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=START + 1_000,
+        feature_snapshot_id=admit_feature,
+    )
+    block = _opportunity(
+        suffix="pullback-block",
+        market="ETH",
+        direction=Direction.LONG,
+        timestamp_ms=START + 2_000,
+        feature_snapshot_id=block_feature,
+    )
+
+    result = prospective_momentum_pullback_forward_markout_summary(
+        (admit, block),
+        (
+            _path(admit, returns=("0.01", "0.02", "0.03")),
+            _path(block, returns=("-0.01", "-0.02", "-0.03")),
+        ),
+        store,
+        pullback,
+    )
+
+    assert result["risk_approved_evaluated"] == 2
+    assert result["pullback_admitted"] == 1
+    assert result["pullback_blocked"] == 1
+    assert result["integrity_clean"] is True
+    horizons = result["horizons"]
+    assert isinstance(horizons, dict)
+    one_hour = horizons["3600000"]
+    assert isinstance(one_hour, dict)
+    admit_summary = one_hour["admit"]
+    block_summary = one_hour["block"]
+    robust = one_hour["spread_robustness"]
+    assert isinstance(admit_summary, dict)
+    assert isinstance(block_summary, dict)
+    assert isinstance(robust, dict)
+    assert admit_summary["mean_directional_return"] == "0.03"
+    assert block_summary["mean_directional_return"] == "-0.03"
+    assert robust["admit_minus_block_mean_return"] == "0.06"
+    assert result["changes_readiness_gate"] is False
+
+
+def test_pullback_forward_markout_exposes_feature_integrity_miss(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "pullback-features")
+    pullback = ProspectiveMomentumPullbackEntryState(
+        frozen_at_ms=START - EMBARGO_MS
+    )
+    timestamp_ms = START + 3_000
+    missing = _opportunity(
+        suffix="pullback-missing",
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=timestamp_ms,
+        feature_snapshot_id="0123456789abcdef01234567",
+    )
+
+    result = prospective_momentum_pullback_forward_markout_summary(
+        (missing,),
+        (),
+        store,
+        pullback,
+    )
+
+    assert result["pullback_feature_integrity_misses"] == 1
+    assert result["integrity_clean"] is False
+    assert result["integrity_last_miss_at_ms"] == timestamp_ms
+    assert result["risk_approved_evaluated"] == 0
