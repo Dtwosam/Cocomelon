@@ -4505,13 +4505,14 @@ class _RecordPump:
                     0,
                     int((loop.time() - started) * 1000),
                 )
-                component_ms[name] = elapsed_ms
+                total_ms = component_ms.get(name, 0) + elapsed_ms
+                component_ms[name] = total_ms
                 self.record_pump_max_process_ms_by_component[name] = max(
                     self.record_pump_max_process_ms_by_component.get(
                         name,
                         0,
                     ),
-                    elapsed_ms,
+                    total_ms,
                 )
 
             component_started = loop.time()
@@ -4568,11 +4569,27 @@ class _RecordPump:
             for trade in finalized_trades:
                 if trade.trade_id in self._known_trade_ids:
                     continue
-                self.journal.record_trade(trade)
+                persist_started = loop.time()
+                if isinstance(self.journal, JournalStore):
+                    await self.journal.record_trade_async(trade)
+                else:
+                    await asyncio.to_thread(
+                        self.journal.record_trade,
+                        trade,
+                    )
+                finish_component(
+                    "journal_trade_persist",
+                    persist_started,
+                )
+                markout_started = loop.time()
                 if self.entry_mid_markout_shadow is not None:
                     self.entry_mid_markout_shadow.record_closed_trade(
                         trade
                     )
+                finish_component(
+                    "entry_mid_markout_close",
+                    markout_started,
+                )
                 self._known_trade_ids.add(trade.trade_id)
                 self._recent_closed_trades.append(trade)
                 self.closed_trades += 1

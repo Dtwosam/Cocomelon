@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 from collections.abc import Callable, Iterator, Mapping
@@ -430,8 +431,12 @@ class JournalStore:
         )
         self.connection.commit()
 
-    def record_trade(self, trade: TradeJournalEntry) -> None:
-        payload = self._canonical_json(trade)
+    @staticmethod
+    def _record_trade_transaction(
+        connection: sqlite3.Connection,
+        trade: TradeJournalEntry,
+        payload: str,
+    ) -> None:
         refs = (
             ("exit_plan", trade.exit_plan_ids),
             ("exit_attempt", trade.exit_attempt_ids),
@@ -441,17 +446,19 @@ class JournalStore:
             ("health", trade.health_refs),
         )
         try:
-            self.connection.execute("BEGIN IMMEDIATE")
-            existing = self.connection.execute(
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
                 "SELECT payload_json FROM journal_trades WHERE trade_id = ?",
                 (trade.trade_id,),
             ).fetchone()
             if existing is not None:
                 if existing[0] != payload:
-                    raise JournalConsistencyError(f"conflicting journal trade: {trade.trade_id}")
-                self.connection.commit()
+                    raise JournalConsistencyError(
+                        f"conflicting journal trade: {trade.trade_id}"
+                    )
+                connection.commit()
                 return
-            self.connection.execute(
+            connection.execute(
                 """
                 INSERT INTO journal_trades(
                     trade_id, market, direction, opened_at_ms, closed_at_ms, payload_json
@@ -468,17 +475,53 @@ class JournalStore:
             )
             for ref_kind, values in refs:
                 for ordinal, ref_id in enumerate(values):
-                    self.connection.execute(
+                    connection.execute(
                         """
                         INSERT INTO journal_trade_refs(trade_id, ref_kind, ordinal, ref_id)
                         VALUES (?, ?, ?, ?)
                         """,
                         (trade.trade_id, ref_kind, ordinal, ref_id),
                     )
-            self.connection.commit()
+            connection.commit()
         except Exception:
-            self.connection.rollback()
+            connection.rollback()
             raise
+
+    def record_trade(self, trade: TradeJournalEntry) -> None:
+        self._record_trade_transaction(
+            self.connection,
+            trade,
+            self._canonical_json(trade),
+        )
+
+    @staticmethod
+    def _record_trade_at_path(
+        path: Path,
+        trade: TradeJournalEntry,
+        payload: str,
+    ) -> None:
+        connection = sqlite3.connect(path)
+        try:
+            connection.execute("PRAGMA foreign_keys = ON")
+            JournalStore._record_trade_transaction(
+                connection,
+                trade,
+                payload,
+            )
+        finally:
+            connection.close()
+
+    async def record_trade_async(
+        self,
+        trade: TradeJournalEntry,
+    ) -> None:
+        payload = self._canonical_json(trade)
+        await asyncio.to_thread(
+            self._record_trade_at_path,
+            self.path,
+            trade,
+            payload,
+        )
 
     def load_trade(self, trade_id: str) -> TradeJournalEntry | None:
         row = self.connection.execute(
