@@ -180,10 +180,42 @@ def test_state_round_trip_locks_pullback_rule() -> None:
 def test_pullback_rule_is_direction_normalized(tmp_path: Path) -> None:
     store = LearningFeatureSnapshotStore(tmp_path / "features")
     rows = (
-        ("long-pullback", "SOL", Direction.LONG, "-0.005", "0.02", "0.08", "ADMIT"),
-        ("long-chase", "ETH", Direction.LONG, "0.005", "0.02", "0.08", "BLOCK"),
-        ("short-pullback", "BTC", Direction.SHORT, "0.005", "-0.02", "-0.08", "ADMIT"),
-        ("short-chase", "HYPE", Direction.SHORT, "-0.005", "-0.02", "-0.08", "BLOCK"),
+        (
+            "long-pullback",
+            "SOL",
+            Direction.LONG,
+            "-0.005",
+            "0.02",
+            "0.08",
+            "ADMIT",
+        ),
+        (
+            "long-chase",
+            "ETH",
+            Direction.LONG,
+            "0.005",
+            "0.02",
+            "0.08",
+            "BLOCK",
+        ),
+        (
+            "short-pullback",
+            "BTC",
+            Direction.SHORT,
+            "0.005",
+            "-0.02",
+            "-0.08",
+            "ADMIT",
+        ),
+        (
+            "short-chase",
+            "HYPE",
+            Direction.SHORT,
+            "-0.005",
+            "-0.02",
+            "-0.08",
+            "BLOCK",
+        ),
     )
     for index, (
         suffix,
@@ -211,7 +243,6 @@ def test_pullback_rule_is_direction_normalized(tmp_path: Path) -> None:
             feature_snapshot_id=snapshot_id,
         )
         assert detail["decision"] == expected, suffix
-    store.close()
 
 
 def test_missing_pullback_feature_fails_open_but_blocks_readiness(
@@ -249,7 +280,6 @@ def test_missing_pullback_feature_fails_open_but_blocks_readiness(
     assert isinstance(readiness, dict)
     assert readiness["feature_integrity_clean"] is False
     assert readiness["ready_for_review"] is False
-    store.close()
 
 
 def test_pre_embargo_trade_receives_zero_credit(tmp_path: Path) -> None:
@@ -302,7 +332,6 @@ def test_pre_embargo_trade_receives_zero_credit(tmp_path: Path) -> None:
     assert isinstance(details, dict)
     assert trades[0].trade_id not in details
     assert trades[1].trade_id in details
-    store.close()
 
 
 def _economic_sample(
@@ -373,7 +402,6 @@ def test_pullback_candidate_requires_profitable_robust_economics(
     assert readiness["single_trade_robust"] is True
     assert readiness["single_market_robust"] is True
     assert readiness["ready_for_review"] is True
-    store.close()
 
 
 def test_pullback_candidate_rejects_less_bad_losing_economics(
@@ -397,4 +425,3 @@ def test_pullback_candidate_rejects_less_bad_losing_economics(
     assert readiness["improvement_positive"] is True
     assert readiness["economics_positive"] is False
     assert readiness["ready_for_review"] is False
-    store.close()
