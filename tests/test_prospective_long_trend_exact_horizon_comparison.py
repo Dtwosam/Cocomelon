@@ -20,13 +20,24 @@ def _row(
     *,
     pnl: str | None,
     market: str | None = None,
+    return_fraction: str | None = None,
+    incomplete_reason: str | None = None,
 ) -> dict[str, object]:
+    normalized_return = (
+        None
+        if pnl is None
+        else return_fraction
+        if return_fraction is not None
+        else str(Decimal(pnl) / Decimal("100"))
+    )
     return {
         "opportunity_id": f"opp-{index:02d}",
         "timestamp_ms": COMMON_FROZEN_STARTED_AT_MS + index * 60_000,
         "market": market or f"M{index % 4}",
         "direction": "long",
         "exact_realized_pnl": pnl,
+        "exact_realized_return_fraction": normalized_return,
+        "incomplete_reason": incomplete_reason,
     }
 
 
@@ -62,6 +73,9 @@ def test_common_future_sample_can_robustly_prefer_five_minutes() -> None:
         _summary(FIFTEEN_MINUTE_HORIZON_MS, fifteen_rows),
     )
 
+    assert result["five_minute_source_options"] == 12
+    assert result["fifteen_minute_source_options"] == 12
+    assert result["common_source_options"] == 12
     assert result["paired_exact_options"] == 12
     assert result["market_count"] == 4
     assert result["minimum_sample_met"] is True
@@ -75,6 +89,18 @@ def test_common_future_sample_can_robustly_prefer_five_minutes() -> None:
     assert result["five_minute_robustly_better"] is True
     assert result["fifteen_minute_robustly_better"] is False
     assert result["preferred_horizon"] == "5m"
+    assert result["total_return_fraction_delta_5m_minus_15m"] == "0.12"
+    assert (
+        Decimal(result["size_normalized_leave_one_trade_min_delta"])
+        > 0
+    )
+    assert (
+        Decimal(result["size_normalized_leave_one_market_min_delta"])
+        > 0
+    )
+    assert result["five_minute_size_normalized_robustly_better"] is True
+    assert result["fifteen_minute_size_normalized_robustly_better"] is False
+    assert result["size_normalized_preferred_horizon"] == "5m"
     assert result["execution_authority"] is False
     assert result["promotion_authority"] is False
     assert result["changes_execution"] is False
@@ -99,17 +125,49 @@ def test_common_future_sample_can_robustly_prefer_fifteen_minutes() -> None:
     assert result["five_minute_robustly_better"] is False
     assert result["fifteen_minute_robustly_better"] is True
     assert result["preferred_horizon"] == "15m"
+    assert result["five_minute_size_normalized_robustly_better"] is False
+    assert result["fifteen_minute_size_normalized_robustly_better"] is True
+    assert result["size_normalized_preferred_horizon"] == "15m"
+
+
+def test_size_normalized_readout_can_disagree_with_dollar_weighting() -> None:
+    five_rows = [
+        _row(
+            index,
+            pnl=("20" if index == 0 else "1"),
+            return_fraction=("0.01" if index == 0 else "0.02"),
+        )
+        for index in range(12)
+    ]
+    fifteen_rows = [
+        _row(
+            index,
+            pnl=("0" if index == 0 else "2"),
+            return_fraction=("0.00" if index == 0 else "0.01"),
+        )
+        for index in range(12)
+    ]
+
+    result = prospective_long_trend_exact_horizon_comparison(
+        _summary(FIVE_MINUTE_HORIZON_MS, five_rows),
+        _summary(FIFTEEN_MINUTE_HORIZON_MS, fifteen_rows),
+    )
+
+    assert result["total_pnl_delta_5m_minus_15m"] == "9"
+    assert result["preferred_horizon"] == "none"
+    assert result["total_return_fraction_delta_5m_minus_15m"] == "0.12"
+    assert result["size_normalized_preferred_horizon"] == "5m"
 
 
 def test_unpaired_exact_rows_receive_no_comparison_credit() -> None:
     five_rows = [
         _row(0, pnl="2"),
         _row(1, pnl="3"),
-        _row(2, pnl=None),
+        _row(2, pnl=None, incomplete_reason="missing_exit_book"),
     ]
     fifteen_rows = [
         _row(0, pnl="1"),
-        _row(1, pnl=None),
+        _row(1, pnl=None, incomplete_reason="funding_evidence_required"),
         _row(2, pnl="4"),
     ]
 
@@ -118,6 +176,15 @@ def test_unpaired_exact_rows_receive_no_comparison_credit() -> None:
         _summary(FIFTEEN_MINUTE_HORIZON_MS, fifteen_rows),
     )
 
+    assert result["five_minute_source_options"] == 3
+    assert result["fifteen_minute_source_options"] == 3
+    assert result["common_source_options"] == 3
+    assert result["five_minute_incomplete_reasons"] == {
+        "missing_exit_book": 1,
+    }
+    assert result["fifteen_minute_incomplete_reasons"] == {
+        "funding_evidence_required": 1,
+    }
     assert result["five_minute_exact_options"] == 2
     assert result["fifteen_minute_exact_options"] == 2
     assert result["paired_exact_options"] == 1
@@ -134,6 +201,9 @@ def test_unpaired_exact_rows_receive_no_comparison_credit() -> None:
             "five_minute_exact_realized_pnl": "2",
             "fifteen_minute_exact_realized_pnl": "1",
             "pnl_delta_5m_minus_15m": "1",
+            "five_minute_exact_return_fraction": "0.02",
+            "fifteen_minute_exact_return_fraction": "0.01",
+            "return_fraction_delta_5m_minus_15m": "0.01",
         }
     ]
 
