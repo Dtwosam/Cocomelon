@@ -9537,6 +9537,17 @@ async def run_continuous_paper_session(
                         )
                     await _cooperative_stream_yield()
 
+                def lane_activity_hook(
+                    phase: str,
+                    active: bool,
+                    lane: int = lane,
+                ) -> None:
+                    _set_background_activity(
+                        pump,
+                        f"websocket_lane_{lane}",
+                        f"supervisor_{phase}" if active else None,
+                    )
+
                 supervisor = WebSocketSupervisor(
                     connection_factory,
                     plan.subscribe,
@@ -9561,19 +9572,7 @@ async def run_continuous_paper_session(
                         * config.websocket_redundant_lane_reconnect_stagger_ms
                     ),
                     max_systemic_l2_targeted_resubscribes=1,
-                    activity_hook=(
-                        lambda phase, active, lane=lane: (
-                            _set_background_activity(
-                                pump,
-                                f"websocket_lane_{lane}",
-                                (
-                                    f"supervisor_{phase}"
-                                    if active
-                                    else None
-                                ),
-                            )
-                        )
-                    ),
+                    activity_hook=lane_activity_hook,
                 )
                 supervisors.append(supervisor)
                 tasks.append(
