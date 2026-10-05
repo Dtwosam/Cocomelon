@@ -48,6 +48,25 @@ def _book_imbalance(event: StreamEvent) -> Decimal | None:
     return (bids - asks) / total
 
 
+def _event_order_key(
+    receive_ms: int,
+    event: StreamEvent,
+) -> tuple[int, int, str]:
+    return (
+        receive_ms,
+        -1 if event.exchange_time_ms is None else event.exchange_time_ms,
+        event.event_key,
+    )
+
+
+def _sort_included_events(
+    included: list[tuple[int, StreamEvent]],
+) -> None:
+    included.sort(
+        key=lambda item: _event_order_key(item[0], item[1])
+    )
+
+
 def build_microstructure_window(
     events: Sequence[StreamEvent],
     *,
@@ -60,29 +79,37 @@ def build_microstructure_window(
     if window_ms <= 0:
         raise ValueError("window_ms must be positive")
 
-    for event in events:
-        if event.kind not in ALLOWED_KINDS:
-            raise ValueError("microstructure input accepts only TRADE or L2_BOOK events")
-        if event.market != market:
-            raise ValueError("microstructure event market must match requested market")
-
     start_ms = max(0, as_of_ms - window_ms)
     included: list[tuple[int, StreamEvent]] = []
+    previous_order_key: tuple[int, int, str] | None = None
+    canonically_ordered = True
     for event in events:
+        if event.kind not in ALLOWED_KINDS:
+            raise ValueError(
+                "microstructure input accepts only TRADE or L2_BOOK events"
+            )
+        if event.market != market:
+            raise ValueError(
+                "microstructure event market must match requested market"
+            )
+
         receive_ms = _receive_ms(event.receive_time)
         if receive_ms < start_ms or receive_ms > as_of_ms:
             continue
         if event.exchange_time_ms is None or event.exchange_time_ms > as_of_ms:
             continue
-        included.append((receive_ms, event))
 
-    included.sort(
-        key=lambda item: (
-            item[0],
-            -1 if item[1].exchange_time_ms is None else item[1].exchange_time_ms,
-            item[1].event_key,
-        )
-    )
+        order_key = _event_order_key(receive_ms, event)
+        if (
+            previous_order_key is not None
+            and order_key < previous_order_key
+        ):
+            canonically_ordered = False
+        included.append((receive_ms, event))
+        previous_order_key = order_key
+
+    if not canonically_ordered:
+        _sort_included_events(included)
 
     buy_notional = ZERO
     sell_notional = ZERO

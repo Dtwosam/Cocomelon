@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import cocomelon.strategies.microstructure as microstructure_module
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.hyperliquid.ws_protocol import normalize_ws_message
@@ -76,6 +77,81 @@ def test_trade_flow_imbalance_is_decimal_and_input_order_invariant() -> None:
     )
     assert isinstance(first.trade_flow_imbalance, Decimal)
     assert first == second
+
+
+def test_canonical_microstructure_input_skips_sort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events = sorted(
+        _trade_events(),
+        key=lambda event: (
+            int(event.receive_time.timestamp() * 1000),
+            -1 if event.exchange_time_ms is None else event.exchange_time_ms,
+            event.event_key,
+        ),
+    )
+
+    def fail_sort(
+        _included: list[tuple[int, StreamEvent]],
+    ) -> None:
+        raise AssertionError("canonical live input must not be sorted again")
+
+    monkeypatch.setattr(
+        microstructure_module,
+        "_sort_included_events",
+        fail_sort,
+    )
+
+    window = build_microstructure_window(
+        events,
+        market=MarketId("", "BTC"),
+        as_of_ms=AS_OF_MS,
+    )
+
+    assert window.trade_count == len(events)
+
+
+def test_out_of_order_microstructure_input_uses_canonical_sort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events = sorted(
+        _trade_events(),
+        key=lambda event: (
+            int(event.receive_time.timestamp() * 1000),
+            -1 if event.exchange_time_ms is None else event.exchange_time_ms,
+            event.event_key,
+        ),
+    )
+    calls = 0
+    real_sort = microstructure_module._sort_included_events
+
+    def counting_sort(
+        included: list[tuple[int, StreamEvent]],
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        real_sort(included)
+
+    monkeypatch.setattr(
+        microstructure_module,
+        "_sort_included_events",
+        counting_sort,
+    )
+
+    expected = build_microstructure_window(
+        events,
+        market=MarketId("", "BTC"),
+        as_of_ms=AS_OF_MS,
+    )
+    calls = 0
+    actual = build_microstructure_window(
+        list(reversed(events)),
+        market=MarketId("", "BTC"),
+        as_of_ms=AS_OF_MS,
+    )
+
+    assert calls == 1
+    assert actual == expected
 
 
 def test_single_real_book_has_latest_imbalance_but_no_change() -> None:
