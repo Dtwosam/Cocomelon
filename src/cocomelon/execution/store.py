@@ -737,6 +737,192 @@ class PaperExecutionStore:
             (account.state_id, account_json),
         )
 
+    def _write_marked_account(
+        self,
+        previous: PaperAccountState,
+        account: PaperAccountState,
+    ) -> None:
+        previous_markets = tuple(
+            position.market.canonical
+            for position in previous.positions
+        )
+        account_markets = tuple(
+            position.market.canonical
+            for position in account.positions
+        )
+        if account_markets != previous_markets:
+            raise ValueError(
+                "mark persistence cannot change the open-position set"
+            )
+
+        existing_account = self._conn.execute(
+            "SELECT state_id FROM paper_account_state "
+            "WHERE singleton_id = 1"
+        ).fetchone()
+        if existing_account is None:
+            self._write_materialized_account(account)
+            return
+        if str(existing_account[0]) != previous.state_id:
+            raise ValueError(
+                "paper account mark base state does not match durable state"
+            )
+
+        account_json = _canonical_json(_account_payload(account))
+        if account.state_id == previous.state_id:
+            existing_payload = self._conn.execute(
+                "SELECT payload_json FROM paper_account_state "
+                "WHERE singleton_id = 1"
+            ).fetchone()
+            if (
+                existing_payload is None
+                or str(existing_payload[0]) != account_json
+            ):
+                raise ValueError(
+                    "immutable payload mismatch for paper account state"
+                )
+            return
+
+        for position in account.positions:
+            payload = _canonical_json(_position_payload(position))
+            self._conn.execute(
+                """
+                INSERT INTO paper_positions(
+                    market,
+                    position_id,
+                    payload_json
+                )
+                VALUES (?, ?, ?)
+                ON CONFLICT(market) DO UPDATE SET
+                    position_id=excluded.position_id,
+                    payload_json=excluded.payload_json
+                """,
+                (
+                    position.market.canonical,
+                    position.position_id,
+                    payload,
+                ),
+            )
+            event_id = f"{account.state_id}:{position.position_id}"
+            self._put_immutable(
+                "paper_position_events",
+                "event_id",
+                event_id,
+                payload,
+                extra_columns=("market",),
+                extra_values=(position.market.canonical,),
+            )
+
+        existing_peak_rows = tuple(
+            (
+                int(ordinal),
+                int(timestamp_ms),
+                str(equity),
+            )
+            for ordinal, timestamp_ms, equity in self._conn.execute(
+                """
+                SELECT ordinal, timestamp_ms, equity
+                FROM paper_rolling_peak_candidates
+                ORDER BY ordinal
+                """
+            ).fetchall()
+        )
+        previous_peaks = tuple(
+            (point.timestamp_ms, str(point.equity))
+            for point in previous.rolling_peak_candidates
+        )
+        if tuple(
+            (timestamp_ms, equity)
+            for _ordinal, timestamp_ms, equity in existing_peak_rows
+        ) != previous_peaks:
+            raise ValueError(
+                "materialized rolling peak state does not match mark base"
+            )
+
+        next_peaks = tuple(
+            (point.timestamp_ms, str(point.equity))
+            for point in account.rolling_peak_candidates
+        )
+        if not next_peaks:
+            raise ValueError(
+                "marked account must retain rolling peak state"
+            )
+
+        retained = next_peaks[:-1]
+        retained_start: int | None = None
+        for start in range(
+            0,
+            len(previous_peaks) - len(retained) + 1,
+        ):
+            if (
+                previous_peaks[start : start + len(retained)]
+                == retained
+            ):
+                retained_start = start
+                break
+        if retained_start is None:
+            raise ValueError(
+                "marked account rolling peak transition is not incremental"
+            )
+
+        if retained:
+            retained_rows = existing_peak_rows[
+                retained_start : retained_start + len(retained)
+            ]
+            first_ordinal = retained_rows[0][0]
+            last_ordinal = retained_rows[-1][0]
+            self._conn.execute(
+                """
+                DELETE FROM paper_rolling_peak_candidates
+                WHERE ordinal < ? OR ordinal > ?
+                """,
+                (first_ordinal, last_ordinal),
+            )
+            next_ordinal = last_ordinal + 1
+        else:
+            self._conn.execute(
+                "DELETE FROM paper_rolling_peak_candidates"
+            )
+            next_ordinal = 0
+
+        latest_timestamp_ms, latest_equity = next_peaks[-1]
+        self._conn.execute(
+            """
+            INSERT INTO paper_rolling_peak_candidates(
+                ordinal,
+                timestamp_ms,
+                equity
+            )
+            VALUES (?, ?, ?)
+            """,
+            (
+                next_ordinal,
+                latest_timestamp_ms,
+                latest_equity,
+            ),
+        )
+        self._conn.execute(
+            "INSERT INTO paper_account_state("
+            "singleton_id, state_id, payload_json"
+            ") VALUES (1, ?, ?) "
+            "ON CONFLICT(singleton_id) DO UPDATE SET "
+            "state_id=excluded.state_id, "
+            "payload_json=excluded.payload_json",
+            (account.state_id, account_json),
+        )
+
+    def persist_marked_account(
+        self,
+        previous: PaperAccountState,
+        account: PaperAccountState,
+    ) -> None:
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+            self._write_marked_account(previous, account)
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+
     def persist_account(self, account: PaperAccountState) -> None:
         try:
             self._conn.execute("BEGIN IMMEDIATE")
