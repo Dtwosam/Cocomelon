@@ -289,6 +289,18 @@ jobs:
             exit "$STATUS"
           fi
 
+      - name: Build context-conditioned paper diagnostics
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        run: |
+          set -euo pipefail
+          AS_OF_MS="$(date +%s%3N)"
+          cocomelon-context-conditioned-paper \
+            --learning-root continuous-learning-state/ledger \
+            --feature-store-dir continuous-learning-state/features \
+            --as-of-ms "$AS_OF_MS" \
+            --min-group-rows 3 \
+            > continuous-learning-state/context-diagnostics.json
+
       - name: Render research-only sync summary
         if: ${{ steps.upstream.outputs.eligible == 'true' }}
         run: |
@@ -303,6 +315,11 @@ jobs:
           )
           readiness = json.loads(
               Path("continuous-learning-state/readiness.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          context = json.loads(
+              Path("continuous-learning-state/context-diagnostics.json").read_text(
                   encoding="utf-8"
               )
           )
@@ -322,6 +339,20 @@ jobs:
               "- structural readiness: "
               + ("ready" if readiness["structurally_ready"] else "not ready")
           )
+          comparison_ready = sum(
+              1
+              for item in context["context_summary"]
+              if item["direction_comparison_ready"]
+          )
+          print(
+              "- context-resolved paper records: "
+              f"{context['resolved_records']}"
+          )
+          print(
+              "- context buckets ready for two-sided comparison: "
+              f"{comparison_ready}"
+          )
+          print("- side-level PnL suppression authority: false")
           print("- research-only: true")
           print("- promotion eligible: false")
           print("- execution enabled: false")
