@@ -523,7 +523,6 @@ def prospective_momentum_band_forward_markout_summary(
     }
 
 
-
 def prospective_momentum_pullback_forward_markout_summary(
     opportunities: Sequence[
         ContinuousPaperOpeningOpportunityEvidence
