@@ -118,16 +118,15 @@ class PaperExecutionAdapter:
         *,
         timestamp_ms: int,
     ) -> PaperAccountState:
+        previous = self._account
         candidate = mark_to_market(
-            self._account,
+            previous,
             marks,
             timestamp_ms,
             paper_max_gross_leverage=self._config.paper_max_gross_leverage,
         )
-        connection = self.store.raw_connection()
         try:
-            with connection:
-                self.store._write_materialized_account(candidate)
+            self.store.persist_marked_account(previous, candidate)
         except Exception:
             self._mark_store_failure("DURABLE_ACCOUNT_MARK_WRITE_FAILED")
             raise
