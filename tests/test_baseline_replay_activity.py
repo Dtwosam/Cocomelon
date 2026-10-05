@@ -298,6 +298,18 @@ def test_baseline_pipeline_reports_fill_and_open_position_before_trade_closes(tm
         assert decision_activity.risk_rejections == 0
         assert decision_activity.opening_execution_attempts == 1
         assert decision_activity.opening_fills == 1
+        runtime_components = pipeline.runtime_max_ms_by_component
+        assert {
+            "decision_engine_observe",
+            "epoch_decision_fact_batch",
+            "epoch_opening_stage",
+            "epoch_process_total",
+            "funding_reconcile",
+        } <= set(runtime_components)
+        assert all(
+            value >= 0
+            for value in runtime_components.values()
+        )
     finally:
         execution.close()
         facts.close()
