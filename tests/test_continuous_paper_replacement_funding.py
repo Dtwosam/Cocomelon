@@ -131,6 +131,106 @@ def test_funding_store_captures_exact_boundary_inputs(tmp_path: Path) -> None:
     assert len(restored.state_digest) == 64
 
 
+def test_funding_store_caches_registration_boundary_topology(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "funding"
+    store = _store(root)
+    store.register(
+        opportunity_id="opp-1",
+        market="BTC",
+        opportunity_timestamp_ms=3_590_000,
+    )
+
+    restored = _store(root)
+    original_read = restored._read
+
+    def guarded_read(path: Path) -> object:
+        if path.parent == restored.registrations_root:
+            raise AssertionError(
+                "boundary queries must not reread registrations"
+            )
+        return original_read(path)
+
+    monkeypatch.setattr(restored, "_read", guarded_read)
+
+    assert tuple(
+        (item.market, item.boundary_ms)
+        for item in restored.required_boundaries()
+    ) == (
+        ("BTC", 3_600_000),
+        ("BTC", 7_200_000),
+    )
+    assert restored.markets_for_boundary(BOUNDARY) == ("BTC",)
+    assert restored.registration_count == 1
+    assert restored.required_boundary_count == 2
+
+
+def test_funding_store_updates_cached_boundaries_on_registration(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path / "funding")
+    store.register(
+        opportunity_id="opp-1",
+        market="BTC",
+        opportunity_timestamp_ms=3_590_000,
+    )
+
+    assert store.register(
+        opportunity_id="opp-2",
+        market="ETH",
+        opportunity_timestamp_ms=3_590_000,
+    ) is True
+    assert store.markets_for_boundary(BOUNDARY) == ("BTC", "ETH")
+    assert {
+        (item.market, item.boundary_ms)
+        for item in store.required_boundaries()
+    } == {
+        ("BTC", 3_600_000),
+        ("BTC", 7_200_000),
+        ("ETH", 3_600_000),
+        ("ETH", 7_200_000),
+    }
+    assert store.registration_count == 2
+    assert store.required_boundary_count == 4
+
+
+def test_funding_snapshot_uses_market_boundary_index(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(tmp_path / "funding")
+    store.register(
+        opportunity_id="opp-btc",
+        market="BTC",
+        opportunity_timestamp_ms=3_590_000,
+    )
+    store.register(
+        opportunity_id="opp-eth",
+        market="ETH",
+        opportunity_timestamp_ms=3_590_000,
+    )
+
+    def fail_full_boundary_scan() -> object:
+        raise AssertionError(
+            "snapshot capture must not scan all required boundaries"
+        )
+
+    monkeypatch.setattr(
+        store,
+        "required_boundaries",
+        fail_full_boundary_scan,
+    )
+
+    assert store.observe_snapshot(
+        _snapshot(
+            market="BTC",
+            received_at_ms=BOUNDARY - 1_000,
+        )
+    ) is True
+
+
 def test_funding_store_rejects_stale_or_post_boundary_oracle(
     tmp_path: Path,
 ) -> None:
