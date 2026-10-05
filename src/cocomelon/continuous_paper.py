@@ -7934,6 +7934,20 @@ def _operational_live_status_payload(
         "duplicate_records_dropped": pump.duplicate_records_dropped,
         "record_pump_max_process_ms": pump.record_pump_max_process_ms,
         "record_pump_max_lock_wait_ms": pump.record_pump_max_lock_wait_ms,
+        "record_pump_max_process_ms_by_component": dict(
+            sorted(
+                pump.record_pump_max_process_ms_by_component.items()
+            )
+        ),
+        "pipeline_runtime_max_ms_by_component": dict(
+            sorted(
+                getattr(
+                    pump.pipeline,
+                    "runtime_max_ms_by_component",
+                    {},
+                ).items()
+            )
+        ),
         "record_pump_slow_record_count": pump.record_pump_slow_record_count,
         "record_pump_last_slow_record": pump.record_pump_last_slow_record,
         "startup_component_ms": dict(
