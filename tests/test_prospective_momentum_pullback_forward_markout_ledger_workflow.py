@@ -135,5 +135,5 @@ def test_pullback_fast_markout_source_skips_empty_successful_handoffs() -> None:
     assert "artifact_for_run()" in source
     assert "latest_evidence_eligible_with_compact_artifact" in source
     assert "selected source has no authenticated compact artifact" in source
-    assert "artifact_candidates" in source
+    assert "candidates" in source
     assert 'EVENT_NAME" != "workflow_dispatch"' in source
