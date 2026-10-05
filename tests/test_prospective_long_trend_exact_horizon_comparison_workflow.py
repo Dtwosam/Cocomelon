@@ -83,6 +83,10 @@ def test_exact_horizon_comparison_publishes_paired_robustness() -> None:
         "evaluate_prospective_long_trend_exact_horizon_comparison.py"
         in source
     )
+    assert "source 5m / source 15m / common source" in source
+    assert "source-only 5m / source-only 15m" in source
+    assert "5m incomplete reasons" in source
+    assert "15m incomplete reasons" in source
     assert "exact 5m / exact 15m / paired" in source
     assert "5m-only / 15m-only exact" in source
     assert "total / mean delta (5m - 15m)" in source
