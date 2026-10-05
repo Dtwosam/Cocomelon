@@ -330,12 +330,12 @@ from cocomelon.research.prospective_momentum_band_entry import (
     ProspectiveMomentumBandEntryState,
     evaluate_prospective_momentum_band_entry,
 )
+from cocomelon.research.prospective_momentum_band_forward_markout import (
+    prospective_momentum_band_forward_markout_summary,
+)
 from cocomelon.research.prospective_momentum_pullback_entry import (
     ProspectiveMomentumPullbackEntryState,
     evaluate_prospective_momentum_pullback_entry,
-)
-from cocomelon.research.prospective_momentum_band_forward_markout import (
-    prospective_momentum_band_forward_markout_summary,
 )
 from cocomelon.research.prospective_replacement_exit_policy import (
     ProspectiveReplacementExitPolicyState,
