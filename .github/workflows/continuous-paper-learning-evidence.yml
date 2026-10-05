@@ -388,6 +388,12 @@ jobs:
               for item in context["context_summary"]
               if item["direction_comparison_ready"]
           )
+          marginal_ready = sum(
+              1
+              for items in context["marginal_summary"].values()
+              for item in items
+              if item["direction_comparison_ready"]
+          )
           print(
               "- context-resolved paper records: "
               f"{context['resolved_records']}"
@@ -395,6 +401,10 @@ jobs:
           print(
               "- context buckets ready for two-sided comparison: "
               f"{comparison_ready}"
+          )
+          print(
+              "- broader context groups ready for two-sided comparison: "
+              f"{marginal_ready}"
           )
           print("- side-level PnL suppression authority: false")
           print("- research-only: true")
