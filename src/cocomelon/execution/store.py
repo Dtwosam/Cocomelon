@@ -712,7 +712,7 @@ class PaperExecutionStore:
                 "INSERT INTO paper_positions(market, position_id, payload_json) VALUES (?, ?, ?)",
                 (position.market.canonical, position.position_id, payload),
             )
-            event_id = f"{account_state_id}:{position.position_id}"
+            event_id = f"{account.state_id}:{position.position_id}"
             self._put_immutable(
                 "paper_position_events",
                 "event_id",
@@ -804,7 +804,7 @@ class PaperExecutionStore:
                     payload,
                 ),
             )
-            event_id = f"{account.state_id}:{position.position_id}"
+            event_id = f"{account_state_id}:{position.position_id}"
             self._put_immutable(
                 "paper_position_events",
                 "event_id",
