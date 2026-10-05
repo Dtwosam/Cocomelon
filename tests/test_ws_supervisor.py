@@ -125,6 +125,44 @@ def test_reconnect_resubscribes_and_closes_gap_on_recovery() -> None:
     asyncio.run(run())
 
 
+def test_websocket_supervisor_reports_normalization_activity() -> None:
+    async def run() -> None:
+        connection = FakeConnection([trade(1)])
+        activity: list[tuple[str, bool]] = []
+
+        async def factory() -> FakeConnection:
+            return connection
+
+        async def event_sink(_event: StreamEvent) -> None:
+            return None
+
+        async def gap_sink(_gap: DataGap) -> None:
+            return None
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "trades", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: 1_000,
+            utcnow=lambda: datetime(2026, 8, 23, tzinfo=UTC),
+            activity_hook=lambda phase, active: activity.append(
+                (phase, active)
+            ),
+        )
+        await supervisor.run(
+            max_sessions=1,
+            max_messages_per_session=1,
+        )
+
+        assert activity == [
+            ("normalize_message", True),
+            ("normalize_message", False),
+        ]
+
+    asyncio.run(run())
+
+
 def test_reconnect_accepts_same_l2_snapshot_as_new_session_bootstrap() -> None:
     async def run() -> None:
         same_book = book(1_000)
