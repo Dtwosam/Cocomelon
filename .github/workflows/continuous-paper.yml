@@ -742,6 +742,7 @@ jobs:
             continuous-paper-state/prospective-momentum-band-entry-state.json
             continuous-paper-state/prospective-momentum-pullback-entry-state.json
             continuous-paper-state/prospective-momentum-pullback-entry-summary.json
+            continuous-paper-state/prospective-momentum-pullback-forward-markout-summary.json
             continuous-paper-state/prospective-momentum-band-forward-markout-summary.json
             continuous-paper-state/prospective-consecutive-loss-cooldown-shadow-state.json
             continuous-paper-state/prospective-consecutive-loss-cooldown-shadow-summary.json
@@ -757,6 +758,70 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
+
+      - name: Upload momentum-pullback forward-markout research summary
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-momentum-pullback-forward-markout-summary.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-momentum-pullback-forward-markout-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/prospective-momentum-pullback-forward-markout-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Render momentum-pullback forward-markout research summary
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-momentum-pullback-forward-markout-summary.json') != '' }}
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/"
+                  "prospective-momentum-pullback-forward-markout-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          print("## Momentum-pullback forward markout")
+          print("- authority: RESEARCH ONLY / NO EXECUTION / NO READINESS")
+          if payload.get("error"):
+              print(f"- research error: {payload['error']}")
+          else:
+              print(
+                  "- clean start / prospective / evaluated: "
+                  f"{payload.get('started_at_ms')} / "
+                  f"{payload.get('prospective_opportunities', 0)} / "
+                  f"{payload.get('risk_approved_evaluated', 0)}"
+              )
+              print(
+                  "- pullback admitted / blocked / integrity clean: "
+                  f"{payload.get('pullback_admitted', 0)} / "
+                  f"{payload.get('pullback_blocked', 0)} / "
+                  f"{payload.get('integrity_clean', False)}"
+              )
+              horizons = payload.get("horizons", {})
+              for horizon_ms in payload.get("forward_horizons_ms", []):
+                  item = horizons.get(str(horizon_ms), {})
+                  admit = item.get("admit", {})
+                  block = item.get("block", {})
+                  robust = item.get("spread_robustness", {})
+                  print(
+                      "- {minutes}m admit/block mean / spread / LOO option / "
+                      "LOO market: {admit_mean} / {block_mean} / {spread} / "
+                      "{option_robust} / {market_robust}".format(
+                          minutes=horizon_ms // 60000,
+                          admit_mean=admit.get("mean_directional_return"),
+                          block_mean=block.get("mean_directional_return"),
+                          spread=robust.get("admit_minus_block_mean_return"),
+                          option_robust=robust.get(
+                              "positive_after_removing_any_one_opportunity"
+                          ),
+                          market_robust=robust.get(
+                              "positive_after_removing_any_one_market"
+                          ),
+                      )
+                  )
+          PY
 
       - name: Upload momentum-band forward-markout research summary
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-momentum-band-forward-markout-summary.json') != '' }}
