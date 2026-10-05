@@ -81,3 +81,5 @@ def test_continuous_paper_publishes_compact_learning_source() -> None:
         "gh workflow run prospective-momentum-pullback-fast-markout-ledger.yml"
         in source
     )
+    assert "Queue exact momentum-band entry ledger" in source
+    assert "gh workflow run prospective-momentum-band-entry-ledger.yml" in source
