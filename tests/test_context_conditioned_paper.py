@@ -136,7 +136,7 @@ def test_report_compares_directions_inside_same_market_context(tmp_path: Path) -
     assert len(contexts) == 1
     context = contexts[0]
     assert context["direction_comparison_ready"] is True
-    assert context["mean_net_r_delta_long_minus_short"] == "1.5"
+    assert Decimal(str(context["mean_net_r_delta_long_minus_short"])) == Decimal("1.5")
     assert context["strategy_authority"] is False
 
 
