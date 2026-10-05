@@ -25,7 +25,13 @@ def test_continuous_paper_learning_catchup_requires_compact_lineage_source() -> 
     source = _workflow()
     assert "continuous-paper-learning-source-{run_id}-{attempt}" in source
     assert 'digest.startswith("sha256:")' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert 'conclusion == "success"' in source
+    assert 'conclusion != "failure"' in source
+    assert '"Run continuous paper trader"' in source
+    assert '"Measure durable continuous paper state"' in source
+    assert '"Upload durable continuous paper state"' in source
+    assert '"Upload compact continuous learning source"' in source
+    assert 'failed_steps == {"Fail closed on upgrade handoff source"}' in source
     assert 'continuous-paper-state-{run_id}-{attempt}' not in source
 
 

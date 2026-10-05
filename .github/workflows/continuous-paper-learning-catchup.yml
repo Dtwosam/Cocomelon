@@ -38,7 +38,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_run' }}
         run: sleep 10
 
-      - name: Find newest successful lineage-capable paper worker
+      - name: Find newest evidence-eligible lineage-capable paper worker
         id: worker
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,6 +60,57 @@ jobs:
               key=lambda item: (item.get("created_at", ""), int(item.get("id", 0))),
               reverse=True,
           )
+          def paper_run_is_evidence_eligible(run):
+              conclusion = run.get("conclusion")
+              if conclusion == "success":
+                  return True
+              if conclusion != "failure":
+                  return False
+              run_id = run.get("id")
+              if not isinstance(run_id, int):
+                  return False
+              jobs_raw = subprocess.run(
+                  [
+                      "/usr/bin/gh",
+                      "api",
+                      f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}/jobs?per_page=100",
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              jobs_payload = json.loads(jobs_raw.stdout)
+              paper_jobs = [
+                  job
+                  for job in jobs_payload.get("jobs", [])
+                  if job.get("name") == "paper"
+              ]
+              if len(paper_jobs) != 1:
+                  return False
+              paper_job = paper_jobs[0]
+              if paper_job.get("conclusion") != "failure":
+                  return False
+              steps = {
+                  step.get("name"): step.get("conclusion")
+                  for step in paper_job.get("steps", [])
+                  if isinstance(step.get("name"), str)
+              }
+              required_successes = (
+                  "Run continuous paper trader",
+                  "Measure durable continuous paper state",
+                  "Upload durable continuous paper state",
+                  "Upload compact continuous learning source",
+              )
+              failed_steps = {
+                  name
+                  for name, step_conclusion in steps.items()
+                  if step_conclusion == "failure"
+              }
+              return (
+                  all(steps.get(name) == "success" for name in required_successes)
+                  and failed_steps == {"Fail closed on upgrade handoff source"}
+              )
+
           for run in runs:
               run_id = run.get("id")
               attempt = run.get("run_attempt")
@@ -72,8 +123,8 @@ jobs:
                   or run.get("path") != ".github/workflows/continuous-paper.yml"
                   or run.get("head_branch") != "main"
                   or run.get("status") != "completed"
-                  or run.get("conclusion") != "success"
                   or run.get("event") not in {"push", "workflow_dispatch", "schedule"}
+                  or not paper_run_is_evidence_eligible(run)
                   or (run.get("head_repository") or {}).get("full_name")
                   != os.environ["GITHUB_REPOSITORY"]
               ):
@@ -107,9 +158,9 @@ jobs:
           )"
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           if [ -z "$RUN_ID" ]; then
-            echo "no successful lineage-capable continuous paper worker exists yet"
+            echo "no evidence-eligible lineage-capable continuous paper worker exists yet"
           else
-            echo "newest lineage-capable continuous paper worker: $RUN_ID"
+            echo "newest evidence-eligible lineage-capable continuous paper worker: $RUN_ID"
           fi
 
       - name: Restore latest trusted continuous-paper learning receipt

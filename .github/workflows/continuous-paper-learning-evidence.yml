@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       upstream_run_id:
-        description: Exact successful continuous paper worker run ID to recover
+        description: Exact evidence-eligible continuous paper worker run ID to recover
         required: true
         type: string
 
@@ -26,8 +26,9 @@ jobs:
   sync:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
+      (github.event.workflow_run.head_branch == 'main' &&
+       (github.event.workflow_run.conclusion == 'success' ||
+        github.event.workflow_run.conclusion == 'failure'))
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -68,6 +69,7 @@ jobs:
           fi
 
           /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"             > /tmp/upstream-run.json
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100"             > /tmp/upstream-jobs.json
           RUN_ID="$RUN_ID" python - <<'PY'
           import json
           import os
@@ -80,8 +82,50 @@ jobs:
               raise SystemExit("upstream continuous-paper run id changed")
           if run.get("head_branch") != "main":
               raise SystemExit("upstream continuous-paper run is not from main")
-          if run.get("conclusion") != "success":
-              raise SystemExit("upstream continuous-paper run did not succeed")
+          conclusion = run.get("conclusion")
+          if conclusion not in {"success", "failure"}:
+              raise SystemExit("upstream continuous-paper run conclusion is invalid")
+          if conclusion == "failure":
+              jobs = json.loads(
+                  Path("/tmp/upstream-jobs.json").read_text(encoding="utf-8")
+              )
+              paper_jobs = [
+                  job
+                  for job in jobs.get("jobs", [])
+                  if job.get("name") == "paper"
+              ]
+              if len(paper_jobs) != 1:
+                  raise SystemExit(
+                      "failed paper source does not have exactly one paper job"
+                  )
+              paper_job = paper_jobs[0]
+              if paper_job.get("conclusion") != "failure":
+                  raise SystemExit(
+                      "failed paper source job conclusion is not failure"
+                  )
+              steps = {
+                  step.get("name"): step.get("conclusion")
+                  for step in paper_job.get("steps", [])
+                  if isinstance(step.get("name"), str)
+              }
+              required_successes = (
+                  "Run continuous paper trader",
+                  "Measure durable continuous paper state",
+                  "Upload durable continuous paper state",
+                  "Upload compact continuous learning source",
+              )
+              failed_steps = {
+                  name
+                  for name, step_conclusion in steps.items()
+                  if step_conclusion == "failure"
+              }
+              if (
+                  any(steps.get(name) != "success" for name in required_successes)
+                  or failed_steps != {"Fail closed on upgrade handoff source"}
+              ):
+                  raise SystemExit(
+                      "paper source failure is not a durable upgrade handoff"
+                  )
           if run.get("path") != ".github/workflows/continuous-paper.yml":
               raise SystemExit("upstream continuous-paper workflow path is invalid")
           if run.get("name") != "Continuous Mainnet Paper Trader":
