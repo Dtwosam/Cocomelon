@@ -207,6 +207,8 @@ jobs:
           tests/test_prospective_momentum_band_forward_markout.py
           tests/test_prospective_momentum_band_forward_markout_ledger.py
           tests/test_prospective_momentum_band_forward_markout_ledger_workflow.py
+          tests/test_prospective_momentum_pullback_forward_markout_ledger.py
+          tests/test_prospective_momentum_pullback_forward_markout_ledger_workflow.py
           tests/test_prospective_momentum_band_entry_ledger.py
           tests/test_prospective_momentum_band_entry_ledger_workflow.py
           tests/test_prospective_two_strike_stop_filter.py
