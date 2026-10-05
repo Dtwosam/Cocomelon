@@ -360,7 +360,7 @@ def test_momentum_forward_markout_records_last_integrity_miss(
         market="SOL",
         direction=Direction.LONG,
         timestamp_ms=timestamp_ms,
-        feature_snapshot_id="missing-feature-snapshot",
+        feature_snapshot_id="0123456789abcdef01234567",
     )
 
     result = prospective_momentum_band_forward_markout_summary(
