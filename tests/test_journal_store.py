@@ -1,3 +1,4 @@
+import asyncio
 import sqlite3
 from decimal import Decimal
 from pathlib import Path
@@ -220,6 +221,17 @@ def test_funding_event_observation_round_trips_with_lineage(tmp_path: Path) -> N
     reopened = JournalStore(path)
     assert reopened.load_observation(item.observation_id) == item
     reopened.close()
+
+
+def test_closed_trade_async_write_round_trips(tmp_path: Path) -> None:
+    path = tmp_path / "journal.sqlite3"
+    item = trade_entry()
+    store = JournalStore(path)
+
+    asyncio.run(store.record_trade_async(item))
+
+    assert store.load_trade(item.trade_id) == item
+    store.close()
 
 
 def test_closed_trade_round_trips_after_restart(tmp_path: Path) -> None:
