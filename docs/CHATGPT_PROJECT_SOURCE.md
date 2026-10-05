@@ -95,6 +95,15 @@ The user expects autonomous engineering. Real-money activation is the permanent 
 
 ---
 
+
+### Directional-intelligence rule — D-034
+
+Cocomelon must not take the lazy shortcut of suppressing LONG or SHORT simply because one side recently lost more money. Aggregate side PnL is diagnostic only.
+
+The system is expected to learn **when** a LONG, SHORT, or NO_TRADE decision fits the market context. Research and strategy changes must condition directional performance on real decision-time evidence such as trend/structure, momentum, volatility/regime, liquidity/spread/depth, funding, available order-flow/book evidence, and recent price behavior. Filter weak **setups**, not directions.
+
+When continuing development in a new chat, preserve this objective: make Cocomelon understand the market state well enough to choose the appropriate side or abstain. Any directional restriction requires reproducible context-conditioned net expectancy after costs and the normal chronological/OOS/shadow validation gates.
+
 ## 2. Locked safety boundaries
 
 - Hyperliquid testnet is forbidden.
