@@ -76,3 +76,8 @@ def test_continuous_paper_publishes_compact_learning_source() -> None:
     assert "gh workflow run profit-lock-execution-ledger.yml" in source
     assert 'source_run_id=$GITHUB_RUN_ID' in source
     assert 'source_run_attempt=$GITHUB_RUN_ATTEMPT' in source
+    assert "Queue exact momentum-pullback fast-markout ledger" in source
+    assert (
+        "gh workflow run prospective-momentum-pullback-fast-markout-ledger.yml"
+        in source
+    )
