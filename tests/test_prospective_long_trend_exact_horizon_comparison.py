@@ -201,6 +201,9 @@ def test_unpaired_exact_rows_receive_no_comparison_credit() -> None:
             "five_minute_exact_realized_pnl": "2",
             "fifteen_minute_exact_realized_pnl": "1",
             "pnl_delta_5m_minus_15m": "1",
+            "five_minute_exact_return_fraction": "0.02",
+            "fifteen_minute_exact_return_fraction": "0.01",
+            "return_fraction_delta_5m_minus_15m": "0.01",
         }
     ]
 
