@@ -73,7 +73,7 @@ class ProspectiveRangeCompressionEntryState:
     def from_payload(
         cls,
         raw: object,
-    ) -> "ProspectiveRangeCompressionEntryState":
+    ) -> ProspectiveRangeCompressionEntryState:
         if not isinstance(raw, dict):
             raise ProspectiveRangeCompressionEntryError(
                 "range-compression state must be an object"
