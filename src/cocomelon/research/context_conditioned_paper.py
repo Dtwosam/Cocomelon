@@ -15,7 +15,16 @@ from cocomelon.research.outcome_learning import (
 )
 
 ZERO: Final = Decimal("0")
-CONTEXT_DIAGNOSTIC_SCHEMA_VERSION = 1
+CONTEXT_DIAGNOSTIC_SCHEMA_VERSION = 2
+
+MARGINAL_CONTEXT_DIMENSIONS: Final = (
+    "trend_regime",
+    "volatility_regime",
+    "return_15m_sign",
+    "return_1h_sign",
+    "funding_sign",
+    "book_imbalance_sign",
+)
 
 
 class ContextConditionedPaperError(RuntimeError):
@@ -39,6 +48,7 @@ class ContextConditionedPaperReport:
     missing_feature_snapshot_ids: tuple[str, ...]
     direction_summary: dict[str, object]
     context_summary: tuple[dict[str, object], ...]
+    marginal_summary: dict[str, tuple[dict[str, object], ...]]
     ledger_state_digest: str
     feature_state_digest: str
     schema_version: int = CONTEXT_DIAGNOSTIC_SCHEMA_VERSION
@@ -75,6 +85,7 @@ class ContextConditionedPaperReport:
             "missing_feature_snapshot_ids": self.missing_feature_snapshot_ids,
             "direction_summary": self.direction_summary,
             "context_summary": self.context_summary,
+            "marginal_summary": self.marginal_summary,
             "ledger_state_digest": self.ledger_state_digest,
             "feature_state_digest": self.feature_state_digest,
             "diagnostic_only": True,
@@ -263,6 +274,61 @@ def _context_summary(
     return tuple(output)
 
 
+def _marginal_value(row: _ResolvedRow, dimension: str) -> str:
+    feature = row.feature
+    if dimension == "trend_regime":
+        return feature.trend_regime.value
+    if dimension == "volatility_regime":
+        return feature.volatility_regime.value
+    if dimension == "return_15m_sign":
+        return _sign_bucket(feature.return_15m)
+    if dimension == "return_1h_sign":
+        return _sign_bucket(feature.return_1h)
+    if dimension == "funding_sign":
+        return _sign_bucket(feature.funding)
+    if dimension == "book_imbalance_sign":
+        return _sign_bucket(feature.book_imbalance)
+    raise ValueError(f"unsupported marginal context dimension: {dimension}")
+
+
+def _marginal_summary(
+    rows: tuple[_ResolvedRow, ...],
+    *,
+    min_group_rows: int,
+) -> dict[str, tuple[dict[str, object], ...]]:
+    payload: dict[str, tuple[dict[str, object], ...]] = {}
+    for dimension in MARGINAL_CONTEXT_DIMENSIONS:
+        grouped: defaultdict[str, list[_ResolvedRow]] = defaultdict(list)
+        for row in rows:
+            grouped[_marginal_value(row, dimension)].append(row)
+
+        items: list[dict[str, object]] = []
+        for value in sorted(grouped):
+            cohort = tuple(grouped[value])
+            long_rows = tuple(
+                row for row in cohort if row.record.direction is Direction.LONG
+            )
+            short_rows = tuple(
+                row for row in cohort if row.record.direction is Direction.SHORT
+            )
+            long_ready = len(long_rows) >= min_group_rows
+            short_ready = len(short_rows) >= min_group_rows
+            items.append(
+                {
+                    "value": value,
+                    "trades": len(cohort),
+                    "long": _metrics(long_rows),
+                    "short": _metrics(short_rows),
+                    "long_sample_sufficient_for_diagnostics": long_ready,
+                    "short_sample_sufficient_for_diagnostics": short_ready,
+                    "direction_comparison_ready": long_ready and short_ready,
+                    "strategy_authority": False,
+                }
+            )
+        payload[dimension] = tuple(items)
+    return payload
+
+
 def build_context_conditioned_paper_report(
     ledger: LearningEvidenceLedger,
     feature_store: LearningFeatureSnapshotStore,
@@ -332,6 +398,10 @@ def build_context_conditioned_paper_report(
             min_group_rows=min_group_rows,
         ),
         context_summary=_context_summary(
+            rows,
+            min_group_rows=min_group_rows,
+        ),
+        marginal_summary=_marginal_summary(
             rows,
             min_group_rows=min_group_rows,
         ),
