@@ -109,8 +109,17 @@ def _option_index(
                 "duplicate exact-horizon opportunity id"
             )
         pnl = raw.get("exact_realized_pnl")
+        return_fraction = raw.get("exact_realized_return_fraction")
         if pnl is not None:
             _decimal(pnl, "exact_realized_pnl")
+            _decimal(
+                return_fraction,
+                "exact_realized_return_fraction",
+            )
+        elif return_fraction is not None:
+            raise ProspectiveLongTrendExactHorizonComparisonError(
+                "exact return fraction requires exact realized pnl"
+            )
         output[opportunity_id] = raw
     return output
 
@@ -124,12 +133,14 @@ def _leave_one_trade_totals(deltas: tuple[Decimal, ...]) -> tuple[Decimal, ...]:
 
 def _leave_one_market_totals(
     rows: tuple[dict[str, object], ...],
+    *,
+    delta_key: str = "pnl_delta_5m_minus_15m",
 ) -> tuple[Decimal, ...]:
     by_market: dict[str, Decimal] = defaultdict(lambda: ZERO)
     total = ZERO
     for row in rows:
         market = cast(str, row["market"])
-        delta = _decimal(row["pnl_delta_5m_minus_15m"], "paired delta")
+        delta = _decimal(row[delta_key], f"paired {delta_key}")
         by_market[market] += delta
         total += delta
     if len(by_market) <= 1:
@@ -188,6 +199,14 @@ def prospective_long_trend_exact_horizon_comparison(
             fifteen_row["exact_realized_pnl"],
             "15m exact_realized_pnl",
         )
+        five_return = _decimal(
+            five_row["exact_realized_return_fraction"],
+            "5m exact_realized_return_fraction",
+        )
+        fifteen_return = _decimal(
+            fifteen_row["exact_realized_return_fraction"],
+            "15m exact_realized_return_fraction",
+        )
         paired.append(
             {
                 "opportunity_id": opportunity_id,
@@ -197,6 +216,13 @@ def prospective_long_trend_exact_horizon_comparison(
                 "five_minute_exact_realized_pnl": str(five_pnl),
                 "fifteen_minute_exact_realized_pnl": str(fifteen_pnl),
                 "pnl_delta_5m_minus_15m": str(five_pnl - fifteen_pnl),
+                "five_minute_exact_return_fraction": str(five_return),
+                "fifteen_minute_exact_return_fraction": str(
+                    fifteen_return
+                ),
+                "return_fraction_delta_5m_minus_15m": str(
+                    five_return - fifteen_return
+                ),
             }
         )
     paired.sort(
@@ -212,6 +238,14 @@ def prospective_long_trend_exact_horizon_comparison(
         for row in paired_rows
     )
     total_delta = sum(deltas, ZERO)
+    return_deltas = tuple(
+        _decimal(
+            row["return_fraction_delta_5m_minus_15m"],
+            "paired return-fraction delta",
+        )
+        for row in paired_rows
+    )
+    total_return_delta = sum(return_deltas, ZERO)
     total_five = sum(
         (
             _decimal(
@@ -238,10 +272,17 @@ def prospective_long_trend_exact_horizon_comparison(
     )
     trade_loo = _leave_one_trade_totals(deltas)
     market_loo = _leave_one_market_totals(paired_rows)
+    return_trade_loo = _leave_one_trade_totals(return_deltas)
+    return_market_loo = _leave_one_market_totals(
+        paired_rows,
+        delta_key="return_fraction_delta_5m_minus_15m",
+    )
 
     midpoint = len(deltas) // 2
     first_half = sum(deltas[:midpoint], ZERO)
     second_half = sum(deltas[midpoint:], ZERO)
+    return_first_half = sum(return_deltas[:midpoint], ZERO)
+    return_second_half = sum(return_deltas[midpoint:], ZERO)
     chronological_complete = midpoint > 0 and midpoint < len(deltas)
 
     minimum_sample_met = (
@@ -273,6 +314,35 @@ def prospective_long_trend_exact_horizon_comparison(
     preferred_horizon = (
         "5m" if five_robust else "15m" if fifteen_robust else "none"
     )
+    five_size_normalized_robust = (
+        minimum_sample_met
+        and total_return_delta > ZERO
+        and bool(return_trade_loo)
+        and min(return_trade_loo) > ZERO
+        and bool(return_market_loo)
+        and min(return_market_loo) > ZERO
+        and chronological_complete
+        and return_first_half > ZERO
+        and return_second_half > ZERO
+    )
+    fifteen_size_normalized_robust = (
+        minimum_sample_met
+        and total_return_delta < ZERO
+        and bool(return_trade_loo)
+        and max(return_trade_loo) < ZERO
+        and bool(return_market_loo)
+        and max(return_market_loo) < ZERO
+        and chronological_complete
+        and return_first_half < ZERO
+        and return_second_half < ZERO
+    )
+    size_normalized_preferred_horizon = (
+        "5m"
+        if five_size_normalized_robust
+        else "15m"
+        if fifteen_size_normalized_robust
+        else "none"
+    )
 
     return {
         "research_only": True,
@@ -302,6 +372,16 @@ def prospective_long_trend_exact_horizon_comparison(
             if not deltas
             else str(total_delta / Decimal(len(deltas)))
         ),
+        "total_return_fraction_delta_5m_minus_15m": str(
+            total_return_delta
+        ),
+        "mean_return_fraction_delta_5m_minus_15m": (
+            None
+            if not return_deltas
+            else str(
+                total_return_delta / Decimal(len(return_deltas))
+            )
+        ),
         "five_minute_better_count": sum(value > ZERO for value in deltas),
         "fifteen_minute_better_count": sum(value < ZERO for value in deltas),
         "tie_count": sum(value == ZERO for value in deltas),
@@ -319,9 +399,44 @@ def prospective_long_trend_exact_horizon_comparison(
         ),
         "chronological_first_half_delta": str(first_half),
         "chronological_second_half_delta": str(second_half),
+        "size_normalized_leave_one_trade_min_delta": (
+            None
+            if not return_trade_loo
+            else str(min(return_trade_loo))
+        ),
+        "size_normalized_leave_one_trade_max_delta": (
+            None
+            if not return_trade_loo
+            else str(max(return_trade_loo))
+        ),
+        "size_normalized_leave_one_market_min_delta": (
+            None
+            if not return_market_loo
+            else str(min(return_market_loo))
+        ),
+        "size_normalized_leave_one_market_max_delta": (
+            None
+            if not return_market_loo
+            else str(max(return_market_loo))
+        ),
+        "size_normalized_chronological_first_half_delta": str(
+            return_first_half
+        ),
+        "size_normalized_chronological_second_half_delta": str(
+            return_second_half
+        ),
         "chronological_complete": chronological_complete,
         "five_minute_robustly_better": five_robust,
         "fifteen_minute_robustly_better": fifteen_robust,
         "preferred_horizon": preferred_horizon,
+        "five_minute_size_normalized_robustly_better": (
+            five_size_normalized_robust
+        ),
+        "fifteen_minute_size_normalized_robustly_better": (
+            fifteen_size_normalized_robust
+        ),
+        "size_normalized_preferred_horizon": (
+            size_normalized_preferred_horizon
+        ),
         "paired_results": list(paired_rows),
     }
