@@ -767,6 +767,79 @@ def test_record_pump_drops_duplicate_event_keys() -> None:
     }
 
 
+def test_record_pump_traces_pipeline_phase_and_restores_previous() -> None:
+    async def scenario() -> None:
+        holder: dict[str, _RecordPump] = {}
+        observed_phases: list[str] = []
+
+        class Pipeline:
+            def on_record(
+                self,
+                _record: ReplayRecord,
+                _now_ms: int,
+            ) -> tuple[object, ...]:
+                observed_phases.append(
+                    holder["pump"].event_loop_phase
+                )
+                return ()
+
+            def finalize(
+                self,
+                _end_ms: int,
+            ) -> tuple[object, ...]:
+                return ()
+
+        class Journal:
+            def iter_trades(self) -> tuple[object, ...]:
+                return ()
+
+            def record_observation(
+                self,
+                _observation: object,
+            ) -> None:
+                raise AssertionError("no observations expected")
+
+            def record_trade(self, _trade: object) -> None:
+                raise AssertionError("no trades expected")
+
+        pump = _RecordPump(
+            Pipeline(),  # type: ignore[arg-type]
+            Journal(),  # type: ignore[arg-type]
+            last_available_at_ms=0,
+        )
+        holder["pump"] = pump
+        _mark_event_loop_phase(
+            pump,
+            "control_wait",
+            clock_ms=lambda: 1_000,
+        )
+        record = ReplayRecord(
+            record_kind=SourceRecordKind.NORMALIZED_EVENT,
+            available_at_ms=1,
+            source="hyperliquid-mainnet-ws",
+            schema_version=1,
+            market="BTC",
+            exchange_time_ms=1,
+            event_key="phase-trace-record",
+            payload_json='{"mark_px":"100"}',
+            event_kind="active_asset_ctx",
+        )
+
+        await pump.process(record)
+
+        assert observed_phases == ["record_pipeline_on_record"]
+        assert pump.event_loop_phase == "control_wait"
+        assert [
+            item["phase"]
+            for item in pump.event_loop_phase_transitions
+        ][-2:] == [
+            "record_pipeline_on_record",
+            "control_wait",
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_record_pump_wakes_on_new_decision_epoch() -> None:
     async def scenario() -> None:
         class Pipeline:
