@@ -4,12 +4,12 @@ from copy import deepcopy
 
 import pytest
 
-from cocomelon.research.prospective_momentum_pullback_entry import (
-    ProspectiveMomentumPullbackEntryState,
-)
 from cocomelon.research.prospective_momentum_band_forward_markout import (
     FORWARD_HORIZONS_MS,
     MAX_MARK_LAG_MS,
+)
+from cocomelon.research.prospective_momentum_pullback_entry import (
+    ProspectiveMomentumPullbackEntryState,
 )
 from cocomelon.research.prospective_momentum_pullback_forward_markout_ledger import (
     ProspectiveMomentumPullbackForwardMarkoutLedgerError,
