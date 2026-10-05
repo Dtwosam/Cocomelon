@@ -1,16 +1,6 @@
 name: Profit-Lock Execution Shadow Ledger
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/profit-lock-execution-ledger.yml"
-  workflow_run:
-    workflows:
-      - "Continuous Mainnet Paper Trader"
-    types:
-      - completed
   workflow_dispatch:
     inputs:
       source_run_id:
