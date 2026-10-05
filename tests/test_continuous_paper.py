@@ -2715,9 +2715,21 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     )
     assert "prospective-momentum-pullback-entry-state.json" in source
     assert "prospective-momentum-pullback-entry-summary.json" in source
+    assert (
+        "prospective-momentum-pullback-forward-markout-summary.json"
+        in source
+    )
     assert "_restore_prospective_momentum_pullback_entry(" in source
     assert "prospective_momentum_pullback_entry_state.payload" in source
     assert "evaluate_prospective_momentum_pullback_entry(" in source
+    assert (
+        "_prospective_momentum_pullback_forward_markout_payload("
+        in source
+    )
+    assert (
+        "prospective_momentum_pullback_forward_markout_summary("
+        in source
+    )
     assert (
         'PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME = ('
         in source
