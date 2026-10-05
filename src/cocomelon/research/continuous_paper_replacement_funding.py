@@ -550,7 +550,7 @@ class ContinuousPaperReplacementFundingStore:
     def iter_registrations(
         self,
     ) -> tuple[ReplacementFundingRegistration, ...]:
-        return self._registrations_cache
+        return self._read_registrations()
 
     def _boundaries(
         self,
