@@ -56,6 +56,7 @@ from cocomelon.continuous_paper import (
     _l2_supervisor_stale_after_ms,
     _latest_epoch_stale_l2_market_keys,
     _load_checkpoint,
+    _mark_event_loop_phase,
     _monitor_event_loop_lag,
     _opening_fill_liquidity_payload,
     _opening_rank_attribution_payload,
@@ -889,6 +890,14 @@ def test_event_loop_lag_monitor_records_blocking_phase() -> None:
     async def scenario() -> None:
         pump = SimpleNamespace(
             event_loop_phase="unit_test_block",
+            event_loop_phase_sequence=0,
+            event_loop_phase_transitions=[
+                {
+                    "sequence": 0,
+                    "phase": "unit_test_block",
+                    "timestamp_ms": 1_000,
+                }
+            ],
             event_loop_lag_samples=0,
             event_loop_max_lag_ms=0,
             event_loop_max_lag_wakeup=None,
@@ -905,8 +914,17 @@ def test_event_loop_lag_monitor_records_blocking_phase() -> None:
             )
         )
         await asyncio.sleep(0.01)
+        _mark_event_loop_phase(
+            pump,
+            "blocking_sync",
+            clock_ms=lambda: 1_100,
+        )
         time.sleep(0.03)
-        pump.event_loop_phase = "after_block"
+        _mark_event_loop_phase(
+            pump,
+            "after_block",
+            clock_ms=lambda: 1_130,
+        )
         await asyncio.sleep(0.01)
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
@@ -922,6 +940,10 @@ def test_event_loop_lag_monitor_records_blocking_phase() -> None:
         assert pump.event_loop_max_lag_wakeup["observed_phase"] == (
             "after_block"
         )
+        assert [
+            item["phase"]
+            for item in pump.event_loop_max_lag_wakeup["phase_transitions"]
+        ] == ["blocking_sync", "after_block"]
         assert (
             pump.event_loop_max_lag_ms_by_phase["unit_test_block"]
             >= 10
@@ -940,6 +962,10 @@ def test_event_loop_lag_monitor_records_blocking_phase() -> None:
             "after_block"
         )
         assert pump.event_loop_last_slow_wakeup["lag_ms"] >= 10
+        assert [
+            item["phase"]
+            for item in pump.event_loop_last_slow_wakeup["phase_transitions"]
+        ] == ["blocking_sync", "after_block"]
 
     asyncio.run(scenario())
 
@@ -1595,7 +1621,7 @@ def test_runtime_context_refresh_failure_retries_fail_closed() -> None:
         encoding="utf-8"
     )
     refresh_index = source.index(
-        'pump.event_loop_phase = "context_refresh"'
+        '_mark_event_loop_phase(pump, "context_refresh")'
     )
     attempt_index = source.index(
         "pump.context_refresh_attempts += 1",
@@ -4743,10 +4769,10 @@ def test_opening_path_research_runs_off_fresh_context_critical_path() -> None:
     assert "asyncio.create_task(" in scheduler
 
     refresh_at = source.index(
-        'pump.event_loop_phase = "path_observe_schedule"'
+        '_mark_event_loop_phase(pump, "path_observe_schedule")'
     )
     refresh_end = source.index(
-        'pump.event_loop_phase = "exit_book_capture"',
+        '_mark_event_loop_phase(pump, "exit_book_capture")',
         refresh_at,
     )
     refresh = source[refresh_at:refresh_end]

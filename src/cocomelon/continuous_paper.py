@@ -4304,6 +4304,17 @@ class _RecordPump:
         self.checkpoint_background_starts = 0
         self.checkpoint_background_skips = 0
         self.event_loop_phase = "startup"
+        self.event_loop_phase_sequence = 0
+        self.event_loop_phase_transitions: deque[dict[str, object]] = deque(
+            (
+                {
+                    "sequence": 0,
+                    "phase": "startup",
+                    "timestamp_ms": utc_now_ms(),
+                },
+            ),
+            maxlen=64,
+        )
         self.event_loop_lag_samples = 0
         self.event_loop_max_lag_ms = 0
         self.event_loop_max_lag_wakeup: dict[str, object] | None = None
@@ -4586,6 +4597,47 @@ async def _cooperative_stream_yield() -> None:
     await asyncio.sleep(0)
 
 
+def _mark_event_loop_phase(
+    pump: _RecordPump,
+    phase: str,
+    *,
+    clock_ms: Callable[[], int] = utc_now_ms,
+) -> None:
+    normalized = phase.strip()
+    if not normalized:
+        raise ValueError("event-loop phase must not be empty")
+    if normalized == pump.event_loop_phase:
+        return
+    pump.event_loop_phase_sequence += 1
+    pump.event_loop_phase = normalized
+    pump.event_loop_phase_transitions.append(
+        {
+            "sequence": pump.event_loop_phase_sequence,
+            "phase": normalized,
+            "timestamp_ms": clock_ms(),
+        }
+    )
+
+
+def _event_loop_phase_trace_since(
+    pump: _RecordPump,
+    *,
+    sequence: int,
+    limit: int = 16,
+) -> list[dict[str, object]]:
+    if limit <= 0:
+        raise ValueError("phase trace limit must be positive")
+    transitions: list[dict[str, object]] = []
+    for item in pump.event_loop_phase_transitions:
+        item_sequence = item.get("sequence")
+        if not isinstance(item_sequence, int):
+            continue
+        if item_sequence <= sequence:
+            continue
+        transitions.append(dict(item))
+    return transitions[-limit:]
+
+
 async def _monitor_event_loop_lag(
     pump: _RecordPump,
     *,
@@ -4600,9 +4652,14 @@ async def _monitor_event_loop_lag(
     expected = loop.time() + interval_seconds
     while True:
         scheduled_phase = pump.event_loop_phase
+        scheduled_phase_sequence = pump.event_loop_phase_sequence
         await asyncio.sleep(interval_seconds)
         observed = loop.time()
         lag_ms = max(0, int((observed - expected) * 1_000))
+        phase_transitions = _event_loop_phase_trace_since(
+            pump,
+            sequence=scheduled_phase_sequence,
+        )
         pump.event_loop_lag_samples += 1
         previous_max_lag_ms = pump.event_loop_max_lag_ms
         if lag_ms > previous_max_lag_ms:
@@ -4611,6 +4668,7 @@ async def _monitor_event_loop_lag(
                 "lag_ms": lag_ms,
                 "phase": scheduled_phase,
                 "observed_phase": pump.event_loop_phase,
+                "phase_transitions": phase_transitions,
             }
         pump.event_loop_max_lag_ms_by_phase[scheduled_phase] = max(
             pump.event_loop_max_lag_ms_by_phase.get(
@@ -4634,6 +4692,7 @@ async def _monitor_event_loop_lag(
                 "lag_ms": lag_ms,
                 "phase": scheduled_phase,
                 "observed_phase": pump.event_loop_phase,
+                "phase_transitions": phase_transitions,
             }
         expected = observed + interval_seconds
 
@@ -9336,7 +9395,7 @@ async def run_continuous_paper_session(
             selected,
             forward_gaps=True,
         )
-        pump.event_loop_phase = "control_wait"
+        _mark_event_loop_phase(pump, "control_wait")
         replacement_funding_oracle_task = asyncio.create_task(
             capture_replacement_funding_oracles()
         )
@@ -9512,11 +9571,11 @@ async def run_continuous_paper_session(
 
                 systemically_unhealthy_l2 = False
                 if woke_for_decision_epoch:
-                    pump.event_loop_phase = "l2_recovery"
+                    _mark_event_loop_phase(pump, "l2_recovery")
                     systemically_unhealthy_l2 = (
                         await recover_systemic_l2_if_needed()
                     )
-                    pump.event_loop_phase = "control_wait"
+                    _mark_event_loop_phase(pump, "control_wait")
 
                 # L2 recovery can outlive the remaining context-poll
                 # headroom. Re-read the clock before deciding whether the
@@ -9545,7 +9604,7 @@ async def run_continuous_paper_session(
                     now_ms + config.context_poll_seconds * 1000
                 )
 
-                pump.event_loop_phase = "context_refresh"
+                _mark_event_loop_phase(pump, "context_refresh")
                 pump.context_refresh_attempts += 1
                 try:
                     (
@@ -9558,7 +9617,7 @@ async def run_continuous_paper_session(
                     pump.context_refresh_last_error = (
                         f"{type(refresh_exc).__name__}: {refresh_exc}"
                     )
-                    pump.event_loop_phase = "control_wait"
+                    _mark_event_loop_phase(pump, "control_wait")
                     _emit_operational_live_status(
                         execution,
                         pump,
@@ -9580,13 +9639,13 @@ async def run_continuous_paper_session(
                 pump.context_refresh_successes += 1
                 pump.context_refresh_consecutive_failures = 0
                 pump.context_refresh_last_error = None
-                pump.event_loop_phase = "context_postprocess"
+                _mark_event_loop_phase(pump, "context_postprocess")
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
-                pump.event_loop_phase = "path_observe_schedule"
+                _mark_event_loop_phase(pump, "path_observe_schedule")
                 schedule_opening_path_observe(refreshed)
-                pump.event_loop_phase = "exit_book_capture"
+                _mark_event_loop_phase(pump, "exit_book_capture")
                 await capture_due_exit_books(
                     refreshed,
                     now_ms=refreshed_received_at_ms,
@@ -9594,7 +9653,7 @@ async def run_continuous_paper_session(
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
-                pump.event_loop_phase = "context_snapshot_pump"
+                _mark_event_loop_phase(pump, "context_snapshot_pump")
                 for market in selected:
                     snapshot = refreshed.get(market.canonical)
                     if snapshot is not None:
@@ -9602,38 +9661,38 @@ async def run_continuous_paper_session(
                             _record_from_public(market_snapshot_record_event(snapshot))
                         )
                 rank_observed_at_ms = utc_now_ms()
-                pump.event_loop_phase = "rank_refresh"
+                _mark_event_loop_phase(pump, "rank_refresh")
                 _refreshed_features, refreshed_ranks = _startup_ranks(
                     refreshed,
                     as_of_ms=rank_observed_at_ms,
                 )
-                pump.event_loop_phase = "context_postprocess"
+                _mark_event_loop_phase(pump, "context_postprocess")
                 rank_tracker.update(
                     refreshed_ranks,
                     observed_at_ms=rank_observed_at_ms,
                 )
-                pump.event_loop_phase = "funding_refresh"
+                _mark_event_loop_phase(pump, "funding_refresh")
                 await refresh_funding()
                 await capture_due_replacement_funding(
                     now_ms=utc_now_ms()
                 )
-                pump.event_loop_phase = "control_wait"
+                _mark_event_loop_phase(pump, "control_wait")
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
 
                 if not systemically_unhealthy_l2:
-                    pump.event_loop_phase = "l2_recovery"
+                    _mark_event_loop_phase(pump, "l2_recovery")
                     systemically_unhealthy_l2 = (
                         await recover_systemic_l2_if_needed()
                     )
-                    pump.event_loop_phase = "control_wait"
+                    _mark_event_loop_phase(pump, "control_wait")
 
                 if (
                     not systemically_unhealthy_l2
                     and now_ms >= next_selection_refresh_ms
                 ):
-                    pump.event_loop_phase = "selection_refresh"
+                    _mark_event_loop_phase(pump, "selection_refresh")
                     pinned = tuple(
                         position.market for position in execution.account.positions
                     )
@@ -9699,7 +9758,7 @@ async def run_continuous_paper_session(
                     next_selection_refresh_ms = (
                         now_ms + config.selection_refresh_seconds * 1000
                     )
-                    pump.event_loop_phase = "control_wait"
+                    _mark_event_loop_phase(pump, "control_wait")
 
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
@@ -9710,7 +9769,7 @@ async def run_continuous_paper_session(
                         await recover_systemic_l2_if_needed()
                     )
 
-                pump.event_loop_phase = "heartbeat"
+                _mark_event_loop_phase(pump, "heartbeat")
                 _emit_operational_live_status(
                     execution,
                     pump,
@@ -9724,11 +9783,11 @@ async def run_continuous_paper_session(
                     ),
                 )
 
-                pump.event_loop_phase = "control_wait"
+                _mark_event_loop_phase(pump, "control_wait")
                 if now_ms >= next_checkpoint_ms:
-                    pump.event_loop_phase = "checkpoint_snapshot"
+                    _mark_event_loop_phase(pump, "checkpoint_snapshot")
                     await maybe_start_background_checkpoint()
-                    pump.event_loop_phase = "control_wait"
+                    _mark_event_loop_phase(pump, "control_wait")
                     next_checkpoint_ms = (
                         utc_now_ms()
                         + config.checkpoint_seconds * 1000
