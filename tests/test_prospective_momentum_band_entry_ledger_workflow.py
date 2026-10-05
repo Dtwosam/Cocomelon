@@ -22,10 +22,11 @@ def test_momentum_band_ledger_workflow_is_research_only() -> None:
     )
     assert '"Continuous Mainnet Paper Trader"' in source
     assert "github.event.workflow_run.conclusion == 'success'" not in source
-    assert "EVENT_CONCLUSION:" in source
+    assert "paper_run_is_evidence_eligible()" in source
     assert 'echo "source_eligible=false"' not in source
-    assert '"$EVENT_CONCLUSION" = "success"' in source
-    assert "latest_successful_after_non_success_wake" in source
+    assert "actions/runs/$candidate_run_id/jobs?per_page=100" in source
+    assert "Fail closed on upgrade handoff source" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert "steps.source.outputs.source_eligible == 'true'" in source
     assert "actions: read" in source
     assert "contents: read" in source
@@ -45,10 +46,10 @@ def test_momentum_band_ledger_binds_exact_compact_source() -> None:
     )
     assert 'run.get("head_branch") != "main"' in source
     assert 'run.get("status") != "completed"' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert 'run.get("conclusion") not in {"success", "failure"}' in source
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
-    assert "latest_successful_push" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert (
         "actions/workflows/continuous-paper.yml/runs?"
         "branch=main&status=completed"
@@ -59,7 +60,7 @@ def test_momentum_band_ledger_binds_exact_compact_source() -> None:
         '$candidate_run_id-$candidate_attempt"'
         in source
     )
-    assert "latest_successful_with_compact_artifact" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert "source artifact digest is missing or invalid" in source
     assert "journal.sqlite3" in source
     assert "prospective-momentum-band-entry-state.json" in source
@@ -101,21 +102,18 @@ def test_momentum_band_ledger_restores_append_only_evidence() -> None:
     assert "**LIVE TRADING: DISABLED.**" in source
 
 
-def test_momentum_band_ledger_non_success_wake_falls_back() -> None:
+def test_momentum_band_ledger_accepts_only_durable_handoff_failures() -> None:
     source = _source()
 
-    assert (
-        'if [ "$EVENT_NAME" = "workflow_run" ] && '
-        '[ "$EVENT_CONCLUSION" = "success" ]; then'
-        in source
-    )
-    assert 'resolution_mode="successful_event"' in source
-    assert (
-        'resolution_mode="latest_successful_after_non_success_wake"'
-        in source
-    )
+    assert "paper_run_is_evidence_eligible()" in source
+    assert "Run continuous paper trader" in source
+    assert "Measure durable continuous paper state" in source
+    assert "Upload durable continuous paper state" in source
+    assert "Upload compact continuous learning source" in source
+    assert "Fail closed on upgrade handoff source" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert (
         "actions/workflows/continuous-paper.yml/runs?"
-        "branch=main&status=completed&per_page=50"
+        "branch=main&status=completed&per_page=100"
         in source
     )
