@@ -1621,7 +1621,7 @@ def test_runtime_context_refresh_failure_retries_fail_closed() -> None:
         encoding="utf-8"
     )
     refresh_index = source.index(
-        'pump.event_loop_phase = "context_refresh"'
+        '_mark_event_loop_phase(pump, "context_refresh")'
     )
     attempt_index = source.index(
         "pump.context_refresh_attempts += 1",
@@ -4769,10 +4769,10 @@ def test_opening_path_research_runs_off_fresh_context_critical_path() -> None:
     assert "asyncio.create_task(" in scheduler
 
     refresh_at = source.index(
-        'pump.event_loop_phase = "path_observe_schedule"'
+        '_mark_event_loop_phase(pump, "path_observe_schedule")'
     )
     refresh_end = source.index(
-        'pump.event_loop_phase = "exit_book_capture"',
+        '_mark_event_loop_phase(pump, "exit_book_capture")',
         refresh_at,
     )
     refresh = source[refresh_at:refresh_end]
