@@ -4315,6 +4315,11 @@ class _RecordPump:
             ),
             maxlen=64,
         )
+        self.background_activity_sequence = 0
+        self.background_activity: dict[str, str] = {}
+        self.background_activity_transitions: deque[dict[str, object]] = deque(
+            maxlen=128
+        )
         self.event_loop_lag_samples = 0
         self.event_loop_max_lag_ms = 0
         self.event_loop_max_lag_wakeup: dict[str, object] | None = None
@@ -4638,6 +4643,61 @@ def _event_loop_phase_trace_since(
     return transitions[-limit:]
 
 
+def _set_background_activity(
+    pump: _RecordPump,
+    task_name: str,
+    phase: str | None,
+    *,
+    clock_ms: Callable[[], int] = utc_now_ms,
+) -> None:
+    task = task_name.strip()
+    if not task:
+        raise ValueError("background task name must not be empty")
+    current = pump.background_activity.get(task)
+    if phase is None:
+        if current is None:
+            return
+        pump.background_activity.pop(task, None)
+        next_phase: str | None = None
+    else:
+        normalized = phase.strip()
+        if not normalized:
+            raise ValueError("background activity phase must not be empty")
+        if current == normalized:
+            return
+        pump.background_activity[task] = normalized
+        next_phase = normalized
+    pump.background_activity_sequence += 1
+    pump.background_activity_transitions.append(
+        {
+            "sequence": pump.background_activity_sequence,
+            "task": task,
+            "phase": next_phase,
+            "previous_phase": current,
+            "timestamp_ms": clock_ms(),
+        }
+    )
+
+
+def _background_activity_trace_since(
+    pump: _RecordPump,
+    *,
+    sequence: int,
+    limit: int = 16,
+) -> list[dict[str, object]]:
+    if limit <= 0:
+        raise ValueError("background activity trace limit must be positive")
+    transitions: list[dict[str, object]] = []
+    for item in pump.background_activity_transitions:
+        item_sequence = item.get("sequence")
+        if not isinstance(item_sequence, int):
+            continue
+        if item_sequence <= sequence:
+            continue
+        transitions.append(dict(item))
+    return transitions[-limit:]
+
+
 async def _monitor_event_loop_lag(
     pump: _RecordPump,
     *,
@@ -4653,6 +4713,8 @@ async def _monitor_event_loop_lag(
     while True:
         scheduled_phase = pump.event_loop_phase
         scheduled_phase_sequence = pump.event_loop_phase_sequence
+        scheduled_background_activity = dict(pump.background_activity)
+        scheduled_background_sequence = pump.background_activity_sequence
         await asyncio.sleep(interval_seconds)
         observed = loop.time()
         lag_ms = max(0, int((observed - expected) * 1_000))
@@ -4660,6 +4722,11 @@ async def _monitor_event_loop_lag(
             pump,
             sequence=scheduled_phase_sequence,
         )
+        background_activity_transitions = _background_activity_trace_since(
+            pump,
+            sequence=scheduled_background_sequence,
+        )
+        observed_background_activity = dict(pump.background_activity)
         pump.event_loop_lag_samples += 1
         previous_max_lag_ms = pump.event_loop_max_lag_ms
         if lag_ms > previous_max_lag_ms:
@@ -4669,6 +4736,15 @@ async def _monitor_event_loop_lag(
                 "phase": scheduled_phase,
                 "observed_phase": pump.event_loop_phase,
                 "phase_transitions": phase_transitions,
+                "scheduled_background_activity": (
+                    scheduled_background_activity
+                ),
+                "observed_background_activity": (
+                    observed_background_activity
+                ),
+                "background_activity_transitions": (
+                    background_activity_transitions
+                ),
             }
         pump.event_loop_max_lag_ms_by_phase[scheduled_phase] = max(
             pump.event_loop_max_lag_ms_by_phase.get(
@@ -4693,6 +4769,15 @@ async def _monitor_event_loop_lag(
                 "phase": scheduled_phase,
                 "observed_phase": pump.event_loop_phase,
                 "phase_transitions": phase_transitions,
+                "scheduled_background_activity": (
+                    scheduled_background_activity
+                ),
+                "observed_background_activity": (
+                    observed_background_activity
+                ),
+                "background_activity_transitions": (
+                    background_activity_transitions
+                ),
             }
         expected = observed + interval_seconds
 
