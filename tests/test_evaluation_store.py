@@ -195,6 +195,49 @@ def test_equity_account_state_id_scan_avoids_payload_materialization(
     store.close()
 
 
+def test_decision_fact_batch_persists_atomically(tmp_path: Path) -> None:
+    store = EvaluationFactStore(tmp_path / "evaluation.sqlite3")
+    first = decision_fact(
+        decision_id="strategy-1",
+        timestamp_ms=1_000,
+    )
+    second = decision_fact(
+        decision_id="strategy-2",
+        timestamp_ms=2_000,
+    )
+
+    store.record_decision_facts((first, second))
+    store.record_decision_facts((first, second))
+
+    assert tuple(store.iter_decision_facts()) == (first, second)
+    store.close()
+
+
+def test_decision_fact_batch_rolls_back_on_conflict(tmp_path: Path) -> None:
+    store = EvaluationFactStore(tmp_path / "evaluation.sqlite3")
+    existing = decision_fact(
+        decision_id="strategy-2",
+        timestamp_ms=2_000,
+    )
+    store.record_decision_fact(existing)
+
+    first = decision_fact(
+        decision_id="strategy-1",
+        timestamp_ms=1_000,
+    )
+    conflict = decision_fact(
+        decision_id="strategy-2",
+        timestamp_ms=3_000,
+    )
+
+    with pytest.raises(EvaluationConsistencyError, match="conflicting"):
+        store.record_decision_facts((first, conflict))
+
+    assert store.load_decision_fact(first.fact_id) is None
+    assert store.load_decision_fact(existing.fact_id) == existing
+    store.close()
+
+
 def test_decision_fact_iteration_is_chronological_then_id(tmp_path: Path) -> None:
     path = tmp_path / "evaluation.sqlite3"
     later = decision_fact(decision_id="strategy-2", timestamp_ms=2_000)

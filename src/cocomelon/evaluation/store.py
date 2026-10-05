@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -218,6 +218,72 @@ class EvaluationFactStore:
 
     def record_decision_fact(self, fact: DecisionEvaluationFact) -> None:
         self._record_decision_fact_transaction(fact)
+
+    def record_decision_facts(
+        self,
+        facts: Sequence[DecisionEvaluationFact],
+    ) -> None:
+        pending = tuple(facts)
+        if not pending:
+            return
+        try:
+            self.connection.execute("BEGIN IMMEDIATE")
+            for fact in pending:
+                payload = self._canonical_decision_fact(fact)
+                existing = self.connection.execute(
+                    """
+                    SELECT payload_json
+                    FROM evaluation_decision_facts
+                    WHERE fact_id = ?
+                    """,
+                    (fact.fact_id,),
+                ).fetchone()
+                if existing is not None:
+                    if existing[0] != payload:
+                        raise EvaluationConsistencyError(
+                            "conflicting evaluation decision fact: "
+                            f"{fact.fact_id}"
+                        )
+                    continue
+                by_decision = self.connection.execute(
+                    """
+                    SELECT fact_id
+                    FROM evaluation_decision_facts
+                    WHERE strategy_decision_id = ?
+                      AND replay_run_id = ?
+                    """,
+                    (
+                        fact.strategy_decision_id,
+                        fact.replay_run_id,
+                    ),
+                ).fetchone()
+                if by_decision is not None:
+                    raise EvaluationConsistencyError(
+                        "conflicting evaluation decision fact "
+                        "for strategy decision"
+                    )
+                self.connection.execute(
+                    """
+                    INSERT INTO evaluation_decision_facts(
+                        fact_id,
+                        strategy_decision_id,
+                        replay_run_id,
+                        timestamp_ms,
+                        payload_json
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        fact.fact_id,
+                        fact.strategy_decision_id,
+                        fact.replay_run_id,
+                        fact.timestamp_ms,
+                        payload,
+                    ),
+                )
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
 
     def _record_decision_fact_transaction(
         self,

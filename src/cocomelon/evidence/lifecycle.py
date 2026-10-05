@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Protocol
 
-from cocomelon.domain.evaluation import EquityFactKind
+from cocomelon.domain.evaluation import DecisionEvaluationFact, EquityFactKind
 from cocomelon.domain.execution import (
     ExecutionAttempt,
     InstrumentExecutionSpec,
@@ -768,6 +768,7 @@ class BaselineReplayPipeline:
         self._latest_epoch_eligibility_reason_counts = {}
         self._latest_epoch_stale_book_age_ms = {}
         observations: list[JournalObservation] = []
+        decision_facts: list[DecisionEvaluationFact] = []
         for evaluation in epoch.markets:
             self._eligibility_evaluations += 1
             if evaluation.eligibility.rankable:
@@ -806,7 +807,7 @@ class BaselineReplayPipeline:
             self._latest_evaluation[decision.market.canonical] = evaluation
             if self._feature_snapshot_sink is not None:
                 self._feature_snapshot_sink.record(evaluation.feature)
-            self._facts.record_decision_fact(
+            decision_facts.append(
                 decision_evaluation_fact(
                     decision,
                     evaluation.feature,
@@ -816,6 +817,7 @@ class BaselineReplayPipeline:
             observations.append(
                 observation_from_strategy(decision, replay_run_id=self._run_id)
             )
+        self._facts.record_decision_facts(decision_facts)
         if not self._funding_inconsistent and self._new_exposure_allowed(epoch.evaluated_at_ms):
             self._opening.stage_epoch(epoch)
         return tuple(observations)
