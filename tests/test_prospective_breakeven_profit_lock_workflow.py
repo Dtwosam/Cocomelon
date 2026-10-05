@@ -22,6 +22,19 @@ def test_breakeven_readiness_binds_immutable_sources() -> None:
     assert "evaluate_prospective_breakeven_profit_lock.py" in source
 
 
+def test_breakeven_readiness_selects_newest_ledger_with_exact_artifact() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "ledger_artifact_for_run()" in source
+    assert "profit-lock-execution-ledger-$candidate_run_id-$candidate_attempt" in source
+    assert "status=completed&per_page=100" in source
+    assert 'run.get("head_branch") == "main"' in source
+    assert 'run.get("conclusion") == "success"' in source
+    assert "created_at" in source
+    assert "reverse=True" in source
+    assert "latest_successful_with_ledger_artifact" in source
+
+
 def test_breakeven_readiness_accepts_only_attested_handoff_paper_failures() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
