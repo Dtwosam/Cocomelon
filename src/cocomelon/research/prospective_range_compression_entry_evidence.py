@@ -714,6 +714,19 @@ def update_range_compression_evidence(
                         "duplicate source changed evidence rows"
                     )
                 return canonical_previous
+        latest_source = source_history[-1]
+        latest_identity = (
+            cast(int, latest_source["source_paper_run_id"]),
+            cast(int, latest_source["source_paper_run_attempt"]),
+        )
+        next_identity = (
+            cast(int, source["source_paper_run_id"]),
+            cast(int, source["source_paper_run_attempt"]),
+        )
+        if next_identity <= latest_identity:
+            raise ProspectiveRangeCompressionEvidenceError(
+                "source run identity regressed"
+            )
 
     source_history.append(source)
     payload: dict[str, object] = {
