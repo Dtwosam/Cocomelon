@@ -96,6 +96,7 @@ from cocomelon.continuous_paper import (
     _restore_prospective_top10_rank_filter,
     _restore_prospective_two_strike_stop_filter,
     _revoke_stale_l2_readiness,
+    _set_background_activity,
     _stop_requested,
     _supervisor_group_health_payload,
     _SupervisorGroup,
@@ -971,6 +972,9 @@ def test_event_loop_lag_monitor_records_blocking_phase() -> None:
                     "timestamp_ms": 1_000,
                 }
             ],
+            background_activity_sequence=0,
+            background_activity={},
+            background_activity_transitions=[],
             event_loop_lag_samples=0,
             event_loop_max_lag_ms=0,
             event_loop_max_lag_wakeup=None,
@@ -992,7 +996,19 @@ def test_event_loop_lag_monitor_records_blocking_phase() -> None:
             "blocking_sync",
             clock_ms=lambda: 1_100,
         )
+        _set_background_activity(
+            pump,
+            "unit_background",
+            "blocking_work",
+            clock_ms=lambda: 1_101,
+        )
         time.sleep(0.03)
+        _set_background_activity(
+            pump,
+            "unit_background",
+            None,
+            clock_ms=lambda: 1_129,
+        )
         _mark_event_loop_phase(
             pump,
             "after_block",
@@ -1018,6 +1034,27 @@ def test_event_loop_lag_monitor_records_blocking_phase() -> None:
             for item in pump.event_loop_max_lag_wakeup["phase_transitions"]
         ] == ["blocking_sync", "after_block"]
         assert (
+            pump.event_loop_max_lag_wakeup[
+                "scheduled_background_activity"
+            ]
+            == {}
+        )
+        assert (
+            pump.event_loop_max_lag_wakeup[
+                "observed_background_activity"
+            ]
+            == {}
+        )
+        assert [
+            (item["task"], item["phase"])
+            for item in pump.event_loop_max_lag_wakeup[
+                "background_activity_transitions"
+            ]
+        ] == [
+            ("unit_background", "blocking_work"),
+            ("unit_background", None),
+        ]
+        assert (
             pump.event_loop_max_lag_ms_by_phase["unit_test_block"]
             >= 10
         )
@@ -1039,6 +1076,15 @@ def test_event_loop_lag_monitor_records_blocking_phase() -> None:
             item["phase"]
             for item in pump.event_loop_last_slow_wakeup["phase_transitions"]
         ] == ["blocking_sync", "after_block"]
+        assert [
+            (item["task"], item["phase"])
+            for item in pump.event_loop_last_slow_wakeup[
+                "background_activity_transitions"
+            ]
+        ] == [
+            ("unit_background", "blocking_work"),
+            ("unit_background", None),
+        ]
 
     asyncio.run(scenario())
 
@@ -2783,10 +2829,17 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "capture_replacement_funding_oracles()" in source
     assert "reader.meta_and_asset_ctxs" in source
     assert source.count("replacement_funding_store.observe_snapshot(") == 1
-    precise_raw_at = source.index(
-        "raw = await asyncio.to_thread(\n"
-        "                        reader.meta_and_asset_ctxs"
+    oracle_start = source.index(
+        "async def capture_replacement_funding_oracles()"
     )
+    precise_raw_at = source.index(
+        "raw = await asyncio.to_thread(",
+        oracle_start,
+    )
+    assert source.index(
+        "reader.meta_and_asset_ctxs,",
+        precise_raw_at,
+    ) > precise_raw_at
     precise_received_at = source.index(
         "received_at_ms = utc_now_ms()",
         precise_raw_at,
