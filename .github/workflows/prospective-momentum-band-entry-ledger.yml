@@ -95,6 +95,21 @@ jobs:
           '
           }
 
+          wait_for_paper_run_completion() {
+            local candidate_run_id="$1"
+            for _ in $(seq 1 120); do
+              status="$(
+                gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id" --jq '.status'
+              )"
+              if [ "$status" = "completed" ]; then
+                return 0
+              fi
+              sleep 5
+            done
+            echo "source paper run did not complete within 10 minutes" >&2
+            return 1
+          }
+
           paper_run_is_evidence_eligible() {
             local candidate_run_id="$1"
             local candidate_attempt="$2"
@@ -173,6 +188,9 @@ jobs:
             run_attempt="$INPUT_RUN_ATTEMPT"
             if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
               echo "manual source paper run identity is invalid" >&2
+              exit 1
+            fi
+            if ! wait_for_paper_run_completion "$run_id"; then
               exit 1
             fi
             if ! paper_run_is_evidence_eligible "$run_id" "$run_attempt"; then
