@@ -252,14 +252,28 @@ class WebSocketSupervisor:
             )
             for stream_id in stream_ids
         )
-        minimum_stale = (
-            1
-            if len(stream_ids) == 1
-            else max(2, math.ceil(len(stream_ids) * fraction))
+        minimum_stale = self._minimum_systemic_l2_stale_count(
+            stream_count=len(stream_ids)
         )
         return (
             silent_count >= minimum_stale
             or stale_payload_count >= minimum_stale
+        )
+
+    def _minimum_systemic_l2_stale_count(
+        self,
+        *,
+        stream_count: int,
+    ) -> int:
+        fraction = self._systemic_l2_stale_reconnect_fraction
+        if fraction is None:
+            raise RuntimeError(
+                "systemic L2 stale threshold is disabled"
+            )
+        return (
+            1
+            if stream_count == 1
+            else max(2, math.ceil(stream_count * fraction))
         )
 
     def _clear_l2_dedup_state(self, stream_id: str) -> None:
@@ -315,15 +329,25 @@ class WebSocketSupervisor:
         if not systemic_stale:
             return
 
+        stale_subscriptions = self._stale_l2_subscriptions(
+            now_ms=now_ms
+        )
+        if not stale_subscriptions:
+            return
+        minimum_stale = self._minimum_systemic_l2_stale_count(
+            stream_count=len(self._l2_stream_ids())
+        )
+        if len(stale_subscriptions) > minimum_stale:
+            self._systemic_l2_stale_reconnect_count += 1
+            self._reset_targeted_l2_recovery()
+            raise ConnectionError(
+                "broad systemic l2 staleness requires socket reconnect"
+            )
+
         if (
             self._systemic_l2_targeted_resubscribe_attempts
             < self._max_systemic_l2_targeted_resubscribes
         ):
-            stale_subscriptions = self._stale_l2_subscriptions(
-                now_ms=now_ms
-            )
-            if not stale_subscriptions:
-                return
             targeted_stream_ids: set[str] = set()
             for subscription in stale_subscriptions:
                 stream_id = subscription_id(subscription)
