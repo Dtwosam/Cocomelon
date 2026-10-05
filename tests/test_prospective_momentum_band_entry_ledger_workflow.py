@@ -37,6 +37,14 @@ def test_momentum_band_ledger_workflow_is_research_only() -> None:
     assert "COCOMELON_EXECUTION_MODE" not in source
 
 
+def test_momentum_band_manual_dispatch_waits_for_exact_source() -> None:
+    source = _source()
+
+    assert "wait_for_paper_run_completion()" in source
+    assert "source paper run did not complete within 10 minutes" in source
+    assert 'resolution_mode="manual_exact"' in source
+
+
 def test_momentum_band_ledger_binds_exact_compact_source() -> None:
     source = _source()
 
