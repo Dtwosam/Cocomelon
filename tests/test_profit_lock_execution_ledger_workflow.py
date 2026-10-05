@@ -49,7 +49,7 @@ def test_profit_lock_execution_ledger_binds_exact_compact_source() -> None:
     assert "latest_evidence_eligible_with_compact_artifact" in source
     assert (
         "actions/workflows/continuous-paper.yml/runs?"
-        "branch=main&status=completed&per_page=50"
+        "branch=main&status=completed&per_page=100"
         in source
     )
     assert (
