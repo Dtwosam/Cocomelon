@@ -330,6 +330,10 @@ from cocomelon.research.prospective_momentum_band_entry import (
     ProspectiveMomentumBandEntryState,
     evaluate_prospective_momentum_band_entry,
 )
+from cocomelon.research.prospective_momentum_pullback_entry import (
+    ProspectiveMomentumPullbackEntryState,
+    evaluate_prospective_momentum_pullback_entry,
+)
 from cocomelon.research.prospective_momentum_band_forward_markout import (
     prospective_momentum_band_forward_markout_summary,
 )
@@ -438,6 +442,12 @@ PROSPECTIVE_BREAKEVEN_PROFIT_LOCK_STATE_FILENAME = (
 PROSPECTIVE_MOMENTUM_BAND_ENTRY_STATE_FILENAME = (
     "prospective-momentum-band-entry-state.json"
 )
+PROSPECTIVE_MOMENTUM_PULLBACK_ENTRY_STATE_FILENAME = (
+    "prospective-momentum-pullback-entry-state.json"
+)
+PROSPECTIVE_MOMENTUM_PULLBACK_ENTRY_SUMMARY_FILENAME = (
+    "prospective-momentum-pullback-entry-summary.json"
+)
 PROSPECTIVE_MOMENTUM_BAND_FORWARD_MARKOUT_SUMMARY_FILENAME = (
     "prospective-momentum-band-forward-markout-summary.json"
 )
@@ -475,6 +485,7 @@ DRAWDOWN_STATE_FILENAME = "drawdown-state.json"
 UPGRADE_DEFERRED_RESEARCH_FILENAMES = (
     PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME,
     PROSPECTIVE_MOMENTUM_BAND_FORWARD_MARKOUT_SUMMARY_FILENAME,
+    PROSPECTIVE_MOMENTUM_PULLBACK_ENTRY_SUMMARY_FILENAME,
     PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME,
     PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_SOURCE_FILENAME,
     PROSPECTIVE_LONG_TREND_EXECUTION_SHADOW_SOURCE_FILENAME,
@@ -2886,6 +2897,67 @@ def _restore_prospective_momentum_band_entry(
             ),
             f"{type(exc).__name__}: {exc}",
         )
+
+
+def _restore_prospective_momentum_pullback_entry(
+    path: Path,
+    *,
+    frozen_at_ms: int,
+) -> tuple[ProspectiveMomentumPullbackEntryState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveMomentumPullbackEntryState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveMomentumPullbackEntryState.from_payload(raw),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveMomentumPullbackEntryState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _prospective_momentum_pullback_entry_payload(
+    journal: JournalStore,
+    feature_store: LearningFeatureSnapshotStore,
+    state: ProspectiveMomentumPullbackEntryState,
+    *,
+    restore_error: str | None,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_momentum_pullback_entry(
+            journal,
+            feature_store,
+            state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "changes_execution": False,
+            "changes_risk_limits": False,
+            "candidate_id": state.candidate_id,
+            "frozen_at_ms": state.frozen_at_ms,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
 
 
 def _prospective_momentum_band_entry_payload(
@@ -8760,6 +8832,13 @@ async def run_continuous_paper_session(
         frozen_at_ms=started_at_ms,
     )
     (
+        prospective_momentum_pullback_entry_state,
+        prospective_momentum_pullback_entry_restore_error,
+    ) = _restore_prospective_momentum_pullback_entry(
+        root / PROSPECTIVE_MOMENTUM_PULLBACK_ENTRY_STATE_FILENAME,
+        frozen_at_ms=started_at_ms,
+    )
+    (
         prospective_two_strike_stop_filter_state,
         prospective_two_strike_stop_filter_restore_error,
     ) = _restore_prospective_two_strike_stop_filter(
@@ -9203,6 +9282,14 @@ async def run_continuous_paper_session(
                         timed_component(
                             "prospective_momentum_band_entry_state",
                             prospective_momentum_band_entry_state.payload,
+                        ),
+                    ),
+                    (
+                        root
+                        / PROSPECTIVE_MOMENTUM_PULLBACK_ENTRY_STATE_FILENAME,
+                        timed_component(
+                            "prospective_momentum_pullback_entry_state",
+                            prospective_momentum_pullback_entry_state.payload,
                         ),
                     ),
                     (
@@ -10064,6 +10151,21 @@ async def run_continuous_paper_session(
                 restore_error=(
                     prospective_momentum_band_entry_restore_error
                 ),
+            )
+            momentum_pullback_entry = (
+                _prospective_momentum_pullback_entry_payload(
+                    journal,
+                    feature_store,
+                    prospective_momentum_pullback_entry_state,
+                    restore_error=(
+                        prospective_momentum_pullback_entry_restore_error
+                    ),
+                )
+            )
+            _write_json_atomic(
+                root
+                / PROSPECTIVE_MOMENTUM_PULLBACK_ENTRY_SUMMARY_FILENAME,
+                momentum_pullback_entry,
             )
             full_stack_two_strike = (
                 _prospective_two_strike_stop_filter_payload(
