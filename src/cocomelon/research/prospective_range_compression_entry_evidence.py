@@ -414,6 +414,11 @@ def validate_range_compression_evidence(
             "range-compression state is invalid"
         ) from exc
 
+    if raw.get("candidate_id") != state.candidate_id:
+        raise ProspectiveRangeCompressionEvidenceError(
+            "candidate_id does not match frozen state"
+        )
+
     rows = _canonical_rows(raw.get("rows"))
     if raw.get("row_count") != len(rows):
         raise ProspectiveRangeCompressionEvidenceError(
@@ -463,6 +468,92 @@ def validate_range_compression_evidence(
     if summary.get("blocked_trades") != len(rows) - admitted:
         raise ProspectiveRangeCompressionEvidenceError(
             "summary blocked count does not match rows"
+        )
+    blocked_rows = tuple(
+        row for row in rows if row["candidate_admitted"] is False
+    )
+    actual_pnl = sum(
+        (Decimal(cast(str, row["net_pnl"])) for row in rows),
+        Decimal("0"),
+    )
+    candidate_pnl = sum(
+        (
+            Decimal(cast(str, row["net_pnl"]))
+            for row in rows
+            if row["candidate_admitted"] is True
+        ),
+        Decimal("0"),
+    )
+    blocked_pnl = sum(
+        (
+            Decimal(cast(str, row["net_pnl"]))
+            for row in blocked_rows
+        ),
+        Decimal("0"),
+    )
+    actual_r = sum(
+        (Decimal(cast(str, row["net_r"])) for row in rows),
+        Decimal("0"),
+    )
+    candidate_r = sum(
+        (
+            Decimal(cast(str, row["net_r"]))
+            for row in rows
+            if row["candidate_admitted"] is True
+        ),
+        Decimal("0"),
+    )
+    numeric_expectations = {
+        "blocked_net_pnl": blocked_pnl,
+        "actual_net_pnl": actual_pnl,
+        "candidate_net_pnl": candidate_pnl,
+        "delta_net_pnl": candidate_pnl - actual_pnl,
+        "actual_net_r": actual_r,
+        "candidate_net_r": candidate_r,
+        "delta_net_r": candidate_r - actual_r,
+    }
+    for key, expected in numeric_expectations.items():
+        raw_value = summary.get(key)
+        if not isinstance(raw_value, str):
+            raise ProspectiveRangeCompressionEvidenceError(
+                f"summary {key} must be a decimal string"
+            )
+        try:
+            observed = Decimal(raw_value)
+        except InvalidOperation as exc:
+            raise ProspectiveRangeCompressionEvidenceError(
+                f"summary {key} must be a decimal string"
+            ) from exc
+        if not observed.is_finite() or observed != expected:
+            raise ProspectiveRangeCompressionEvidenceError(
+                f"summary {key} does not match rows"
+            )
+    blocked_wins = sum(
+        Decimal(cast(str, row["net_pnl"])) > 0
+        for row in blocked_rows
+    )
+    blocked_losses = sum(
+        Decimal(cast(str, row["net_pnl"])) < 0
+        for row in blocked_rows
+    )
+    if summary.get("blocked_wins") != blocked_wins:
+        raise ProspectiveRangeCompressionEvidenceError(
+            "summary blocked wins do not match rows"
+        )
+    if summary.get("blocked_losses") != blocked_losses:
+        raise ProspectiveRangeCompressionEvidenceError(
+            "summary blocked losses do not match rows"
+        )
+    feature_evaluated = sum(
+        row["feature_status"] == "complete" for row in rows
+    )
+    if summary.get("feature_evaluated_trades") != feature_evaluated:
+        raise ProspectiveRangeCompressionEvidenceError(
+            "summary feature count does not match rows"
+        )
+    if summary.get("missing_feature_trades") != len(rows) - feature_evaluated:
+        raise ProspectiveRangeCompressionEvidenceError(
+            "summary missing feature count does not match rows"
         )
 
     canonical: dict[str, object] = {
