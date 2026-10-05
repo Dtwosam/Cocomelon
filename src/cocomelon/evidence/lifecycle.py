@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Protocol
 
-from cocomelon.domain.evaluation import EquityFactKind
+from cocomelon.domain.evaluation import DecisionEvaluationFact, EquityFactKind
 from cocomelon.domain.execution import (
     ExecutionAttempt,
     InstrumentExecutionSpec,
@@ -768,7 +768,7 @@ class BaselineReplayPipeline:
         self._latest_epoch_eligibility_reason_counts = {}
         self._latest_epoch_stale_book_age_ms = {}
         observations: list[JournalObservation] = []
-        decision_facts = []
+        decision_facts: list[DecisionEvaluationFact] = []
         for evaluation in epoch.markets:
             self._eligibility_evaluations += 1
             if evaluation.eligibility.rankable:
