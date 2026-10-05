@@ -36,7 +36,13 @@ def test_pullback_fast_markout_ledger_binds_exact_compact_source() -> None:
         in source
     )
     assert 'run.get("head_branch") != "main"' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert 'run.get("conclusion") not in {"success", "failure"}' in source
+    assert "paper_run_is_evidence_eligible()" in source
+    assert "Run continuous paper trader" in source
+    assert "Measure durable continuous paper state" in source
+    assert "Upload durable continuous paper state" in source
+    assert "Upload compact continuous learning source" in source
+    assert "Fail closed on upgrade handoff source" in source
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
     assert (
@@ -75,22 +81,18 @@ def test_pullback_fast_markout_ledger_keeps_pending_rows_unfrozen() -> None:
     assert "cannot change the pullback candidate's closed-trade readiness gate" in source
 
 
-def test_pullback_fast_markout_ledger_non_success_wake_falls_back() -> None:
+def test_pullback_fast_markout_accepts_exact_durable_handoff() -> None:
     source = _source()
 
-    assert (
-        'if [ "$EVENT_NAME" = "workflow_run" ] && '
-        '[ "$EVENT_CONCLUSION" = "success" ]; then'
-        in source
-    )
+    assert "wait_for_paper_run_completion()" in source
+    assert "source paper run did not complete within 10 minutes" in source
+    assert 'resolution_mode="manual_exact"' in source
     assert 'resolution_mode="successful_event"' in source
-    assert (
-        'resolution_mode="latest_successful_after_non_success_wake"'
-        in source
-    )
+    assert 'resolution_mode="durable_upgrade_handoff_event"' in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert (
         "actions/workflows/continuous-paper.yml/runs?"
-        "branch=main&status=completed&per_page=50"
+        "branch=main&status=completed&per_page=100"
         in source
     )
 
@@ -131,7 +133,7 @@ def test_pullback_fast_markout_source_skips_empty_successful_handoffs() -> None:
     source = _source()
 
     assert "artifact_for_run()" in source
-    assert "latest_successful_with_compact_artifact" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert "selected source has no authenticated compact artifact" in source
     assert "artifact_candidates" in source
     assert 'EVENT_NAME" != "workflow_dispatch"' in source
