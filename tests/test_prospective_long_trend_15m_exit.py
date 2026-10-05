@@ -338,7 +338,7 @@ def test_state_freezes_pure_long_trend_fixed_15m_rule() -> None:
     assert restored.payload()["rule"] == {
         "entry_scope": "weekly_drawdown_only_reopened_pure_long_trend",
         "entry_execution": "captured_request_visible_book_ioc",
-        "exit_horizon_ms": 300_000,
+        "exit_horizon_ms": 900_000,
         "exit_execution": "captured_real_l2_reduce_only_ioc",
         "funding_policy": "exact_captured_hourly_boundaries",
         "cross_horizon_selection": "frozen_single_horizon",
