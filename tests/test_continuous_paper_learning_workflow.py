@@ -56,6 +56,11 @@ def test_continuous_paper_publishes_compact_learning_source() -> None:
         in source
     )
     assert (
+        "continuous-paper-state/"
+        "prospective-momentum-pullback-forward-markout-summary.json"
+        in source
+    )
+    assert (
         "continuous-paper-state/prospective-two-strike-stop-filter-state.json"
         in source
     )
