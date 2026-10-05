@@ -332,6 +332,7 @@ from cocomelon.research.prospective_momentum_band_entry import (
 )
 from cocomelon.research.prospective_momentum_band_forward_markout import (
     prospective_momentum_band_forward_markout_summary,
+    prospective_momentum_pullback_forward_markout_summary,
 )
 from cocomelon.research.prospective_momentum_pullback_entry import (
     ProspectiveMomentumPullbackEntryState,
@@ -448,6 +449,9 @@ PROSPECTIVE_MOMENTUM_PULLBACK_ENTRY_STATE_FILENAME = (
 PROSPECTIVE_MOMENTUM_PULLBACK_ENTRY_SUMMARY_FILENAME = (
     "prospective-momentum-pullback-entry-summary.json"
 )
+PROSPECTIVE_MOMENTUM_PULLBACK_FORWARD_MARKOUT_SUMMARY_FILENAME = (
+    "prospective-momentum-pullback-forward-markout-summary.json"
+)
 PROSPECTIVE_MOMENTUM_BAND_FORWARD_MARKOUT_SUMMARY_FILENAME = (
     "prospective-momentum-band-forward-markout-summary.json"
 )
@@ -486,6 +490,7 @@ UPGRADE_DEFERRED_RESEARCH_FILENAMES = (
     PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME,
     PROSPECTIVE_MOMENTUM_BAND_FORWARD_MARKOUT_SUMMARY_FILENAME,
     PROSPECTIVE_MOMENTUM_PULLBACK_ENTRY_SUMMARY_FILENAME,
+    PROSPECTIVE_MOMENTUM_PULLBACK_FORWARD_MARKOUT_SUMMARY_FILENAME,
     PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME,
     PROSPECTIVE_WEEKLY_DRAWDOWN_5M_EXIT_SOURCE_FILENAME,
     PROSPECTIVE_LONG_TREND_EXECUTION_SHADOW_SOURCE_FILENAME,
@@ -2988,6 +2993,37 @@ def _prospective_momentum_band_entry_payload(
     payload = dict(payload)
     payload["enabled"] = True
     payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
+
+
+def _prospective_momentum_pullback_forward_markout_payload(
+    opportunity_store: ContinuousPaperOpeningOpportunityStore,
+    path_store: ContinuousPaperOpeningOpportunityPathStore,
+    feature_store: LearningFeatureSnapshotStore,
+    pullback_state: ProspectiveMomentumPullbackEntryState,
+) -> dict[str, object]:
+    try:
+        payload = prospective_momentum_pullback_forward_markout_summary(
+            opportunity_store.iter_records(),
+            path_store.iter_paths(),
+            feature_store,
+            pullback_state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "descriptive_only": True,
+            "changes_readiness_gate": False,
+            "candidate_id": pullback_state.candidate_id,
+            "started_at_ms": pullback_state.started_at_ms,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
     payload["error"] = None
     return payload
 
@@ -10166,6 +10202,19 @@ async def run_continuous_paper_session(
                 root
                 / PROSPECTIVE_MOMENTUM_PULLBACK_ENTRY_SUMMARY_FILENAME,
                 momentum_pullback_entry,
+            )
+            momentum_pullback_forward_markout = (
+                _prospective_momentum_pullback_forward_markout_payload(
+                    opening_opportunity_store,
+                    opening_opportunity_path_store,
+                    feature_store,
+                    prospective_momentum_pullback_entry_state,
+                )
+            )
+            _write_json_atomic(
+                root
+                / PROSPECTIVE_MOMENTUM_PULLBACK_FORWARD_MARKOUT_SUMMARY_FILENAME,
+                momentum_pullback_forward_markout,
             )
             full_stack_two_strike = (
                 _prospective_two_strike_stop_filter_payload(
