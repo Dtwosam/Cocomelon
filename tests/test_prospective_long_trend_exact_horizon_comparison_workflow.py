@@ -86,12 +86,19 @@ def test_exact_horizon_comparison_publishes_paired_robustness() -> None:
     assert "exact 5m / exact 15m / paired" in source
     assert "5m-only / 15m-only exact" in source
     assert "total / mean delta (5m - 15m)" in source
+    assert "size-normalized total / mean return delta" in source
     assert "leave-one-trade min / max delta" in source
     assert "leave-one-market min / max delta" in source
     assert "chronological first / second half delta" in source
+    assert "size-normalized leave-one-trade min / max" in source
+    assert "size-normalized leave-one-market min / max" in source
+    assert "size-normalized chronological first / second half" in source
     assert "5m robustly better" in source
     assert "15m robustly better" in source
     assert "preferred horizon" in source
+    assert "5m size-normalized robustly better" in source
+    assert "15m size-normalized robustly better" in source
+    assert "size-normalized preferred horizon" in source
     assert "Only opportunities with exact execution PnL on both" in source
 
 
