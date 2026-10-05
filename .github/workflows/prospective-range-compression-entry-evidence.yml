@@ -1,0 +1,605 @@
+name: Prospective Range-Compression Entry Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed Continuous Mainnet Paper Trader run ID
+        required: true
+        type: string
+      source_run_attempt:
+        description: Exact source run attempt
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: prospective-range-compression-entry-evidence
+  cancel-in-progress: false
+
+jobs:
+  ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EVIDENCE_ISSUE: "924"
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e .
+
+      - name: Resolve exact source paper run
+        id: source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
+          EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt || '' }}
+          INPUT_RUN_ID: ${{ inputs.source_run_id || '' }}
+          INPUT_RUN_ATTEMPT: ${{ inputs.source_run_attempt || '' }}
+        run: |
+          set -euo pipefail
+          echo "source_eligible=true" >> "$GITHUB_OUTPUT"
+
+          artifact_for_run() {
+            local candidate_run_id="$1"
+            local candidate_attempt="$2"
+            local expected_name="continuous-paper-learning-source-$candidate_run_id-$candidate_attempt"
+            local artifacts_json
+            artifacts_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/artifacts?per_page=100"
+            )"
+            printf '%s' "$artifacts_json" |
+            ARTIFACT_NAME="$expected_name" python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          name = os.environ["ARTIFACT_NAME"]
+          matches = [
+              item for item in payload.get("artifacts", [])
+              if item.get("name") == name and item.get("expired") is False
+          ]
+          if not matches:
+              raise SystemExit(0)
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected at most one non-expired source artifact named {name}"
+              )
+          item = matches[0]
+          digest = item.get("digest")
+          if not isinstance(digest, str) or not digest.startswith("sha256:"):
+              raise SystemExit("source artifact digest is missing or invalid")
+          print(item["id"], item["name"], digest, sep="\t")
+          '
+          }
+
+          paper_run_is_evidence_eligible() {
+            local candidate_run_id="$1"
+            local candidate_attempt="$2"
+            local run_path="/tmp/profit-lock-source-run-$candidate_run_id.json"
+            local jobs_path="/tmp/profit-lock-source-jobs-$candidate_run_id.json"
+
+            gh api               "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id"               > "$run_path"
+            gh api               "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/jobs?per_page=100"               > "$jobs_path"
+
+            python -               "$run_path"               "$jobs_path"               "$candidate_attempt"               "$GITHUB_REPOSITORY" <<'PY'
+          import json
+          import sys
+
+          run_path, jobs_path, expected_attempt, expected_repo = sys.argv[1:]
+          with open(run_path, encoding="utf-8") as handle:
+              run = json.load(handle)
+          if run.get("path") != ".github/workflows/continuous-paper.yml":
+              raise SystemExit(1)
+          if run.get("head_branch") != "main":
+              raise SystemExit(1)
+          if run.get("status") != "completed":
+              raise SystemExit(1)
+          if str(run.get("run_attempt")) != expected_attempt:
+              raise SystemExit(1)
+          if (run.get("head_repository") or {}).get("full_name") != expected_repo:
+              raise SystemExit(1)
+          conclusion = run.get("conclusion")
+          if conclusion not in {"success", "failure"}:
+              raise SystemExit(1)
+          if conclusion == "success":
+              raise SystemExit(0)
+
+          with open(jobs_path, encoding="utf-8") as handle:
+              jobs_payload = json.load(handle)
+          paper_jobs = [
+              job
+              for job in jobs_payload.get("jobs", [])
+              if job.get("name") == "paper"
+          ]
+          if len(paper_jobs) != 1:
+              raise SystemExit(1)
+          paper_job = paper_jobs[0]
+          if paper_job.get("conclusion") != "failure":
+              raise SystemExit(1)
+
+          steps = {
+              step.get("name"): step.get("conclusion")
+              for step in paper_job.get("steps", [])
+              if isinstance(step.get("name"), str)
+          }
+          required_successes = (
+              "Run continuous paper trader",
+              "Measure durable continuous paper state",
+              "Upload durable continuous paper state",
+              "Upload compact continuous learning source",
+          )
+          if any(steps.get(name) != "success" for name in required_successes):
+              raise SystemExit(1)
+          failed_steps = {
+              name
+              for name, step_conclusion in steps.items()
+              if step_conclusion == "failure"
+          }
+          if failed_steps != {"Fail closed on upgrade handoff source"}:
+              raise SystemExit(1)
+          PY
+          }
+
+          run_id=""
+          run_attempt=""
+          artifact_line=""
+          resolution_mode=""
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_id="$INPUT_RUN_ID"
+            run_attempt="$INPUT_RUN_ATTEMPT"
+            if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
+              echo "manual source paper run identity is invalid" >&2
+              exit 1
+            fi
+            if ! paper_run_is_evidence_eligible "$run_id" "$run_attempt"; then
+              echo "manual source paper run is not evidence-eligible" >&2
+              exit 1
+            fi
+            artifact_line="$(artifact_for_run "$run_id" "$run_attempt")"
+            resolution_mode="manual_exact"
+          elif [[ "$EVENT_RUN_ID" =~ ^[0-9]+$ && "$EVENT_RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
+            if paper_run_is_evidence_eligible "$EVENT_RUN_ID" "$EVENT_RUN_ATTEMPT"; then
+              candidate_artifact_line="$(
+                artifact_for_run "$EVENT_RUN_ID" "$EVENT_RUN_ATTEMPT"
+              )"
+              if [ -n "$candidate_artifact_line" ]; then
+                run_id="$EVENT_RUN_ID"
+                run_attempt="$EVENT_RUN_ATTEMPT"
+                artifact_line="$candidate_artifact_line"
+                if [ "$EVENT_CONCLUSION" = "success" ]; then
+                  resolution_mode="successful_event"
+                else
+                  resolution_mode="durable_upgrade_handoff_event"
+                fi
+              fi
+            fi
+          fi
+
+          if [ -z "$artifact_line" ] && [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            runs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=100"
+            )"
+            mapfile -t artifact_candidates < <(
+              printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in payload.get("workflow_runs", []):
+              if (
+                  run.get("path") == ".github/workflows/continuous-paper.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and (run.get("head_repository") or {}).get("full_name") == repo
+                  and isinstance(run.get("id"), int)
+                  and isinstance(run.get("run_attempt"), int)
+              ):
+                  print(run["id"], run["run_attempt"], sep="\t")
+          '
+            )
+            for candidate in "${artifact_candidates[@]}"; do
+              IFS=$'\t' read -r candidate_run_id candidate_attempt <<<"$candidate"
+              if ! paper_run_is_evidence_eligible                 "$candidate_run_id"                 "$candidate_attempt"; then
+                continue
+              fi
+              candidate_artifact_line="$(
+                artifact_for_run "$candidate_run_id" "$candidate_attempt"
+              )"
+              if [ -n "$candidate_artifact_line" ]; then
+                run_id="$candidate_run_id"
+                run_attempt="$candidate_attempt"
+                artifact_line="$candidate_artifact_line"
+                resolution_mode="latest_evidence_eligible_with_compact_artifact"
+                break
+              fi
+            done
+          fi
+
+          if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
+            echo "source paper run identity is invalid" >&2
+            exit 1
+          fi
+          if [ -z "$artifact_line" ]; then
+            echo "selected source has no authenticated compact artifact" >&2
+            exit 1
+          fi
+          if ! paper_run_is_evidence_eligible "$run_id" "$run_attempt"; then
+            echo "selected source paper run is not evidence-eligible" >&2
+            exit 1
+          fi
+
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+          head_sha="$(
+            printf '%s' "$run_json" |
+            SOURCE_ATTEMPT="$run_attempt" python -c '
+          import json, os, sys
+          run = json.load(sys.stdin)
+          if run.get("path") != ".github/workflows/continuous-paper.yml":
+              raise SystemExit("source workflow path mismatch")
+          if run.get("head_branch") != "main":
+              raise SystemExit("source run must be from main")
+          if run.get("status") != "completed":
+              raise SystemExit("source run must be completed")
+          if run.get("conclusion") not in {"success", "failure"}:
+              raise SystemExit("source run conclusion is not evidence-eligible")
+          if str(run.get("run_attempt")) != os.environ["SOURCE_ATTEMPT"]:
+              raise SystemExit("source run attempt mismatch")
+          if (run.get("head_repository") or {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("source repository mismatch")
+          sha = run.get("head_sha")
+          if not isinstance(sha, str) or len(sha) != 40:
+              raise SystemExit("source head sha is invalid")
+          print(sha)
+          '
+          )"
+          IFS=$'\t' read -r artifact_id artifact_name artifact_digest <<<"$artifact_line"
+
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$artifact_digest" >> "$GITHUB_OUTPUT"
+          echo "resolution_mode=$resolution_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Download compact paper source
+        if: ${{ steps.source.outputs.source_eligible == 'true' }}
+        id: compact
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.source.outputs.artifact_id }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/range-compression-source
+          mkdir -p /tmp/range-compression-source
+          gh api             "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/range-compression-source.zip
+          unzip -q /tmp/range-compression-source.zip -d /tmp/range-compression-source
+
+          journal_path="$(
+            find /tmp/range-compression-source -type f -name journal.sqlite3 -print -quit
+          )"
+          state_path="$(
+            find /tmp/range-compression-source               -type f               -name prospective-range-compression-entry-state.json               -print -quit
+          )"
+          feature_store_path="$(
+            find /tmp/range-compression-source               -type d               -name learning-features               -print -quit
+          )"
+          if [ -z "$journal_path" ]; then
+            echo "compact paper source is missing journal.sqlite3" >&2
+            exit 1
+          fi
+          if [ -z "$state_path" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "journal_path=$journal_path" >> "$GITHUB_OUTPUT"
+            echo "state_path=" >> "$GITHUB_OUTPUT"
+            echo "feature_store_path=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$feature_store_path" ]; then
+            echo "compact paper source is missing learning-features" >&2
+            exit 1
+          fi
+          test -s "$state_path"
+          test -d "$feature_store_path/records"
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+          echo "journal_path=$journal_path" >> "$GITHUB_OUTPUT"
+          echo "state_path=$state_path" >> "$GITHUB_OUTPUT"
+          echo "feature_store_path=$feature_store_path" >> "$GITHUB_OUTPUT"
+
+      - name: Publish waiting-for-state status
+        if: ${{ steps.source.outputs.source_eligible == 'true' && steps.compact.outputs.eligible != 'true' }}
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+        run: |
+          cat > /tmp/range-compression-ledger-status.md <<EOF
+          ## Prospective range-compression entry ledger
+
+          **Status:** waiting for new-format compact source
+
+          - source paper run: \`$SOURCE_RUN_ID\`
+          - source paper attempt: \`$SOURCE_RUN_ATTEMPT\`
+          - source resolution: \`$RESOLUTION_MODE\`
+          - reason: compact source predates export of the frozen range-compression state
+
+          No prospective row is credited from this run. The workflow will begin only when a successful paper handoff includes the original frozen state file.
+
+          **Execution authority:** \`false\`
+          **Promotion authority:** \`false\`
+          **LIVE TRADING: DISABLED.**
+          EOF
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$EVIDENCE_ISSUE"             -f body="$(cat /tmp/range-compression-ledger-status.md)"
+
+      - name: Restore previous range-compression evidence
+        if: ${{ steps.source.outputs.source_eligible == 'true' && steps.compact.outputs.eligible == 'true' }}
+        id: previous
+        shell: bash
+        env:
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          previous_path=""
+          previous_workflow_run_id=""
+          runs_json="$(
+            gh api               "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-range-compression-entry-evidence.yml/runs?status=success&per_page=100"
+          )"
+          mapfile -t prior_runs < <(
+            jq -r               --arg current "$CURRENT_RUN_ID"               '.workflow_runs
+               | map(select((.id | tostring) != $current))
+               | sort_by(.updated_at)
+               | reverse
+               | .[].id'               <<<"$runs_json"
+          )
+          for run_id in "${prior_runs[@]}"; do
+            artifacts_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+            )"
+            artifact_line="$(
+              jq -r '
+                .artifacts
+                | map(
+                    select(
+                      (.expired | not)
+                      and (
+                        .name
+                        | startswith("prospective-range-compression-entry-evidence-")
+                      )
+                    )
+                  )
+                | if length > 0
+                  then [.[0].id, .[0].name] | @tsv
+                  else ""
+                  end
+              ' <<<"$artifacts_json"
+            )"
+            if [ -z "$artifact_line" ]; then
+              continue
+            fi
+            IFS=$'\t' read -r artifact_id artifact_name <<<"$artifact_line"
+            rm -rf /tmp/previous-range-compression-ledger
+            mkdir -p /tmp/previous-range-compression-ledger
+            gh api               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > /tmp/previous-range-compression-ledger.zip
+            unzip -q               /tmp/previous-range-compression-ledger.zip               -d /tmp/previous-range-compression-ledger
+            candidate="$(
+              find /tmp/previous-range-compression-ledger                 -type f                 -name prospective-range-compression-entry-evidence.json                 -print -quit
+            )"
+            if [ -n "$candidate" ] && [ -s "$candidate" ]; then
+              previous_path="$candidate"
+              previous_workflow_run_id="$run_id"
+              break
+            fi
+          done
+          echo "previous_path=$previous_path" >> "$GITHUB_OUTPUT"
+          echo "previous_workflow_run_id=$previous_workflow_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Extend append-only range-compression evidence
+        if: ${{ steps.source.outputs.source_eligible == 'true' && steps.compact.outputs.eligible == 'true' }}
+        id: ledger
+        continue-on-error: true
+        shell: bash
+        env:
+          JOURNAL_PATH: ${{ steps.compact.outputs.journal_path }}
+          STATE_PATH: ${{ steps.compact.outputs.state_path }}
+          FEATURE_STORE_PATH: ${{ steps.compact.outputs.feature_store_path }}
+          PREVIOUS_LEDGER_PATH: ${{ steps.previous.outputs.previous_path }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          SOURCE_HEAD_SHA: ${{ steps.source.outputs.head_sha }}
+          SOURCE_ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
+          SOURCE_ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
+        run: |
+          set +e
+          args=(
+            "$JOURNAL_PATH"
+            "$STATE_PATH"
+            "$FEATURE_STORE_PATH"
+            --source-paper-run-id "$SOURCE_RUN_ID"
+            --source-paper-run-attempt "$SOURCE_RUN_ATTEMPT"
+            --source-head-sha "$SOURCE_HEAD_SHA"
+            --source-artifact-name "$SOURCE_ARTIFACT_NAME"
+            --source-artifact-digest "$SOURCE_ARTIFACT_DIGEST"
+            --json-out prospective-range-compression-entry-evidence.json
+          )
+          if [ -n "$PREVIOUS_LEDGER_PATH" ]; then
+            args+=(--previous "$PREVIOUS_LEDGER_PATH")
+          fi
+          python scripts/update_prospective_range_compression_entry_evidence.py             "${args[@]}"             > /tmp/range-compression-ledger.stdout.json             2> /tmp/range-compression-ledger.error
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            cmp               prospective-range-compression-entry-evidence.json               /tmp/range-compression-ledger.stdout.json
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "error<<EOF"
+              cat /tmp/range-compression-ledger.error
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish blocked ledger status
+        if: >-
+          steps.source.outputs.source_eligible == 'true' &&
+          steps.compact.outputs.eligible == 'true' &&
+          steps.ledger.outputs.clean != 'true'
+        shell: bash
+        env:
+          ERROR_TEXT: ${{ steps.ledger.outputs.error }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+        run: |
+          error="${ERROR_TEXT:-unknown error}"
+          cat > /tmp/range-compression-ledger-status.md <<EOF
+          ## Prospective range-compression entry ledger
+
+          **Status:** BLOCKED — append-only invariant failure
+
+          - source paper run: \`$SOURCE_RUN_ID\`
+          - source paper attempt: \`$SOURCE_RUN_ATTEMPT\`
+          - error: \`$error\`
+
+          No range-compression evidence is published from this run.
+
+          **Execution authority:** \`false\`
+          **Promotion authority:** \`false\`
+          **LIVE TRADING: DISABLED.**
+          EOF
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$EVIDENCE_ISSUE"             -f body="$(cat /tmp/range-compression-ledger-status.md)"
+
+      - name: Fail closed on range-compression evidence drift
+        if: >-
+          steps.source.outputs.source_eligible == 'true' &&
+          steps.compact.outputs.eligible == 'true' &&
+          steps.ledger.outputs.clean != 'true'
+        shell: bash
+        run: |
+          echo "Range-compression append-only evidence is blocked." >&2
+          exit 1
+
+      - name: Publish clean evidence status
+        if: >-
+          steps.source.outputs.source_eligible == 'true' &&
+          steps.compact.outputs.eligible == 'true' &&
+          steps.ledger.outputs.clean == 'true'
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          PREVIOUS_WORKFLOW_RUN_ID: ${{ steps.previous.outputs.previous_workflow_run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          evidence = json.loads(
+              Path(
+                  "prospective-range-compression-entry-evidence.json"
+              ).read_text(encoding="utf-8")
+          )
+          summary = evidence["summary"]
+          readiness = summary["readiness"]
+          robustness = summary["robustness"]
+          state = evidence["state"]
+
+          def stamp(value):
+              if value is None:
+                  return "none"
+              return datetime.fromtimestamp(
+                  int(value) / 1000,
+                  tz=UTC,
+              ).isoformat()
+
+          previous = os.environ["PREVIOUS_WORKFLOW_RUN_ID"] or "none"
+          lines = [
+              "## Prospective range-compression entry evidence",
+              "",
+              "**Status:** append-only clean",
+              "",
+              f"- candidate: \`{evidence['candidate_id']}\`",
+              f"- frozen at: \`{stamp(state['frozen_at_ms'])}\`",
+              f"- clean scoring start: \`{stamp(state['started_at_ms'])}\`",
+              f"- frozen max range expansion 15m: \`{state['rule']['max_range_expansion_15m']}\`",
+              f"- source paper run / attempt: \`{os.environ['SOURCE_RUN_ID']} / {os.environ['SOURCE_RUN_ATTEMPT']}\`",
+              f"- source resolution: \`{os.environ['RESOLUTION_MODE']}\`",
+              f"- previous evidence workflow run: \`{previous}\`",
+              f"- rows / previous / newly appended: \`{evidence['row_count']} / {evidence['previous_row_count']} / {evidence['new_row_count']}\`",
+              f"- rows SHA-256: \`{evidence['rows_sha256']}\`",
+              f"- evidence SHA-256: \`{evidence['evidence_sha256']}\`",
+              "",
+              "### Candidate result",
+              "",
+              f"- prospective closed / admitted / blocked: \`{summary['prospective_closed_trades']} / {summary['admitted_trades']} / {summary['blocked_trades']}\`",
+              f"- blocked W/L / blocked PnL: \`{summary['blocked_wins']}/{summary['blocked_losses']} / {summary['blocked_net_pnl']}\`",
+              f"- actual / candidate / delta PnL: \`{summary['actual_net_pnl']} / {summary['candidate_net_pnl']} / {summary['delta_net_pnl']}\`",
+              f"- actual / candidate / delta R: \`{summary['actual_net_r']} / {summary['candidate_net_r']} / {summary['delta_net_r']}\`",
+              f"- sample / economics / trade robustness / market robustness: \`{readiness['sample_complete']} / {readiness['economics_positive']} / {readiness['single_trade_robust']} / {readiness['single_market_robust']}\`",
+              f"- ready for review: \`{readiness['ready_for_review']}\`",
+              f"- feature evaluated / missing: \`{summary['feature_evaluated_trades']} / {summary['missing_feature_trades']}\`",
+              f"- leave-one-trade / leave-one-market minimum delta: \`{robustness['leave_one_trade_out_min_delta']} / {robustness['leave_one_market_out_min_delta']}\`",
+              "",
+              "### Latest immutable rows",
+              "",
+              "| Opened | Market | Side | Candidate | Feature | Range 15m | Net PnL | Net R |",
+              "| --- | --- | --- | --- | --- | ---: | ---: | ---: |",
+          ]
+          for row in evidence["rows"][-8:]:
+              lines.append(
+                  "| {opened} | {market} | {side} | {decision} | "
+                  "{feature} | {range_15m} | {pnl} | {net_r} |".format(
+                      opened=stamp(row["opened_at_ms"]),
+                      market=row["market"],
+                      side=row["direction"],
+                      decision=row["decision"],
+                      feature=row["feature_status"],
+                      range_15m=row["range_expansion_15m"],
+                      pnl=row["net_pnl"],
+                      net_r=row["net_r"],
+                  )
+              )
+          lines.extend(
+              [
+                  "",
+                  "Every previously published trade row must remain identical after canonicalization. Frozen-state, feature-digest, decision, or trade-result drift blocks the evidence chain.",
+                  "",
+                  "**Execution authority:** \`false\`",
+                  "**Promotion authority:** \`false\`",
+                  "**LIVE TRADING: DISABLED.**",
+              ]
+          )
+          Path("/tmp/range-compression-evidence-status.md").write_text(
+              "\\n".join(lines) + "\\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$EVIDENCE_ISSUE"             -f body="$(cat /tmp/range-compression-evidence-status.md)"
+
+      - name: Upload range-compression evidence
+        if: >-
+          steps.source.outputs.source_eligible == 'true' &&
+          steps.compact.outputs.eligible == 'true' &&
+          steps.ledger.outputs.clean == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-range-compression-entry-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: prospective-range-compression-entry-evidence.json
+          if-no-files-found: error
+          retention-days: 90
