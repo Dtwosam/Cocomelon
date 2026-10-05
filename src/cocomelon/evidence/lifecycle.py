@@ -1294,6 +1294,19 @@ class BaselineReplayPipeline:
                 observations.extend(self._record_opening_trace(trace))
         return tuple(observations)
 
+    def _profiled_due_funding(
+        self,
+        now_ms: int,
+    ) -> tuple[JournalObservation, ...]:
+        started = time.perf_counter()
+        try:
+            return self._due_funding(now_ms)
+        finally:
+            self._record_runtime_component(
+                "funding_reconcile",
+                started,
+            )
+
     def on_record(
         self,
         record: ReplayRecord,
@@ -1358,7 +1371,7 @@ class BaselineReplayPipeline:
             )
 
         if record.record_kind is SourceRecordKind.DATA_GAP:
-            observations.extend(self._due_funding(now_ms))
+            observations.extend(self._profiled_due_funding(now_ms))
             return tuple(observations)
         if record.event_kind is None:
             raise ReplayInvariantError("normalized baseline record is missing event_kind")
@@ -1376,22 +1389,19 @@ class BaselineReplayPipeline:
                 "mark_account",
                 mark_started,
             )
-            funding_started = time.perf_counter()
-            observations.extend(self._due_funding(now_ms))
-            self._record_runtime_component(
-                "funding_reconcile",
-                funding_started,
+            observations.extend(
+                self._profiled_due_funding(now_ms)
             )
         elif record.event_kind == "funding_rate":
             replay_record_funding_rate(record)
-            observations.extend(self._due_funding(now_ms))
+            observations.extend(self._profiled_due_funding(now_ms))
         elif record.event_kind == StreamKind.L2_BOOK.value:
             book = replay_record_stream_event(record)
-            observations.extend(self._due_funding(now_ms))
+            observations.extend(self._profiled_due_funding(now_ms))
             observations.extend(self._handle_book(record, book, now_ms))
-            observations.extend(self._due_funding(now_ms))
+            observations.extend(self._profiled_due_funding(now_ms))
         else:
-            observations.extend(self._due_funding(now_ms))
+            observations.extend(self._profiled_due_funding(now_ms))
         return tuple(observations)
 
     def finalize(self, end_ms: int) -> tuple[TradeJournalEntry, ...]:
