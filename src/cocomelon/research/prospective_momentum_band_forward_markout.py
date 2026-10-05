@@ -25,6 +25,10 @@ from cocomelon.research.prospective_momentum_band_entry import (
     ProspectiveMomentumBandEntryState,
     prospective_momentum_band_opportunity_decision,
 )
+from cocomelon.research.prospective_momentum_pullback_entry import (
+    ProspectiveMomentumPullbackEntryState,
+    prospective_momentum_pullback_snapshot_decision,
+)
 from cocomelon.research.prospective_two_strike_stop_filter import (
     STRIKE_THRESHOLD,
     ProspectiveTwoStrikeStopFilterState,
@@ -156,6 +160,7 @@ def _spread_robustness(
     rows: tuple[dict[str, object], ...],
     *,
     horizon_key: str,
+    decision_field: str = "momentum_decision",
 ) -> dict[str, object]:
     settled: list[tuple[str, str, Decimal]] = []
     for row in rows:
@@ -171,7 +176,7 @@ def _spread_robustness(
             str,
         ):
             continue
-        decision = row.get("momentum_decision")
+        decision = row.get(decision_field)
         market = row.get("market")
         if decision not in {"ADMIT", "BLOCK"} or not isinstance(
             market,
@@ -512,6 +517,209 @@ def prospective_momentum_band_forward_markout_summary(
             missing_rank == 0
             and stale_rank == 0
             and momentum_feature_integrity_misses == 0
+        ),
+        "horizons": horizon_summary,
+        "rows": list(row_values),
+    }
+
+
+
+def prospective_momentum_pullback_forward_markout_summary(
+    opportunities: Sequence[
+        ContinuousPaperOpeningOpportunityEvidence
+    ],
+    paths: Sequence[ContinuousPaperOpeningOpportunityPath],
+    feature_store: LearningFeatureSnapshotStore,
+    pullback_state: ProspectiveMomentumPullbackEntryState,
+) -> dict[str, object]:
+    path_by_id = _path_map(paths)
+    prospective = tuple(
+        sorted(
+            (
+                evidence
+                for evidence in opportunities
+                if evidence.opportunity_timestamp_ms
+                >= pullback_state.started_at_ms
+            ),
+            key=lambda item: (
+                item.opportunity_timestamp_ms,
+                item.market,
+                item.opportunity_id,
+            ),
+        )
+    )
+
+    baseline_risk_rejected = 0
+    pullback_feature_integrity_misses = 0
+    integrity_last_miss_at_ms: int | None = None
+    decision_counts: Counter[str] = Counter()
+    reason_counts: Counter[str] = Counter()
+    rows: list[dict[str, object]] = []
+
+    for evidence in prospective:
+        if not evidence.baseline_risk_approved:
+            baseline_risk_rejected += 1
+            continue
+
+        request = evidence.risk_request_object
+        direction = request.strategy_decision.direction
+        if direction is Direction.NO_TRADE:
+            raise ProspectiveMomentumBandForwardMarkoutError(
+                "opening opportunity direction cannot be no-trade"
+            )
+        if (
+            request.strategy_decision.market.canonical != evidence.market
+            or direction.value != evidence.direction
+            or request.strategy_decision.feature_snapshot_id
+            != evidence.feature_snapshot_id
+        ):
+            raise ProspectiveMomentumBandForwardMarkoutError(
+                "opening opportunity decision lineage mismatch"
+            )
+
+        detail = prospective_momentum_pullback_snapshot_decision(
+            feature_store,
+            market=request.strategy_decision.market,
+            direction=direction,
+            timestamp_ms=evidence.opportunity_timestamp_ms,
+            feature_snapshot_id=evidence.feature_snapshot_id,
+        )
+        reason = detail.get("reason")
+        decision = detail.get("decision")
+        if reason in MOMENTUM_INTEGRITY_REASONS:
+            pullback_feature_integrity_misses += 1
+            integrity_last_miss_at_ms = max(
+                evidence.opportunity_timestamp_ms,
+                integrity_last_miss_at_ms
+                if integrity_last_miss_at_ms is not None
+                else evidence.opportunity_timestamp_ms,
+            )
+            continue
+        if decision not in {"ADMIT", "BLOCK"}:
+            raise ProspectiveMomentumBandForwardMarkoutError(
+                "pullback opportunity decision is invalid"
+            )
+        if not isinstance(reason, str):
+            raise ProspectiveMomentumBandForwardMarkoutError(
+                "pullback opportunity reason must be a string"
+            )
+        decision_counts[decision] += 1
+        reason_counts[reason] += 1
+
+        path = path_by_id.get(evidence.opportunity_id)
+        markouts = {
+            str(horizon_ms): _markout(
+                evidence,
+                path,
+                horizon_ms=horizon_ms,
+            )
+            for horizon_ms in FORWARD_HORIZONS_MS
+        }
+        rows.append(
+            {
+                "opportunity_id": evidence.opportunity_id,
+                "timestamp_ms": evidence.opportunity_timestamp_ms,
+                "market": evidence.market,
+                "direction": evidence.direction,
+                "lead_strategy": evidence.lead_strategy,
+                "pullback_decision": decision,
+                "pullback_reason": reason,
+                "signed_return_5m": detail.get(
+                    "signed_return_5m"
+                ),
+                "signed_return_1h": detail.get(
+                    "signed_return_1h"
+                ),
+                "signed_day_return": detail.get(
+                    "signed_day_return"
+                ),
+                "markouts": markouts,
+            }
+        )
+
+    row_values = tuple(rows)
+    horizon_summary: dict[str, dict[str, object]] = {}
+    for horizon_ms in FORWARD_HORIZONS_MS:
+        key = str(horizon_ms)
+        decisions: dict[str, dict[str, object]] = {}
+        for decision in ("ADMIT", "BLOCK"):
+            values: list[Decimal] = []
+            statuses: Counter[str] = Counter()
+            by_direction: Counter[str] = Counter()
+            for row in row_values:
+                if row["pullback_decision"] != decision:
+                    continue
+                row_markouts = row["markouts"]
+                assert isinstance(row_markouts, dict)
+                markout = row_markouts[key]
+                assert isinstance(markout, dict)
+                status = markout["status"]
+                assert isinstance(status, str)
+                statuses[status] += 1
+                if status != "settled":
+                    continue
+                raw = markout["directional_return"]
+                if not isinstance(raw, str):
+                    raise ProspectiveMomentumBandForwardMarkoutError(
+                        "settled markout is missing directional return"
+                    )
+                values.append(Decimal(raw))
+                row_direction = row["direction"]
+                assert isinstance(row_direction, str)
+                by_direction[row_direction] += 1
+            mean_value = _mean(tuple(values))
+            decisions[decision.lower()] = {
+                "opportunities": sum(
+                    1
+                    for row in row_values
+                    if row["pullback_decision"] == decision
+                ),
+                "settled": len(values),
+                "positive": sum(value > ZERO for value in values),
+                "negative": sum(value < ZERO for value in values),
+                "flat": sum(value == ZERO for value in values),
+                "mean_directional_return": (
+                    None if mean_value is None else str(mean_value)
+                ),
+                "sum_directional_return": str(sum(values, ZERO)),
+                "status_counts": dict(sorted(statuses.items())),
+                "settled_by_direction": dict(
+                    sorted(by_direction.items())
+                ),
+            }
+        horizon_summary[key] = {
+            "horizon_ms": horizon_ms,
+            "admit": decisions["admit"],
+            "block": decisions["block"],
+            "spread_robustness": _spread_robustness(
+                row_values,
+                horizon_key=key,
+                decision_field="pullback_decision",
+            ),
+        }
+
+    return {
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "descriptive_only": True,
+        "changes_readiness_gate": False,
+        "candidate_id": pullback_state.candidate_id,
+        "started_at_ms": pullback_state.started_at_ms,
+        "forward_horizons_ms": list(FORWARD_HORIZONS_MS),
+        "max_mark_lag_ms": MAX_MARK_LAG_MS,
+        "prospective_opportunities": len(prospective),
+        "baseline_risk_rejected": baseline_risk_rejected,
+        "pullback_feature_integrity_misses": (
+            pullback_feature_integrity_misses
+        ),
+        "integrity_last_miss_at_ms": integrity_last_miss_at_ms,
+        "risk_approved_evaluated": len(row_values),
+        "pullback_admitted": decision_counts["ADMIT"],
+        "pullback_blocked": decision_counts["BLOCK"],
+        "pullback_reason_counts": dict(sorted(reason_counts.items())),
+        "integrity_clean": (
+            pullback_feature_integrity_misses == 0
         ),
         "horizons": horizon_summary,
         "rows": list(row_values),
