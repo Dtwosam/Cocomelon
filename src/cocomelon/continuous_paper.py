@@ -8520,11 +8520,18 @@ async def run_continuous_paper_session(
             )
             try:
                 future_boundaries = tuple(
-                    request.boundary_ms
-                    for request in replacement_funding_store.required_boundaries()
-                    if request.boundary_ms >= now_ms
-                    and replacement_funding_store.markets_for_boundary(
-                        request.boundary_ms
+                    boundary_ms
+                    for boundary_ms in sorted(
+                        {
+                            request.boundary_ms
+                            for request in (
+                                replacement_funding_store.required_boundaries()
+                            )
+                            if request.boundary_ms >= now_ms
+                        }
+                    )
+                    if replacement_funding_store.markets_for_boundary(
+                        boundary_ms
                     )
                 )
             finally:
