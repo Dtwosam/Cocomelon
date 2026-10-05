@@ -287,8 +287,7 @@ def test_state_replaces_only_with_later_evidence_and_does_not_fabricate_full_con
     assert state.latest_asset_ctx.payload["mark_px"] == Decimal("110")
 
 
-def test_monotonic_micro_event_prune_reuses_deque(
-) -> None:
+def test_monotonic_micro_event_prune_reuses_deque() -> None:
     book = RecordedStateBook(microstructure_window_ms=60_000)
     first = _record(
         kind="trade",
