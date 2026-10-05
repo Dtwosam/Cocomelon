@@ -4,12 +4,15 @@ WORKFLOW = Path(
     ".github/workflows/"
     "prospective-breakeven-profit-lock-readiness.yml"
 )
+LEDGER_WORKFLOW = Path(".github/workflows/profit-lock-execution-ledger.yml")
 
 
 def test_breakeven_readiness_binds_immutable_sources() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
-    assert "Profit-Lock Execution Shadow Ledger" in source
+    assert "workflow_dispatch:" in source
+    assert "workflow_run:" not in source
+    assert "push:" not in source
     assert 'READINESS_ISSUE: "724"' in source
     assert "profit-lock-execution-ledger-" in source
     assert "validate_profit_lock_execution_ledger" in source
@@ -20,6 +23,19 @@ def test_breakeven_readiness_binds_immutable_sources() -> None:
     assert "Compact paper artifact digest mismatch." in source
     assert "prospective-breakeven-profit-lock-state.json" in source
     assert "evaluate_prospective_breakeven_profit_lock.py" in source
+
+
+def test_profit_lock_ledger_dispatches_exact_breakeven_readiness() -> None:
+    source = LEDGER_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Queue exact breakeven readiness" in source
+    assert (
+        "gh workflow run prospective-breakeven-profit-lock-readiness.yml"
+        in source
+    )
+    assert '-f "source_run_id=$GITHUB_RUN_ID"' in source
+    assert '-f "source_run_attempt=$GITHUB_RUN_ATTEMPT"' in source
+    assert "steps.ledger_upload.outcome == 'success'" in source
 
 
 def test_breakeven_readiness_accepts_exact_dispatched_ledger() -> None:

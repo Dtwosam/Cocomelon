@@ -16,9 +16,9 @@ def test_profit_lock_execution_ledger_is_research_only() -> None:
     source = _source()
 
     assert "Profit-Lock Execution Shadow Ledger" in source
-    assert "push:" in source
-    assert '".github/workflows/profit-lock-execution-ledger.yml"' in source
-    assert '"Continuous Mainnet Paper Trader"' in source
+    assert "workflow_dispatch:" in source
+    assert "workflow_run:" not in source
+    assert "push:" not in source
     assert "github.event.workflow_run.conclusion == 'success'" not in source
     assert "paper_run_is_evidence_eligible()" in source
     assert "actions/runs/$candidate_run_id/jobs?per_page=100" in source
@@ -104,6 +104,16 @@ def test_profit_lock_execution_ledger_restores_append_only_evidence() -> None:
     assert "**Execution authority:**" in source
     assert "**Promotion authority:**" in source
     assert "**LIVE TRADING: DISABLED.**" in source
+
+
+def test_paper_worker_dispatches_exact_profit_lock_ledger() -> None:
+    source = PAPER_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Queue exact profit-lock execution ledger" in source
+    assert "gh workflow run profit-lock-execution-ledger.yml" in source
+    assert '-f "source_run_id=$GITHUB_RUN_ID"' in source
+    assert '-f "source_run_attempt=$GITHUB_RUN_ATTEMPT"' in source
+    assert "steps.compact_learning_upload.outcome == 'success'" in source
 
 
 def test_compact_paper_source_exports_execution_shadow_state() -> None:

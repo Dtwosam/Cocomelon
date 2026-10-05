@@ -1,22 +1,6 @@
 name: Prospective Reopened LONG Trend Exact 5m vs 15m
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/prospective-long-trend-exact-horizon-comparison.yml"
-      - "src/cocomelon/research/prospective_long_trend_exact_horizon_comparison.py"
-      - "src/cocomelon/research/prospective_long_trend_5m_exit.py"
-      - "src/cocomelon/research/prospective_long_trend_5m_exit_source.py"
-      - "src/cocomelon/research/prospective_long_trend_15m_exit.py"
-      - "src/cocomelon/research/prospective_long_trend_15m_exit_source.py"
-      - "scripts/evaluate_prospective_long_trend_exact_horizon_comparison.py"
-  workflow_run:
-    workflows:
-      - "Continuous Mainnet Paper Trader"
-    types:
-      - completed
   schedule:
     - cron: "37 * * * *"
   workflow_dispatch:

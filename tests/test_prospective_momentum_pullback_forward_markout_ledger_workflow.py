@@ -5,6 +5,7 @@ from pathlib import Path
 WORKFLOW = Path(
     ".github/workflows/prospective-momentum-pullback-fast-markout-ledger.yml"
 )
+PAPER_WORKFLOW = Path(".github/workflows/continuous-paper.yml")
 
 
 def _source() -> str:
@@ -15,7 +16,9 @@ def test_pullback_fast_markout_ledger_workflow_is_research_only() -> None:
     source = _source()
 
     assert "Prospective Momentum Pullback Fast-Markout Ledger" in source
-    assert '"Continuous Mainnet Paper Trader"' in source
+    assert "workflow_dispatch:" in source
+    assert "workflow_run:" not in source
+    assert "push:" not in source
     assert "actions: read" in source
     assert "contents: read" in source
     assert "issues: write" in source
@@ -26,6 +29,20 @@ def test_pullback_fast_markout_ledger_workflow_is_research_only() -> None:
     assert "**Promotion authority:**" in source
     assert "**Changes closed-trade readiness:**" in source
     assert "**LIVE TRADING: DISABLED.**" in source
+
+
+def test_paper_worker_dispatches_exact_pullback_ledger() -> None:
+    source = PAPER_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Queue exact momentum-pullback fast-markout ledger" in source
+    assert (
+        "gh workflow run "
+        "prospective-momentum-pullback-fast-markout-ledger.yml"
+        in source
+    )
+    assert '-f "source_run_id=$GITHUB_RUN_ID"' in source
+    assert '-f "source_run_attempt=$GITHUB_RUN_ATTEMPT"' in source
+    assert "steps.compact_learning_upload.outcome == 'success'" in source
 
 
 def test_pullback_fast_markout_ledger_binds_exact_compact_source() -> None:

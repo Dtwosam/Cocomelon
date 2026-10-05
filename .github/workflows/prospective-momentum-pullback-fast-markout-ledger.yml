@@ -1,16 +1,6 @@
 name: Prospective Momentum Pullback Fast-Markout Ledger
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/prospective-momentum-pullback-fast-markout-ledger.yml"
-  workflow_run:
-    workflows:
-      - "Continuous Mainnet Paper Trader"
-    types:
-      - completed
   workflow_dispatch:
     inputs:
       source_run_id:

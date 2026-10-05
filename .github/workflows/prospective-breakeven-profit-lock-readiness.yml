@@ -1,18 +1,6 @@
 name: Prospective Breakeven Profit-Lock Readiness
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/prospective-breakeven-profit-lock-readiness.yml"
-      - "scripts/evaluate_prospective_breakeven_profit_lock.py"
-      - "src/cocomelon/research/prospective_breakeven_profit_lock.py"
-  workflow_run:
-    workflows:
-      - "Profit-Lock Execution Shadow Ledger"
-    types:
-      - completed
   workflow_dispatch:
     inputs:
       source_run_id:

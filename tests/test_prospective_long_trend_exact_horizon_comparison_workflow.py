@@ -11,6 +11,7 @@ SCRIPT = Path(
 MODULE = Path(
     "src/cocomelon/research/prospective_long_trend_exact_horizon_comparison.py"
 )
+PAPER_WORKFLOW = Path(".github/workflows/continuous-paper.yml")
 
 
 def _source() -> str:
@@ -38,8 +39,24 @@ def test_exact_horizon_comparison_has_periodic_artifact_catchup() -> None:
 
     assert "  schedule:" in source
     assert '    - cron: "37 * * * *"' in source
+    assert "workflow_dispatch:" in source
+    assert "workflow_run:" not in source
+    assert "push:" not in source
     assert "latest_research_ready_with_state_artifact" in source
-    assert '      - "Continuous Mainnet Paper Trader"' in source
+
+
+def test_paper_worker_dispatches_exact_horizon_comparison() -> None:
+    source = PAPER_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Queue exact LONG trend horizon comparison" in source
+    assert (
+        "gh workflow run "
+        "prospective-long-trend-exact-horizon-comparison.yml"
+        in source
+    )
+    assert '-f "source_run_id=$GITHUB_RUN_ID"' in source
+    assert '-f "source_run_attempt=$GITHUB_RUN_ATTEMPT"' in source
+    assert "steps.durable_state_upload.outcome == 'success'" in source
 
 
 def test_exact_horizon_comparison_uses_authenticated_durable_state() -> None:
