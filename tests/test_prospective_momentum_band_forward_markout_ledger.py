@@ -108,8 +108,10 @@ def _summary(
     rows: list[dict[str, object]],
     *,
     integrity_clean: bool = True,
+    integrity_boundary_known: bool = False,
+    integrity_last_miss_at_ms: int | None = None,
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "enabled": True,
         "error": None,
         "research_only": True,
@@ -140,6 +142,11 @@ def _summary(
         "horizons": {},
         "rows": rows,
     }
+    if integrity_boundary_known:
+        payload["integrity_last_miss_at_ms"] = (
+            integrity_last_miss_at_ms
+        )
+    return payload
 
 
 def test_fast_markout_ledger_waits_for_all_horizons() -> None:
@@ -332,6 +339,86 @@ def test_fast_markout_ledger_integrity_miss_blocks_early_review() -> None:
     assert readiness["single_opportunity_robust"] is True
     assert readiness["single_market_robust"] is True
     assert readiness["ready_for_early_evidence_review"] is False
+
+
+def test_fast_markout_ledger_post_integrity_cohort_can_pass() -> None:
+    state = ProspectiveMomentumBandEntryState(frozen_at_ms=6_500_000)
+    markets = ("BTC", "ETH", "SOL", "ENA")
+    pre_miss = _row(
+        state,
+        0,
+        decision="BLOCK",
+        direction="long",
+        market="BTC",
+        returns=("-0.01", "-0.02", "-0.03"),
+    )
+    rows = [pre_miss]
+    rows.extend(
+        _row(
+            state,
+            index,
+            decision="ADMIT" if index % 2 == 0 else "BLOCK",
+            direction="long" if index % 4 < 2 else "short",
+            market=markets[index % len(markets)],
+            returns=(
+                "0.01" if index % 2 == 0 else "-0.01",
+                "0.02" if index % 2 == 0 else "-0.02",
+                "0.03" if index % 2 == 0 else "-0.03",
+            ),
+        )
+        for index in range(1, 21)
+    )
+    miss_at = pre_miss["timestamp_ms"]
+    assert isinstance(miss_at, int)
+
+    ledger = update_momentum_forward_markout_ledger(
+        _summary(
+            state,
+            rows,
+            integrity_clean=False,
+            integrity_boundary_known=True,
+            integrity_last_miss_at_ms=miss_at,
+        ),
+        state,
+        previous=None,
+        source_paper_run_id=65,
+        source_paper_run_attempt=1,
+        source_artifact_name="learning-65-1",
+        source_artifact_digest=_digest("6"),
+    )
+
+    summary = ledger["summary"]
+    assert isinstance(summary, dict)
+    assert summary["integrity_clean"] is False
+    assert (
+        summary["all_horizons_ready_for_early_evidence_review"]
+        is False
+    )
+    assert (
+        summary[
+            "effective_all_horizons_ready_for_early_evidence_review"
+        ]
+        is True
+    )
+    assert summary["effective_integrity_scope"] == "post_integrity_miss"
+    post = summary["post_integrity_miss"]
+    assert isinstance(post, dict)
+    assert post["boundary_known"] is True
+    assert post["last_miss_at_ms"] == miss_at
+    assert post["started_at_ms"] == miss_at + 1
+    assert post["terminal_opportunity_count"] == 20
+    assert (
+        post["all_horizons_ready_for_early_evidence_review"]
+        is True
+    )
+    horizons = post["horizons"]
+    assert isinstance(horizons, dict)
+    for horizon_ms in FORWARD_HORIZONS_MS:
+        item = horizons[str(horizon_ms)]
+        readiness = item["review_readiness"]
+        assert readiness["integrity_clean"] is True
+        assert readiness["sample_complete"] is True
+        assert readiness["ready_for_early_evidence_review"] is True
 
 
 def test_fast_markout_ledger_review_bar_can_pass() -> None:
