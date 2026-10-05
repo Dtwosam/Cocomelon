@@ -15,7 +15,9 @@ def test_range_compression_evidence_workflow_is_research_only() -> None:
     source = _source()
 
     assert "Prospective Range-Compression Entry Evidence" in source
-    assert '"Continuous Mainnet Paper Trader"' in source
+    assert "workflow_dispatch:" in source
+    assert "workflow_run:" not in source
+    assert "push:" not in source
     assert "paper_run_is_evidence_eligible()" in source
     assert "steps.source.outputs.source_eligible == 'true'" in source
     assert "actions: read" in source
