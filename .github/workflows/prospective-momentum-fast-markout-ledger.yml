@@ -454,6 +454,9 @@ jobs:
               )
           )
           summary = ledger["summary"]
+          post_integrity = summary.get("post_integrity_miss", {})
+          if not isinstance(post_integrity, dict):
+              post_integrity = {}
 
           def stamp(value):
               return datetime.fromtimestamp(
@@ -475,6 +478,11 @@ jobs:
               f"- previous ledger workflow run: `{previous}`",
               f"- terminal / previous / new / pending: `{ledger['row_count']} / {ledger['previous_row_count']} / {ledger['new_row_count']} / {ledger['pending_opportunity_count']}`",
               f"- cumulative source integrity clean: `{summary['integrity_clean']}`",
+              f"- effective integrity scope: `{summary.get('effective_integrity_scope', 'legacy_cumulative')}`",
+              f"- post-integrity boundary known: `{post_integrity.get('boundary_known', False)}`",
+              f"- post-integrity last miss / clean start: `{post_integrity.get('last_miss_at_ms')} / {post_integrity.get('started_at_ms')}`",
+              f"- post-integrity terminal opportunities: `{post_integrity.get('terminal_opportunity_count', 0)}`",
+              f"- post-integrity all horizons ready: `{post_integrity.get('all_horizons_ready_for_early_evidence_review', False)}`",
               f"- rows SHA-256: `{ledger['rows_sha256']}`",
               f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
               "",

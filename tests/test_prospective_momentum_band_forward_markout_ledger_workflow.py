@@ -54,6 +54,9 @@ def test_fast_markout_ledger_restores_append_only_evidence() -> None:
 
     assert "prospective-momentum-fast-markout-ledger-" in source
     assert "prospective-momentum-fast-markout-ledger.json" in source
+    assert "effective integrity scope" in source
+    assert "post-integrity boundary known" in source
+    assert "post-integrity all horizons ready" in source
     assert "update_prospective_momentum_fast_markout_ledger.py" in source
     assert "--source-artifact-digest" in source
     assert "--previous" in source
