@@ -211,6 +211,58 @@ def test_plan_and_execution_round_trip_restart_exactly(tmp_path: Path) -> None:
     assert result.account.state_id == account.state_id
 
 
+def test_mark_persistence_updates_materialized_state_without_bulk_deletes(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "paper.sqlite3"
+    order = plan()
+    paper_fill = fill(order)
+    execution = attempt(order)
+    account = opened_state(order, paper_fill)
+    store = PaperExecutionStore(path)
+    store.persist_plan(order)
+    store.persist_execution(execution, (paper_fill,), account)
+
+    with store.raw_connection() as conn:
+        conn.executescript(
+            """
+            CREATE TRIGGER reject_mark_position_delete
+            BEFORE DELETE ON paper_positions
+            BEGIN
+                SELECT RAISE(ABORT, 'mark position bulk delete');
+            END;
+
+            CREATE TRIGGER reject_mark_peak_delete
+            BEFORE DELETE ON paper_rolling_peak_candidates
+            BEGIN
+                SELECT RAISE(ABORT, 'mark peak bulk delete');
+            END;
+            """
+        )
+
+    marked = mark_to_market(
+        account,
+        {MARKET: Decimal("90")},
+        2_000,
+    )
+    store.persist_marked_account(account, marked)
+    store.close()
+
+    reopened = PaperExecutionStore(path)
+    recovered = reopened.load_and_reconcile()
+    counts = reopened.table_counts()
+    reopened.close()
+
+    assert recovered.healthy is True
+    assert recovered.reason_codes == ()
+    assert recovered.account == marked
+    assert counts["paper_positions"] == 1
+    assert counts["paper_position_events"] == 2
+    assert counts["paper_rolling_peak_candidates"] == len(
+        marked.rolling_peak_candidates
+    )
+
+
 def test_duplicate_plan_and_execution_are_idempotent(tmp_path: Path) -> None:
     path = tmp_path / "paper.sqlite3"
     order = plan()
