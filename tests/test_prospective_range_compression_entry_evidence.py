@@ -410,6 +410,38 @@ def test_range_evidence_rejects_row_tamper(
         validate_range_compression_evidence(raw)
 
 
+def test_range_evidence_rejects_summary_economic_drift(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    state = ProspectiveRangeCompressionEntryState(
+        frozen_at_ms=5_500_000
+    )
+    feature_id = _record(
+        store,
+        "SOL",
+        as_of_ms=state.started_at_ms - 1,
+        range_expansion_15m="1.20",
+    )
+    trade = _trade(
+        "summary-drift",
+        market="SOL",
+        direction=Direction.LONG,
+        opened_at_ms=state.started_at_ms,
+        pnl="3",
+        feature_snapshot_id=feature_id,
+    )
+    evidence = _update((trade,), store, state)
+    raw = json.loads(json.dumps(evidence))
+    raw["summary"]["candidate_net_pnl"] = "999"
+
+    with pytest.raises(
+        ProspectiveRangeCompressionEvidenceError,
+        match="summary candidate_net_pnl does not match rows",
+    ):
+        validate_range_compression_evidence(raw)
+
+
 def test_range_evidence_rejects_frozen_state_drift(
     tmp_path: Path,
 ) -> None:
