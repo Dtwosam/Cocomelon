@@ -28,13 +28,26 @@ def test_profit_lock_execution_ledger_is_research_only() -> None:
     assert "Upload compact continuous learning source" in source
     assert "Fail closed on upgrade handoff source" in source
     assert "latest_evidence_eligible_with_compact_artifact" in source
-    assert "actions: read" in source
+    assert "actions: write" in source
     assert "contents: read" in source
     assert "issues: write" in source
-    assert "actions: write" not in source
     assert 'LEDGER_ISSUE: "721"' in source
-    assert "gh workflow run" not in source
+    assert "prospective-breakeven-profit-lock-readiness.yml" in source
+    assert 'source_run_id=$GITHUB_RUN_ID' in source
+    assert 'source_run_attempt=$GITHUB_RUN_ATTEMPT' in source
     assert "COCOMELON_EXECUTION_MODE" not in source
+
+
+def test_profit_lock_manual_dispatch_waits_for_exact_paper_completion() -> None:
+    source = _source()
+
+    assert "wait_for_paper_run_completion()" in source
+    assert "source paper run did not complete within 10 minutes" in source
+    assert "INPUT_RUN_ID" in source
+    assert "INPUT_RUN_ATTEMPT" in source
+    assert 'resolution_mode="manual_exact"' in source
+    assert "Queue exact breakeven readiness" in source
+    assert "steps.ledger_upload.outcome == 'success'" in source
 
 
 def test_profit_lock_execution_ledger_binds_exact_compact_source() -> None:
