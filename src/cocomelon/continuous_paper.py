@@ -4402,16 +4402,27 @@ class _RecordPump:
                 )
 
             component_started = loop.time()
-            if evaluate_decisions:
-                observations = self.pipeline.on_record(
-                    record,
-                    available,
-                )
-            else:
-                observations = self.pipeline.on_record(
-                    record,
-                    available,
-                    evaluate_decisions=False,
+            previous_event_loop_phase = self.event_loop_phase
+            _mark_event_loop_phase(
+                self,
+                "record_pipeline_on_record",
+            )
+            try:
+                if evaluate_decisions:
+                    observations = self.pipeline.on_record(
+                        record,
+                        available,
+                    )
+                else:
+                    observations = self.pipeline.on_record(
+                        record,
+                        available,
+                        evaluate_decisions=False,
+                    )
+            finally:
+                _mark_event_loop_phase(
+                    self,
+                    previous_event_loop_phase,
                 )
             finish_component("pipeline_on_record", component_started)
 
