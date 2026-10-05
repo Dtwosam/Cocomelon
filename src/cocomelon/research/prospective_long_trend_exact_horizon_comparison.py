@@ -124,6 +124,19 @@ def _option_index(
     return output
 
 
+def _incomplete_reason_counts(
+    index: dict[str, dict[str, object]],
+) -> dict[str, int]:
+    counts: dict[str, int] = defaultdict(int)
+    for row in index.values():
+        if row.get("exact_realized_pnl") is not None:
+            continue
+        reason = row.get("incomplete_reason")
+        key = reason if isinstance(reason, str) and reason else "unspecified"
+        counts[key] += 1
+    return dict(sorted(counts.items()))
+
+
 def _leave_one_trade_totals(deltas: tuple[Decimal, ...]) -> tuple[Decimal, ...]:
     if len(deltas) <= 1:
         return ()
@@ -181,6 +194,13 @@ def prospective_long_trend_exact_horizon_comparison(
         if row.get("exact_realized_pnl") is not None
     }
     paired_ids = exact_five & exact_fifteen
+    five_source_ids = set(five_index)
+    fifteen_source_ids = set(fifteen_index)
+    common_source_ids = five_source_ids & fifteen_source_ids
+    five_incomplete_reasons = _incomplete_reason_counts(five_index)
+    fifteen_incomplete_reasons = _incomplete_reason_counts(
+        fifteen_index
+    )
 
     paired: list[dict[str, object]] = []
     for opportunity_id in paired_ids:
@@ -355,6 +375,19 @@ def prospective_long_trend_exact_horizon_comparison(
         "five_minute_horizon_ms": FIVE_MINUTE_HORIZON_MS,
         "fifteen_minute_horizon_ms": FIFTEEN_MINUTE_HORIZON_MS,
         "execution_config_sha256": five["execution_config_sha256"],
+        "five_minute_source_options": len(five_source_ids),
+        "fifteen_minute_source_options": len(fifteen_source_ids),
+        "common_source_options": len(common_source_ids),
+        "five_minute_only_source_options": len(
+            five_source_ids - fifteen_source_ids
+        ),
+        "fifteen_minute_only_source_options": len(
+            fifteen_source_ids - five_source_ids
+        ),
+        "five_minute_incomplete_reasons": five_incomplete_reasons,
+        "fifteen_minute_incomplete_reasons": (
+            fifteen_incomplete_reasons
+        ),
         "five_minute_exact_options": len(exact_five),
         "fifteen_minute_exact_options": len(exact_fifteen),
         "paired_exact_options": len(paired_rows),
