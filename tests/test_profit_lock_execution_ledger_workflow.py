@@ -20,9 +20,14 @@ def test_profit_lock_execution_ledger_is_research_only() -> None:
     assert '".github/workflows/profit-lock-execution-ledger.yml"' in source
     assert '"Continuous Mainnet Paper Trader"' in source
     assert "github.event.workflow_run.conclusion == 'success'" not in source
-    assert "EVENT_CONCLUSION:" in source
-    assert '"$EVENT_CONCLUSION" = "success"' in source
-    assert "latest_successful_after_non_success_wake" in source
+    assert "paper_run_is_evidence_eligible()" in source
+    assert "actions/runs/$candidate_run_id/jobs?per_page=100" in source
+    assert "Run continuous paper trader" in source
+    assert "Measure durable continuous paper state" in source
+    assert "Upload durable continuous paper state" in source
+    assert "Upload compact continuous learning source" in source
+    assert "Fail closed on upgrade handoff source" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert "actions: read" in source
     assert "contents: read" in source
     assert "issues: write" in source
@@ -38,10 +43,10 @@ def test_profit_lock_execution_ledger_binds_exact_compact_source() -> None:
     assert 'run.get("path") != ".github/workflows/continuous-paper.yml"' in source
     assert 'run.get("head_branch") != "main"' in source
     assert 'run.get("status") != "completed"' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert '"success", "failure"' in source
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
-    assert "latest_successful_push" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert (
         "actions/workflows/continuous-paper.yml/runs?"
         "branch=main&status=completed&per_page=50"
@@ -52,7 +57,7 @@ def test_profit_lock_execution_ledger_binds_exact_compact_source() -> None:
         '$candidate_run_id-$candidate_attempt"'
         in source
     )
-    assert "latest_successful_with_compact_artifact" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert "source artifact digest is missing or invalid" in source
     assert "journal.sqlite3" in source
     assert "profit-lock-execution-shadow-state.json" in source
