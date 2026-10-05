@@ -349,6 +349,36 @@ def test_momentum_forward_markout_separates_block_and_admit(
     assert result["changes_readiness_gate"] is False
 
 
+def test_momentum_forward_markout_records_last_integrity_miss(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    combined, two_strike, momentum = _states()
+    timestamp_ms = START + 3_000
+    missing_feature = _opportunity(
+        suffix="missing-feature",
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=timestamp_ms,
+        feature_snapshot_id="missing-feature-snapshot",
+    )
+
+    result = prospective_momentum_band_forward_markout_summary(
+        (missing_feature,),
+        (),
+        (),
+        store,
+        combined,
+        two_strike,
+        momentum,
+    )
+
+    assert result["momentum_feature_integrity_misses"] == 1
+    assert result["integrity_clean"] is False
+    assert result["integrity_last_miss_at_ms"] == timestamp_ms
+    assert result["base_stack_risk_approved_evaluated"] == 0
+
+
 def test_momentum_forward_markout_excludes_base_stack_blocks(
     tmp_path: Path,
 ) -> None:
