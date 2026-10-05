@@ -385,6 +385,15 @@ class ContinuousPaperReplacementFundingStore:
         self.capture_started_at_ms = self._load_or_create_protocol(
             capture_started_at_ms
         )
+        self._registrations_cache = self._read_registrations()
+        self._required_boundary_keys: set[tuple[str, int]] = set()
+        self._required_boundaries_cache: tuple[
+            ReplacementFundingBoundaryRequest,
+            ...,
+        ] = ()
+        self._boundaries_by_market: dict[str, tuple[int, ...]] = {}
+        self._markets_by_boundary: dict[int, tuple[str, ...]] = {}
+        self._rebuild_boundary_index()
 
     @staticmethod
     def _write(path: Path, value: object) -> None:
@@ -506,11 +515,13 @@ class ContinuousPaperReplacementFundingStore:
                 raise ContinuousPaperReplacementFundingError(
                     "conflicting replacement funding registration"
                 )
+            self._cache_registration(existing)
             return False
         self._write(path, candidate.to_dict())
+        self._cache_registration(candidate)
         return True
 
-    def iter_registrations(
+    def _read_registrations(
         self,
     ) -> tuple[ReplacementFundingRegistration, ...]:
         rows: list[ReplacementFundingRegistration] = []
@@ -536,6 +547,11 @@ class ContinuousPaperReplacementFundingStore:
             )
         )
 
+    def iter_registrations(
+        self,
+    ) -> tuple[ReplacementFundingRegistration, ...]:
+        return self._registrations_cache
+
     def _boundaries(
         self,
         registration: ReplacementFundingRegistration,
@@ -554,15 +570,14 @@ class ContinuousPaperReplacementFundingStore:
             range(first, last + 1, FUNDING_INTERVAL_MS)
         )
 
-    def required_boundaries(
-        self,
-    ) -> tuple[ReplacementFundingBoundaryRequest, ...]:
+    def _rebuild_boundary_index(self) -> None:
         unique = {
             (registration.market, boundary_ms)
-            for registration in self.iter_registrations()
+            for registration in self._registrations_cache
             for boundary_ms in self._boundaries(registration)
         }
-        return tuple(
+        self._required_boundary_keys = unique
+        self._required_boundaries_cache = tuple(
             ReplacementFundingBoundaryRequest(
                 market=market,
                 boundary_ms=boundary_ms,
@@ -572,6 +587,45 @@ class ContinuousPaperReplacementFundingStore:
                 key=lambda item: (item[1], item[0]),
             )
         )
+        by_market: dict[str, list[int]] = {}
+        by_boundary: dict[int, list[str]] = {}
+        for market, boundary_ms in unique:
+            by_market.setdefault(market, []).append(boundary_ms)
+            by_boundary.setdefault(boundary_ms, []).append(market)
+        self._boundaries_by_market = {
+            market: tuple(sorted(boundaries))
+            for market, boundaries in by_market.items()
+        }
+        self._markets_by_boundary = {
+            boundary_ms: tuple(sorted(markets))
+            for boundary_ms, markets in by_boundary.items()
+        }
+
+    def _cache_registration(
+        self,
+        registration: ReplacementFundingRegistration,
+    ) -> None:
+        if any(
+            item.opportunity_id == registration.opportunity_id
+            for item in self._registrations_cache
+        ):
+            return
+        self._registrations_cache = tuple(
+            sorted(
+                (*self._registrations_cache, registration),
+                key=lambda item: (
+                    item.opportunity_timestamp_ms,
+                    item.market,
+                    item.opportunity_id,
+                ),
+            )
+        )
+        self._rebuild_boundary_index()
+
+    def required_boundaries(
+        self,
+    ) -> tuple[ReplacementFundingBoundaryRequest, ...]:
+        return self._required_boundaries_cache
 
     def _load_candidate(
         self,
