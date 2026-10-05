@@ -477,6 +477,147 @@ def test_targeted_l2_resubscribe_accepts_fresh_recovery_without_reconnect() -> N
     asyncio.run(run())
 
 
+def test_future_dated_l2_book_remains_stale() -> None:
+    async def run() -> None:
+        now = [6_000]
+        connection = FakeConnection([book(7_000)])
+
+        async def factory() -> FakeConnection:
+            return connection
+
+        async def event_sink(_event: StreamEvent) -> None:
+            return None
+
+        async def gap_sink(_gap: DataGap) -> None:
+            return None
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "l2Book", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime.fromtimestamp(
+                now[0] / 1000,
+                tz=UTC,
+            ),
+            stale_after_ms=5_000,
+        )
+        await supervisor.run(
+            max_sessions=1,
+            max_messages_per_session=1,
+        )
+
+        assert supervisor.l2_freshness_age_ms(
+            "l2Book:BTC",
+            now_ms=6_000,
+        ) == -1_000
+        assert supervisor.stale_l2_streams(now_ms=6_000) == (
+            "l2Book:BTC",
+        )
+
+    asyncio.run(run())
+
+
+def test_future_dated_targeted_l2_recovery_times_out_to_reconnect() -> None:
+    async def run() -> None:
+        now = [1_000]
+
+        def book_for(coin: str, time_ms: int) -> dict[str, object]:
+            return {
+                "channel": "l2Book",
+                "data": {
+                    "coin": coin,
+                    "levels": [
+                        [{"n": 1, "px": "99", "sz": "1"}],
+                        [{"n": 1, "px": "101", "sz": "1"}],
+                    ],
+                    "time": time_ms,
+                },
+            }
+
+        first_rows: list[tuple[int, object]] = [
+            (1_000, book_for("BTC", 1_000)),
+            (1_001, book_for("ETH", 1_001)),
+            (7_000, trade(1, 7_000)),
+            (7_001, book_for("BTC", 13_000)),
+            (7_002, book_for("ETH", 13_000)),
+            (12_001, trade(2, 12_001)),
+        ]
+        second_rows: list[tuple[int, object]] = [
+            (13_001, book_for("BTC", 13_001)),
+            (13_002, book_for("ETH", 13_002)),
+            (13_003, trade(3, 13_003)),
+        ]
+
+        class ClockedConnection(FakeConnection):
+            def __init__(
+                self,
+                rows: list[tuple[int, object]],
+            ) -> None:
+                super().__init__([])
+                self.clock_rows = rows
+
+            async def recv_json(self) -> dict[str, object]:
+                timestamp_ms, row = self.clock_rows.pop(0)
+                now[0] = timestamp_ms
+                assert isinstance(row, dict)
+                return row
+
+        first = ClockedConnection(first_rows)
+        second = ClockedConnection(second_rows)
+        pool = [first, second]
+        sleeps: list[float] = []
+
+        async def factory() -> ClockedConnection:
+            return pool.pop(0)
+
+        async def event_sink(_event: StreamEvent) -> None:
+            return None
+
+        async def gap_sink(_gap: DataGap) -> None:
+            return None
+
+        async def fake_sleep(value: float) -> None:
+            sleeps.append(value)
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            (
+                {"type": "l2Book", "coin": "BTC"},
+                {"type": "l2Book", "coin": "ETH"},
+                {"type": "trades", "coin": "BTC"},
+            ),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime.fromtimestamp(
+                now[0] / 1000,
+                tz=UTC,
+            ),
+            sleep=fake_sleep,
+            stale_after_ms=5_000,
+            systemic_l2_stale_reconnect_fraction=0.5,
+            max_systemic_l2_targeted_resubscribes=1,
+        )
+        await supervisor.run(
+            max_sessions=2,
+            max_messages_per_session=6,
+        )
+
+        assert first.closed is True
+        assert second.closed is True
+        assert supervisor.health.reconnect_count == 1
+        assert (
+            supervisor.health.systemic_l2_targeted_resubscribe_count
+            == 1
+        )
+        assert supervisor.health.systemic_l2_stale_reconnect_count == 1
+        assert sleeps == [1.0]
+
+    asyncio.run(run())
+
+
 def test_targeted_l2_resubscribe_falls_back_after_no_fresh_evidence() -> None:
     async def run() -> None:
         now = [1_000]
