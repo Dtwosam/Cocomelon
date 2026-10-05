@@ -30,6 +30,7 @@ def test_continuous_paper_learning_workflow_is_research_only_and_durable() -> No
     assert "cocomelon-learning-readiness" in source
     assert "cocomelon-context-conditioned-paper" in source
     assert "context-diagnostics.json" in source
+    assert "broader context groups ready for two-sided comparison" in source
     assert "side-level PnL suppression authority: false" in source
     assert "continuous-paper-learning-state" in source
     assert "last-source-receipt.json" in source
