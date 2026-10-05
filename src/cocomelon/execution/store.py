@@ -712,7 +712,7 @@ class PaperExecutionStore:
                 "INSERT INTO paper_positions(market, position_id, payload_json) VALUES (?, ?, ?)",
                 (position.market.canonical, position.position_id, payload),
             )
-            event_id = f"{account.state_id}:{position.position_id}"
+            event_id = f"{account_state_id}:{position.position_id}"
             self._put_immutable(
                 "paper_position_events",
                 "event_id",
@@ -755,6 +755,8 @@ class PaperExecutionStore:
                 "mark persistence cannot change the open-position set"
             )
 
+        previous_state_id = previous.state_id
+        account_state_id = account.state_id
         existing_account = self._conn.execute(
             "SELECT state_id FROM paper_account_state "
             "WHERE singleton_id = 1"
@@ -762,13 +764,13 @@ class PaperExecutionStore:
         if existing_account is None:
             self._write_materialized_account(account)
             return
-        if str(existing_account[0]) != previous.state_id:
+        if str(existing_account[0]) != previous_state_id:
             raise ValueError(
                 "paper account mark base state does not match durable state"
             )
 
         account_json = _canonical_json(_account_payload(account))
-        if account.state_id == previous.state_id:
+        if account_state_id == previous_state_id:
             existing_payload = self._conn.execute(
                 "SELECT payload_json FROM paper_account_state "
                 "WHERE singleton_id = 1"
@@ -907,7 +909,7 @@ class PaperExecutionStore:
             "ON CONFLICT(singleton_id) DO UPDATE SET "
             "state_id=excluded.state_id, "
             "payload_json=excluded.payload_json",
-            (account.state_id, account_json),
+            (account_state_id, account_json),
         )
 
     def persist_marked_account(
