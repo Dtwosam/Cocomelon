@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -362,6 +364,32 @@ class BaselineReplayPipeline:
         self._risk_reason_counts: dict[str, int] = {}
         self._opening_execution_attempts = 0
         self._opening_fills = 0
+        self._runtime_max_ms_by_component: dict[str, int] = {}
+
+    def _record_runtime_elapsed(
+        self,
+        name: str,
+        elapsed_seconds: float,
+    ) -> None:
+        elapsed_ms = max(0, int(elapsed_seconds * 1_000))
+        self._runtime_max_ms_by_component[name] = max(
+            self._runtime_max_ms_by_component.get(name, 0),
+            elapsed_ms,
+        )
+
+    def _record_runtime_component(
+        self,
+        name: str,
+        started: float,
+    ) -> None:
+        self._record_runtime_elapsed(
+            name,
+            time.perf_counter() - started,
+        )
+
+    @property
+    def runtime_max_ms_by_component(self) -> dict[str, int]:
+        return dict(self._runtime_max_ms_by_component)
 
     @property
     def funding_inconsistent(self) -> bool:
@@ -759,6 +787,7 @@ class BaselineReplayPipeline:
         return (self._account_observation(EquityFactKind.ACCOUNT_UPDATE),)
 
     def _process_epoch(self, epoch: DecisionEpoch) -> tuple[JournalObservation, ...]:
+        epoch_started = time.perf_counter()
         self._decision_epochs += 1
         self._last_decision_boundary_ms = epoch.boundary_ms
         self._last_decision_evaluated_at_ms = epoch.evaluated_at_ms
@@ -769,6 +798,7 @@ class BaselineReplayPipeline:
         self._latest_epoch_stale_book_age_ms = {}
         observations: list[JournalObservation] = []
         decision_facts: list[DecisionEvaluationFact] = []
+        feature_persist_seconds = 0.0
         for evaluation in epoch.markets:
             self._eligibility_evaluations += 1
             if evaluation.eligibility.rankable:
@@ -806,7 +836,11 @@ class BaselineReplayPipeline:
                 )
             self._latest_evaluation[decision.market.canonical] = evaluation
             if self._feature_snapshot_sink is not None:
+                feature_persist_started = time.perf_counter()
                 self._feature_snapshot_sink.record(evaluation.feature)
+                feature_persist_seconds += (
+                    time.perf_counter() - feature_persist_started
+                )
             decision_facts.append(
                 decision_evaluation_fact(
                     decision,
@@ -817,9 +851,30 @@ class BaselineReplayPipeline:
             observations.append(
                 observation_from_strategy(decision, replay_run_id=self._run_id)
             )
+        if self._feature_snapshot_sink is not None:
+            self._record_runtime_elapsed(
+                "epoch_feature_snapshot_persist_total",
+                feature_persist_seconds,
+            )
+        facts_started = time.perf_counter()
         self._facts.record_decision_facts(decision_facts)
-        if not self._funding_inconsistent and self._new_exposure_allowed(epoch.evaluated_at_ms):
+        self._record_runtime_component(
+            "epoch_decision_fact_batch",
+            facts_started,
+        )
+        if not self._funding_inconsistent and self._new_exposure_allowed(
+            epoch.evaluated_at_ms
+        ):
+            opening_started = time.perf_counter()
             self._opening.stage_epoch(epoch)
+            self._record_runtime_component(
+                "epoch_opening_stage",
+                opening_started,
+            )
+        self._record_runtime_component(
+            "epoch_process_total",
+            epoch_started,
+        )
         return tuple(observations)
 
     def _all_current_marks(self, now_ms: int) -> dict[MarketId, Decimal] | None:
@@ -1286,10 +1341,21 @@ class BaselineReplayPipeline:
                 )
 
         if evaluate_decisions:
-            for epoch in self._decision_engine.observe(record, now_ms):
+            decision_engine_started = time.perf_counter()
+            epochs = self._decision_engine.observe(record, now_ms)
+            self._record_runtime_component(
+                "decision_engine_observe",
+                decision_engine_started,
+            )
+            for epoch in epochs:
                 observations.extend(self._process_epoch(epoch))
         else:
+            decision_engine_started = time.perf_counter()
             self._decision_engine.seed(record, now_ms)
+            self._record_runtime_component(
+                "decision_engine_seed",
+                decision_engine_started,
+            )
 
         if record.record_kind is SourceRecordKind.DATA_GAP:
             observations.extend(self._due_funding(now_ms))
@@ -1298,9 +1364,24 @@ class BaselineReplayPipeline:
             raise ReplayInvariantError("normalized baseline record is missing event_kind")
 
         if record.event_kind == StreamKind.ACTIVE_ASSET_CTX.value:
+            decode_started = time.perf_counter()
             event = replay_record_stream_event(record)
+            self._record_runtime_component(
+                "active_asset_ctx_decode",
+                decode_started,
+            )
+            mark_started = time.perf_counter()
             observations.extend(self._mark_account(record, event, now_ms))
+            self._record_runtime_component(
+                "mark_account",
+                mark_started,
+            )
+            funding_started = time.perf_counter()
             observations.extend(self._due_funding(now_ms))
+            self._record_runtime_component(
+                "funding_reconcile",
+                funding_started,
+            )
         elif record.event_kind == "funding_rate":
             replay_record_funding_rate(record)
             observations.extend(self._due_funding(now_ms))
