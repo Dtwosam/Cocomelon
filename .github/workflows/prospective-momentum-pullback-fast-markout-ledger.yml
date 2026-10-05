@@ -297,18 +297,58 @@ jobs:
           state_path="$(
             find /tmp/momentum-pullback-fast-source               -type f               -name prospective-momentum-pullback-entry-state.json               -print -quit
           )"
-          if [ -z "$summary_path" ] || [ -z "$state_path" ]; then
+          if [ -z "$state_path" ]; then
             echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "source_missing=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          test -s "$summary_path"
           test -s "$state_path"
+
+          if [ -z "$summary_path" ]; then
+            opportunity_root="$(
+              find /tmp/momentum-pullback-fast-source                 -type d                 -name opening-opportunities                 -print -quit
+            )"
+            path_root="$(
+              find /tmp/momentum-pullback-fast-source                 -type d                 -name opening-opportunity-paths                 -print -quit
+            )"
+            feature_root="$(
+              find /tmp/momentum-pullback-fast-source                 -type d                 -name learning-features                 -print -quit
+            )"
+            if (
+              [ -z "$opportunity_root" ] ||
+              [ -z "$path_root" ] ||
+              [ -z "$feature_root" ]
+            ); then
+              echo "eligible=false" >> "$GITHUB_OUTPUT"
+              echo "source_missing=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            summary_path="/tmp/prospective-momentum-pullback-forward-markout-summary.json"
+            set +e
+            python scripts/build_prospective_momentum_pullback_forward_markout_summary.py               "$opportunity_root"               "$path_root"               "$feature_root"               "$state_path"               --json-out "$summary_path"               > /tmp/momentum-pullback-summary.stdout               2> /tmp/momentum-pullback-summary.error
+            status=$?
+            set -e
+            if [ "$status" -ne 0 ]; then
+              echo "eligible=false" >> "$GITHUB_OUTPUT"
+              echo "reconstruction_failed=true" >> "$GITHUB_OUTPUT"
+              {
+                echo "reconstruction_error<<EOF"
+                cat /tmp/momentum-pullback-summary.error
+                echo "EOF"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "reconstructed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          test -s "$summary_path"
           echo "eligible=true" >> "$GITHUB_OUTPUT"
           echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
           echo "state_path=$state_path" >> "$GITHUB_OUTPUT"
 
       - name: Publish waiting-for-source status
-        if: ${{ steps.compact.outputs.eligible != 'true' }}
+        if: ${{ steps.compact.outputs.eligible != 'true' && steps.compact.outputs.reconstruction_failed != 'true' }}
         shell: bash
         env:
           SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
@@ -333,7 +373,7 @@ jobs:
                   "- source resolution: "
                   f"`{os.environ['RESOLUTION_MODE']}`"
               ),
-              "- reason: compact source predates the pullback fast-markout export",
+              "- reason: compact source lacks both a precomputed pullback markout summary and the exact raw stores required to reconstruct it",
               "",
               "No fast-markout row is credited from this run.",
               "",
@@ -348,6 +388,52 @@ jobs:
           )
           PY
           gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/momentum-pullback-fast-status.md)"
+
+      - name: Publish blocked reconstruction status
+        if: ${{ steps.compact.outputs.reconstruction_failed == 'true' }}
+        shell: bash
+        env:
+          ERROR_TEXT: ${{ steps.compact.outputs.reconstruction_error }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          error = os.environ.get("ERROR_TEXT") or "unknown reconstruction error"
+          lines = [
+              "## Momentum-pullback fast-markout evidence ledger",
+              "",
+              "**Status:** BLOCKED — exact-source reconstruction failure",
+              "",
+              (
+                  "- source paper run / attempt: "
+                  f"`{os.environ['SOURCE_RUN_ID']} / "
+                  f"{os.environ['SOURCE_RUN_ATTEMPT']}`"
+              ),
+              f"- error: `{error}`",
+              "",
+              "No pullback fast-markout evidence is published from this run.",
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**Changes closed-trade readiness:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/momentum-pullback-fast-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/momentum-pullback-fast-status.md)"
+
+      - name: Fail closed on source reconstruction
+        if: ${{ steps.compact.outputs.reconstruction_failed == 'true' }}
+        shell: bash
+        run: |
+          echo "Momentum-pullback exact-source reconstruction failed." >&2
+          exit 1
 
       - name: Restore previous fast-markout ledger
         if: ${{ steps.compact.outputs.eligible == 'true' }}

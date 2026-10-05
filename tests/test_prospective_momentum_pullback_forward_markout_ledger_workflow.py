@@ -72,6 +72,25 @@ def test_pullback_fast_markout_ledger_binds_exact_compact_source() -> None:
     assert "prospective-momentum-pullback-entry-state.json" in source
 
 
+def test_pullback_fast_markout_reconstructs_missing_summary_offline() -> None:
+    source = _source()
+    paper = PAPER_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "continuous-paper-state/opening-opportunities" in paper
+    assert "continuous-paper-state/opening-opportunity-paths" in paper
+    assert "opening-opportunities" in source
+    assert "opening-opportunity-paths" in source
+    assert "learning-features" in source
+    assert (
+        "build_prospective_momentum_pullback_forward_markout_summary.py"
+        in source
+    )
+    assert "reconstructed=true" in source
+    assert "reconstruction_failed=true" in source
+    assert "BLOCKED — exact-source reconstruction failure" in source
+    assert "Fail closed on source reconstruction" in source
+
+
 def test_pullback_fast_markout_ledger_restores_append_only_evidence() -> None:
     source = _source()
 
