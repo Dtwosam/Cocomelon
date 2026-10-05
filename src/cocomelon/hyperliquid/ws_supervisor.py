@@ -23,6 +23,7 @@ Sleep = Callable[[float], Awaitable[None]]
 ClockMs = Callable[[], int]
 UtcNow = Callable[[], datetime]
 Subscription = Mapping[str, object]
+ActivityHook = Callable[[str, bool], None]
 
 
 class _SinkFailure(RuntimeError):
@@ -63,6 +64,7 @@ class WebSocketSupervisor:
         systemic_l2_stale_reconnect_fraction: float | None = None,
         systemic_l2_stale_reconnect_grace_ms: int = 0,
         max_systemic_l2_targeted_resubscribes: int = 0,
+        activity_hook: ActivityHook | None = None,
         dedup_size: int = 2048,
     ) -> None:
         if heartbeat_seconds <= 0:
@@ -112,6 +114,7 @@ class WebSocketSupervisor:
         self._max_systemic_l2_targeted_resubscribes = (
             max_systemic_l2_targeted_resubscribes
         )
+        self._activity_hook = activity_hook
         self._dedup_size = dedup_size
         self._recent_keys: dict[str, deque[str]] = defaultdict(deque)
         self._recent_key_sets: dict[str, set[str]] = defaultdict(set)
@@ -433,7 +436,16 @@ class WebSocketSupervisor:
 
     async def _dispatch(self, raw: object) -> None:
         now_ms = self._clock_ms()
-        events = normalize_ws_message(raw, receive_time=self._utcnow())
+        if self._activity_hook is not None:
+            self._activity_hook("normalize_message", True)
+        try:
+            events = normalize_ws_message(
+                raw,
+                receive_time=self._utcnow(),
+            )
+        finally:
+            if self._activity_hook is not None:
+                self._activity_hook("normalize_message", False)
         for event in events:
             stream_id = event_stream_id(event)
             # Receive-time stream liveness is distinct from book-state
