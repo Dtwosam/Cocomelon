@@ -7,16 +7,16 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Final, cast
 
+from cocomelon.research.prospective_momentum_band_forward_markout import (
+    FORWARD_HORIZONS_MS,
+    MAX_MARK_LAG_MS,
+)
 from cocomelon.research.prospective_momentum_pullback_entry import (
     EMBARGO_MS,
     MAX_SIGNED_DAY_RETURN,
     MAX_SIGNED_RETURN_5M,
     MIN_SIGNED_RETURN_1H,
     ProspectiveMomentumPullbackEntryState,
-)
-from cocomelon.research.prospective_momentum_band_forward_markout import (
-    FORWARD_HORIZONS_MS,
-    MAX_MARK_LAG_MS,
 )
 
 LEDGER_SCHEMA_VERSION: Final = 1
