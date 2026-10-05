@@ -622,6 +622,29 @@ jobs:
         shell: bash
         run: rm -f continuous-paper-resume.tar.zst
 
+      - name: Pack durable continuous paper state
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$STATE_ROOT"
+          rm -f continuous-paper-state.tar
+          tar -cf continuous-paper-state.tar -C "$STATE_ROOT" .
+          tar -tf continuous-paper-state.tar >/dev/null
+          test -s continuous-paper-state.tar
+
+      - name: Upload durable continuous paper state
+        id: durable_state_upload
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        timeout-minutes: 20
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-state-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state.tar
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Upload cadence shadow research state
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/cadence-shadow-state.json') != '' }}
         uses: actions/upload-artifact@v7
@@ -1110,29 +1133,6 @@ jobs:
               print("- cross-horizon economics aggregated: false")
               print("- portfolio counterfactual: false (one-hop sensitivity only)")
           PY
-
-      - name: Pack durable continuous paper state
-        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -d "$STATE_ROOT"
-          rm -f continuous-paper-state.tar
-          tar -cf continuous-paper-state.tar -C "$STATE_ROOT" .
-          tar -tf continuous-paper-state.tar >/dev/null
-          test -s continuous-paper-state.tar
-
-      - name: Upload durable continuous paper state
-        id: durable_state_upload
-        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
-        timeout-minutes: 20
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-state-${{ github.run_id }}-${{ github.run_attempt }}
-          path: continuous-paper-state.tar
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 6
 
       - name: Render paper runtime summary
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/session-summary.json') != '' }}
