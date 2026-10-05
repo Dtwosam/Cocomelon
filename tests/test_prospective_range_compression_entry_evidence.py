@@ -19,7 +19,6 @@ from cocomelon.research.learning_feature_snapshots import (
     LearningFeatureSnapshotStore,
 )
 from cocomelon.research.prospective_range_compression_entry import (
-    EMBARGO_MS,
     ProspectiveRangeCompressionEntryState,
 )
 from cocomelon.research.prospective_range_compression_entry_evidence import (
