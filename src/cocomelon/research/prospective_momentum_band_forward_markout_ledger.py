@@ -583,13 +583,79 @@ def _horizon_summary(
     }
 
 
+def _post_integrity_miss_summary(
+    rows: tuple[dict[str, object], ...],
+    *,
+    overlap_started_at_ms: int,
+    boundary_known: bool,
+    last_miss_at_ms: int | None,
+) -> dict[str, object]:
+    if not boundary_known:
+        return {
+            "boundary_known": False,
+            "last_miss_at_ms": None,
+            "started_at_ms": None,
+            "terminal_opportunity_count": 0,
+            "all_horizons_ready_for_early_evidence_review": False,
+            "horizons": {},
+            "changes_closed_trade_readiness_gate": False,
+        }
+
+    started_at_ms = (
+        overlap_started_at_ms
+        if last_miss_at_ms is None
+        else last_miss_at_ms + 1
+    )
+    clean_rows = tuple(
+        row
+        for row in rows
+        if cast(int, row["timestamp_ms"]) >= started_at_ms
+    )
+    horizons = {
+        str(horizon_ms): _horizon_summary(
+            clean_rows,
+            horizon_ms=horizon_ms,
+            integrity_clean=True,
+        )
+        for horizon_ms in FORWARD_HORIZONS_MS
+    }
+    all_ready = all(
+        cast(dict[str, object], item["review_readiness"])[
+            "ready_for_early_evidence_review"
+        ]
+        is True
+        for item in horizons.values()
+    )
+    return {
+        "boundary_known": True,
+        "last_miss_at_ms": last_miss_at_ms,
+        "started_at_ms": started_at_ms,
+        "terminal_opportunity_count": len(clean_rows),
+        "all_horizons_ready_for_early_evidence_review": all_ready,
+        "horizons": horizons,
+        "changes_closed_trade_readiness_gate": False,
+    }
+
+
 def _summary(
     rows: tuple[dict[str, object], ...],
     *,
     pending_opportunity_count: int,
     integrity_clean: bool,
+    include_post_integrity_readiness: bool = True,
+    overlap_started_at_ms: int | None = None,
+    integrity_boundary_known: bool = False,
+    integrity_last_miss_at_ms: int | None = None,
 ) -> dict[str, object]:
-    return {
+    horizons = {
+        str(horizon_ms): _horizon_summary(
+            rows,
+            horizon_ms=horizon_ms,
+            integrity_clean=integrity_clean,
+        )
+        for horizon_ms in FORWARD_HORIZONS_MS
+    }
+    result: dict[str, object] = {
         "terminal_opportunity_count": len(rows),
         "pending_opportunity_count": pending_opportunity_count,
         "integrity_clean": integrity_clean,
@@ -599,15 +665,51 @@ def _summary(
         "momentum_blocked_terminal": sum(
             row["momentum_decision"] == "BLOCK" for row in rows
         ),
-        "horizons": {
-            str(horizon_ms): _horizon_summary(
-                rows,
-                horizon_ms=horizon_ms,
-                integrity_clean=integrity_clean,
-            )
-            for horizon_ms in FORWARD_HORIZONS_MS
-        },
+        "horizons": horizons,
     }
+    if not include_post_integrity_readiness:
+        return result
+    if overlap_started_at_ms is None:
+        raise ProspectiveMomentumBandForwardMarkoutLedgerError(
+            "post-integrity cohort requires overlap start"
+        )
+
+    cumulative_ready = all(
+        cast(dict[str, object], item["review_readiness"])[
+            "ready_for_early_evidence_review"
+        ]
+        is True
+        for item in horizons.values()
+    )
+    post_integrity = _post_integrity_miss_summary(
+        rows,
+        overlap_started_at_ms=overlap_started_at_ms,
+        boundary_known=integrity_boundary_known,
+        last_miss_at_ms=integrity_last_miss_at_ms,
+    )
+    post_ready = (
+        post_integrity[
+            "all_horizons_ready_for_early_evidence_review"
+        ]
+        is True
+    )
+    effective_ready = cumulative_ready or post_ready
+    if cumulative_ready:
+        effective_scope = "cumulative"
+    elif post_ready:
+        effective_scope = "post_integrity_miss"
+    else:
+        effective_scope = "none"
+
+    result["all_horizons_ready_for_early_evidence_review"] = (
+        cumulative_ready
+    )
+    result["post_integrity_miss"] = post_integrity
+    result[
+        "effective_all_horizons_ready_for_early_evidence_review"
+    ] = effective_ready
+    result["effective_integrity_scope"] = effective_scope
+    return result
 
 
 def _validate_metadata(
@@ -702,11 +804,46 @@ def validate_momentum_forward_markout_ledger(
         and item.get("integrity_clean") is True
         for item in history
     )
-    if raw.get("summary") != _summary(
+    latest_boundary_known = False
+    latest_last_miss: int | None = None
+    if history:
+        latest_history = history[-1]
+        if not isinstance(latest_history, dict):
+            raise ProspectiveMomentumBandForwardMarkoutLedgerError(
+                "latest momentum markout source history is invalid"
+            )
+        latest_boundary_known = (
+            latest_history.get("integrity_boundary_known") is True
+            or (
+                "integrity_boundary_known" not in latest_history
+                and latest_history.get("integrity_clean") is True
+            )
+        )
+        raw_last_miss = latest_history.get("integrity_last_miss_at_ms")
+        if raw_last_miss is not None and (
+            isinstance(raw_last_miss, bool)
+            or not isinstance(raw_last_miss, int)
+        ):
+            raise ProspectiveMomentumBandForwardMarkoutLedgerError(
+                "latest momentum integrity miss boundary is invalid"
+            )
+        latest_last_miss = cast(int | None, raw_last_miss)
+
+    expected_current = _summary(
         rows,
         pending_opportunity_count=pending,
         integrity_clean=integrity_clean,
-    ):
+        overlap_started_at_ms=overlap_started_at_ms,
+        integrity_boundary_known=latest_boundary_known,
+        integrity_last_miss_at_ms=latest_last_miss,
+    )
+    expected_legacy = _summary(
+        rows,
+        pending_opportunity_count=pending,
+        integrity_clean=integrity_clean,
+        include_post_integrity_readiness=False,
+    )
+    if raw.get("summary") not in (expected_current, expected_legacy):
         raise ProspectiveMomentumBandForwardMarkoutLedgerError(
             "momentum markout summary does not reconcile"
         )
@@ -744,7 +881,14 @@ def load_momentum_forward_markout_ledger(
 def _source_rows(
     summary: object,
     state: ProspectiveMomentumBandEntryState,
-) -> tuple[tuple[dict[str, object], ...], int, int, bool]:
+) -> tuple[
+    tuple[dict[str, object], ...],
+    int,
+    int,
+    bool,
+    bool,
+    int | None,
+]:
     if not isinstance(summary, dict):
         raise ProspectiveMomentumBandForwardMarkoutLedgerError(
             "momentum forward-markout summary must be an object"
@@ -826,7 +970,26 @@ def _source_rows(
         overlap_started_at_ms=overlap_started_at_ms,
     )
     integrity_clean = summary.get("integrity_clean") is True
-    return canonical, pending, overlap_started_at_ms, integrity_clean
+    boundary_known = (
+        "integrity_last_miss_at_ms" in summary
+        or integrity_clean
+    )
+    raw_last_miss = summary.get("integrity_last_miss_at_ms")
+    if raw_last_miss is not None and (
+        isinstance(raw_last_miss, bool)
+        or not isinstance(raw_last_miss, int)
+    ):
+        raise ProspectiveMomentumBandForwardMarkoutLedgerError(
+            "momentum forward-markout integrity boundary is invalid"
+        )
+    return (
+        canonical,
+        pending,
+        overlap_started_at_ms,
+        integrity_clean,
+        boundary_known,
+        cast(int | None, raw_last_miss),
+    )
 
 
 def update_momentum_forward_markout_ledger(
@@ -851,6 +1014,8 @@ def update_momentum_forward_markout_ledger(
         pending_count,
         overlap_started_at_ms,
         source_integrity_clean,
+        source_integrity_boundary_known,
+        source_integrity_last_miss_at_ms,
     ) = _source_rows(summary, state)
     previous_rows: tuple[dict[str, object], ...] = ()
     history: list[object] = []
@@ -937,6 +1102,12 @@ def update_momentum_forward_markout_ledger(
             "new_terminal_row_count": len(new_rows),
             "pending_opportunity_count": pending_count,
             "integrity_clean": source_integrity_clean,
+            "integrity_boundary_known": (
+                source_integrity_boundary_known
+            ),
+            "integrity_last_miss_at_ms": (
+                source_integrity_last_miss_at_ms
+            ),
             "rows_sha256": _rows_sha256(rows),
         }
     )
@@ -945,6 +1116,26 @@ def update_momentum_forward_markout_ledger(
         and item.get("integrity_clean") is True
         for item in history
     )
+    latest_history = history[-1]
+    if not isinstance(latest_history, dict):
+        raise ProspectiveMomentumBandForwardMarkoutLedgerError(
+            "latest momentum markout source history is invalid"
+        )
+    latest_boundary_known = (
+        latest_history.get("integrity_boundary_known") is True
+        or (
+            "integrity_boundary_known" not in latest_history
+            and latest_history.get("integrity_clean") is True
+        )
+    )
+    latest_last_miss = latest_history.get("integrity_last_miss_at_ms")
+    if latest_last_miss is not None and (
+        isinstance(latest_last_miss, bool)
+        or not isinstance(latest_last_miss, int)
+    ):
+        raise ProspectiveMomentumBandForwardMarkoutLedgerError(
+            "latest momentum integrity miss boundary is invalid"
+        )
 
     payload: dict[str, object] = {
         "schema_version": LEDGER_SCHEMA_VERSION,
@@ -972,6 +1163,12 @@ def update_momentum_forward_markout_ledger(
             rows,
             pending_opportunity_count=pending_count,
             integrity_clean=cumulative_integrity_clean,
+            overlap_started_at_ms=overlap_started_at_ms,
+            integrity_boundary_known=latest_boundary_known,
+            integrity_last_miss_at_ms=cast(
+                int | None,
+                latest_last_miss,
+            ),
         ),
         "rows": rows,
     }
