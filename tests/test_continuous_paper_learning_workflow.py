@@ -62,3 +62,7 @@ def test_continuous_paper_publishes_compact_learning_source() -> None:
     assert "continuous-paper-state/journal.sqlite3" in source
     assert "continuous-paper-state/learning-features" in source
     assert "continuous-paper-state/opening-lineage" in source
+    assert (
+        'src/cocomelon/research/prospective_momentum_pullback_entry.py'
+        in source
+    )
