@@ -58,6 +58,7 @@ from cocomelon.continuous_paper import (
     _load_checkpoint,
     _mark_event_loop_phase,
     _monitor_event_loop_lag,
+    _set_background_activity,
     _opening_fill_liquidity_payload,
     _opening_rank_attribution_payload,
     _pipeline_l2_recovery_plan,
@@ -898,6 +899,9 @@ def test_event_loop_lag_monitor_records_blocking_phase() -> None:
                     "timestamp_ms": 1_000,
                 }
             ],
+            background_activity_sequence=0,
+            background_activity={},
+            background_activity_transitions=[],
             event_loop_lag_samples=0,
             event_loop_max_lag_ms=0,
             event_loop_max_lag_wakeup=None,
@@ -919,7 +923,19 @@ def test_event_loop_lag_monitor_records_blocking_phase() -> None:
             "blocking_sync",
             clock_ms=lambda: 1_100,
         )
+        _set_background_activity(
+            pump,
+            "unit_background",
+            "blocking_work",
+            clock_ms=lambda: 1_101,
+        )
         time.sleep(0.03)
+        _set_background_activity(
+            pump,
+            "unit_background",
+            None,
+            clock_ms=lambda: 1_129,
+        )
         _mark_event_loop_phase(
             pump,
             "after_block",
@@ -945,6 +961,27 @@ def test_event_loop_lag_monitor_records_blocking_phase() -> None:
             for item in pump.event_loop_max_lag_wakeup["phase_transitions"]
         ] == ["blocking_sync", "after_block"]
         assert (
+            pump.event_loop_max_lag_wakeup[
+                "scheduled_background_activity"
+            ]
+            == {}
+        )
+        assert (
+            pump.event_loop_max_lag_wakeup[
+                "observed_background_activity"
+            ]
+            == {}
+        )
+        assert [
+            (item["task"], item["phase"])
+            for item in pump.event_loop_max_lag_wakeup[
+                "background_activity_transitions"
+            ]
+        ] == [
+            ("unit_background", "blocking_work"),
+            ("unit_background", None),
+        ]
+        assert (
             pump.event_loop_max_lag_ms_by_phase["unit_test_block"]
             >= 10
         )
@@ -966,6 +1003,15 @@ def test_event_loop_lag_monitor_records_blocking_phase() -> None:
             item["phase"]
             for item in pump.event_loop_last_slow_wakeup["phase_transitions"]
         ] == ["blocking_sync", "after_block"]
+        assert [
+            (item["task"], item["phase"])
+            for item in pump.event_loop_last_slow_wakeup[
+                "background_activity_transitions"
+            ]
+        ] == [
+            ("unit_background", "blocking_work"),
+            ("unit_background", None),
+        ]
 
     asyncio.run(scenario())
 
