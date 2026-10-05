@@ -4627,12 +4627,14 @@ def _event_loop_phase_trace_since(
 ) -> list[dict[str, object]]:
     if limit <= 0:
         raise ValueError("phase trace limit must be positive")
-    transitions = [
-        dict(item)
-        for item in pump.event_loop_phase_transitions
-        if isinstance(item.get("sequence"), int)
-        and int(item["sequence"]) > sequence
-    ]
+    transitions: list[dict[str, object]] = []
+    for item in pump.event_loop_phase_transitions:
+        item_sequence = item.get("sequence")
+        if not isinstance(item_sequence, int):
+            continue
+        if item_sequence <= sequence:
+            continue
+        transitions.append(dict(item))
     return transitions[-limit:]
 
 
