@@ -759,6 +759,8 @@ jobs:
             continuous-paper-state/prospective-two-strike-stop-filter-state.json
             continuous-paper-state/learning-features
             continuous-paper-state/opening-lineage
+            continuous-paper-state/opening-opportunities
+            continuous-paper-state/opening-opportunity-paths
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
