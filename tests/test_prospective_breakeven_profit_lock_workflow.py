@@ -22,6 +22,20 @@ def test_breakeven_readiness_binds_immutable_sources() -> None:
     assert "evaluate_prospective_breakeven_profit_lock.py" in source
 
 
+def test_breakeven_readiness_accepts_only_attested_handoff_paper_failures() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "actions/runs/$PAPER_RUN_ID/jobs?per_page=100" in source
+    assert 'run.get("path") != ".github/workflows/continuous-paper.yml"' in source
+    assert 'run.get("conclusion") not in {"success", "failure"}' in source
+    assert "Run continuous paper trader" in source
+    assert "Measure durable continuous paper state" in source
+    assert "Upload durable continuous paper state" in source
+    assert "Upload compact continuous learning source" in source
+    assert "Fail closed on upgrade handoff source" in source
+    assert "paper source failure is not a durable upgrade handoff" in source
+
+
 def test_breakeven_readiness_never_backfills_pre_freeze_evidence() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
