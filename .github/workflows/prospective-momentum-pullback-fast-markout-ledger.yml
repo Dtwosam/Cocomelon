@@ -472,7 +472,7 @@ jobs:
               "",
               f"- candidate: `{ledger['candidate_id']}`",
               f"- candidate clean start: `{stamp(ledger['started_at_ms'])}`",
-              f"- common stack start: `{stamp(ledger['overlap_started_at_ms'])}`",
+              f"- pullback evidence start: `{stamp(ledger['evidence_started_at_ms'])}`",
               f"- source paper run / attempt: `{os.environ['SOURCE_RUN_ID']} / {os.environ['SOURCE_RUN_ATTEMPT']}`",
               f"- source resolution: `{os.environ['RESOLUTION_MODE']}`",
               f"- previous ledger workflow run: `{previous}`",
