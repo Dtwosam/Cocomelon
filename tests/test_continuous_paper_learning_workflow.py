@@ -21,6 +21,9 @@ def test_continuous_paper_learning_workflow_is_research_only_and_durable() -> No
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "cocomelon-continuous-paper-learning-sync" in source
     assert "cocomelon-learning-readiness" in source
+    assert "cocomelon-context-conditioned-paper" in source
+    assert "context-diagnostics.json" in source
+    assert "side-level PnL suppression authority: false" in source
     assert "continuous-paper-learning-state" in source
     assert "last-source-receipt.json" in source
     assert '"upstream_artifact_digest": os.environ["UPSTREAM_ARTIFACT_DIGEST"]' in source

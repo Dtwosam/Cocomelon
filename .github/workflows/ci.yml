@@ -141,6 +141,8 @@ jobs:
           tests/test_execution_learning_sync.py
           tests/test_continuous_paper_learning.py
           tests/test_continuous_paper_learning_sync_cli.py
+          tests/test_context_conditioned_paper.py
+          tests/test_context_conditioned_paper_cli.py
           tests/test_continuous_paper_learning_workflow.py
           tests/test_continuous_paper_learning_catchup_workflow.py
           tests/test_continuous_paper_learning_cycle_workflow.py
