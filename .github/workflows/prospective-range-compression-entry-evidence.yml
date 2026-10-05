@@ -1,16 +1,6 @@
 name: Prospective Range-Compression Entry Evidence
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/prospective-range-compression-entry-evidence.yml"
-  workflow_run:
-    workflows:
-      - "Continuous Mainnet Paper Trader"
-    types:
-      - completed
   workflow_dispatch:
     inputs:
       source_run_id:
