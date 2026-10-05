@@ -349,6 +349,35 @@ def test_range_evidence_rejects_disappearing_prior_trade(
         )
 
 
+def test_range_evidence_rejects_source_rollback(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    state = ProspectiveRangeCompressionEntryState(
+        frozen_at_ms=4_500_000
+    )
+    first = _update(
+        (),
+        store,
+        state,
+        run_id=200,
+        digest_char="c",
+    )
+
+    with pytest.raises(
+        ProspectiveRangeCompressionEvidenceError,
+        match="source run identity regressed",
+    ):
+        _update(
+            (),
+            store,
+            state,
+            previous=first,
+            run_id=199,
+            digest_char="d",
+        )
+
+
 def test_range_evidence_rejects_row_tamper(
     tmp_path: Path,
 ) -> None:
