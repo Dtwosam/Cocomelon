@@ -195,10 +195,10 @@ class WebSocketSupervisor:
         now_ms: int,
     ) -> bool:
         anchor = self._l2_freshness_anchor_ms(stream_id)
-        return (
-            anchor is not None
-            and now_ms - anchor >= self._stale_after_ms
-        )
+        if anchor is None:
+            return False
+        age_ms = now_ms - anchor
+        return age_ms < 0 or age_ms >= self._stale_after_ms
 
     def _next_l2_stale_deadline_ms(self) -> int | None:
         deadlines = tuple(
@@ -303,11 +303,11 @@ class WebSocketSupervisor:
                 )
             if now_ms - started_ms < self._stale_after_ms:
                 return
-            if not systemic_stale:
-                self._reset_targeted_l2_recovery()
-                return
-            self._pending_l2_targeted_recovery_streams.clear()
-            self._l2_targeted_recovery_started_ms = None
+            self._systemic_l2_stale_reconnect_count += 1
+            self._reset_targeted_l2_recovery()
+            raise ConnectionError(
+                "targeted l2 recovery timed out without fresh evidence"
+            )
 
         if not systemic_stale:
             return
@@ -484,6 +484,8 @@ class WebSocketSupervisor:
                     event.kind is StreamKind.L2_BOOK
                     and stream_id
                     in self._pending_l2_targeted_recovery_streams
+                    and exchange_time is not None
+                    and 0 <= now_ms - exchange_time < self._stale_after_ms
                 ):
                     self._pending_l2_targeted_recovery_streams.discard(
                         stream_id
