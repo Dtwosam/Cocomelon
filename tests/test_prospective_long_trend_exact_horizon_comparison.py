@@ -21,6 +21,7 @@ def _row(
     pnl: str | None,
     market: str | None = None,
     return_fraction: str | None = None,
+    incomplete_reason: str | None = None,
 ) -> dict[str, object]:
     normalized_return = (
         None
@@ -36,6 +37,7 @@ def _row(
         "direction": "long",
         "exact_realized_pnl": pnl,
         "exact_realized_return_fraction": normalized_return,
+        "incomplete_reason": incomplete_reason,
     }
 
 
@@ -71,6 +73,9 @@ def test_common_future_sample_can_robustly_prefer_five_minutes() -> None:
         _summary(FIFTEEN_MINUTE_HORIZON_MS, fifteen_rows),
     )
 
+    assert result["five_minute_source_options"] == 12
+    assert result["fifteen_minute_source_options"] == 12
+    assert result["common_source_options"] == 12
     assert result["paired_exact_options"] == 12
     assert result["market_count"] == 4
     assert result["minimum_sample_met"] is True
@@ -158,11 +163,11 @@ def test_unpaired_exact_rows_receive_no_comparison_credit() -> None:
     five_rows = [
         _row(0, pnl="2"),
         _row(1, pnl="3"),
-        _row(2, pnl=None),
+        _row(2, pnl=None, incomplete_reason="missing_exit_book"),
     ]
     fifteen_rows = [
         _row(0, pnl="1"),
-        _row(1, pnl=None),
+        _row(1, pnl=None, incomplete_reason="funding_evidence_required"),
         _row(2, pnl="4"),
     ]
 
@@ -171,6 +176,15 @@ def test_unpaired_exact_rows_receive_no_comparison_credit() -> None:
         _summary(FIFTEEN_MINUTE_HORIZON_MS, fifteen_rows),
     )
 
+    assert result["five_minute_source_options"] == 3
+    assert result["fifteen_minute_source_options"] == 3
+    assert result["common_source_options"] == 3
+    assert result["five_minute_incomplete_reasons"] == {
+        "missing_exit_book": 1,
+    }
+    assert result["fifteen_minute_incomplete_reasons"] == {
+        "funding_evidence_required": 1,
+    }
     assert result["five_minute_exact_options"] == 2
     assert result["fifteen_minute_exact_options"] == 2
     assert result["paired_exact_options"] == 1
