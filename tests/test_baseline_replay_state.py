@@ -287,6 +287,77 @@ def test_state_replaces_only_with_later_evidence_and_does_not_fabricate_full_con
     assert state.latest_asset_ctx.payload["mark_px"] == Decimal("110")
 
 
+def test_ordered_candle_history_cache_reuses_until_accepted_update() -> None:
+    book = RecordedStateBook(microstructure_window_ms=60_000)
+
+    def candle_record(
+        *,
+        start_ms: int,
+        available_at_ms: int,
+        close_px: str,
+    ) -> ReplayRecord:
+        return _record(
+            kind="candle",
+            available_at_ms=available_at_ms,
+            exchange_time_ms=start_ms,
+            key=f"candle:{start_ms}:{available_at_ms}",
+            payload={
+                "start_ms": start_ms,
+                "end_ms": start_ms + 900_000,
+                "interval": "15m",
+                "open_px": "100",
+                "high_px": "102",
+                "low_px": "98",
+                "close_px": close_px,
+                "volume": "1000",
+                "trade_count": 100,
+            },
+        )
+
+    later = candle_record(
+        start_ms=900_000,
+        available_at_ms=2_000,
+        close_px="101",
+    )
+    earlier = candle_record(
+        start_ms=0,
+        available_at_ms=1_000,
+        close_px="100",
+    )
+    book.apply(later, now_ms=2_000)
+    book.apply(earlier, now_ms=2_000)
+
+    ordered = book.ordered_candles(MARKET, "15m")
+    assert tuple(candle.start_ms for candle in ordered) == (
+        0,
+        900_000,
+    )
+    assert book.ordered_candles(MARKET, "15m") is ordered
+
+    stale_correction = candle_record(
+        start_ms=0,
+        available_at_ms=500,
+        close_px="99",
+    )
+    book.apply(stale_correction, now_ms=2_500)
+    assert book.ordered_candles(MARKET, "15m") is ordered
+
+    fresh_correction = candle_record(
+        start_ms=0,
+        available_at_ms=3_000,
+        close_px="103",
+    )
+    book.apply(fresh_correction, now_ms=3_000)
+
+    refreshed = book.ordered_candles(MARKET, "15m")
+    assert refreshed is not ordered
+    assert refreshed[0].close_px == Decimal("103")
+    assert tuple(candle.start_ms for candle in refreshed) == (
+        0,
+        900_000,
+    )
+
+
 def test_monotonic_micro_event_prune_reuses_deque() -> None:
     book = RecordedStateBook(microstructure_window_ms=60_000)
     first = _record(

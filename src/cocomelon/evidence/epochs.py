@@ -170,11 +170,13 @@ class BaselineDecisionEngine:
             previous = None
         broad = calculate_broad_features(snapshot, previous, as_of_ms=as_of_ms)
 
-        candles_5m = tuple(
-            state.candles_5m[key] for key in sorted(state.candles_5m)
+        candles_5m = self._state.ordered_candles(
+            market,
+            "5m",
         )
-        candles_15m = tuple(
-            state.candles_15m[key] for key in sorted(state.candles_15m)
+        candles_15m = self._state.ordered_candles(
+            market,
+            "15m",
         )
         candle = calculate_candle_features(
             market,
@@ -248,11 +250,13 @@ class BaselineDecisionEngine:
                 thresholds,
                 self._config.eligibility,
             )
-            candles_5m = tuple(
-                state.candles_5m[key] for key in sorted(state.candles_5m)
+            candles_5m = self._state.ordered_candles(
+                market,
+                "5m",
             )
-            candles_15m = tuple(
-                state.candles_15m[key] for key in sorted(state.candles_15m)
+            candles_15m = self._state.ordered_candles(
+                market,
+                "15m",
             )
             events = tuple(
                 event

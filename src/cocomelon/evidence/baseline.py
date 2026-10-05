@@ -36,6 +36,14 @@ class RecordedMarketState:
     _book_available_at_ms: int | None = field(default=None, repr=False)
     _asset_ctx_available_at_ms: int | None = field(default=None, repr=False)
     _funding_available_at: dict[int, int] = field(default_factory=dict, repr=False)
+    _ordered_candles_5m: tuple[Candle, ...] | None = field(
+        default=None,
+        repr=False,
+    )
+    _ordered_candles_15m: tuple[Candle, ...] | None = field(
+        default=None,
+        repr=False,
+    )
     _micro_events_monotonic: bool = field(default=True, repr=False)
     _last_micro_event_received_at_ms: int | None = field(
         default=None,
@@ -282,6 +290,31 @@ class RecordedStateBook:
             self._states[key] = state
         return state
 
+    def ordered_candles(
+        self,
+        market: MarketId,
+        interval: str,
+    ) -> tuple[Candle, ...]:
+        state = self.state(market)
+        if interval == "5m":
+            cached = state._ordered_candles_5m
+            candles = state.candles_5m
+        elif interval == "15m":
+            cached = state._ordered_candles_15m
+            candles = state.candles_15m
+        else:
+            raise ValueError("ordered candles supports only 5m or 15m")
+        if cached is None:
+            cached = tuple(
+                candles[key]
+                for key in sorted(candles)
+            )
+            if interval == "5m":
+                state._ordered_candles_5m = cached
+            else:
+                state._ordered_candles_15m = cached
+        return cached
+
     @staticmethod
     def _micro_event_receive_ms(event: StreamEvent) -> int:
         return int(event.receive_time.timestamp() * 1000)
@@ -356,6 +389,10 @@ class RecordedStateBook:
         if previous_available is None or record.available_at_ms >= previous_available:
             candles[candle.start_ms] = candle
             availability[candle.start_ms] = record.available_at_ms
+            if candle.interval == "5m":
+                state._ordered_candles_5m = None
+            else:
+                state._ordered_candles_15m = None
 
     def apply(self, record: ReplayRecord, now_ms: int) -> None:
         if now_ms < record.available_at_ms:
