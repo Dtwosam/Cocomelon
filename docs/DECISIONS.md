@@ -362,3 +362,20 @@ This file records decisions that should not be casually re-litigated in later ch
 
 **LIVE TRADING: DISABLED.**
 
+
+
+## D-034 — Directional intelligence must be context-aware, not side-suppression by recent PnL
+
+**Date:** 2026-10-06
+
+**Decision:** Cocomelon must not reduce, disable, or penalize LONG or SHORT exposure merely because that direction has produced more recent losses in aggregate. Direction is an output of market context, not a static preference.
+
+**Required behavior:** Strategy research and learning must evaluate the conditions surrounding each decision — including trend/structure, momentum, volatility/regime, liquidity/spread/depth, funding, order-flow or book evidence when genuinely available, and recent price behavior — and learn which combinations support LONG, SHORT, or NO_TRADE. Weak setups are filtered because their context lacks edge, not because their direction is unpopular.
+
+**Evaluation consequence:** Performance must be segmented by direction *and* relevant market context/regime. A side-level loss statistic is diagnostic evidence only; it is not sufficient authority for a trading rule. Any directional restriction must be backed by reproducible context-conditioned net expectancy after realistic costs and must pass the same chronological/OOS/shadow gates as any other strategy change.
+
+**Learning consequence:** Historical and continuous-paper learning should compare winners and losers under comparable market states so Cocomelon can distinguish “bad long/short setup here” from “longs/shorts are bad.” NO_TRADE remains first-class when neither side has sufficient expected edge.
+
+**Goal:** Build a trader that can identify when a market favors LONG, when it favors SHORT, and when the correct action is NO_TRADE, rather than chasing recent side-level win/loss streaks.
+
+**Safety:** This decision does not relax independent risk limits, evidence integrity, promotion gates, or the live-trading prohibition.
