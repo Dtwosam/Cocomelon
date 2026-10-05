@@ -4583,6 +4583,79 @@ def test_trade_path_capture_failure_is_fail_open() -> None:
     assert sink.error == "RuntimeError: path boom"
 
 
+def test_record_pump_offloads_slow_trade_journal_write() -> None:
+    async def scenario() -> None:
+        trade = SimpleNamespace(trade_id="trade-offloop")
+
+        class Pipeline:
+            def on_record(
+                self,
+                _record: ReplayRecord,
+                _now_ms: int,
+            ) -> tuple[object, ...]:
+                return ()
+
+            def finalize(
+                self,
+                _end_ms: int,
+            ) -> tuple[SimpleNamespace, ...]:
+                return (trade,)
+
+        class Journal:
+            def iter_trades(self) -> tuple[object, ...]:
+                return ()
+
+            def record_observation(
+                self,
+                _observation: object,
+            ) -> None:
+                raise AssertionError("no observations expected")
+
+            def record_trade(
+                self,
+                _trade: object,
+            ) -> None:
+                time.sleep(0.05)
+
+        pump = _RecordPump(
+            Pipeline(),  # type: ignore[arg-type]
+            Journal(),  # type: ignore[arg-type]
+            last_available_at_ms=0,
+        )
+        record = ReplayRecord(
+            record_kind=SourceRecordKind.DATA_GAP,
+            available_at_ms=1,
+            source="fixture",
+            schema_version=1,
+            market=None,
+            exchange_time_ms=None,
+            event_key="gap-offloop-trade",
+            payload_json=(
+                '{"started_ms":1,"ended_ms":1,'
+                '"reason":"fixture","stream_id":"x"}'
+            ),
+            event_kind=None,
+        )
+
+        task = asyncio.create_task(pump.process(record))
+        await asyncio.sleep(0.01)
+
+        assert task.done() is False
+        await task
+        assert pump.closed_trades == 1
+        assert (
+            pump.record_pump_max_process_ms_by_component[
+                "journal_trade_persist"
+            ]
+            >= 40
+        )
+        assert "entry_mid_markout_close" in (
+            pump.record_pump_max_process_ms_by_component
+        )
+
+    asyncio.run(scenario())
+
+
 def test_record_pump_counts_each_closed_trade_once() -> None:
     trade = SimpleNamespace(trade_id="trade-1")
 
