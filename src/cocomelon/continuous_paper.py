@@ -338,6 +338,10 @@ from cocomelon.research.prospective_momentum_pullback_entry import (
     ProspectiveMomentumPullbackEntryState,
     evaluate_prospective_momentum_pullback_entry,
 )
+from cocomelon.research.prospective_range_compression_entry import (
+    ProspectiveRangeCompressionEntryState,
+    evaluate_prospective_range_compression_entry,
+)
 from cocomelon.research.prospective_replacement_exit_policy import (
     ProspectiveReplacementExitPolicyState,
     prospective_replacement_exit_policy_summary,
@@ -448,6 +452,12 @@ PROSPECTIVE_MOMENTUM_PULLBACK_ENTRY_STATE_FILENAME = (
 )
 PROSPECTIVE_MOMENTUM_PULLBACK_ENTRY_SUMMARY_FILENAME = (
     "prospective-momentum-pullback-entry-summary.json"
+)
+PROSPECTIVE_RANGE_COMPRESSION_ENTRY_STATE_FILENAME = (
+    "prospective-range-compression-entry-state.json"
+)
+PROSPECTIVE_RANGE_COMPRESSION_ENTRY_SUMMARY_FILENAME = (
+    "prospective-range-compression-entry-summary.json"
 )
 PROSPECTIVE_MOMENTUM_PULLBACK_FORWARD_MARKOUT_SUMMARY_FILENAME = (
     "prospective-momentum-pullback-forward-markout-summary.json"
@@ -2931,6 +2941,33 @@ def _restore_prospective_momentum_pullback_entry(
         )
 
 
+def _restore_prospective_range_compression_entry(
+    path: Path,
+    *,
+    frozen_at_ms: int,
+) -> tuple[ProspectiveRangeCompressionEntryState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveRangeCompressionEntryState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveRangeCompressionEntryState.from_payload(raw),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveRangeCompressionEntryState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
 def _prospective_momentum_pullback_entry_payload(
     journal: JournalStore,
     feature_store: LearningFeatureSnapshotStore,
@@ -2940,6 +2977,40 @@ def _prospective_momentum_pullback_entry_payload(
 ) -> dict[str, object]:
     try:
         payload = evaluate_prospective_momentum_pullback_entry(
+            journal,
+            feature_store,
+            state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "changes_execution": False,
+            "changes_risk_limits": False,
+            "candidate_id": state.candidate_id,
+            "frozen_at_ms": state.frozen_at_ms,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
+
+
+def _prospective_range_compression_entry_payload(
+    journal: JournalStore,
+    feature_store: LearningFeatureSnapshotStore,
+    state: ProspectiveRangeCompressionEntryState,
+    *,
+    restore_error: str | None,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_range_compression_entry(
             journal,
             feature_store,
             state,
@@ -8892,6 +8963,13 @@ async def run_continuous_paper_session(
         frozen_at_ms=started_at_ms,
     )
     (
+        prospective_range_compression_entry_state,
+        prospective_range_compression_entry_restore_error,
+    ) = _restore_prospective_range_compression_entry(
+        root / PROSPECTIVE_RANGE_COMPRESSION_ENTRY_STATE_FILENAME,
+        frozen_at_ms=started_at_ms,
+    )
+    (
         prospective_two_strike_stop_filter_state,
         prospective_two_strike_stop_filter_restore_error,
     ) = _restore_prospective_two_strike_stop_filter(
@@ -9343,6 +9421,14 @@ async def run_continuous_paper_session(
                         timed_component(
                             "prospective_momentum_pullback_entry_state",
                             prospective_momentum_pullback_entry_state.payload,
+                        ),
+                    ),
+                    (
+                        root
+                        / PROSPECTIVE_RANGE_COMPRESSION_ENTRY_STATE_FILENAME,
+                        timed_component(
+                            "prospective_range_compression_entry_state",
+                            prospective_range_compression_entry_state.payload,
                         ),
                     ),
                     (
@@ -10219,6 +10305,21 @@ async def run_continuous_paper_session(
                 root
                 / PROSPECTIVE_MOMENTUM_PULLBACK_ENTRY_SUMMARY_FILENAME,
                 momentum_pullback_entry,
+            )
+            range_compression_entry = (
+                _prospective_range_compression_entry_payload(
+                    journal,
+                    feature_store,
+                    prospective_range_compression_entry_state,
+                    restore_error=(
+                        prospective_range_compression_entry_restore_error
+                    ),
+                )
+            )
+            _write_json_atomic(
+                root
+                / PROSPECTIVE_RANGE_COMPRESSION_ENTRY_SUMMARY_FILENAME,
+                range_compression_entry,
             )
             momentum_pullback_forward_markout = (
                 _prospective_momentum_pullback_forward_markout_payload(
