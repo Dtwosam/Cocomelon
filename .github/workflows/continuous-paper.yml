@@ -645,6 +645,55 @@ jobs:
           retention-days: 90
           compression-level: 6
 
+      - name: Queue fallback exact successor continuous paper worker
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.fast_resume_dispatch.outcome != 'success' && steps.durable_state_upload.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run continuous-paper.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f "source_run_id=$GITHUB_RUN_ID" \
+            -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
+
+      - name: Fail closed on upgrade handoff source
+        id: research_source_gate
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.durable_state_upload.outcome == 'success' && hashFiles('continuous-paper-state/session-summary.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          exit_reason="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/session-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          print(payload.get("exit_reason", ""))
+          PY
+          )"
+          if [ "$exit_reason" = "upgrade_requested" ]; then
+            echo "::error::upgrade handoff run is state-continuity only and must not be a successful research source"
+            exit 75
+          fi
+
+      - name: Queue exact LONG trend horizon comparison
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.durable_state_upload.outcome == 'success' && steps.research_source_gate.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run prospective-long-trend-exact-horizon-comparison.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f "source_run_id=$GITHUB_RUN_ID" \
+            -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
+
       - name: Upload cadence shadow research state
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/cadence-shadow-state.json') != '' }}
         uses: actions/upload-artifact@v7
@@ -1267,37 +1316,3 @@ jobs:
           print("- live orders: false")
           PY
 
-      - name: Queue fallback exact successor continuous paper worker
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.fast_resume_dispatch.outcome != 'success' && steps.durable_state_upload.outcome == 'success' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh workflow run continuous-paper.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref main \
-            -f "source_run_id=$GITHUB_RUN_ID" \
-            -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
-
-      - name: Fail closed on upgrade handoff source
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/session-summary.json') != '' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          exit_reason="$(
-            python - <<'PY'
-          import json
-          from pathlib import Path
-
-          payload = json.loads(
-              Path(
-                  "continuous-paper-state/session-summary.json"
-              ).read_text(encoding="utf-8")
-          )
-          print(payload.get("exit_reason", ""))
-          PY
-          )"
-          if [ "$exit_reason" = "upgrade_requested" ]; then
-            echo "::error::upgrade handoff run is state-continuity only and must not be a successful research source"
-            exit 75
-          fi
