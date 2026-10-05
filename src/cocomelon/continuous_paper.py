@@ -9550,6 +9550,19 @@ async def run_continuous_paper_session(
                         * config.websocket_redundant_lane_reconnect_stagger_ms
                     ),
                     max_systemic_l2_targeted_resubscribes=1,
+                    activity_hook=(
+                        lambda phase, active, lane=lane: (
+                            _set_background_activity(
+                                pump,
+                                f"websocket_lane_{lane}",
+                                (
+                                    f"supervisor_{phase}"
+                                    if active
+                                    else None
+                                ),
+                            )
+                        )
+                    ),
                 )
                 supervisors.append(supervisor)
                 tasks.append(
