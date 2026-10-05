@@ -5991,6 +5991,12 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
             "pipeline_finalize": 7,
             "pipeline_on_record": 900,
         },
+        "pipeline_runtime_max_ms_by_component": {
+            "decision_engine_observe": 120,
+            "epoch_decision_fact_batch": 35,
+            "epoch_feature_snapshot_persist_total": 710,
+            "epoch_process_total": 780,
+        },
         "record_pump_slow_record_count": 3,
         "checkpoint_max_snapshot_ms": 14,
         "checkpoint_max_background_write_ms": 82_000,
@@ -6339,6 +6345,14 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "record pump max by component: "
         "{'cadence_shadow': 15, 'journal_observations': 81000, "
         "'pipeline_finalize': 7, 'pipeline_on_record': 900}"
+        in rendered
+    )
+    assert (
+        "pipeline max by component: "
+        "{'decision_engine_observe': 120, "
+        "'epoch_decision_fact_batch': 35, "
+        "'epoch_feature_snapshot_persist_total': 710, "
+        "'epoch_process_total': 780}"
         in rendered
     )
     assert "last slow record pump:" in rendered

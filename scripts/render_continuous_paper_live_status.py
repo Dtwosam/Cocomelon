@@ -9855,6 +9855,10 @@ def _render_operational_live_status(
                 f"{payload.get('record_pump_max_process_ms_by_component', {})}"
             ),
             (
+                "- pipeline max by component: "
+                f"{payload.get('pipeline_runtime_max_ms_by_component', {})}"
+            ),
+            (
                 "- last slow record pump: "
                 f"{payload.get('record_pump_last_slow_record')}"
             ),
