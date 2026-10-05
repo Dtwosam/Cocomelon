@@ -32,6 +32,7 @@ on:
       - "src/cocomelon/research/post_freshness_paper_cohort.py"
       - "src/cocomelon/research/prospective_breakeven_profit_lock.py"
       - "src/cocomelon/research/prospective_momentum_band_entry.py"
+      - "src/cocomelon/research/prospective_momentum_pullback_entry.py"
       - "src/cocomelon/research/prospective_momentum_band_forward_markout.py"
       - "src/cocomelon/research/prospective_two_strike_stop_filter.py"
       - "src/cocomelon/research/closed_trade_utc_hour.py"
@@ -739,6 +740,8 @@ jobs:
             continuous-paper-state/profit-lock-execution-shadow-state.json
             continuous-paper-state/prospective-breakeven-profit-lock-state.json
             continuous-paper-state/prospective-momentum-band-entry-state.json
+            continuous-paper-state/prospective-momentum-pullback-entry-state.json
+            continuous-paper-state/prospective-momentum-pullback-entry-summary.json
             continuous-paper-state/prospective-momentum-band-forward-markout-summary.json
             continuous-paper-state/prospective-consecutive-loss-cooldown-shadow-state.json
             continuous-paper-state/prospective-consecutive-loss-cooldown-shadow-summary.json
