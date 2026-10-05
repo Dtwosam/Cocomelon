@@ -4315,6 +4315,11 @@ class _RecordPump:
             ),
             maxlen=64,
         )
+        self.background_activity_sequence = 0
+        self.background_activity: dict[str, str] = {}
+        self.background_activity_transitions: deque[dict[str, object]] = deque(
+            maxlen=128
+        )
         self.event_loop_lag_samples = 0
         self.event_loop_max_lag_ms = 0
         self.event_loop_max_lag_wakeup: dict[str, object] | None = None
@@ -4649,6 +4654,61 @@ def _event_loop_phase_trace_since(
     return transitions[-limit:]
 
 
+def _set_background_activity(
+    pump: _RecordPump,
+    task_name: str,
+    phase: str | None,
+    *,
+    clock_ms: Callable[[], int] = utc_now_ms,
+) -> None:
+    task = task_name.strip()
+    if not task:
+        raise ValueError("background task name must not be empty")
+    current = pump.background_activity.get(task)
+    if phase is None:
+        if current is None:
+            return
+        pump.background_activity.pop(task, None)
+        next_phase: str | None = None
+    else:
+        normalized = phase.strip()
+        if not normalized:
+            raise ValueError("background activity phase must not be empty")
+        if current == normalized:
+            return
+        pump.background_activity[task] = normalized
+        next_phase = normalized
+    pump.background_activity_sequence += 1
+    pump.background_activity_transitions.append(
+        {
+            "sequence": pump.background_activity_sequence,
+            "task": task,
+            "phase": next_phase,
+            "previous_phase": current,
+            "timestamp_ms": clock_ms(),
+        }
+    )
+
+
+def _background_activity_trace_since(
+    pump: _RecordPump,
+    *,
+    sequence: int,
+    limit: int = 16,
+) -> list[dict[str, object]]:
+    if limit <= 0:
+        raise ValueError("background activity trace limit must be positive")
+    transitions: list[dict[str, object]] = []
+    for item in pump.background_activity_transitions:
+        item_sequence = item.get("sequence")
+        if not isinstance(item_sequence, int):
+            continue
+        if item_sequence <= sequence:
+            continue
+        transitions.append(dict(item))
+    return transitions[-limit:]
+
+
 async def _monitor_event_loop_lag(
     pump: _RecordPump,
     *,
@@ -4664,6 +4724,8 @@ async def _monitor_event_loop_lag(
     while True:
         scheduled_phase = pump.event_loop_phase
         scheduled_phase_sequence = pump.event_loop_phase_sequence
+        scheduled_background_activity = dict(pump.background_activity)
+        scheduled_background_sequence = pump.background_activity_sequence
         await asyncio.sleep(interval_seconds)
         observed = loop.time()
         lag_ms = max(0, int((observed - expected) * 1_000))
@@ -4671,6 +4733,11 @@ async def _monitor_event_loop_lag(
             pump,
             sequence=scheduled_phase_sequence,
         )
+        background_activity_transitions = _background_activity_trace_since(
+            pump,
+            sequence=scheduled_background_sequence,
+        )
+        observed_background_activity = dict(pump.background_activity)
         pump.event_loop_lag_samples += 1
         previous_max_lag_ms = pump.event_loop_max_lag_ms
         if lag_ms > previous_max_lag_ms:
@@ -4680,6 +4747,15 @@ async def _monitor_event_loop_lag(
                 "phase": scheduled_phase,
                 "observed_phase": pump.event_loop_phase,
                 "phase_transitions": phase_transitions,
+                "scheduled_background_activity": (
+                    scheduled_background_activity
+                ),
+                "observed_background_activity": (
+                    observed_background_activity
+                ),
+                "background_activity_transitions": (
+                    background_activity_transitions
+                ),
             }
         pump.event_loop_max_lag_ms_by_phase[scheduled_phase] = max(
             pump.event_loop_max_lag_ms_by_phase.get(
@@ -4704,6 +4780,15 @@ async def _monitor_event_loop_lag(
                 "phase": scheduled_phase,
                 "observed_phase": pump.event_loop_phase,
                 "phase_transitions": phase_transitions,
+                "scheduled_background_activity": (
+                    scheduled_background_activity
+                ),
+                "observed_background_activity": (
+                    observed_background_activity
+                ),
+                "background_activity_transitions": (
+                    background_activity_transitions
+                ),
             }
         expected = observed + interval_seconds
 
@@ -8428,14 +8513,26 @@ async def run_continuous_paper_session(
             if _stop_requested(stop_path):
                 return
             now_ms = utc_now_ms()
-            future_boundaries = tuple(
-                request.boundary_ms
-                for request in replacement_funding_store.required_boundaries()
-                if request.boundary_ms >= now_ms
-                and replacement_funding_store.markets_for_boundary(
-                    request.boundary_ms
-                )
+            _set_background_activity(
+                pump,
+                "replacement_funding_oracle",
+                "boundary_scan",
             )
+            try:
+                future_boundaries = tuple(
+                    request.boundary_ms
+                    for request in replacement_funding_store.required_boundaries()
+                    if request.boundary_ms >= now_ms
+                    and replacement_funding_store.markets_for_boundary(
+                        request.boundary_ms
+                    )
+                )
+            finally:
+                _set_background_activity(
+                    pump,
+                    "replacement_funding_oracle",
+                    None,
+                )
             if not future_boundaries:
                 await asyncio.sleep(5.0)
                 continue
@@ -8464,30 +8561,66 @@ async def run_continuous_paper_session(
                 if not markets:
                     break
                 try:
-                    raw = await asyncio.to_thread(
-                        reader.meta_and_asset_ctxs,
-                        "",
+                    _set_background_activity(
+                        pump,
+                        "replacement_funding_oracle",
+                        "fetch_context",
                     )
+                    try:
+                        raw = await asyncio.to_thread(
+                            reader.meta_and_asset_ctxs,
+                            "",
+                        )
+                    finally:
+                        _set_background_activity(
+                            pump,
+                            "replacement_funding_oracle",
+                            None,
+                        )
                     received_at_ms = utc_now_ms()
-                    snapshots = await asyncio.to_thread(
-                        normalize_meta_and_asset_ctxs,
-                        "",
-                        raw,
-                        received_at_ms=received_at_ms,
+                    _set_background_activity(
+                        pump,
+                        "replacement_funding_oracle",
+                        "normalize_context",
                     )
-                    by_market = {
-                        snapshot.meta.market.canonical: snapshot
-                        for snapshot in snapshots
-                    }
-                    for market_key in _iter_until_stop(
-                        markets,
-                        stop_path,
-                    ):
-                        snapshot = by_market.get(market_key)
-                        if snapshot is not None:
-                            replacement_funding_store.observe_snapshot(
-                                snapshot
-                            )
+                    try:
+                        snapshots = await asyncio.to_thread(
+                            normalize_meta_and_asset_ctxs,
+                            "",
+                            raw,
+                            received_at_ms=received_at_ms,
+                        )
+                    finally:
+                        _set_background_activity(
+                            pump,
+                            "replacement_funding_oracle",
+                            None,
+                        )
+                    _set_background_activity(
+                        pump,
+                        "replacement_funding_oracle",
+                        "store_snapshots",
+                    )
+                    try:
+                        by_market = {
+                            snapshot.meta.market.canonical: snapshot
+                            for snapshot in snapshots
+                        }
+                        for market_key in _iter_until_stop(
+                            markets,
+                            stop_path,
+                        ):
+                            snapshot = by_market.get(market_key)
+                            if snapshot is not None:
+                                replacement_funding_store.observe_snapshot(
+                                    snapshot
+                                )
+                    finally:
+                        _set_background_activity(
+                            pump,
+                            "replacement_funding_oracle",
+                            None,
+                        )
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -9180,12 +9313,24 @@ async def run_continuous_paper_session(
             async def write_snapshot() -> None:
                 nonlocal cadence_shadow_persisted_revision
                 write_started = loop.time()
-                (
-                    write_ms_by_file,
-                    write_bytes_by_file,
-                ) = await _write_json_payload_batch_cooperatively(
-                    payloads
+                _set_background_activity(
+                    pump,
+                    "checkpoint_writer",
+                    "write_payload_batch",
                 )
+                try:
+                    (
+                        write_ms_by_file,
+                        write_bytes_by_file,
+                    ) = await _write_json_payload_batch_cooperatively(
+                        payloads
+                    )
+                finally:
+                    _set_background_activity(
+                        pump,
+                        "checkpoint_writer",
+                        None,
+                    )
                 for file_name, file_ms in write_ms_by_file.items():
                     previous_ms = (
                         pump.checkpoint_background_max_ms_by_file.get(
@@ -9244,11 +9389,23 @@ async def run_continuous_paper_session(
             async def observe_after_previous() -> None:
                 if previous_task is not None:
                     await previous_task
-                await (
-                    opening_opportunity_sink.observe_snapshots_cooperatively(
-                        snapshots_for_research
-                    )
+                _set_background_activity(
+                    pump,
+                    "opening_path_research",
+                    "observe_snapshots",
                 )
+                try:
+                    await (
+                        opening_opportunity_sink.observe_snapshots_cooperatively(
+                            snapshots_for_research
+                        )
+                    )
+                finally:
+                    _set_background_activity(
+                        pump,
+                        "opening_path_research",
+                        None,
+                    )
 
             opening_path_observe_task = asyncio.create_task(
                 observe_after_previous()
@@ -9314,44 +9471,70 @@ async def run_continuous_paper_session(
                     event: StreamEvent,
                     lane: int = lane,
                 ) -> None:
-                    market_key = event.market.canonical
-                    if (
-                        event.kind is StreamKind.L2_BOOK
-                        and market_key in required_market_keys
-                        and event.exchange_time_ms is not None
-                    ):
-                        received_at_ms = int(
-                            event.receive_time.timestamp() * 1000
-                        )
-                        l2_exchange_age_ms_by_market[lane][
+                    activity_name = f"websocket_lane_{lane}"
+                    _set_background_activity(
+                        pump,
+                        activity_name,
+                        "event_dispatch",
+                    )
+                    try:
+                        market_key = event.market.canonical
+                        if (
+                            event.kind is StreamKind.L2_BOOK
+                            and market_key in required_market_keys
+                            and event.exchange_time_ms is not None
+                        ):
+                            received_at_ms = int(
+                                event.receive_time.timestamp() * 1000
+                            )
+                            l2_exchange_age_ms_by_market[lane][
+                                market_key
+                            ] = received_at_ms - event.exchange_time_ms
+                        if (
                             market_key
-                        ] = received_at_ms - event.exchange_time_ms
-                    if (
-                        market_key
-                        in required_market_keys
-                        and _l2_event_fresh_for_promotion(
-                            event,
-                            max_book_age_ms=(
-                                replay_config.eligibility.max_book_age_ms
-                            ),
+                            in required_market_keys
+                            and _l2_event_fresh_for_promotion(
+                                event,
+                                max_book_age_ms=(
+                                    replay_config.eligibility.max_book_age_ms
+                                ),
+                            )
+                        ):
+                            ready_market_keys[lane].add(
+                                market_key
+                            )
+                        await mux.on_event(lane, event)
+                    finally:
+                        _set_background_activity(
+                            pump,
+                            activity_name,
+                            None,
                         )
-                    ):
-                        ready_market_keys[lane].add(
-                            market_key
-                        )
-                    await mux.on_event(lane, event)
                     await _cooperative_stream_yield()
 
                 async def lane_gap_sink(
                     gap: DataGap,
                     lane: int = lane,
                 ) -> None:
-                    _revoke_stale_l2_readiness(
-                        ready_market_keys[lane],
-                        gap,
-                        required_market_keys=required_market_keys,
+                    activity_name = f"websocket_lane_{lane}"
+                    _set_background_activity(
+                        pump,
+                        activity_name,
+                        "gap_dispatch",
                     )
-                    await mux.on_gap(lane, gap)
+                    try:
+                        _revoke_stale_l2_readiness(
+                            ready_market_keys[lane],
+                            gap,
+                            required_market_keys=required_market_keys,
+                        )
+                        await mux.on_gap(lane, gap)
+                    finally:
+                        _set_background_activity(
+                            pump,
+                            activity_name,
+                            None,
+                        )
                     await _cooperative_stream_yield()
 
                 supervisor = WebSocketSupervisor(
@@ -9378,6 +9561,19 @@ async def run_continuous_paper_session(
                         * config.websocket_redundant_lane_reconnect_stagger_ms
                     ),
                     max_systemic_l2_targeted_resubscribes=1,
+                    activity_hook=(
+                        lambda phase, active, lane=lane: (
+                            _set_background_activity(
+                                pump,
+                                f"websocket_lane_{lane}",
+                                (
+                                    f"supervisor_{phase}"
+                                    if active
+                                    else None
+                                ),
+                            )
+                        )
+                    ),
                 )
                 supervisors.append(supervisor)
                 tasks.append(
