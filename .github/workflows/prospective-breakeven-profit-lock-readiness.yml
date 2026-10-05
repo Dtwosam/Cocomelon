@@ -187,19 +187,78 @@ jobs:
         run: |
           set -euo pipefail
           run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PAPER_RUN_ID")"
-          printf '%s' "$run_json" | python -c '
-          import json, os, sys
-          run = json.load(sys.stdin)
-          if run.get("conclusion") != "success":
-              raise SystemExit("paper source is not successful")
+          jobs_json="$(
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PAPER_RUN_ID/jobs?per_page=100"
+          )"
+          printf '%s' "$run_json" > /tmp/breakeven-paper-run.json
+          printf '%s' "$jobs_json" > /tmp/breakeven-paper-jobs.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/breakeven-paper-run.json").read_text()
+          )
+          if run.get("path") != ".github/workflows/continuous-paper.yml":
+              raise SystemExit("paper source workflow path mismatch")
+          if run.get("status") != "completed":
+              raise SystemExit("paper source is not completed")
+          if run.get("conclusion") not in {"success", "failure"}:
+              raise SystemExit("paper source conclusion is not evidence-eligible")
           if run.get("head_branch") != "main":
               raise SystemExit("paper source is not main")
-          if int(run.get("run_attempt", 0)) != int(os.environ["PAPER_RUN_ATTEMPT"]):
+          if int(run.get("run_attempt", 0)) != int(
+              os.environ["PAPER_RUN_ATTEMPT"]
+          ):
               raise SystemExit("paper source attempt mismatch")
           repo = (run.get("repository") or {}).get("full_name")
           if repo != os.environ["GITHUB_REPOSITORY"]:
               raise SystemExit("paper source repository mismatch")
-          '
+          if run.get("conclusion") == "success":
+              raise SystemExit(0)
+
+          jobs = json.loads(
+              Path("/tmp/breakeven-paper-jobs.json").read_text()
+          )
+          paper_jobs = [
+              job
+              for job in jobs.get("jobs", [])
+              if job.get("name") == "paper"
+          ]
+          if len(paper_jobs) != 1:
+              raise SystemExit(
+                  "paper source failure is not a durable upgrade handoff"
+              )
+          paper_job = paper_jobs[0]
+          if paper_job.get("conclusion") != "failure":
+              raise SystemExit(
+                  "paper source failure is not a durable upgrade handoff"
+              )
+          steps = {
+              step.get("name"): step.get("conclusion")
+              for step in paper_job.get("steps", [])
+              if isinstance(step.get("name"), str)
+          }
+          required_successes = (
+              "Run continuous paper trader",
+              "Measure durable continuous paper state",
+              "Upload durable continuous paper state",
+              "Upload compact continuous learning source",
+          )
+          failed_steps = {
+              name
+              for name, conclusion in steps.items()
+              if conclusion == "failure"
+          }
+          if (
+              any(steps.get(name) != "success" for name in required_successes)
+              or failed_steps != {"Fail closed on upgrade handoff source"}
+          ):
+              raise SystemExit(
+                  "paper source failure is not a durable upgrade handoff"
+              )
+          PY
 
           artifacts_json="$(
             gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PAPER_RUN_ID/artifacts?per_page=100"
