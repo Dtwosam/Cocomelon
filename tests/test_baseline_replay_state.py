@@ -287,6 +287,62 @@ def test_state_replaces_only_with_later_evidence_and_does_not_fabricate_full_con
     assert state.latest_asset_ctx.payload["mark_px"] == Decimal("110")
 
 
+def test_monotonic_micro_event_prune_reuses_deque() -> None:
+    book = RecordedStateBook(microstructure_window_ms=60_000)
+    first = _record(
+        kind="trade",
+        available_at_ms=1_000,
+        exchange_time_ms=900,
+        key="first",
+        payload={
+            "side": "B",
+            "price": "100",
+            "size": "1",
+            "hash": "0xfirst",
+            "tid": 1,
+            "users": ["0xa", "0xb"],
+        },
+    )
+    second = _record(
+        kind="trade",
+        available_at_ms=30_000,
+        exchange_time_ms=29_900,
+        key="second",
+        payload={
+            "side": "A",
+            "price": "101",
+            "size": "1",
+            "hash": "0xsecond",
+            "tid": 2,
+            "users": ["0xc", "0xd"],
+        },
+    )
+    mark = _record(
+        kind="active_asset_ctx",
+        available_at_ms=70_000,
+        payload={
+            "mark_px": "101",
+            "mid_px": "101",
+            "oracle_px": "101",
+            "funding": "0.00001",
+            "open_interest": "1000",
+        },
+    )
+
+    book.apply(first, now_ms=1_000)
+    book.apply(second, now_ms=30_000)
+    state = book.state(MARKET)
+    micro_events_id = id(state.micro_events)
+
+    book.apply(mark, now_ms=70_000)
+
+    assert id(state.micro_events) == micro_events_id
+    assert tuple(event.event_key for event in state.micro_events) == (
+        "second",
+    )
+    assert state._micro_events_monotonic is True
+
+
 def test_micro_event_prune_preserves_arrival_order() -> None:
     book = RecordedStateBook(microstructure_window_ms=60_000)
     later = _record(
@@ -326,6 +382,27 @@ def test_micro_event_prune_preserves_arrival_order() -> None:
         "later",
         "earlier",
     )
+    assert state._micro_events_monotonic is False
+
+    book.apply(
+        _record(
+            kind="active_asset_ctx",
+            available_at_ms=90_000,
+            payload={
+                "mark_px": "101",
+                "mid_px": "101",
+                "oracle_px": "101",
+                "funding": "0.00001",
+                "open_interest": "1000",
+            },
+        ),
+        now_ms=90_000,
+    )
+
+    assert tuple(event.event_key for event in state.micro_events) == (
+        "later",
+    )
+    assert state._micro_events_monotonic is True
 
 
 def test_state_rejects_future_evidence_and_prunes_micro_events_by_replay_clock() -> None:

@@ -36,6 +36,11 @@ class RecordedMarketState:
     _book_available_at_ms: int | None = field(default=None, repr=False)
     _asset_ctx_available_at_ms: int | None = field(default=None, repr=False)
     _funding_available_at: dict[int, int] = field(default_factory=dict, repr=False)
+    _micro_events_monotonic: bool = field(default=True, repr=False)
+    _last_micro_event_received_at_ms: int | None = field(
+        default=None,
+        repr=False,
+    )
 
 
 def _mapping(value: object, field_name: str) -> Mapping[str, object]:
@@ -277,12 +282,64 @@ class RecordedStateBook:
             self._states[key] = state
         return state
 
-    def _prune_micro_events(self, state: RecordedMarketState, now_ms: int) -> None:
+    @staticmethod
+    def _micro_event_receive_ms(event: StreamEvent) -> int:
+        return int(event.receive_time.timestamp() * 1000)
+
+    def _append_micro_event(
+        self,
+        state: RecordedMarketState,
+        event: StreamEvent,
+    ) -> None:
+        received_at_ms = self._micro_event_receive_ms(event)
+        previous_received_at_ms = (
+            state._last_micro_event_received_at_ms
+        )
+        if (
+            previous_received_at_ms is not None
+            and received_at_ms < previous_received_at_ms
+        ):
+            state._micro_events_monotonic = False
+        state.micro_events.append(event)
+        state._last_micro_event_received_at_ms = received_at_ms
+
+    def _prune_micro_events(
+        self,
+        state: RecordedMarketState,
+        now_ms: int,
+    ) -> None:
         cutoff_ms = max(0, now_ms - self.microstructure_window_ms)
-        state.micro_events = deque(
-            event
-            for event in state.micro_events
-            if int(event.receive_time.timestamp() * 1000) >= cutoff_ms
+        if state._micro_events_monotonic:
+            while (
+                state.micro_events
+                and self._micro_event_receive_ms(
+                    state.micro_events[0]
+                )
+                < cutoff_ms
+            ):
+                state.micro_events.popleft()
+            if not state.micro_events:
+                state._last_micro_event_received_at_ms = None
+            return
+
+        retained: deque[StreamEvent] = deque()
+        monotonic = True
+        previous_received_at_ms: int | None = None
+        for event in state.micro_events:
+            received_at_ms = self._micro_event_receive_ms(event)
+            if received_at_ms < cutoff_ms:
+                continue
+            if (
+                previous_received_at_ms is not None
+                and received_at_ms < previous_received_at_ms
+            ):
+                monotonic = False
+            retained.append(event)
+            previous_received_at_ms = received_at_ms
+        state.micro_events = retained
+        state._micro_events_monotonic = monotonic
+        state._last_micro_event_received_at_ms = (
+            previous_received_at_ms
         )
 
     def _apply_candle(self, state: RecordedMarketState, record: ReplayRecord) -> None:
@@ -346,8 +403,8 @@ class RecordedStateBook:
                 ):
                     state.latest_book = event
                     state._book_available_at_ms = record.available_at_ms
-                state.micro_events.append(event)
+                self._append_micro_event(state, event)
             elif event.kind is StreamKind.TRADE:
-                state.micro_events.append(event)
+                self._append_micro_event(state, event)
 
         self._prune_micro_events(state, now_ms)
