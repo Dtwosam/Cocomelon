@@ -789,6 +789,19 @@ jobs:
             -f "source_run_id=$GITHUB_RUN_ID" \
             -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
 
+      - name: Queue exact range-compression entry evidence
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.compact_learning_upload.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run prospective-range-compression-entry-evidence.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f "source_run_id=$GITHUB_RUN_ID" \
+            -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
+
       - name: Upload momentum-pullback forward-markout research summary
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-momentum-pullback-forward-markout-summary.json') != '' }}
         uses: actions/upload-artifact@v7
