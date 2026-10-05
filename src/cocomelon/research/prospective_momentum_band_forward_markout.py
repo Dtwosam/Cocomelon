@@ -287,6 +287,7 @@ def prospective_momentum_band_forward_markout_summary(
     base_combined_blocked = 0
     base_two_strike_blocked = 0
     momentum_feature_integrity_misses = 0
+    integrity_last_miss_at_ms: int | None = None
     decision_counts: Counter[str] = Counter()
     reason_counts: Counter[str] = Counter()
     rows: list[dict[str, object]] = []
@@ -300,6 +301,12 @@ def prospective_momentum_band_forward_markout_summary(
         ordinal = evidence.rank_ordinal
         if observed_at is None or ordinal is None:
             missing_rank += 1
+            integrity_last_miss_at_ms = max(
+                evidence.opportunity_timestamp_ms,
+                integrity_last_miss_at_ms
+                if integrity_last_miss_at_ms is not None
+                else evidence.opportunity_timestamp_ms,
+            )
             continue
         rank_age_ms = evidence.opportunity_timestamp_ms - observed_at
         if rank_age_ms < 0:
@@ -308,6 +315,12 @@ def prospective_momentum_band_forward_markout_summary(
             )
         if rank_age_ms > MAX_ACCEPTED_RANK_AGE_MS:
             stale_rank += 1
+            integrity_last_miss_at_ms = max(
+                evidence.opportunity_timestamp_ms,
+                integrity_last_miss_at_ms
+                if integrity_last_miss_at_ms is not None
+                else evidence.opportunity_timestamp_ms,
+            )
             continue
 
         request = evidence.risk_request_object
@@ -359,6 +372,12 @@ def prospective_momentum_band_forward_markout_summary(
         decision = momentum_detail.get("decision")
         if reason in MOMENTUM_INTEGRITY_REASONS:
             momentum_feature_integrity_misses += 1
+            integrity_last_miss_at_ms = max(
+                evidence.opportunity_timestamp_ms,
+                integrity_last_miss_at_ms
+                if integrity_last_miss_at_ms is not None
+                else evidence.opportunity_timestamp_ms,
+            )
             continue
         if decision not in {"ADMIT", "BLOCK"}:
             raise ProspectiveMomentumBandForwardMarkoutError(
@@ -484,6 +503,7 @@ def prospective_momentum_band_forward_markout_summary(
         "momentum_feature_integrity_misses": (
             momentum_feature_integrity_misses
         ),
+        "integrity_last_miss_at_ms": integrity_last_miss_at_ms,
         "base_stack_risk_approved_evaluated": len(row_values),
         "momentum_admitted": decision_counts["ADMIT"],
         "momentum_blocked": decision_counts["BLOCK"],
