@@ -15,6 +15,13 @@ def test_continuous_paper_learning_workflow_authenticates_exact_worker_artifact(
     assert "opening-lineage/records" in source
     assert "test -s incoming/continuous/session-summary.json" in source
     assert "test -s incoming/continuous/journal.sqlite3" in source
+    assert 'conclusion not in {"success", "failure"}' in source
+    assert '"Run continuous paper trader"' in source
+    assert '"Measure durable continuous paper state"' in source
+    assert '"Upload durable continuous paper state"' in source
+    assert '"Upload compact continuous learning source"' in source
+    assert 'failed_steps != {"Fail closed on upgrade handoff source"}' in source
+    assert "paper source failure is not a durable upgrade handoff" in source
 
 
 def test_continuous_paper_learning_workflow_is_research_only_and_durable() -> None:
