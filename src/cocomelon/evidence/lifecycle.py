@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
