@@ -47,7 +47,22 @@ def test_continuous_paper_publishes_compact_learning_source() -> None:
         "continuous-paper-state/prospective-momentum-band-entry-state.json"
         in source
     )
-    assert "continuous-paper-state/prospective-two-strike-stop-filter-state.json" in source
+    assert (
+        "continuous-paper-state/prospective-momentum-pullback-entry-state.json"
+        in source
+    )
+    assert (
+        "continuous-paper-state/prospective-momentum-pullback-entry-summary.json"
+        in source
+    )
+    assert (
+        "continuous-paper-state/prospective-two-strike-stop-filter-state.json"
+        in source
+    )
     assert "continuous-paper-state/journal.sqlite3" in source
     assert "continuous-paper-state/learning-features" in source
     assert "continuous-paper-state/opening-lineage" in source
+    assert (
+        'src/cocomelon/research/prospective_momentum_pullback_entry.py'
+        in source
+    )
