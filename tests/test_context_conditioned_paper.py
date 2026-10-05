@@ -138,6 +138,16 @@ def test_report_compares_directions_inside_same_market_context(tmp_path: Path) -
     assert context["direction_comparison_ready"] is True
     assert Decimal(str(context["mean_net_r_delta_long_minus_short"])) == Decimal("1.5")
     assert context["strategy_authority"] is False
+    marginal = payload["marginal_summary"]
+    assert isinstance(marginal, dict)
+    volatility = marginal["volatility_regime"]
+    assert isinstance(volatility, tuple)
+    assert len(volatility) == 1
+    assert volatility[0]["value"] == "normal"
+    assert volatility[0]["long"]["trades"] == 2
+    assert volatility[0]["short"]["trades"] == 2
+    assert volatility[0]["direction_comparison_ready"] is True
+    assert volatility[0]["strategy_authority"] is False
 
 
 def test_report_keeps_missing_feature_rows_visible_but_unresolved(
