@@ -33,7 +33,9 @@ def test_full_stack_matched_ledger_binds_summary_and_journal() -> None:
         "$candidate_run_id-$candidate_attempt"
         in source
     )
-    assert "latest_successful_with_compact_artifact" in source
+    assert "paper_run_is_evidence_eligible()" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
+    assert "Fail closed on upgrade handoff source" in source
     assert "source artifact digest is missing or invalid" in source
     assert "prospective-full-stack-entry-exit-summary.json" in source
     assert "journal.sqlite3" in source
@@ -72,22 +74,19 @@ def test_full_stack_matched_ledger_keeps_replacements_separate() -> None:
     assert "portfolio counterfactual" not in source.lower()
 
 
-def test_full_stack_matched_ledger_non_success_wake_falls_back() -> None:
+def test_full_stack_matched_ledger_accepts_only_durable_handoff_failures() -> None:
     source = _source()
 
-    assert (
-        'if [ "$EVENT_NAME" = "workflow_run" ] && '
-        '[ "$EVENT_CONCLUSION" = "success" ]; then'
-        in source
-    )
-    assert 'resolution_mode="successful_event"' in source
-    assert (
-        'resolution_mode="latest_successful_after_non_success_wake"'
-        in source
-    )
+    assert "paper_run_is_evidence_eligible()" in source
+    assert "Run continuous paper trader" in source
+    assert "Measure durable continuous paper state" in source
+    assert "Upload durable continuous paper state" in source
+    assert "Upload compact continuous learning source" in source
+    assert "Fail closed on upgrade handoff source" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert (
         "actions/workflows/continuous-paper.yml/runs?"
-        "branch=main&status=completed&per_page=50"
+        "branch=main&status=completed&per_page=100"
         in source
     )
 

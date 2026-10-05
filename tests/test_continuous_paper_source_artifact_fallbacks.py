@@ -5,7 +5,6 @@ from pathlib import Path
 LEARNING_SOURCE_WORKFLOWS = (
     ".github/workflows/prospective-two-strike-stop-filter-ledger.yml",
     ".github/workflows/prospective-full-stack-reflow-exact-ledger.yml",
-    ".github/workflows/prospective-full-stack-matched-trade-ledger.yml",
     ".github/workflows/prospective-consecutive-loss-cooldown-ledger.yml",
 )
 
@@ -53,6 +52,23 @@ def test_profit_lock_source_accepts_only_durable_upgrade_handoff_failures() -> N
 def test_momentum_source_accepts_only_durable_upgrade_handoff_failures() -> None:
     source = _source(
         ".github/workflows/prospective-momentum-band-entry-ledger.yml"
+    )
+    resolver = source.split(
+        "      - name: Resolve exact source paper run",
+        1,
+    )[1].split("\n      - name:", 1)[0]
+
+    assert "artifact_for_run()" in resolver
+    assert "paper_run_is_evidence_eligible()" in resolver
+    assert "continuous-paper-learning-source-" in resolver
+    assert "latest_evidence_eligible_with_compact_artifact" in resolver
+    assert "Fail closed on upgrade handoff source" in resolver
+    assert "selected source has no authenticated compact artifact" in resolver
+
+
+def test_full_stack_matched_source_accepts_only_durable_upgrade_handoff_failures() -> None:
+    source = _source(
+        ".github/workflows/prospective-full-stack-matched-trade-ledger.yml"
     )
     resolver = source.split(
         "      - name: Resolve exact source paper run",
