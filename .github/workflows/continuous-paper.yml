@@ -730,6 +730,7 @@ jobs:
           compression-level: 6
 
       - name: Upload compact continuous learning source
+        id: compact_learning_upload
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/session-summary.json') != '' && hashFiles('continuous-paper-state/learning-features/records/*.json') != '' && hashFiles('continuous-paper-state/opening-lineage/records/*.json') != '' }}
         uses: actions/upload-artifact@v7
         with:
@@ -758,6 +759,19 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
+
+      - name: Queue exact profit-lock execution ledger
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.compact_learning_upload.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run profit-lock-execution-ledger.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f "source_run_id=$GITHUB_RUN_ID" \
+            -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
 
       - name: Upload momentum-pullback forward-markout research summary
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-momentum-pullback-forward-markout-summary.json') != '' }}

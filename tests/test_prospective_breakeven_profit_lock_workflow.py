@@ -22,6 +22,19 @@ def test_breakeven_readiness_binds_immutable_sources() -> None:
     assert "evaluate_prospective_breakeven_profit_lock.py" in source
 
 
+def test_breakeven_readiness_accepts_exact_dispatched_ledger() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "source_run_id:" in source
+    assert "source_run_attempt:" in source
+    assert "wait_for_ledger_run_completion()" in source
+    assert "source ledger run did not complete within 10 minutes" in source
+    assert "INPUT_RUN_ID" in source
+    assert "INPUT_RUN_ATTEMPT" in source
+    assert 'resolution_mode="manual_exact"' in source
+    assert "manual source ledger run has no authenticated artifact" in source
+
+
 def test_breakeven_readiness_selects_newest_ledger_with_exact_artifact() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 

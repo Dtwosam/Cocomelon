@@ -71,3 +71,8 @@ def test_continuous_paper_publishes_compact_learning_source() -> None:
         'src/cocomelon/research/prospective_momentum_pullback_entry.py'
         in source
     )
+    assert "id: compact_learning_upload" in source
+    assert "Queue exact profit-lock execution ledger" in source
+    assert "gh workflow run profit-lock-execution-ledger.yml" in source
+    assert 'source_run_id=$GITHUB_RUN_ID' in source
+    assert 'source_run_attempt=$GITHUB_RUN_ATTEMPT' in source

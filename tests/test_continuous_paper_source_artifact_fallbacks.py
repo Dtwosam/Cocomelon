@@ -43,6 +43,7 @@ def test_profit_lock_source_accepts_only_durable_upgrade_handoff_failures() -> N
 
     assert "artifact_for_run()" in resolver
     assert "paper_run_is_evidence_eligible()" in resolver
+    assert "wait_for_paper_run_completion()" in resolver
     assert "continuous-paper-learning-source-" in resolver
     assert "latest_evidence_eligible_with_compact_artifact" in resolver
     assert "Fail closed on upgrade handoff source" in resolver

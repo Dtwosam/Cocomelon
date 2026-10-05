@@ -24,7 +24,7 @@ on:
         type: string
 
 permissions:
-  actions: read
+  actions: write
   contents: read
   issues: write
 
@@ -93,6 +93,24 @@ jobs:
               raise SystemExit("source artifact digest is missing or invalid")
           print(item["id"], item["name"], digest, sep="\t")
           '
+          }
+
+          wait_for_paper_run_completion() {
+            local candidate_run_id="$1"
+            local attempts=120
+            local status=""
+            for _ in $(seq 1 "$attempts"); do
+              status="$(
+                gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id" \
+                  --jq '.status'
+              )"
+              if [ "$status" = "completed" ]; then
+                return 0
+              fi
+              sleep 5
+            done
+            echo "source paper run did not complete within 10 minutes" >&2
+            return 1
           }
 
           paper_run_is_evidence_eligible() {
@@ -173,6 +191,9 @@ jobs:
             run_attempt="$INPUT_RUN_ATTEMPT"
             if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
               echo "manual source paper run identity is invalid" >&2
+              exit 1
+            fi
+            if ! wait_for_paper_run_completion "$run_id"; then
               exit 1
             fi
             if ! paper_run_is_evidence_eligible "$run_id" "$run_attempt"; then
@@ -612,6 +633,7 @@ jobs:
             -f body="$(cat /tmp/profit-lock-ledger-status.md)"
 
       - name: Upload profit-lock execution ledger
+        id: ledger_upload
         if: >-
           steps.source.outputs.source_eligible == 'true' &&
           steps.compact.outputs.eligible == 'true' &&
@@ -622,3 +644,16 @@ jobs:
           path: profit-lock-execution-ledger.json
           if-no-files-found: error
           retention-days: 90
+
+      - name: Queue exact breakeven readiness
+        if: ${{ steps.ledger_upload.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run prospective-breakeven-profit-lock-readiness.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f "source_run_id=$GITHUB_RUN_ID" \
+            -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"

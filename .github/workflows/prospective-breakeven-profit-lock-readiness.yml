@@ -14,6 +14,16 @@ on:
     types:
       - completed
   workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Exact Profit-Lock Execution Shadow Ledger run ID
+        required: true
+        type: string
+      source_run_attempt:
+        description: Exact source ledger run attempt
+        required: true
+        default: "1"
+        type: string
 
 permissions:
   actions: read
@@ -50,8 +60,28 @@ jobs:
           EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
           EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
           EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt || '' }}
+          INPUT_RUN_ID: ${{ inputs.source_run_id || '' }}
+          INPUT_RUN_ATTEMPT: ${{ inputs.source_run_attempt || '' }}
         run: |
           set -euo pipefail
+
+          wait_for_ledger_run_completion() {
+            local candidate_run_id="$1"
+            local attempts=120
+            local status=""
+            for _ in $(seq 1 "$attempts"); do
+              status="$(
+                gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id" \
+                  --jq '.status'
+              )"
+              if [ "$status" = "completed" ]; then
+                return 0
+              fi
+              sleep 5
+            done
+            echo "source ledger run did not complete within 10 minutes" >&2
+            return 1
+          }
 
           ledger_artifact_for_run() {
             local candidate_run_id="$1"
@@ -88,7 +118,25 @@ jobs:
           run_attempt=""
           resolution_mode=""
 
-          if (
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_id="$INPUT_RUN_ID"
+            run_attempt="$INPUT_RUN_ATTEMPT"
+            if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
+              echo "manual source ledger run identity is invalid" >&2
+              exit 1
+            fi
+            if ! wait_for_ledger_run_completion "$run_id"; then
+              exit 1
+            fi
+            event_artifact="$(
+              ledger_artifact_for_run "$run_id" "$run_attempt"
+            )"
+            if [ -z "$event_artifact" ]; then
+              echo "manual source ledger run has no authenticated artifact" >&2
+              exit 1
+            fi
+            resolution_mode="manual_exact"
+          elif (
             [ "$EVENT_NAME" = "workflow_run" ] &&
             [ "$EVENT_CONCLUSION" = "success" ] &&
             [[ "$EVENT_RUN_ID" =~ ^[0-9]+$ ]] &&
