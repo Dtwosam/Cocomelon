@@ -147,6 +147,10 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
         < fallback_dispatch_at
     )
     assert "run: rm -f continuous-paper-resume.tar.zst" in source
+    first_terminal_research_upload_at = source.index(
+        "- name: Upload cadence shadow research state"
+    )
+    assert durable_upload_at < first_terminal_research_upload_at
     assert durable_upload_at < fallback_dispatch_at
 
 
@@ -563,7 +567,7 @@ def test_continuous_paper_exports_full_stack_entry_exit_summary() -> None:
     pack_at = source.index(
         "- name: Pack durable continuous paper state"
     )
-    assert compact_at < pack_at
+    assert pack_at < compact_at
 
 
 def test_continuous_paper_exports_full_stack_capacity_reflow_summary() -> None:
@@ -588,7 +592,7 @@ def test_continuous_paper_exports_full_stack_capacity_reflow_summary() -> None:
     pack_at = source.index(
         "- name: Pack durable continuous paper state"
     )
-    assert compact_at < pack_at
+    assert pack_at < compact_at
 
 
 def test_continuous_paper_exports_full_stack_exit_capacity_reflow_summary() -> None:
@@ -613,7 +617,7 @@ def test_continuous_paper_exports_full_stack_exit_capacity_reflow_summary() -> N
     pack_at = source.index(
         "- name: Pack durable continuous paper state"
     )
-    assert compact_at < pack_at
+    assert pack_at < compact_at
 
 
 def test_full_stack_fast_markout_is_exported_and_runtime_watched() -> None:
