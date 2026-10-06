@@ -345,6 +345,18 @@ jobs:
             --min-group-rows 3 \
             > continuous-learning-state/context-diagnostics.json
 
+      - name: Build no-trade forward opportunity diagnostics
+        if: ${{ steps.upstream.outputs.eligible == 'true' && hashFiles('incoming/continuous/learning-decisions/records/*.json') != '' }}
+        run: |
+          set -euo pipefail
+          AS_OF_MS="$(date +%s%3N)"
+          cocomelon-no-trade-forward-opportunity \
+            --decision-store-dir incoming/continuous/learning-decisions \
+            --feature-store-dir incoming/continuous/learning-features \
+            --as-of-ms "$AS_OF_MS" \
+            --min-group-rows 20 \
+            > continuous-learning-state/no-trade-forward-opportunity.json
+
       - name: Render research-only sync summary
         if: ${{ steps.upstream.outputs.eligible == 'true' }}
         run: |
@@ -366,6 +378,14 @@ jobs:
               Path("continuous-learning-state/context-diagnostics.json").read_text(
                   encoding="utf-8"
               )
+          )
+          no_trade_path = Path(
+              "continuous-learning-state/no-trade-forward-opportunity.json"
+          )
+          no_trade = (
+              json.loads(no_trade_path.read_text(encoding="utf-8"))
+              if no_trade_path.is_file()
+              else None
           )
           print("## Continuous paper learning evidence sync")
           print(f"- scanned trades: {sync['scanned_trades']}")
@@ -406,6 +426,24 @@ jobs:
               "- broader context groups ready for two-sided comparison: "
               f"{marginal_ready}"
           )
+          if no_trade is None:
+              print("- no-trade forward labels: unavailable on this source")
+          else:
+              print(
+                  "- no-trade decisions / resolved feature contexts: "
+                  f"{no_trade['no_trade_decisions']} / "
+                  f"{no_trade['resolved_decisions']}"
+              )
+              for horizon_ms in ("900000", "3600000"):
+                  item = no_trade["horizon_summary"][horizon_ms]
+                  print(
+                      f"- no-trade {int(horizon_ms) // 60000}m labels: "
+                      f"{item['outcomes']} "
+                      f"(LONG-favored {item['favored_long']}, "
+                      f"SHORT-favored {item['favored_short']}, "
+                      f"flat {item['flat']})"
+                  )
+              print("- no-trade labels are market returns, not hypothetical PnL")
           print("- side-level PnL suppression authority: false")
           print("- research-only: true")
           print("- promotion eligible: false")
