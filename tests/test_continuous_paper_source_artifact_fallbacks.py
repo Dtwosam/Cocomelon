@@ -13,7 +13,7 @@ LEARNING_SOURCE_WORKFLOWS = (
     ),
     (
         ".github/workflows/prospective-consecutive-loss-cooldown-ledger.yml",
-        "latest_successful_with_compact_artifact",
+        "latest_evidence_eligible_with_compact_artifact",
     ),
 )
 
@@ -112,10 +112,11 @@ def test_learning_source_consumers_skip_artifactless_runs() -> None:
             "expected exactly one non-expired source artifact named"
             not in resolver
         )
-        if "reflow-exact" in path:
+        if "reflow-exact" in path or "consecutive-loss-cooldown" in path:
             assert 'actions/runs/$candidate_run_id/jobs?per_page=100' in resolver
             assert '"Run continuous paper trader"' in resolver
             assert '"Upload compact continuous learning source"' in resolver
+            assert 'failed_steps != {"Fail closed on upgrade handoff source"}' in resolver
 
 
 def test_exact_path_export_skips_artifactless_success_runs() -> None:

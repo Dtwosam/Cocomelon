@@ -47,7 +47,13 @@ def test_cooldown_ledger_binds_exact_compact_source() -> None:
     )
     assert 'run.get("head_branch") != "main"' in source
     assert 'run.get("status") != "completed"' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert 'run.get("conclusion") not in {"success", "failure"}' in source
+    assert 'actions/runs/$candidate_run_id/jobs?per_page=100' in source
+    assert 'job.get("name") == "paper"' in source
+    assert '"Run continuous paper trader"' in source
+    assert '"Measure durable continuous paper state"' in source
+    assert '"Upload durable continuous paper state"' in source
+    assert '"Upload compact continuous learning source"' in source
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
     assert (
@@ -55,7 +61,7 @@ def test_cooldown_ledger_binds_exact_compact_source() -> None:
         '$candidate_run_id-$candidate_attempt"'
         in source
     )
-    assert "latest_successful_with_compact_artifact" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert "source artifact digest is missing or invalid" in source
     assert (
         "prospective-consecutive-loss-cooldown-shadow-summary.json"
@@ -98,22 +104,17 @@ def test_cooldown_ledger_restores_and_extends_append_only_evidence() -> None:
     assert "**LIVE TRADING: DISABLED.**" in source
 
 
-def test_cooldown_ledger_non_success_wake_falls_back_to_success() -> None:
+def test_cooldown_ledger_accepts_only_authenticated_fail_closed_handoff() -> None:
     source = _source()
 
+    assert "paper_run_is_evidence_eligible()" in source
+    assert "wait_for_paper_run_completion()" in source
+    assert 'failed_steps != {"Fail closed on upgrade handoff source"}' in source
+    assert 'resolution_mode="durable_upgrade_handoff_event"' in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
+    assert "selected source paper run is not evidence-eligible" in source
     assert (
-        'if [ "$EVENT_NAME" = "workflow_run" ] && '
-        '[ "$EVENT_CONCLUSION" = "success" ]; then'
-        in source
-    )
-    assert 'resolution_mode="successful_event"' in source
-    assert (
-        'resolution_mode="latest_successful_after_non_success_wake"'
-        in source
-    )
-    assert (
-        "actions/workflows/continuous-paper.yml/runs?"
-        "branch=main&status=completed&per_page=50"
+        "branch=main&status=completed&per_page=100"
         in source
     )
 
