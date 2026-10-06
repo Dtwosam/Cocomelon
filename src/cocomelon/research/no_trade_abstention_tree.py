@@ -6,7 +6,6 @@ import json
 import math
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from pathlib import Path
 from typing import Any, Final, cast
 
 from cocomelon.domain.features import TrendRegime, VolatilityRegime
