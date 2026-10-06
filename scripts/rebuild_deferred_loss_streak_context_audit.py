@@ -50,6 +50,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "recurring_pattern_count": len(
                     payload["recurring_dominant_patterns"]
                 ),
+                "baseline_resolved_trade_count": payload[
+                    "baseline_resolved_trade_count"
+                ],
+                "baseline_unresolved_trade_count": payload[
+                    "baseline_unresolved_trade_count"
+                ],
+                "baseline_normalization_complete": payload[
+                    "baseline_normalization_complete"
+                ],
+                "non_loss_control_trade_count": payload[
+                    "non_loss_control_trade_count"
+                ],
+                "qualifying_loss_trade_count": payload[
+                    "qualifying_loss_trade_count"
+                ],
                 "execution_authority": payload[
                     "execution_authority"
                 ],
