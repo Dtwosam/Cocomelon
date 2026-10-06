@@ -18,6 +18,7 @@ from cocomelon.execution.planner import (
 )
 from cocomelon.research.continuous_paper_capacity_release_books import (
     CapacityReleaseBookEvidence,
+    paper_execution_config_from_payload,
     paper_execution_config_payload,
 )
 
@@ -40,15 +41,22 @@ def _gross_pnl(
     return (entry_price - exit_price) * quantity
 
 
-def _config_status(
+def _resolved_config(
     evidence: CapacityReleaseBookEvidence,
-    config: PaperExecutionConfig,
-) -> str | None:
+    expected_config: PaperExecutionConfig | None,
+) -> tuple[str | None, PaperExecutionConfig | None]:
     pending = evidence.pending
     if pending.execution_config is None:
-        return "unbound_execution_config"
-    if pending.execution_config != paper_execution_config_payload(config):
-        return "execution_config_mismatch"
+        return "unbound_execution_config", None
+    config = paper_execution_config_from_payload(
+        pending.execution_config
+    )
+    if (
+        expected_config is not None
+        and pending.execution_config
+        != paper_execution_config_payload(expected_config)
+    ):
+        return "execution_config_mismatch", None
     if pending.plan_observed_at_ms + config.latency_ms > (
         evidence.execution_observed_at_ms
     ):
@@ -72,7 +80,7 @@ def _config_status(
         raise CorrelationHolderReleaseExecutionError(
             "release execution config does not match captured instrument"
         )
-    return None
+    return None, config
 
 
 def _terminal_contribution(
@@ -92,7 +100,7 @@ def _terminal_contribution(
 
 def correlation_holder_release_execution_summary(
     evidence: tuple[CapacityReleaseBookEvidence, ...],
-    config: PaperExecutionConfig,
+    config: PaperExecutionConfig | None = None,
 ) -> dict[str, object]:
     seen_registration_ids: set[str] = set()
     by_execution_result: Counter[str] = Counter()
@@ -130,7 +138,7 @@ def correlation_holder_release_execution_summary(
                 "duplicate capacity release execution evidence"
             )
         seen_registration_ids.add(registration_id)
-        config_status = _config_status(item, config)
+        config_status, replay_config = _resolved_config(item, config)
         if config_status is not None:
             if config_status == "unbound_execution_config":
                 unbound_execution_config_records += 1
@@ -159,6 +167,10 @@ def correlation_holder_release_execution_summary(
             )
             continue
         exact_config_records += 1
+        if replay_config is None:
+            raise CorrelationHolderReleaseExecutionError(
+                "resolved execution config is unexpectedly missing"
+            )
 
         position = item.release_position
         if position.quantity <= ZERO:
@@ -185,7 +197,7 @@ def correlation_holder_release_execution_summary(
             position,
             action,
             item.pending.plan_instrument,
-            config,
+            replay_config,
             originating_risk_decision_id=(
                 position.initial_risk_decision_id
                 if position.initial_risk_decision_id
@@ -237,7 +249,7 @@ def correlation_holder_release_execution_summary(
             plan,
             item.execution_book_event,
             item.execution_instrument,
-            config,
+            replay_config,
             attempt_timestamp_ms=item.execution_observed_at_ms,
         )
         attempt = simulation.attempt
@@ -345,14 +357,8 @@ def correlation_holder_release_execution_summary(
         "by_opportunity_market": dict(
             sorted(by_opportunity_market.items())
         ),
-        "execution_config": {
-            "config_version": config.config_version,
-            "latency_ms": config.latency_ms,
-            "max_book_age_ms": config.max_book_age_ms,
-            "max_ioc_slippage_bps": str(config.max_ioc_slippage_bps),
-            "taker_fee_rate": str(config.taker_fee_rate),
-            "fee_schedule_id": config.fee_schedule_id,
-        },
+        "execution_config_authority": "bound_per_record",
+        "expected_config_enforced": config is not None,
         "release_results": rows,
         "holder_release_execution_modeled": True,
         "exact_execution_config_required": True,
