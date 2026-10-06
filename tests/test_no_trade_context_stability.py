@@ -14,6 +14,7 @@ def _outcome(
     trend: str,
     volatility: str,
     reason: str = "no_primary_thesis",
+    decision_stage: str = "strategy_abstained",
 ) -> dict[str, object]:
     numeric = Decimal(value)
     direction = "long" if numeric > 0 else "short" if numeric < 0 else "no_trade"
@@ -29,6 +30,7 @@ def _outcome(
         "forward_mark_return": value,
         "favored_direction": direction,
         "reason_codes": [reason],
+        "decision_stage": decision_stage,
         "trend_regime": trend,
         "volatility_regime": volatility,
         "return_15m_sign": "positive" if trend == "up" else "negative",
@@ -110,6 +112,9 @@ def test_context_pattern_must_survive_chronological_holdout() -> None:
 
     assert payload["chronological_holdout_required"] is True
     assert payload["material_move_only"] is True
+    assert payload["directional_candidate_source"] == "strategy_abstained_only"
+    assert payload["strategy_abstained_outcomes"] == 40
+    assert payload["eligibility_blocked_outcomes"] == 0
     assert payload["promotion_authority"] is False
     assert payload["execution_authority"] is False
     assert payload["validated_candidate_count"] >= 1
@@ -202,3 +207,69 @@ def test_flat_forward_outcome_matches_no_trade_label() -> None:
     )
 
     assert report.to_dict()["execution_authority"] is False
+
+
+
+def test_eligibility_blocked_outcomes_cannot_create_directional_candidates() -> None:
+    source = _report()
+    source["outcomes"] = [
+        {
+            **item,
+            "decision_stage": "eligibility_blocked",
+            "reason_codes": ["not_deep_ready"],
+        }
+        for item in source["outcomes"]
+    ]
+
+    report = build_no_trade_context_stability_report(
+        source,
+        split_fraction=Decimal("0.50"),
+        material_thresholds_bps=(100,),
+        min_discovery_rows=8,
+        min_validation_rows=6,
+        min_discovery_direction_share=Decimal("0.70"),
+        min_validation_direction_share=Decimal("0.65"),
+        min_validation_lift=Decimal("0.10"),
+    )
+    payload = report.to_dict()
+
+    assert payload["source_outcome_count"] == 40
+    assert payload["strategy_abstained_outcomes"] == 0
+    assert payload["eligibility_blocked_outcomes"] == 40
+    assert payload["validated_candidate_count"] == 0
+    assert payload["analyses"] == ()
+
+
+def test_mixed_source_discovers_only_from_strategy_abstentions() -> None:
+    source = _report()
+    blocked = [
+        _outcome(
+            timestamp_ms=2_000_000 + index,
+            value="0.03",
+            trend="up",
+            volatility="high",
+            reason="not_rankable",
+            decision_stage="eligibility_blocked",
+        )
+        for index in range(40)
+    ]
+    source["outcomes"] = [*source["outcomes"], *blocked]
+
+    report = build_no_trade_context_stability_report(
+        source,
+        split_fraction=Decimal("0.50"),
+        material_thresholds_bps=(100,),
+        min_discovery_rows=8,
+        min_validation_rows=6,
+        min_discovery_direction_share=Decimal("0.70"),
+        min_validation_direction_share=Decimal("0.65"),
+        min_validation_lift=Decimal("0.10"),
+    )
+    payload = report.to_dict()
+
+    assert payload["source_outcome_count"] == 80
+    assert payload["strategy_abstained_outcomes"] == 40
+    assert payload["eligibility_blocked_outcomes"] == 40
+    analyses = payload["analyses"]
+    assert isinstance(analyses, tuple)
+    assert analyses[0]["labeled_outcomes"] == 40
