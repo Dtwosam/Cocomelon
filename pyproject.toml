@@ -34,6 +34,7 @@ cocomelon-context-conditioned-paper = "cocomelon.context_conditioned_paper_cli:m
 cocomelon-continuous-paper-decision-export = "cocomelon.continuous_paper_decision_export_cli:main"
 cocomelon-no-trade-forward-opportunity = "cocomelon.no_trade_forward_opportunity_cli:main"
 cocomelon-no-trade-context-stability = "cocomelon.no_trade_context_stability_cli:main"
+cocomelon-no-trade-abstention-tree = "cocomelon.no_trade_abstention_tree_cli:main"
 cocomelon-universe-diagnostics = "cocomelon.universe_diagnostics_cli:main"
 cocomelon-historical-backfill = "cocomelon.historical_backfill_cli:main"
 cocomelon-historical-archive-candles = "cocomelon.historical_archive_candles_cli:main"
