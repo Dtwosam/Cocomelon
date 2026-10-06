@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from cocomelon.research.continuous_paper_capacity_release_books import (
+    CapacityReleaseBookEvidence,
     CapacityReleaseBookStore,
 )
 from cocomelon.research.correlation_holder_release_execution import (
@@ -23,7 +24,9 @@ def _canonical_json(value: object) -> str:
     )
 
 
-def _records(state_root: Path):
+def _records(
+    state_root: Path,
+) -> tuple[CapacityReleaseBookEvidence, ...]:
     root = state_root / "capacity-release-books"
     protocol_path = root / "protocol.json"
     if not protocol_path.is_file():
