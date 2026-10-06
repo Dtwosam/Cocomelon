@@ -2362,15 +2362,21 @@ def test_continuous_context_poll_has_freshness_headroom() -> None:
     assert config.context_poll_seconds * 1000 < 60_000
     assert config.websocket_server_silence_timeout_ms == 15_000
     assert config.websocket_redundant_lane_reconnect_stagger_ms == 5_000
-    assert config.websocket_l2_failover_headroom_ms == 1_000
+    assert config.websocket_l2_failover_headroom_ms == 2_000
     assert "--context-poll-seconds 30" in workflow
     assert "--websocket-server-silence-timeout-ms 15000" in workflow
     assert (
         "--websocket-redundant-lane-reconnect-stagger-ms 5000"
         in workflow
     )
-    assert "--websocket-l2-failover-headroom-ms 1000" in workflow
+    assert "--websocket-l2-failover-headroom-ms 2000" in workflow
     assert "--context-poll-seconds 60" not in workflow
+    replay = BaselineReplayConfig()
+    assert replay.eligibility.max_book_age_ms == 5_000
+    assert _l2_supervisor_stale_after_ms(
+        max_book_age_ms=replay.eligibility.max_book_age_ms,
+        failover_headroom_ms=config.websocket_l2_failover_headroom_ms,
+    ) == 3_000
 
 
 def test_startup_warmup_seeds_before_fresh_context_starts_decisions() -> None:
