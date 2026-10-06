@@ -62,6 +62,7 @@ def _fact(
     feature: FeatureSnapshot,
     *,
     direction: Direction = Direction.NO_TRADE,
+    reason: str = "NO_SIGNAL",
 ) -> DecisionEvaluationFact:
     return DecisionEvaluationFact(
         strategy_decision_id=f"strategy-{feature.snapshot_id}",
@@ -73,7 +74,7 @@ def _fact(
         score=Decimal("0") if direction is Direction.NO_TRADE else Decimal("70"),
         lead_strategy=None if direction is Direction.NO_TRADE else "trend",
         signal_ids=() if direction is Direction.NO_TRADE else ("signal",),
-        reason_codes=("NO_SIGNAL",),
+        reason_codes=(reason,),
         trend_regime=feature.trend_regime,
         volatility_regime=feature.volatility_regime,
     )
@@ -101,7 +102,7 @@ def test_no_trade_forward_report_uses_exact_future_feature_horizons(
     )
     for snapshot in (current, future_15m, future_1h):
         features.record(snapshot)
-    decisions.record(_fact(current))
+    decisions.record(_fact(current, reason="no_primary_thesis"))
 
     report = build_no_trade_forward_opportunity_report(
         decisions,
@@ -123,6 +124,7 @@ def test_no_trade_forward_report_uses_exact_future_feature_horizons(
     by_horizon = {item["horizon_ms"]: item for item in outcomes}
     assert by_horizon[900_000]["forward_mark_return"] == "0.02"
     assert by_horizon[900_000]["favored_direction"] == "long"
+    assert by_horizon[900_000]["decision_stage"] == "strategy_abstained"
     assert by_horizon[3_600_000]["forward_mark_return"] == "-0.03"
     assert by_horizon[3_600_000]["favored_direction"] == "short"
 
@@ -136,7 +138,16 @@ def test_no_trade_forward_report_uses_exact_future_feature_horizons(
     assert marginal["trend_regime"][0]["value"] == "up"
     reasons = payload["reason_summary"]
     assert isinstance(reasons, dict)
-    assert reasons["reason_code"][0]["reason_code"] == "NO_SIGNAL"
+    assert reasons["reason_code"][0]["reason_code"] == "no_primary_thesis"
+    stages = payload["decision_stage_summary"]
+    assert isinstance(stages, tuple)
+    assert {
+        (item["horizon_ms"], item["decision_stage"], item["outcomes"])
+        for item in stages
+    } == {
+        (900_000, "strategy_abstained", 1),
+        (3_600_000, "strategy_abstained", 1),
+    }
 
 
 def test_no_trade_forward_report_keeps_right_censoring_explicit(
@@ -187,3 +198,48 @@ def test_directional_decisions_are_not_labeled_as_no_trade(
     assert report.decision_records == 1
     assert report.no_trade_decisions == 0
     assert report.outcomes == ()
+
+
+
+def test_no_trade_forward_report_separates_eligibility_blocks(
+    tmp_path: Path,
+) -> None:
+    decisions = ContinuousPaperDecisionFactStore(tmp_path / "decisions")
+    features = LearningFeatureSnapshotStore(tmp_path / "features")
+    current = _snapshot(
+        as_of_ms=1_000_000,
+        return_15m="0.01",
+        return_1h="0.02",
+    )
+    future = _snapshot(
+        as_of_ms=current.as_of_ms + 900_000,
+        return_15m="0.03",
+        return_1h="0.01",
+    )
+    features.record(current)
+    features.record(future)
+    decisions.record(_fact(current, reason="not_deep_ready"))
+
+    report = build_no_trade_forward_opportunity_report(
+        decisions,
+        features,
+        as_of_ms=future.as_of_ms,
+        min_group_rows=1,
+    )
+
+    assert len(report.outcomes) == 1
+    assert report.outcomes[0].decision_stage == "eligibility_blocked"
+    assert report.decision_stage_summary == (
+        {
+            "horizon_ms": 900_000,
+            "decision_stage": "eligibility_blocked",
+            "outcomes": 1,
+            "favored_long": 1,
+            "favored_short": 0,
+            "flat": 0,
+            "mean_forward_mark_return": "0.03",
+            "mean_absolute_forward_mark_return": "0.03",
+            "sample_sufficient_for_diagnostics": True,
+            "strategy_authority": False,
+        },
+    )
