@@ -257,6 +257,10 @@ jobs:
               "directional_candidate_source": stability[
                   "directional_candidate_source"
               ],
+              "market_aware": stability["market_aware"],
+              "validation_block_consistency_required": stability[
+                  "validation_block_consistency_required"
+              ],
               "hypothetical_pnl": False,
               "cost_complete": False,
               "research_only": True,
@@ -322,6 +326,17 @@ jobs:
           print(
               "- stability candidate source: "
               f"{stability['directional_candidate_source']}"
+          )
+          print(
+              "- market-aware / multi-block validation: "
+              f"{stability['market_aware']} / "
+              f"{stability['validation_block_consistency_required']}"
+          )
+          print(
+              "- validation blocks / required / min rows: "
+              f"{stability['validation_block_count']} / "
+              f"{stability['required_validation_blocks']} / "
+              f"{stability['min_validation_block_rows']}"
           )
           print(
               "- stability source outcomes / strategy-abstained / "
