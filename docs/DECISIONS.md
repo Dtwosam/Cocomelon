@@ -379,3 +379,23 @@ This file records decisions that should not be casually re-litigated in later ch
 **Goal:** Build a trader that can identify when a market favors LONG, when it favors SHORT, and when the correct action is NO_TRADE, rather than chasing recent side-level win/loss streaks.
 
 **Safety:** This decision does not relax independent risk limits, evidence integrity, promotion gates, or the live-trading prohibition.
+
+## D-035 — Context edge must be frozen and re-proven prospectively before strategy use
+
+**Date:** 2026-10-06
+
+**Decision:** A directional context pattern discovered from continuous-paper NO_TRADE evidence cannot change entry behavior directly. It must first be frozen with immutable source lineage, separated from its discovery/validation evidence by an embargo, and evaluated only on later prospective paper evidence.
+
+**Current frozen shadow:** `mon-normal-volatility-short-1h-50bps-v1` captures the only D-034/D-035-compatible skipped-opportunity pattern that survived strategy-abstention-only, market-aware, three-block chronological validation in the current touched corpus: `MON`, normal volatility, 1h horizon, material absolute move >= 50 bps, SHORT-favored.
+
+**Source boundary:** The frozen candidate binds the exact decision-state digest, feature-state digest, context-stability report digest, decision-learning receipt digest, source artifact digest, evidence run, upstream paper worker, source maximum decision timestamp, discovery/validation sample sizes, and validation-block direction shares.
+
+**Prospective boundary:** The candidate uses a six-hour embargo after the final source decision. Only matching strategy-abstention outcomes whose decisions occur at or after `validation_not_before_ms` may count toward prospective shadow evidence. Earlier discovery/validation rows remain touched evidence and can never be re-labeled as prospective confirmation.
+
+**Review gate:** `ready_for_review` requires at least 30 prospective material outcomes, at least 60% SHORT-favored material outcomes overall, and three chronological prospective blocks with at least five material outcomes each and at least 55% SHORT-favored share in every block.
+
+**Authority:** The frozen candidate is `prospective_shadow`, review-only, non-promotional, and has no strategy or execution authority. Passing the review gate still does not mutate the active paper strategy or enable live orders; a later explicit candidate/admission path must preserve a new immutable identity and the normal promotion gates.
+
+**Safety:** Eligibility/rankability/data-quality/risk vetoes remain independent hard gates. The candidate may never reinterpret tradeability-blocked NO_TRADE decisions as directional strategy evidence.
+
+**LIVE TRADING: DISABLED.**
