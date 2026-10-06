@@ -10,7 +10,10 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Final
 
-from cocomelon.domain.execution import InstrumentExecutionSpec
+from cocomelon.domain.execution import (
+    InstrumentExecutionSpec,
+    PaperExecutionConfig,
+)
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.stream import StreamEvent, StreamKind
@@ -23,6 +26,90 @@ from cocomelon.execution.accounting import (
 SCHEMA_VERSION: Final = 1
 CORRELATION_BUCKET_REASON: Final = "correlation_bucket_exhausted"
 ZERO: Final = Decimal("0")
+
+
+def paper_execution_config_payload(
+    config: PaperExecutionConfig,
+) -> dict[str, object]:
+    return {
+        "config_version": config.config_version,
+        "latency_ms": config.latency_ms,
+        "max_book_age_ms": config.max_book_age_ms,
+        "max_ioc_slippage_bps": str(config.max_ioc_slippage_bps),
+        "taker_fee_rate": str(config.taker_fee_rate),
+        "fee_schedule_id": config.fee_schedule_id,
+        "native_perp_min_notional": str(
+            config.native_perp_min_notional
+        ),
+    }
+
+
+def _validated_execution_config_payload(
+    raw: object,
+) -> dict[str, object] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise CapacityReleaseBookEvidenceError(
+            "execution config lineage must be an object"
+        )
+    required = {
+        "config_version",
+        "latency_ms",
+        "max_book_age_ms",
+        "max_ioc_slippage_bps",
+        "taker_fee_rate",
+        "fee_schedule_id",
+        "native_perp_min_notional",
+    }
+    if set(raw) != required:
+        raise CapacityReleaseBookEvidenceError(
+            "execution config lineage fields are invalid"
+        )
+    config_version = _text(
+        raw.get("config_version"),
+        "execution config version",
+    )
+    latency_ms = _integer(
+        raw.get("latency_ms"),
+        "execution latency_ms",
+    )
+    max_book_age_ms = _integer(
+        raw.get("max_book_age_ms"),
+        "execution max_book_age_ms",
+    )
+    if max_book_age_ms <= 0:
+        raise CapacityReleaseBookEvidenceError(
+            "execution max_book_age_ms must be positive"
+        )
+    max_slippage = _decimal(
+        raw.get("max_ioc_slippage_bps"),
+        "execution max_ioc_slippage_bps",
+    )
+    taker_fee = _decimal(
+        raw.get("taker_fee_rate"),
+        "execution taker_fee_rate",
+    )
+    native_min = _decimal(
+        raw.get("native_perp_min_notional"),
+        "execution native_perp_min_notional",
+    )
+    if max_slippage < ZERO or taker_fee < ZERO or native_min <= ZERO:
+        raise CapacityReleaseBookEvidenceError(
+            "execution config economics are invalid"
+        )
+    return {
+        "config_version": config_version,
+        "latency_ms": latency_ms,
+        "max_book_age_ms": max_book_age_ms,
+        "max_ioc_slippage_bps": str(max_slippage),
+        "taker_fee_rate": str(taker_fee),
+        "fee_schedule_id": _text(
+            raw.get("fee_schedule_id"),
+            "execution fee_schedule_id",
+        ),
+        "native_perp_min_notional": str(native_min),
+    }
 
 
 class CapacityReleaseBookEvidenceError(RuntimeError):
@@ -475,6 +562,7 @@ class PendingCapacityReleaseExecution:
     plan_reference_price: Decimal
     plan_book_event: StreamEvent
     plan_instrument: InstrumentExecutionSpec
+    execution_config: dict[str, object] | None = None
     schema_version: int = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -528,6 +616,14 @@ class PendingCapacityReleaseExecution:
             raise ValueError(
                 "release plan instrument metadata is from the future"
             )
+        if self.execution_config is not None:
+            validated = _validated_execution_config_payload(
+                self.execution_config
+            )
+            if validated != self.execution_config:
+                raise ValueError(
+                    "pending execution config lineage is non-canonical"
+                )
         if self.schema_version != SCHEMA_VERSION:
             raise ValueError("unsupported pending schema")
 
@@ -549,6 +645,7 @@ class PendingCapacityReleaseExecution:
             "plan_instrument": _instrument_payload(
                 self.plan_instrument
             ),
+            "execution_config": self.execution_config,
             "schema_version": self.schema_version,
         }
 
@@ -582,6 +679,9 @@ class PendingCapacityReleaseExecution:
                 ),
                 plan_instrument=_instrument_from_payload(
                     raw.get("plan_instrument")
+                ),
+                execution_config=_validated_execution_config_payload(
+                    raw.get("execution_config")
                 ),
                 schema_version=_integer(
                     raw.get("schema_version"),
@@ -698,6 +798,7 @@ class CapacityReleaseBookStore:
         capture_started_at_ms: int,
         latency_ms: int,
         max_book_age_ms: int,
+        execution_config: PaperExecutionConfig | None = None,
     ) -> None:
         if capture_started_at_ms < 0:
             raise ValueError(
@@ -720,6 +821,18 @@ class CapacityReleaseBookStore:
             path.mkdir(parents=True, exist_ok=True)
         self.latency_ms = latency_ms
         self.max_book_age_ms = max_book_age_ms
+        self.execution_config = (
+            None
+            if execution_config is None
+            else paper_execution_config_payload(execution_config)
+        )
+        if execution_config is not None and (
+            execution_config.latency_ms != latency_ms
+            or execution_config.max_book_age_ms != max_book_age_ms
+        ):
+            raise ValueError(
+                "capacity release execution config timing mismatch"
+            )
         self.capture_started_at_ms = self._load_or_create_protocol(
             capture_started_at_ms
         )
@@ -887,6 +1000,7 @@ class CapacityReleaseBookStore:
                     plan_reference_price=reference_price,
                     plan_book_event=book,
                     plan_instrument=instrument,
+                    execution_config=self.execution_config,
                 )
                 self._write(pending_path, pending.to_dict())
                 continue
@@ -1001,6 +1115,14 @@ class CapacityReleaseBookStore:
             "registrations": len(registrations),
             "plan_staged": len(pending),
             "captured": len(records),
+            "execution_config_bound_captured": sum(
+                item.pending.execution_config is not None
+                for item in records
+            ),
+            "execution_config_unbound_captured": sum(
+                item.pending.execution_config is None
+                for item in records
+            ),
             "pending": active_pending,
             "missed_plan": missed_plan,
             "missed_execution": missed_execution,
