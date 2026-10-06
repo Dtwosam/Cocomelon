@@ -19,7 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--websocket-server-silence-timeout-ms",
         type=int,
-        default=15_000,
+        default=4_000,
     )
     parser.add_argument(
         "--websocket-redundant-lane-reconnect-stagger-ms",
