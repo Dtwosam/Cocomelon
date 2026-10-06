@@ -170,3 +170,35 @@ def test_forward_source_must_remain_authority_negative() -> None:
         assert "execution authority" in str(exc)
     else:
         raise AssertionError("authority-bearing source must fail closed")
+
+
+
+def test_flat_forward_outcome_matches_no_trade_label() -> None:
+    source = _report()
+    source["outcomes"] = [
+        _outcome(
+            timestamp_ms=1_000,
+            value="0",
+            trend="mixed",
+            volatility="normal",
+        ),
+        _outcome(
+            timestamp_ms=2_000,
+            value="0.02",
+            trend="up",
+            volatility="high",
+        ),
+    ]
+
+    report = build_no_trade_context_stability_report(
+        source,
+        split_fraction=Decimal("0.50"),
+        material_thresholds_bps=(100,),
+        min_discovery_rows=1,
+        min_validation_rows=1,
+        min_discovery_direction_share=Decimal("0.51"),
+        min_validation_direction_share=Decimal("0.51"),
+        min_validation_lift=Decimal("0"),
+    )
+
+    assert report.to_dict()["execution_authority"] is False
