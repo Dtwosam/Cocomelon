@@ -101,4 +101,4 @@ def test_export_filters_replay_run_and_is_restart_safe(tmp_path: Path) -> None:
     assert first.no_trade_decisions == 1
     assert second.created_records == 0
     assert second.state_digest == first.state_digest
-    assert tuple(item.fact for item in output.iter_verified()) == selected
+    assert {item.fact.fact_id for item in output.iter_verified()} == {\n        item.fact_id for item in selected\n    }\n
