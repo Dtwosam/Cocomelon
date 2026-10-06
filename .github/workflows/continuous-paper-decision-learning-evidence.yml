@@ -277,13 +277,18 @@ jobs:
                   "validation_block_consistency_required"
               ],
               "prospective_candidate_id": prospective["candidate_id"],
-              "prospective_candidate_schema_version": prospective["schema_version"],
+              "prospective_candidate_schema_version": 1,
+              "prospective_report_schema_version": prospective["schema_version"],
               "prospective_not_before_ms": prospective["prospective_not_before_ms"],
               "prospective_label_window_open": prospective[
                   "prospective_label_window_open"
               ],
               "prospective_matching_outcomes": prospective["matching_outcomes"],
               "prospective_material_outcomes": prospective["material_outcomes"],
+              "prospective_ready_for_review": prospective["ready_for_review"],
+              "prospective_blocks_directionally_consistent": prospective[
+                  "prospective_blocks_directionally_consistent"
+              ],
               "hypothetical_pnl": False,
               "cost_complete": False,
               "research_only": True,
@@ -382,6 +387,12 @@ jobs:
               "- prospective matching / material outcomes: "
               f"{prospective['matching_outcomes']} / "
               f"{prospective['material_outcomes']}"
+          )
+          print(
+              "- prospective directional share / consistent blocks / review-ready: "
+              f"{prospective['material_same_direction_share']} / "
+              f"{prospective['prospective_blocks_directionally_consistent']} / "
+              f"{prospective['ready_for_review']}"
           )
           print(
               "- prospective label window open: "
