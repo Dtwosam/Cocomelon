@@ -697,6 +697,11 @@ class _ContinuousOpeningOpportunitySink:
                 self.error = f"{type(exc).__name__}: {exc}"
             return
 
+        self._capacity_release_book_capture.register_from_trace(
+            trace,
+            opportunity_id=evidence.opportunity_id,
+        )
+
         try:
             self._path_store.register(
                 opportunity_id=evidence.opportunity_id,
