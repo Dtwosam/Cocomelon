@@ -372,6 +372,19 @@ class CapacityReleaseBookEvidence:
             != self.registration.release_market
         ):
             raise ValueError("release instrument market mismatch")
+        if (
+            self.book_event.exchange_time_ms is None
+            or self.book_event.exchange_time_ms
+            < self.registration.opportunity_timestamp_ms
+            or self.book_event.exchange_time_ms > self.observed_at_ms
+        ):
+            raise ValueError(
+                "release book exchange timestamp is invalid"
+            )
+        if self.instrument.metadata_received_at_ms > self.observed_at_ms:
+            raise ValueError(
+                "release instrument metadata is from the future"
+            )
         if self.schema_version != SCHEMA_VERSION:
             raise ValueError("unsupported evidence schema")
 
@@ -556,6 +569,12 @@ class CapacityReleaseBookStore:
                 continue
             lag = observed_at_ms - registration.opportunity_timestamp_ms
             if lag > self.max_capture_lag_ms:
+                continue
+            if (
+                book.exchange_time_ms is None
+                or book.exchange_time_ms
+                < registration.opportunity_timestamp_ms
+            ):
                 continue
             matches = tuple(
                 position
