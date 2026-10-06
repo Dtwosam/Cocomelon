@@ -8,13 +8,18 @@ from typing import Final, cast
 ZERO: Final = Decimal("0")
 ONE: Final = Decimal("1")
 BPS: Final = Decimal("10000")
-NO_TRADE_CONTEXT_STABILITY_SCHEMA_VERSION = 2
+NO_TRADE_CONTEXT_STABILITY_SCHEMA_VERSION = 3
 DEFAULT_MATERIAL_THRESHOLDS_BPS: Final = (50, 100, 200)
+DEFAULT_VALIDATION_BLOCK_COUNT = 3
+DEFAULT_MIN_VALIDATION_BLOCK_ROWS = 5
+DEFAULT_MIN_VALIDATION_BLOCK_DIRECTION_SHARE = Decimal("0.50")
+DEFAULT_REQUIRED_VALIDATION_BLOCKS = 3
 ELIGIBLE_DECISION_STAGES: Final = ("strategy_abstained",)
 KNOWN_DECISION_STAGES: Final = frozenset(
     {"strategy_abstained", "eligibility_blocked", "other"}
 )
 DEFAULT_CONTEXT_DIMENSIONS: Final = (
+    "market",
     "reason_code",
     "trend_regime",
     "volatility_regime",
@@ -34,6 +39,7 @@ class _Outcome:
     decision_timestamp_ms: int
     horizon_ms: int
     forward_return: Decimal
+    market: str
     reason_codes: tuple[str, ...]
     decision_stage: str
     context: dict[str, str]
@@ -51,8 +57,8 @@ class _Outcome:
 class ContextStabilityCandidate:
     horizon_ms: int
     threshold_bps: int
-    dimensions: tuple[str, str]
-    values: tuple[str, str]
+    dimensions: tuple[str, ...]
+    values: tuple[str, ...]
     dominant_direction: str
     discovery_material_outcomes: int
     discovery_direction_share: Decimal
@@ -60,6 +66,11 @@ class ContextStabilityCandidate:
     validation_same_direction_share: Decimal | None
     validation_baseline_direction_share: Decimal | None
     validation_lift_vs_baseline: Decimal | None
+    validation_block_outcomes: tuple[int, ...]
+    validation_block_direction_shares: tuple[Decimal | None, ...]
+    validation_blocks_meeting_row_floor: int
+    validation_blocks_directionally_consistent: int
+    stable_across_validation_blocks: bool
     stable_on_validation: bool
 
     def to_dict(self) -> dict[str, object]:
@@ -86,6 +97,20 @@ class ContextStabilityCandidate:
                 None
                 if self.validation_lift_vs_baseline is None
                 else str(self.validation_lift_vs_baseline)
+            ),
+            "validation_block_outcomes": self.validation_block_outcomes,
+            "validation_block_direction_shares": tuple(
+                None if value is None else str(value)
+                for value in self.validation_block_direction_shares
+            ),
+            "validation_blocks_meeting_row_floor": (
+                self.validation_blocks_meeting_row_floor
+            ),
+            "validation_blocks_directionally_consistent": (
+                self.validation_blocks_directionally_consistent
+            ),
+            "stable_across_validation_blocks": (
+                self.stable_across_validation_blocks
             ),
             "stable_on_validation": self.stable_on_validation,
             "strategy_authority": False,
@@ -128,6 +153,10 @@ class NoTradeContextStabilityReport:
     min_discovery_direction_share: Decimal
     min_validation_direction_share: Decimal
     min_validation_lift: Decimal
+    validation_block_count: int
+    min_validation_block_rows: int
+    min_validation_block_direction_share: Decimal
+    required_validation_blocks: int
     material_thresholds_bps: tuple[int, ...]
     source_outcome_count: int
     strategy_abstained_outcomes: int
@@ -151,6 +180,12 @@ class NoTradeContextStabilityReport:
                 self.min_validation_direction_share
             ),
             "min_validation_lift": str(self.min_validation_lift),
+            "validation_block_count": self.validation_block_count,
+            "min_validation_block_rows": self.min_validation_block_rows,
+            "min_validation_block_direction_share": str(
+                self.min_validation_block_direction_share
+            ),
+            "required_validation_blocks": self.required_validation_blocks,
             "material_thresholds_bps": self.material_thresholds_bps,
             "source_outcome_count": self.source_outcome_count,
             "strategy_abstained_outcomes": self.strategy_abstained_outcomes,
@@ -163,6 +198,8 @@ class NoTradeContextStabilityReport:
                 item.validated_candidate_count for item in self.analyses
             ),
             "chronological_holdout_required": True,
+            "validation_block_consistency_required": True,
+            "market_aware": True,
             "material_move_only": True,
             "exploratory_only": True,
             "promotion_authority": False,
