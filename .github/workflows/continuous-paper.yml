@@ -653,6 +653,35 @@ jobs:
           retention-days: 90
           compression-level: 6
 
+      - name: Render compact decision learning handoff summary
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.decision_fact_export.outcome == 'success' && hashFiles('continuous-paper-state/learning-decisions-summary.json') != '' }}
+        env:
+          DECISION_SOURCE_UPLOAD_OUTCOME: ${{ steps.decision_learning_upload.outcome }}
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/learning-decisions-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          print("## Continuous paper decision-learning handoff")
+          print(f"- selected decision facts: {payload['selected_facts']}")
+          print(f"- LONG decisions: {payload['long_decisions']}")
+          print(f"- SHORT decisions: {payload['short_decisions']}")
+          print(f"- NO_TRADE decisions: {payload['no_trade_decisions']}")
+          print(f"- decision state digest: {payload['state_digest']}")
+          print(
+              "- compact decision source upload: "
+              f"{os.environ['DECISION_SOURCE_UPLOAD_OUTCOME']}"
+          )
+          print("- research-only: true")
+          print("- execution enabled: false")
+          PY
+
       - name: Pack durable continuous paper state
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
         shell: bash

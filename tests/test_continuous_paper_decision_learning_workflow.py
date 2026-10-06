@@ -44,6 +44,9 @@ def test_decision_learning_upload_stays_off_critical_handoff_path() -> None:
     decision_upload_at = source.index(
         "- name: Upload compact continuous decision learning source"
     )
+    decision_summary_at = source.index(
+        "- name: Render compact decision learning handoff summary"
+    )
     durable_pack_at = source.index(
         "- name: Pack durable continuous paper state"
     )
@@ -52,6 +55,7 @@ def test_decision_learning_upload_stays_off_critical_handoff_path() -> None:
         fast_dispatch_at
         < decision_export_at
         < decision_upload_at
+        < decision_summary_at
         < durable_pack_at
     )
 
@@ -92,3 +96,27 @@ def test_decision_learning_workflow_is_authority_negative() -> None:
     assert "private_key" not in lowered
     assert "withdraw" not in lowered
     assert "transfer" not in lowered
+
+
+
+def test_decision_learning_handoff_summary_exposes_population_and_upload() -> None:
+    source = PAPER_WORKFLOW.read_text(encoding="utf-8")
+
+    summary_at = source.index(
+        "- name: Render compact decision learning handoff summary"
+    )
+    durable_at = source.index(
+        "- name: Pack durable continuous paper state"
+    )
+    summary = source[summary_at:durable_at]
+
+    assert "learning-decisions-summary.json" in summary
+    assert "DECISION_SOURCE_UPLOAD_OUTCOME" in summary
+    assert "steps.decision_learning_upload.outcome" in summary
+    assert "selected decision facts" in summary
+    assert "LONG decisions" in summary
+    assert "SHORT decisions" in summary
+    assert "NO_TRADE decisions" in summary
+    assert "decision state digest" in summary
+    assert "research-only: true" in summary
+    assert "execution enabled: false" in summary
