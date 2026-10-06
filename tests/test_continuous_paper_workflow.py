@@ -1234,3 +1234,46 @@ def test_holder_release_execution_rebuild_is_after_successor_and_before_reflow()
         "correlation-holder-release-execution-summary.json"
         in compact
     )
+
+
+
+def test_continuous_paper_actions_api_calls_back_off_before_failing() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    guard_at = source.index(
+        "- name: Skip bootstrap/watchdog when a continuous paper run is already active"
+    )
+    checkout_at = source.index("- uses: actions/checkout@v7", guard_at)
+    guard = source[guard_at:checkout_at]
+    assert "guard_runs_loaded=false" in guard
+    assert "for attempt in $(seq 1 8)" in guard
+    assert "continuous-paper guard API unavailable" in guard
+    assert "continuous-paper guard job API unavailable" in guard
+    assert "time.sleep(10)" in guard
+    assert "continuous-paper guard could not inspect active run jobs" in guard
+
+    fast_at = source.index("- name: Queue exact successor from fast resume")
+    cleanup_at = source.index(
+        "- name: Remove local fast resume archive",
+        fast_at,
+    )
+    fast = source[fast_at:cleanup_at]
+    assert "successor receipt API unavailable" in fast
+    assert "exact successor dispatch API unavailable" in fast
+    assert "for attempt in $(seq 1 8)" in fast
+    assert "find_successor || true" in fast
+    assert "dispatch command never succeeded" in fast
+
+    fallback_at = source.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    research_at = source.index(
+        "- name: Rebuild deferred full-stack markouts after handoff",
+        fallback_at,
+    )
+    fallback = source[fallback_at:research_at]
+    assert "successor receipt API unavailable" in fallback
+    assert "fallback successor dispatch API unavailable" in fallback
+    assert "for attempt in $(seq 1 8)" in fallback
+    assert "find_successor || true" in fallback
+    assert "dispatch command never succeeded" in fallback
