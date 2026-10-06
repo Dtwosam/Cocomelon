@@ -73,9 +73,11 @@ def test_decision_learning_catchup_trusts_authority_negative_receipt() -> None:
     assert 'receipt.get("market_aware") is not True' in source
     assert 'receipt.get("validation_block_consistency_required")' in source
     assert 'EXPECTED_PROSPECTIVE_CANDIDATE_SCHEMA_VERSION: "1"' in source
+    assert 'EXPECTED_PROSPECTIVE_REPORT_SCHEMA_VERSION: "2"' in source
     assert 'EXPECTED_PROSPECTIVE_CANDIDATE_ID:' in source
     assert 'receipt.get("prospective_candidate_schema_version")' in source
     assert 'receipt.get("prospective_candidate_id")' in source
+    assert 'receipt.get("prospective_report_schema_version")' in source
 
 
 def test_decision_learning_catchup_dispatches_only_missing_worker() -> None:
