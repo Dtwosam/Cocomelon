@@ -331,8 +331,7 @@ def _analysis(
     )
 
     candidates: list[ContextStabilityCandidate] = []
-    for dimensions_raw in combinations(DEFAULT_CONTEXT_DIMENSIONS, 2):
-        dimensions = cast(tuple[str, str], dimensions_raw)
+    for dimensions in combinations(DEFAULT_CONTEXT_DIMENSIONS, 2):
         discovery_groups: dict[tuple[str, str], list[_Outcome]] = {}
         validation_groups: dict[tuple[str, str], list[_Outcome]] = {}
         for item in discovery_material:
