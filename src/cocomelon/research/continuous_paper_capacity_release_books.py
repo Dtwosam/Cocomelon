@@ -172,16 +172,25 @@ def paper_execution_config_from_payload(
         )
     return PaperExecutionConfig(
         config_version=str(payload["config_version"]),
-        latency_ms=int(payload["latency_ms"]),
-        max_book_age_ms=int(payload["max_book_age_ms"]),
-        max_asset_ctx_age_ms=int(payload["max_asset_ctx_age_ms"]),
-        max_position_age_ms=(
-            None
-            if payload["max_position_age_ms"] is None
-            else int(payload["max_position_age_ms"])
+        latency_ms=_integer(
+            payload.get("latency_ms"),
+            "execution latency_ms",
         ),
-        funding_reconciliation_grace_ms=int(
-            payload["funding_reconciliation_grace_ms"]
+        max_book_age_ms=_integer(
+            payload.get("max_book_age_ms"),
+            "execution max_book_age_ms",
+        ),
+        max_asset_ctx_age_ms=_integer(
+            payload.get("max_asset_ctx_age_ms"),
+            "execution max_asset_ctx_age_ms",
+        ),
+        max_position_age_ms=_optional_positive_integer(
+            payload.get("max_position_age_ms"),
+            "execution max_position_age_ms",
+        ),
+        funding_reconciliation_grace_ms=_integer(
+            payload.get("funding_reconciliation_grace_ms"),
+            "execution funding_reconciliation_grace_ms",
         ),
         max_ioc_slippage_bps=Decimal(
             str(payload["max_ioc_slippage_bps"])
