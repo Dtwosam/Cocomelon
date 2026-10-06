@@ -626,56 +626,6 @@ jobs:
         shell: bash
         run: rm -f continuous-paper-resume.tar.zst
 
-      - name: Rebuild deferred full-stack markouts after handoff
-        id: deferred_full_stack_markout_rebuild
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.fast_resume_dispatch.outcome == 'success' && hashFiles('continuous-paper-state/session-summary.json') != '' }}
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          exit_reason="$(
-            python - <<'PY'
-          import json
-          from pathlib import Path
-
-          payload = json.loads(
-              Path(
-                  "continuous-paper-state/session-summary.json"
-              ).read_text(encoding="utf-8")
-          )
-          print(payload.get("exit_reason", ""))
-          PY
-          )"
-          if [ "$exit_reason" != "upgrade_requested" ]; then
-            echo "deferred rebuild not needed for exit reason: $exit_reason"
-            exit 0
-          fi
-          python scripts/rebuild_deferred_full_stack_forward_markout.py             "$STATE_ROOT"             | tee /tmp/deferred-full-stack-markout-rebuild.json
-          test -s             "$STATE_ROOT/prospective-full-stack-forward-markout-summary.json"
-          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json
-          from pathlib import Path
-
-          payload = json.loads(
-              Path(
-                  "/tmp/deferred-full-stack-markout-rebuild.json"
-              ).read_text(encoding="utf-8")
-          )
-          print("## Deferred post-handoff full-stack markout rebuild")
-          print("- successor already dispatched: true")
-          print("- authority: RESEARCH ONLY / NO EXECUTION / NO READINESS")
-          print(
-              "- risk-rejected evaluated / integrity clean: "
-              f"{payload['risk_rejected_stack_evaluated']} / "
-              f"{payload['risk_rejected_integrity_clean']}"
-          )
-          print(
-              "- execution / promotion authority: "
-              f"{payload['execution_authority']} / "
-              f"{payload['promotion_authority']}"
-          )
-          PY
-
       - name: Export compact continuous decision facts
         id: decision_fact_export
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
@@ -758,6 +708,7 @@ jobs:
           compression-level: 6
 
       - name: Queue fallback exact successor continuous paper worker
+        id: fallback_resume_dispatch
         if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.fast_resume_dispatch.outcome != 'success' && steps.durable_state_upload.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -768,6 +719,56 @@ jobs:
             --ref main \
             -f "source_run_id=$GITHUB_RUN_ID" \
             -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
+
+      - name: Rebuild deferred full-stack markouts after handoff
+        id: deferred_full_stack_markout_rebuild
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/session-summary.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          exit_reason="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/session-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          print(payload.get("exit_reason", ""))
+          PY
+          )"
+          if [ "$exit_reason" != "upgrade_requested" ]; then
+            echo "deferred rebuild not needed for exit reason: $exit_reason"
+            exit 0
+          fi
+          python scripts/rebuild_deferred_full_stack_forward_markout.py             "$STATE_ROOT"             | tee /tmp/deferred-full-stack-markout-rebuild.json
+          test -s             "$STATE_ROOT/prospective-full-stack-forward-markout-summary.json"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "/tmp/deferred-full-stack-markout-rebuild.json"
+              ).read_text(encoding="utf-8")
+          )
+          print("## Deferred post-handoff full-stack markout rebuild")
+          print("- successor already dispatched: true")
+          print("- authority: RESEARCH ONLY / NO EXECUTION / NO READINESS")
+          print(
+              "- risk-rejected evaluated / integrity clean: "
+              f"{payload['risk_rejected_stack_evaluated']} / "
+              f"{payload['risk_rejected_integrity_clean']}"
+          )
+          print(
+              "- execution / promotion authority: "
+              f"{payload['execution_authority']} / "
+              f"{payload['promotion_authority']}"
+          )
+          PY
 
       - name: Fail closed on upgrade handoff source
         id: research_source_gate
