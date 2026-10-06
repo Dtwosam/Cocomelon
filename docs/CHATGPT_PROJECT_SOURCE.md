@@ -104,6 +104,15 @@ The system is expected to learn **when** a LONG, SHORT, or NO_TRADE decision fit
 
 When continuing development in a new chat, preserve this objective: make Cocomelon understand the market state well enough to choose the appropriate side or abstain. Any directional restriction requires reproducible context-conditioned net expectancy after costs and the normal chronological/OOS/shadow validation gates.
 
+
+### Prospective-freeze rule — D-035
+
+A context pattern found in continuous-paper decisions is never allowed to rewrite entries immediately. Freeze it with exact source lineage, embargo it away from discovery data, then require fresh future paper evidence.
+
+Current frozen research shadow: `mon-normal-volatility-short-1h-50bps-v1` — MON, normal volatility, 1h horizon, material move >=50 bps, SHORT-favored. It is prospective-shadow only, review-only, non-promotional, and has zero strategy/execution authority. It counts only genuine strategy abstentions after its frozen cutover; rankability/depth/data/safety blocks remain excluded.
+
+The frozen review floor is 30 material prospective outcomes, >=60% SHORT share overall, and three later chronological blocks with >=5 rows and >=55% SHORT share in every block. Even passing that floor is not automatic promotion or live authority.
+
 ## 2. Locked safety boundaries
 
 - Hyperliquid testnet is forbidden.
