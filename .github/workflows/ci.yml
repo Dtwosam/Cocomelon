@@ -205,6 +205,8 @@ jobs:
           tests/test_baseline_replay_activity.py
           tests/test_continuous_paper.py
           tests/test_continuous_paper_capacity_release_books.py
+          tests/test_correlation_holder_release_execution.py
+          tests/test_deferred_correlation_holder_release_execution.py
           tests/test_continuous_paper_live_status.py
           tests/test_closed_trade_stop_reentry.py
           tests/test_post_freshness_paper_cohort.py
