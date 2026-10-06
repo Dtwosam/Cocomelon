@@ -3,11 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from collections.abc import Sequence
 from typing import Final
 
 from cocomelon.domain.execution import InstrumentExecutionSpec
