@@ -72,8 +72,8 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
         "- name: Queue fallback exact successor continuous paper worker"
     )
     assert fast_upload_at < fast_dispatch_at < fast_cleanup_at
-    assert fast_cleanup_at < deferred_markout_at < durable_upload_at
-    assert deferred_markout_at < fallback_dispatch_at
+    assert fast_cleanup_at < durable_upload_at < fallback_dispatch_at
+    assert fallback_dispatch_at < deferred_markout_at
 
 def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
@@ -157,11 +157,11 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
         < fast_upload_at
         < fast_dispatch_at
         < fast_cleanup_at
-        < deferred_markout_at
         < decision_export_at
         < durable_pack_at
         < durable_upload_at
         < fallback_dispatch_at
+        < deferred_markout_at
     )
     assert "run: rm -f continuous-paper-resume.tar.zst" in source
     first_terminal_research_upload_at = source.index(
@@ -175,7 +175,12 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
     comparison_dispatch_at = source.index(
         "- name: Queue exact LONG trend horizon comparison"
     )
-    assert fallback_dispatch_at < research_gate_at < comparison_dispatch_at
+    assert (
+        fallback_dispatch_at
+        < deferred_markout_at
+        < research_gate_at
+        < comparison_dispatch_at
+    )
     assert comparison_dispatch_at < first_terminal_research_upload_at
 
 
@@ -200,7 +205,13 @@ def test_upgrade_handoff_rebuilds_full_stack_markouts_after_successor_dispatch()
         in changed_runtime
     )
     assert "Rebuild deferred full-stack markouts after handoff" in source
+    assert "id: fallback_resume_dispatch" in source
     assert "id: deferred_full_stack_markout_rebuild" in source
+    assert (
+        "steps.fast_resume_dispatch.outcome == 'success' || "
+        "steps.fallback_resume_dispatch.outcome == 'success'"
+        in source
+    )
     assert "continue-on-error: true" in source
     assert 'if [ "$exit_reason" != "upgrade_requested" ]; then' in source
     assert (
@@ -213,13 +224,16 @@ def test_upgrade_handoff_rebuilds_full_stack_markouts_after_successor_dispatch()
     dispatch_at = source.index(
         "- name: Queue exact successor from fast resume"
     )
+    fallback_at = source.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
     rebuild_at = source.index(
         "- name: Rebuild deferred full-stack markouts after handoff"
     )
     compact_at = source.index(
         "- name: Upload compact continuous learning source"
     )
-    assert dispatch_at < rebuild_at < compact_at
+    assert dispatch_at < fallback_at < rebuild_at < compact_at
 
 
 def test_continuous_paper_failure_still_dispatches_exact_state() -> None:
