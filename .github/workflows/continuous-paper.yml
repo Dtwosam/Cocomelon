@@ -99,8 +99,8 @@ on:
       - "scripts/rebuild_deferred_correlation_bucket_priority.py"
       - "src/cocomelon/research/deferred_full_stack_capacity_reflow.py"
       - "scripts/rebuild_deferred_full_stack_capacity_reflow.py"
-      - "src/cocomelon/research/deferred_consecutive_loss_cooldown.py"
-      - "scripts/rebuild_deferred_consecutive_loss_cooldown.py"
+      - "src/cocomelon/research/deferred_consecutive_loss_cooldown.py"                    src/cocomelon/research/loss_streak_context_audit.py                     src/cocomelon/research/deferred_loss_streak_context_audit.py"
+      - "scripts/rebuild_deferred_consecutive_loss_cooldown.py"                    scripts/rebuild_deferred_loss_streak_context_audit.py"
       - "src/cocomelon/research/prospective_long_trend_carveout_execution_shadow_source.py"
       - "src/cocomelon/research/prospective_weekly_drawdown_5m_exit_source.py"
       - "src/cocomelon/research/prospective_full_stack_capacity_reflow.py"
@@ -927,6 +927,89 @@ jobs:
           )
           PY
 
+      - name: Rebuild loss-streak context audit after handoff
+        id: deferred_loss_streak_context_audit
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/session-summary.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          exit_reason="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/session-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          print(payload.get("exit_reason", ""))
+          PY
+          )"
+          if [ "$exit_reason" != "upgrade_requested" ]; then
+            echo "loss-streak audit not needed for exit reason: $exit_reason"
+            exit 0
+          fi
+          python scripts/rebuild_deferred_loss_streak_context_audit.py \
+            "$STATE_ROOT" \
+            | tee /tmp/deferred-loss-streak-context-audit.json
+          test -s \
+            "$STATE_ROOT/loss-streak-context-audit-summary.json"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "$STATE_ROOT/loss-streak-context-audit-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          latest = payload.get("latest_qualifying_streak")
+          latest_length = (
+              None
+              if not isinstance(latest, dict)
+              else latest.get("length")
+          )
+          print("## Loss-streak context audit")
+          print("- successor already dispatched: true")
+          print("- authority: RESEARCH ONLY / NO EXECUTION / NO STRATEGY CHANGE")
+          print(
+              "- trades / qualifying streaks / current consecutive losses: "
+              f"{payload['trade_count']} / "
+              f"{payload['qualifying_loss_streak_count']} / "
+              f"{payload['current_consecutive_losses']}"
+          )
+          print(f"- latest qualifying streak length: {latest_length}")
+          print(
+              "- recurring dominant patterns: "
+              f"{len(payload['recurring_dominant_patterns'])}"
+          )
+          for item in payload["recurring_dominant_patterns"][:8]:
+              print(
+                  "- recurring: "
+                  f"{item['field']}={item['value']} "
+                  f"across {item['qualifying_streaks']} streaks"
+              )
+          print(
+              "- execution / strategy / risk authority: "
+              f"{payload['execution_authority']} / "
+              f"{payload['changes_strategy']} / "
+              f"{payload['changes_risk_limits']}"
+          )
+          PY
+
+      - name: Upload loss-streak context audit
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_loss_streak_context_audit.outcome == 'success' && hashFiles('continuous-paper-state/loss-streak-context-audit-summary.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-loss-streak-context-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/loss-streak-context-audit-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Fail closed on upgrade handoff source
         id: research_source_gate
         if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.durable_state_upload.outcome == 'success' && hashFiles('continuous-paper-state/session-summary.json') != '' }}
@@ -1018,6 +1101,7 @@ jobs:
             continuous-paper-state/prospective-momentum-band-forward-markout-summary.json
             continuous-paper-state/prospective-consecutive-loss-cooldown-shadow-state.json
             continuous-paper-state/prospective-consecutive-loss-cooldown-shadow-summary.json
+            continuous-paper-state/loss-streak-context-audit-summary.json
             continuous-paper-state/prospective-full-stack-entry-exit-summary.json
             continuous-paper-state/prospective-full-stack-forward-markout-summary.json
             continuous-paper-state/prospective-correlation-bucket-priority-summary.json
