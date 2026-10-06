@@ -236,6 +236,60 @@ def test_upgrade_handoff_rebuilds_full_stack_markouts_after_successor_dispatch()
     assert dispatch_at < fallback_at < rebuild_at < compact_at
 
 
+def test_upgrade_handoff_rebuilds_capacity_economics_after_successor_dispatch() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert (
+        '"src/cocomelon/research/deferred_full_stack_capacity_reflow.py"'
+        in source
+    )
+    assert (
+        '"scripts/rebuild_deferred_full_stack_capacity_reflow.py"'
+        in source
+    )
+    changed_runtime = source.split("changed_runtime=", 1)[1]
+    assert (
+        "src/cocomelon/research/deferred_full_stack_capacity_reflow.py"
+        in changed_runtime
+    )
+    assert (
+        "scripts/rebuild_deferred_full_stack_capacity_reflow.py"
+        in changed_runtime
+    )
+    assert (
+        "Rebuild deferred capacity-reflow economics after handoff"
+        in source
+    )
+    assert "id: deferred_capacity_reflow_rebuild" in source
+    assert (
+        "steps.fast_resume_dispatch.outcome == 'success' || "
+        "steps.fallback_resume_dispatch.outcome == 'success'"
+        in source
+    )
+    assert (
+        "python scripts/rebuild_deferred_full_stack_capacity_reflow.py"
+        in source
+    )
+    assert "RESEARCH ONLY / NO EXECUTION / NO RISK CHANGE" in source
+
+    fallback_at = source.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    markout_at = source.index(
+        "- name: Rebuild deferred full-stack markouts after handoff"
+    )
+    capacity_at = source.index(
+        "- name: Rebuild deferred capacity-reflow economics after handoff"
+    )
+    gate_at = source.index(
+        "- name: Fail closed on upgrade handoff source"
+    )
+    compact_at = source.index(
+        "- name: Upload compact continuous learning source"
+    )
+    assert fallback_at < markout_at < capacity_at < gate_at < compact_at
+
+
 def test_continuous_paper_failure_still_dispatches_exact_state() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
