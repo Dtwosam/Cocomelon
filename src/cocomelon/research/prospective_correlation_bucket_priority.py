@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final, cast
@@ -168,7 +169,9 @@ def prospective_correlation_bucket_priority_summary(
     lineages: tuple[ContinuousPaperOpeningLineage, ...],
     closed_trades: tuple[TradeJournalEntry, ...],
     *,
-    rank_loader: callable,
+    rank_loader: Callable[
+        [str], ContinuousPaperOpeningRankEvidence | None
+    ],
 ) -> dict[str, object]:
     if forward_markout.get("execution_authority") is not False:
         raise ProspectiveCorrelationBucketPriorityError(
