@@ -304,3 +304,26 @@ def test_abstention_tree_cli_emits_authority_negative_report(
     assert payload["research_only"] is True
     assert payload["promotion_authority"] is False
     assert payload["execution_authority"] is False
+
+
+
+def test_abstention_tree_rejects_mismatched_source_digests(
+    tmp_path: Path,
+) -> None:
+    decisions = ContinuousPaperDecisionFactStore(tmp_path / "decisions")
+    features = LearningFeatureSnapshotStore(tmp_path / "features")
+    source = _report(decisions, features, rows=40)
+    source["feature_state_digest"] = "0" * 64
+
+    with pytest.raises(
+        NoTradeAbstentionTreeError,
+        match="NO_TRADE_TREE_FEATURE_STATE_DIGEST_MISMATCH",
+    ):
+        build_no_trade_abstention_tree_report(
+            source,
+            decisions,
+            features,
+            min_training_rows=20,
+            min_validation_rows=10,
+            tree_config=_config(),
+        )
