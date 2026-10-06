@@ -29,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--websocket-l2-failover-headroom-ms",
         type=int,
-        default=1_000,
+        default=2_000,
     )
     parser.add_argument("--selection-refresh-seconds", type=int, default=300)
     parser.add_argument("--checkpoint-seconds", type=int, default=30)
