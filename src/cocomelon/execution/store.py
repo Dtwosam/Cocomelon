@@ -515,16 +515,23 @@ class PaperExecutionStore:
             raise _PlanIdMismatchError("persisted plan payload does not match plan_id")
         return plan
 
-    def load_position_history(
+    def load_position_histories(
         self,
-        opening_plan_id: str,
-        *,
-        through_ms: int,
-    ) -> tuple[PaperPosition, ...]:
-        if not opening_plan_id.strip():
-            raise ValueError("opening_plan_id must not be empty")
-        if through_ms < 0:
-            raise ValueError("through_ms must be non-negative")
+        requests: tuple[tuple[str, int], ...],
+    ) -> dict[tuple[str, int], tuple[PaperPosition, ...]]:
+        normalized: list[tuple[str, int]] = []
+        max_through_by_plan: dict[str, int] = {}
+        for opening_plan_id, through_ms in requests:
+            if not opening_plan_id.strip():
+                raise ValueError("opening_plan_id must not be empty")
+            if through_ms < 0:
+                raise ValueError("through_ms must be non-negative")
+            normalized.append((opening_plan_id, through_ms))
+            current = max_through_by_plan.get(opening_plan_id)
+            if current is None or through_ms > current:
+                max_through_by_plan[opening_plan_id] = through_ms
+        if not normalized:
+            return {}
 
         rows = self._conn.execute(
             """
@@ -533,7 +540,9 @@ class PaperExecutionStore:
             ORDER BY event_id
             """
         ).fetchall()
-        by_position_id: dict[str, PaperPosition] = {}
+        by_plan: dict[str, dict[str, PaperPosition]] = {
+            plan_id: {} for plan_id in max_through_by_plan
+        }
         for event_id, market, payload_json in rows:
             try:
                 payload = json.loads(str(payload_json))
@@ -562,26 +571,54 @@ class PaperExecutionStore:
                 raise ValueError(
                     "persisted position event lineage mismatch"
                 )
-            if position.opening_plan_id != opening_plan_id:
+
+            max_through = max_through_by_plan.get(
+                position.opening_plan_id
+            )
+            if (
+                max_through is None
+                or position.updated_at_ms > max_through
+            ):
                 continue
-            if position.updated_at_ms > through_ms:
-                continue
-            existing = by_position_id.get(position.position_id)
+            plan_positions = by_plan[position.opening_plan_id]
+            existing = plan_positions.get(position.position_id)
             if existing is not None and existing != position:
                 raise ValueError(
                     "immutable position id has conflicting payload"
                 )
-            by_position_id[position.position_id] = position
+            plan_positions[position.position_id] = position
 
-        return tuple(
-            sorted(
-                by_position_id.values(),
-                key=lambda position: (
-                    position.updated_at_ms,
-                    position.position_id,
-                ),
+        output: dict[
+            tuple[str, int],
+            tuple[PaperPosition, ...],
+        ] = {}
+        for opening_plan_id, through_ms in normalized:
+            output[(opening_plan_id, through_ms)] = tuple(
+                sorted(
+                    (
+                        position
+                        for position in by_plan[
+                            opening_plan_id
+                        ].values()
+                        if position.updated_at_ms <= through_ms
+                    ),
+                    key=lambda position: (
+                        position.updated_at_ms,
+                        position.position_id,
+                    ),
+                )
             )
-        )
+        return output
+
+    def load_position_history(
+        self,
+        opening_plan_id: str,
+        *,
+        through_ms: int,
+    ) -> tuple[PaperPosition, ...]:
+        return self.load_position_histories(
+            ((opening_plan_id, through_ms),)
+        )[(opening_plan_id, through_ms)]
 
     def load_position_at(
         self,
