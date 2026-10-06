@@ -55,7 +55,6 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
-          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
           EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
           EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt || '' }}
           INPUT_RUN_ID: ${{ inputs.source_run_id || '' }}
@@ -63,10 +62,10 @@ jobs:
         run: |
           set -euo pipefail
           echo "source_eligible=true" >> "$GITHUB_OUTPUT"
-          if [ "$EVENT_NAME" = "workflow_run" ] && [ "$EVENT_CONCLUSION" = "success" ]; then
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
             run_id="$EVENT_RUN_ID"
             run_attempt="$EVENT_RUN_ATTEMPT"
-            resolution_mode="successful_event"
+            resolution_mode="completed_event"
           elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             run_id="$INPUT_RUN_ID"
             run_attempt="$INPUT_RUN_ATTEMPT"
@@ -85,7 +84,7 @@ jobs:
                   run.get("path") == ".github/workflows/continuous-paper.yml"
                   and run.get("head_branch") == "main"
                   and run.get("status") == "completed"
-                  and run.get("conclusion") == "success"
+                  and run.get("conclusion") in {"success", "failure"}
                   and (run.get("head_repository") or {}).get("full_name") == repo
                   and isinstance(run.get("id"), int)
                   and isinstance(run.get("run_attempt"), int)
@@ -95,9 +94,9 @@ jobs:
           '
             )"
             if [ "$EVENT_NAME" = "workflow_run" ]; then
-              resolution_mode="latest_successful_after_non_success_wake"
+              resolution_mode="latest_completed_after_non_eligible_wake"
             else
-              resolution_mode="latest_successful_push"
+              resolution_mode="latest_completed_push"
             fi
           fi
           if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
@@ -109,7 +108,35 @@ jobs:
             local candidate_run_id="$1"
             local candidate_attempt="$2"
             local expected_name="continuous-paper-learning-source-$candidate_run_id-$candidate_attempt"
-            local artifacts_json
+            local jobs_json artifacts_json
+
+            jobs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/jobs?per_page=100"
+            )"
+            if ! printf '%s' "$jobs_json" | python -c '
+          import json, sys
+          payload = json.load(sys.stdin)
+          paper_jobs = [
+              job
+              for job in payload.get("jobs", [])
+              if job.get("name") == "paper"
+          ]
+          if len(paper_jobs) != 1:
+              raise SystemExit(1)
+          steps = {
+              step.get("name"): step.get("conclusion")
+              for step in paper_jobs[0].get("steps", [])
+              if isinstance(step.get("name"), str)
+          }
+          required = (
+              "Run continuous paper trader",
+              "Upload compact continuous learning source",
+          )
+          if any(steps.get(name) != "success" for name in required):
+              raise SystemExit(1)
+          '; then
+              return 0
+            fi
             artifacts_json="$(
               gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/artifacts?per_page=100"
             )"
@@ -151,7 +178,7 @@ jobs:
                   run.get("path") == ".github/workflows/continuous-paper.yml"
                   and run.get("head_branch") == "main"
                   and run.get("status") == "completed"
-                  and run.get("conclusion") == "success"
+                  and run.get("conclusion") in {"success", "failure"}
                   and (run.get("head_repository") or {}).get("full_name") == repo
                   and isinstance(run.get("id"), int)
                   and isinstance(run.get("run_attempt"), int)
@@ -171,7 +198,7 @@ jobs:
                 run_id="$candidate_run_id"
                 run_attempt="$candidate_attempt"
                 artifact_line="$candidate_artifact_line"
-                resolution_mode="latest_successful_with_compact_artifact"
+                resolution_mode="latest_completed_with_authenticated_compact_artifact"
                 break
               fi
             done
@@ -191,8 +218,13 @@ jobs:
               raise SystemExit("source workflow path mismatch")
           if run.get("head_branch") != "main":
               raise SystemExit("source run must be from main")
-          if run.get("status") != "completed" or run.get("conclusion") != "success":
-              raise SystemExit("source run must be completed successfully")
+          if (
+              run.get("status") != "completed"
+              or run.get("conclusion") not in {"success", "failure"}
+          ):
+              raise SystemExit(
+                  "source run must be completed with usable handoff state"
+              )
           if str(run.get("run_attempt")) != os.environ["SOURCE_ATTEMPT"]:
               raise SystemExit("source run attempt mismatch")
           if (run.get("head_repository") or {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
