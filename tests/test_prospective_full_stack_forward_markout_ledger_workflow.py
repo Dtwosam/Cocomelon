@@ -102,22 +102,16 @@ def test_full_stack_fast_markout_legacy_source_waits() -> None:
 def test_full_stack_fast_markout_accepts_fail_closed_handoff() -> None:
     source = _source()
 
-    assert 'if [ "$EVENT_NAME" = "workflow_run" ]; then' in source
-    assert "EVENT_CONCLUSION" not in source
-    assert 'resolution_mode="completed_event"' in source
-    assert 'run.get("conclusion") in {"success", "failure"}' in source
-    assert (
-        'run.get("conclusion") not in {"success", "failure"}'
-        in source
-    )
-    assert 'actions/runs/$candidate_run_id/jobs?per_page=100' in source
-    assert 'job.get("name") == "paper"' in source
-    assert '"Run continuous paper trader"' in source
+    assert "paper_run_is_evidence_eligible()" in source
+    assert "wait_for_paper_run_completion()" in source
+    assert '"Measure durable continuous paper state"' in source
+    assert '"Upload durable continuous paper state"' in source
     assert '"Upload compact continuous learning source"' in source
-    assert (
-        "latest_completed_with_authenticated_compact_artifact"
-        in source
-    )
+    assert 'failed_steps != {"Fail closed on upgrade handoff source"}' in source
+    assert 'resolution_mode="durable_upgrade_handoff_event"' in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
+    assert "selected source paper run is not evidence-eligible" in source
+
 
 
 def test_full_stack_fast_markout_status_uses_quoted_python_builders() -> None:
