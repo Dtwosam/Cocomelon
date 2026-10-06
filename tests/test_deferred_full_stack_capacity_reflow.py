@@ -107,14 +107,15 @@ def test_deferred_capacity_reflow_uses_persisted_exact_economics(
         def __init__(self, path: Path) -> None:
             observed["paper_path"] = path
 
-        def load_position_history(
+        def load_position_histories(
             self,
-            plan_id: str,
-            *,
-            through_ms: int,
-        ) -> tuple[str, ...]:
-            observed["position_history"] = (plan_id, through_ms)
-            return ("position-history",)
+            requests: tuple[tuple[str, int], ...],
+        ) -> dict[tuple[str, int], tuple[str, ...]]:
+            observed["position_history_requests"] = requests
+            return {
+                request: ("position-history",)
+                for request in requests
+            }
 
         def close(self) -> None:
             closed.append("paper")
@@ -176,7 +177,11 @@ def test_deferred_capacity_reflow_uses_persisted_exact_economics(
         },
     )
 
-    release = SimpleNamespace(opportunity_id="release-1")
+    release = SimpleNamespace(
+        opportunity_id="release-1",
+        release_opening_plan_id="plan-a",
+        opportunity_timestamp_ms=8_000,
+    )
 
     def evaluate(
         opportunities: object,
@@ -276,7 +281,7 @@ def test_deferred_capacity_reflow_uses_persisted_exact_economics(
     assert payload["source_exit_reason"] == "upgrade_requested"
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
-    assert observed["position_history"] == ("plan-a", 8_000)
+    assert observed["position_history_requests"] == (("plan-a", 8_000),)
     assert sorted(closed) == ["facts", "journal", "paper"]
 
 
@@ -299,14 +304,11 @@ def test_deferred_capacity_reflow_preserves_fail_open_economic_layers(
         def close(self) -> None:
             pass
 
-        def load_position_history(
+        def load_position_histories(
             self,
-            _plan_id: str,
-            *,
-            through_ms: int,
-        ) -> tuple[object, ...]:
-            assert through_ms >= 0
-            return ()
+            requests: tuple[tuple[str, int], ...],
+        ) -> dict[tuple[str, int], tuple[object, ...]]:
+            return {request: () for request in requests}
 
     for name in (
         "ContinuousPaperOpeningOpportunityStore",
