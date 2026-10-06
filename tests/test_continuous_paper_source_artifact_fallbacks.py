@@ -9,7 +9,7 @@ LEARNING_SOURCE_WORKFLOWS = (
     ),
     (
         ".github/workflows/prospective-full-stack-reflow-exact-ledger.yml",
-        "latest_completed_with_authenticated_compact_artifact",
+        "latest_evidence_eligible_with_compact_artifact",
     ),
     (
         ".github/workflows/prospective-consecutive-loss-cooldown-ledger.yml",
