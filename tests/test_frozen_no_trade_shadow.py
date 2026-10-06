@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from decimal import Decimal
-from pathlib import Path
-
 import pytest
 
 from cocomelon.research.frozen_no_trade_shadow import (
@@ -171,7 +169,7 @@ def test_shadow_review_needs_enough_rows_and_three_consistent_time_blocks() -> N
     outcomes: list[dict[str, object]] = []
     timestamp = spec.validation_not_before_ms
 
-    for block in range(3):
+    for _block in range(3):
         for index in range(10):
             outcomes.append(
                 _outcome(
