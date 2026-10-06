@@ -713,9 +713,14 @@ jobs:
           set -euo pipefail
           expected_title="Continuous Paper · $GITHUB_RUN_ID"
           find_successor() {
-            gh api \
-              "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" |
-              EXPECTED_TITLE="$expected_title" python -c '
+            local payload
+            for attempt in $(seq 1 6); do
+              if payload="$(
+                gh api \
+                  "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100"
+              )"; then
+                printf '%s' "$payload" |
+                  EXPECTED_TITLE="$expected_title" python -c '
           import json, os, sys
           payload = json.load(sys.stdin)
           expected = os.environ["EXPECTED_TITLE"]
@@ -729,6 +734,12 @@ jobs:
           ]
           print(matches[0]["id"] if matches else "")
           '
+                return 0
+              fi
+              echo "::warning::successor receipt API unavailable ($attempt/6)" >&2
+              sleep 10
+            done
+            return 1
           }
           successor_run_id="$(find_successor || true)"
           if [ -z "$successor_run_id" ]; then
@@ -751,7 +762,7 @@ jobs:
             fi
             for poll in $(seq 1 20); do
               sleep 3
-              successor_run_id="$(find_successor)"
+              successor_run_id="$(find_successor || true)"
               if [ -n "$successor_run_id" ]; then
                 break
               fi
@@ -860,9 +871,14 @@ jobs:
           set -euo pipefail
           expected_title="Continuous Paper · $GITHUB_RUN_ID"
           find_successor() {
-            gh api \
-              "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" |
-              EXPECTED_TITLE="$expected_title" python -c '
+            local payload
+            for attempt in $(seq 1 6); do
+              if payload="$(
+                gh api \
+                  "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100"
+              )"; then
+                printf '%s' "$payload" |
+                  EXPECTED_TITLE="$expected_title" python -c '
           import json, os, sys
           payload = json.load(sys.stdin)
           expected = os.environ["EXPECTED_TITLE"]
@@ -876,6 +892,12 @@ jobs:
           ]
           print(matches[0]["id"] if matches else "")
           '
+                return 0
+              fi
+              echo "::warning::successor receipt API unavailable ($attempt/6)" >&2
+              sleep 10
+            done
+            return 1
           }
           successor_run_id="$(find_successor || true)"
           if [ -z "$successor_run_id" ]; then
@@ -898,7 +920,7 @@ jobs:
             fi
             for poll in $(seq 1 20); do
               sleep 3
-              successor_run_id="$(find_successor)"
+              successor_run_id="$(find_successor || true)"
               if [ -n "$successor_run_id" ]; then
                 break
               fi
