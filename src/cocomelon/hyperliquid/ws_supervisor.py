@@ -337,12 +337,6 @@ class WebSocketSupervisor:
         minimum_stale = self._minimum_systemic_l2_stale_count(
             stream_count=len(self._l2_stream_ids())
         )
-        if len(stale_subscriptions) > minimum_stale:
-            self._systemic_l2_stale_reconnect_count += 1
-            self._reset_targeted_l2_recovery()
-            raise ConnectionError(
-                "broad systemic l2 staleness requires socket reconnect"
-            )
 
         if (
             self._systemic_l2_targeted_resubscribe_attempts
@@ -370,6 +364,13 @@ class WebSocketSupervisor:
             self._systemic_l2_targeted_resubscribe_attempts += 1
             self._systemic_l2_targeted_resubscribe_count += 1
             return
+
+        if len(stale_subscriptions) > minimum_stale:
+            self._systemic_l2_stale_reconnect_count += 1
+            self._reset_targeted_l2_recovery()
+            raise ConnectionError(
+                "broad systemic l2 staleness after targeted recovery"
+            )
 
         self._systemic_l2_stale_reconnect_count += 1
         self._reset_targeted_l2_recovery()
