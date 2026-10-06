@@ -871,6 +871,7 @@ jobs:
             | tee /tmp/deferred-loss-streak-context-audit.json
           test -s \
             "$STATE_ROOT/loss-streak-context-audit-summary.json"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json
           from pathlib import Path
@@ -915,7 +916,7 @@ jobs:
           PY
 
       - name: Upload loss-streak context audit
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_loss_streak_context_audit.outcome == 'success' && hashFiles('continuous-paper-state/loss-streak-context-audit-summary.json') != '' }}
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_loss_streak_context_audit.outcome == 'success' && steps.deferred_loss_streak_context_audit.outputs.ready == 'true' }}
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
