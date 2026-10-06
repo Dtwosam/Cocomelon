@@ -18,7 +18,7 @@ from cocomelon.research.learning_feature_snapshots import (
 )
 
 ZERO: Final = Decimal("0")
-LOSS_STREAK_CONTEXT_SCHEMA_VERSION = 1
+LOSS_STREAK_CONTEXT_SCHEMA_VERSION = 2
 DEFAULT_MIN_STREAK_LENGTH = 3
 DOMINANT_SHARE_MIN = Decimal("0.75")
 RECURRING_STREAK_MIN = 2
@@ -79,25 +79,21 @@ def _loss_streaks(
     return tuple(streaks)
 
 
-def _resolve(
+def _try_resolve(
     trade: TradeJournalEntry,
     facts: EvaluationFactStore,
     features: LearningFeatureSnapshotStore,
     ranks: ContinuousPaperOpeningRankStore,
-) -> _ResolvedLoss:
+) -> tuple[_ResolvedLoss | None, str | None]:
     run_id = trade.replay_run_id
     if run_id is None:
-        raise LossStreakContextAuditError(
-            "loss-streak trade is missing replay_run_id"
-        )
+        return None, "missing replay_run_id"
     fact = facts.load_decision_by_strategy_id(
         trade.strategy_decision_id,
         run_id,
     )
     if fact is None:
-        raise LossStreakContextAuditError(
-            "loss-streak trade is missing decision fact"
-        )
+        return None, "missing decision fact"
     if (
         fact.market != trade.market
         or fact.direction is not trade.direction
@@ -109,9 +105,7 @@ def _resolve(
 
     verified = features.load(trade.feature_snapshot_id)
     if verified is None:
-        raise LossStreakContextAuditError(
-            "loss-streak trade is missing feature snapshot"
-        )
+        return None, "missing feature snapshot"
     feature = verified.snapshot
     if feature.market != trade.market:
         raise LossStreakContextAuditError(
@@ -133,13 +127,35 @@ def _resolve(
         raise LossStreakContextAuditError(
             "loss-streak opening rank lineage mismatch"
         )
-    return _ResolvedLoss(
-        trade=trade,
-        fact=fact,
-        feature=feature,
-        rank=rank,
+    return (
+        _ResolvedLoss(
+            trade=trade,
+            fact=fact,
+            feature=feature,
+            rank=rank,
+        ),
+        None,
     )
 
+
+def _resolve(
+    trade: TradeJournalEntry,
+    facts: EvaluationFactStore,
+    features: LearningFeatureSnapshotStore,
+    ranks: ContinuousPaperOpeningRankStore,
+) -> _ResolvedLoss:
+    resolved, unresolved_reason = _try_resolve(
+        trade,
+        facts,
+        features,
+        ranks,
+    )
+    if resolved is None:
+        raise LossStreakContextAuditError(
+            "loss-streak trade is "
+            f"{unresolved_reason or 'unresolved'}"
+        )
+    return resolved
 
 def _row(item: _ResolvedLoss) -> dict[str, object]:
     trade = item.trade
@@ -252,8 +268,47 @@ def _streak_payload(
     }
 
 
+def _share(
+    rows: tuple[dict[str, object], ...],
+    *,
+    field: str,
+    value: str,
+) -> tuple[int, Decimal | None]:
+    if not rows:
+        return 0, None
+    count = sum(str(row[field]) == value for row in rows)
+    return count, Decimal(count) / Decimal(len(rows))
+
+
+def _baseline_rows(
+    trades: tuple[TradeJournalEntry, ...],
+    facts: EvaluationFactStore,
+    features: LearningFeatureSnapshotStore,
+    ranks: ContinuousPaperOpeningRankStore,
+) -> tuple[tuple[dict[str, object], ...], Counter[str]]:
+    rows: list[dict[str, object]] = []
+    unresolved: Counter[str] = Counter()
+    for trade in trades:
+        resolved, reason = _try_resolve(
+            trade,
+            facts,
+            features,
+            ranks,
+        )
+        if resolved is None:
+            unresolved[reason or "unresolved"] += 1
+            continue
+        rows.append(_row(resolved))
+    return tuple(rows), unresolved
+
+
 def _recurring_patterns(
     streaks: tuple[dict[str, object], ...],
+    *,
+    qualifying_loss_rows: tuple[dict[str, object], ...],
+    baseline_rows: tuple[dict[str, object], ...],
+    non_loss_rows: tuple[dict[str, object], ...],
+    baseline_complete: bool,
 ) -> tuple[dict[str, object], ...]:
     recurring: list[dict[str, object]] = []
     for field in DOMINANT_FIELDS:
@@ -278,6 +333,31 @@ def _recurring_patterns(
         ):
             if count < RECURRING_STREAK_MIN:
                 continue
+            loss_count, loss_share = _share(
+                qualifying_loss_rows,
+                field=field,
+                value=value,
+            )
+            baseline_count, baseline_share = _share(
+                baseline_rows,
+                field=field,
+                value=value,
+            )
+            non_loss_count, non_loss_share = _share(
+                non_loss_rows,
+                field=field,
+                value=value,
+            )
+            share_lift = (
+                None
+                if loss_share is None or baseline_share is None
+                else loss_share - baseline_share
+            )
+            loss_vs_non_loss_delta = (
+                None
+                if loss_share is None or non_loss_share is None
+                else loss_share - non_loss_share
+            )
             recurring.append(
                 {
                     "field": field,
@@ -286,10 +366,38 @@ def _recurring_patterns(
                     "streak_share": str(
                         Decimal(count) / Decimal(len(streaks))
                     ),
+                    "entry_time_context": field != "exit_reason",
+                    "qualifying_loss_trade_count": loss_count,
+                    "qualifying_loss_trade_share": (
+                        None if loss_share is None else str(loss_share)
+                    ),
+                    "baseline_trade_count": baseline_count,
+                    "baseline_trade_share": (
+                        None
+                        if baseline_share is None
+                        else str(baseline_share)
+                    ),
+                    "loss_share_lift_vs_baseline": (
+                        None
+                        if share_lift is None
+                        else str(share_lift)
+                    ),
+                    "non_loss_trade_count": non_loss_count,
+                    "non_loss_trade_share": (
+                        None
+                        if non_loss_share is None
+                        else str(non_loss_share)
+                    ),
+                    "loss_share_delta_vs_non_loss": (
+                        None
+                        if loss_vs_non_loss_delta is None
+                        else str(loss_vs_non_loss_delta)
+                    ),
+                    "baseline_complete": baseline_complete,
+                    "strategy_authority": False,
                 }
             )
     return tuple(recurring)
-
 
 def loss_streak_context_audit(
     trades: tuple[TradeJournalEntry, ...],
@@ -309,14 +417,31 @@ def loss_streak_context_audit(
         if len(streak) >= min_streak_length
     )
     payloads: list[dict[str, object]] = []
+    qualifying_resolved: list[_ResolvedLoss] = []
     for index, streak in enumerate(qualifying, start=1):
         resolved = tuple(
             _resolve(trade, facts, features, ranks)
             for trade in streak
         )
+        qualifying_resolved.extend(resolved)
         payloads.append(_streak_payload(index, resolved))
 
     ordered = tuple(payloads)
+    qualifying_loss_rows = tuple(
+        _row(item) for item in qualifying_resolved
+    )
+    baseline_rows, baseline_unresolved = _baseline_rows(
+        trades,
+        facts,
+        features,
+        ranks,
+    )
+    non_loss_rows = tuple(
+        row
+        for row in baseline_rows
+        if Decimal(str(row["net_pnl"])) >= ZERO
+    )
+    baseline_complete = not baseline_unresolved
     current_length = (
         len(all_streaks[-1])
         if all_streaks
@@ -332,7 +457,13 @@ def loss_streak_context_audit(
     recurring = (
         ()
         if len(ordered) < RECURRING_STREAK_MIN
-        else _recurring_patterns(ordered)
+        else _recurring_patterns(
+            ordered,
+            qualifying_loss_rows=qualifying_loss_rows,
+            baseline_rows=baseline_rows,
+            non_loss_rows=non_loss_rows,
+            baseline_complete=baseline_complete,
+        )
     )
     return {
         "research_only": True,
@@ -346,6 +477,18 @@ def loss_streak_context_audit(
         "dominant_share_min": str(DOMINANT_SHARE_MIN),
         "recurring_streak_min": RECURRING_STREAK_MIN,
         "trade_count": len(trades),
+        "baseline_resolved_trade_count": len(baseline_rows),
+        "baseline_unresolved_trade_count": sum(
+            baseline_unresolved.values()
+        ),
+        "baseline_unresolved_reason_counts": dict(
+            sorted(baseline_unresolved.items())
+        ),
+        "baseline_normalization_complete": baseline_complete,
+        "non_loss_control_trade_count": len(non_loss_rows),
+        "qualifying_loss_trade_count": len(qualifying_loss_rows),
+        "recurring_patterns_baseline_normalized": True,
+        "normalization_strategy_authority": False,
         "loss_streak_count": len(all_streaks),
         "qualifying_loss_streak_count": len(ordered),
         "current_consecutive_losses": current_length,
