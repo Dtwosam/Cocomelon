@@ -31,6 +31,10 @@ def test_continuous_paper_learning_workflow_is_research_only_and_durable() -> No
     assert "cocomelon-context-conditioned-paper" in source
     assert "context-diagnostics.json" in source
     assert "broader context groups ready for two-sided comparison" in source
+    assert "cocomelon-no-trade-forward-opportunity" in source
+    assert "no-trade-forward-opportunity.json" in source
+    assert "incoming/continuous/learning-decisions/records/*.json" in source
+    assert "no-trade labels are market returns, not hypothetical PnL" in source
     assert "side-level PnL suppression authority: false" in source
     assert "continuous-paper-learning-state" in source
     assert "last-source-receipt.json" in source
@@ -77,6 +81,10 @@ def test_continuous_paper_publishes_compact_learning_source() -> None:
     )
     assert "continuous-paper-state/journal.sqlite3" in source
     assert "continuous-paper-state/learning-features" in source
+    assert "continuous-paper-state/learning-decisions" in source
+    assert "continuous-paper-state/learning-decisions-summary.json" in source
+    assert "Export compact continuous decision facts" in source
+    assert "cocomelon-continuous-paper-decision-export" in source
     assert "continuous-paper-state/opening-lineage" in source
     assert "continuous-paper-state/opening-opportunities" in source
     assert "continuous-paper-state/opening-opportunity-paths" in source
