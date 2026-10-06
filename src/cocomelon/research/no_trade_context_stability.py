@@ -2,19 +2,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from itertools import combinations
+from itertools import combinations, product
 from typing import Final, cast
 
 ZERO: Final = Decimal("0")
 ONE: Final = Decimal("1")
 BPS: Final = Decimal("10000")
-NO_TRADE_CONTEXT_STABILITY_SCHEMA_VERSION = 2
+NO_TRADE_CONTEXT_STABILITY_SCHEMA_VERSION = 3
 DEFAULT_MATERIAL_THRESHOLDS_BPS: Final = (50, 100, 200)
+DEFAULT_VALIDATION_BLOCK_COUNT = 3
+DEFAULT_MIN_VALIDATION_BLOCK_ROWS = 5
+DEFAULT_MIN_VALIDATION_BLOCK_DIRECTION_SHARE = Decimal("0.51")
+DEFAULT_REQUIRED_VALIDATION_BLOCKS = 3
 ELIGIBLE_DECISION_STAGES: Final = ("strategy_abstained",)
 KNOWN_DECISION_STAGES: Final = frozenset(
     {"strategy_abstained", "eligibility_blocked", "other"}
 )
 DEFAULT_CONTEXT_DIMENSIONS: Final = (
+    "market",
     "reason_code",
     "trend_regime",
     "volatility_regime",
@@ -34,6 +39,7 @@ class _Outcome:
     decision_timestamp_ms: int
     horizon_ms: int
     forward_return: Decimal
+    market: str
     reason_codes: tuple[str, ...]
     decision_stage: str
     context: dict[str, str]
@@ -51,8 +57,8 @@ class _Outcome:
 class ContextStabilityCandidate:
     horizon_ms: int
     threshold_bps: int
-    dimensions: tuple[str, str]
-    values: tuple[str, str]
+    dimensions: tuple[str, ...]
+    values: tuple[str, ...]
     dominant_direction: str
     discovery_material_outcomes: int
     discovery_direction_share: Decimal
@@ -60,6 +66,11 @@ class ContextStabilityCandidate:
     validation_same_direction_share: Decimal | None
     validation_baseline_direction_share: Decimal | None
     validation_lift_vs_baseline: Decimal | None
+    validation_block_outcomes: tuple[int, ...]
+    validation_block_direction_shares: tuple[Decimal | None, ...]
+    validation_blocks_meeting_row_floor: int
+    validation_blocks_directionally_consistent: int
+    stable_across_validation_blocks: bool
     stable_on_validation: bool
 
     def to_dict(self) -> dict[str, object]:
@@ -86,6 +97,20 @@ class ContextStabilityCandidate:
                 None
                 if self.validation_lift_vs_baseline is None
                 else str(self.validation_lift_vs_baseline)
+            ),
+            "validation_block_outcomes": self.validation_block_outcomes,
+            "validation_block_direction_shares": tuple(
+                None if value is None else str(value)
+                for value in self.validation_block_direction_shares
+            ),
+            "validation_blocks_meeting_row_floor": (
+                self.validation_blocks_meeting_row_floor
+            ),
+            "validation_blocks_directionally_consistent": (
+                self.validation_blocks_directionally_consistent
+            ),
+            "stable_across_validation_blocks": (
+                self.stable_across_validation_blocks
             ),
             "stable_on_validation": self.stable_on_validation,
             "strategy_authority": False,
@@ -128,6 +153,10 @@ class NoTradeContextStabilityReport:
     min_discovery_direction_share: Decimal
     min_validation_direction_share: Decimal
     min_validation_lift: Decimal
+    validation_block_count: int
+    min_validation_block_rows: int
+    min_validation_block_direction_share: Decimal
+    required_validation_blocks: int
     material_thresholds_bps: tuple[int, ...]
     source_outcome_count: int
     strategy_abstained_outcomes: int
@@ -151,6 +180,12 @@ class NoTradeContextStabilityReport:
                 self.min_validation_direction_share
             ),
             "min_validation_lift": str(self.min_validation_lift),
+            "validation_block_count": self.validation_block_count,
+            "min_validation_block_rows": self.min_validation_block_rows,
+            "min_validation_block_direction_share": str(
+                self.min_validation_block_direction_share
+            ),
+            "required_validation_blocks": self.required_validation_blocks,
             "material_thresholds_bps": self.material_thresholds_bps,
             "source_outcome_count": self.source_outcome_count,
             "strategy_abstained_outcomes": self.strategy_abstained_outcomes,
@@ -163,6 +198,8 @@ class NoTradeContextStabilityReport:
                 item.validated_candidate_count for item in self.analyses
             ),
             "chronological_holdout_required": True,
+            "validation_block_consistency_required": True,
+            "market_aware": True,
             "material_move_only": True,
             "exploratory_only": True,
             "promotion_authority": False,
@@ -245,6 +282,7 @@ def _parse_outcome(raw_value: object) -> _Outcome:
             raw.get("forward_mark_return"),
             "forward_mark_return",
         ),
+        market=_string(raw.get("market"), "market"),
         reason_codes=reasons,
         decision_stage=decision_stage,
         context=context,
@@ -259,18 +297,21 @@ def _parse_outcome(raw_value: object) -> _Outcome:
 
 def _context_keys(
     outcome: _Outcome,
-    dimensions: tuple[str, str],
-) -> tuple[tuple[str, str], ...]:
+    dimensions: tuple[str, ...],
+) -> tuple[tuple[str, ...], ...]:
     values: list[tuple[str, ...]] = []
     for dimension in dimensions:
         if dimension == "reason_code":
             values.append(outcome.reason_codes)
         else:
             values.append((outcome.context[dimension],))
-    return tuple(
-        (left, right)
-        for left in values[0]
-        for right in values[1]
+    return tuple(tuple(item) for item in product(*values))
+
+
+def _candidate_dimension_sets() -> tuple[tuple[str, ...], ...]:
+    return (
+        ("market",),
+        *tuple(combinations(DEFAULT_CONTEXT_DIMENSIONS, 2)),
     )
 
 
@@ -325,6 +366,33 @@ def _direction_count(rows: tuple[_Outcome, ...], direction: str) -> int:
     return sum(item.direction == direction for item in rows)
 
 
+def _chronological_validation_blocks(
+    rows: tuple[_Outcome, ...],
+    *,
+    block_count: int,
+) -> tuple[tuple[_Outcome, ...], ...]:
+    if block_count <= 0:
+        raise ValueError("validation block count must be positive")
+    if not rows:
+        return ()
+    timestamps = tuple(sorted({item.decision_timestamp_ms for item in rows}))
+    resolved_blocks = min(block_count, len(timestamps))
+    timestamp_blocks: list[set[int]] = []
+    for index in range(resolved_blocks):
+        start = (len(timestamps) * index) // resolved_blocks
+        end = (len(timestamps) * (index + 1)) // resolved_blocks
+        timestamp_blocks.append(set(timestamps[start:end]))
+    return tuple(
+        tuple(
+            item
+            for item in rows
+            if item.decision_timestamp_ms in block_timestamps
+        )
+        for block_timestamps in timestamp_blocks
+        if block_timestamps
+    )
+
+
 def _analysis(
     rows: tuple[_Outcome, ...],
     *,
@@ -336,6 +404,10 @@ def _analysis(
     min_discovery_direction_share: Decimal,
     min_validation_direction_share: Decimal,
     min_validation_lift: Decimal,
+    validation_block_count: int,
+    min_validation_block_rows: int,
+    min_validation_block_direction_share: Decimal,
+    required_validation_blocks: int,
 ) -> ContextStabilityAnalysis:
     split_timestamp_ms, discovery_rows, validation_rows = _split_rows(
         rows,
@@ -351,17 +423,38 @@ def _analysis(
         for item in validation_rows
         if _material(item, threshold_bps=threshold_bps)
     )
+    validation_blocks = _chronological_validation_blocks(
+        validation_rows,
+        block_count=validation_block_count,
+    )
+    validation_material_blocks = tuple(
+        tuple(
+            item
+            for item in block
+            if _material(item, threshold_bps=threshold_bps)
+        )
+        for block in validation_blocks
+    )
 
     candidates: list[ContextStabilityCandidate] = []
-    for dimensions in combinations(DEFAULT_CONTEXT_DIMENSIONS, 2):
-        discovery_groups: dict[tuple[str, str], list[_Outcome]] = {}
-        validation_groups: dict[tuple[str, str], list[_Outcome]] = {}
+    for dimensions in _candidate_dimension_sets():
+        discovery_groups: dict[tuple[str, ...], list[_Outcome]] = {}
+        validation_groups: dict[tuple[str, ...], list[_Outcome]] = {}
+        validation_block_groups: list[
+            dict[tuple[str, ...], list[_Outcome]]
+        ] = [dict() for _ in validation_material_blocks]
+
         for item in discovery_material:
             for key in _context_keys(item, dimensions):
                 discovery_groups.setdefault(key, []).append(item)
         for item in validation_material:
             for key in _context_keys(item, dimensions):
                 validation_groups.setdefault(key, []).append(item)
+        for block_index, block in enumerate(validation_material_blocks):
+            groups = validation_block_groups[block_index]
+            for item in block:
+                for key in _context_keys(item, dimensions):
+                    groups.setdefault(key, []).append(item)
 
         for values in sorted(discovery_groups):
             discovery_group = tuple(discovery_groups[values])
@@ -379,13 +472,10 @@ def _analysis(
             if discovery_share < min_discovery_direction_share:
                 continue
 
-            validation_group = tuple(
-                validation_groups.get(values, ())
-            )
+            validation_group = tuple(validation_groups.get(values, ()))
             validation_share: Decimal | None = None
             baseline_share: Decimal | None = None
             lift: Decimal | None = None
-            stable = False
             if validation_group:
                 validation_share = _ratio(
                     _direction_count(validation_group, dominant),
@@ -398,11 +488,51 @@ def _analysis(
                 )
             if validation_share is not None and baseline_share is not None:
                 lift = validation_share - baseline_share
-                stable = (
-                    len(validation_group) >= min_validation_rows
-                    and validation_share >= min_validation_direction_share
-                    and lift >= min_validation_lift
+
+            block_groups = tuple(
+                tuple(groups.get(values, ()))
+                for groups in validation_block_groups
+            )
+            block_outcomes = tuple(len(group) for group in block_groups)
+            block_shares = tuple(
+                (
+                    _ratio(
+                        _direction_count(group, dominant),
+                        len(group),
+                    )
+                    if group
+                    else None
                 )
+                for group in block_groups
+            )
+            blocks_meeting_row_floor = sum(
+                count >= min_validation_block_rows
+                for count in block_outcomes
+            )
+            blocks_directionally_consistent = sum(
+                count >= min_validation_block_rows
+                and share is not None
+                and share >= min_validation_block_direction_share
+                for count, share in zip(
+                    block_outcomes,
+                    block_shares,
+                    strict=True,
+                )
+            )
+            stable_across_blocks = (
+                len(validation_material_blocks) >= required_validation_blocks
+                and blocks_meeting_row_floor >= required_validation_blocks
+                and blocks_directionally_consistent
+                == blocks_meeting_row_floor
+            )
+            stable = (
+                validation_share is not None
+                and lift is not None
+                and len(validation_group) >= min_validation_rows
+                and validation_share >= min_validation_direction_share
+                and lift >= min_validation_lift
+                and stable_across_blocks
+            )
 
             candidates.append(
                 ContextStabilityCandidate(
@@ -417,6 +547,15 @@ def _analysis(
                     validation_same_direction_share=validation_share,
                     validation_baseline_direction_share=baseline_share,
                     validation_lift_vs_baseline=lift,
+                    validation_block_outcomes=block_outcomes,
+                    validation_block_direction_shares=block_shares,
+                    validation_blocks_meeting_row_floor=(
+                        blocks_meeting_row_floor
+                    ),
+                    validation_blocks_directionally_consistent=(
+                        blocks_directionally_consistent
+                    ),
+                    stable_across_validation_blocks=stable_across_blocks,
                     stable_on_validation=stable,
                 )
             )
@@ -426,6 +565,7 @@ def _analysis(
             candidates,
             key=lambda item: (
                 not item.stable_on_validation,
+                not item.stable_across_validation_blocks,
                 -(
                     item.validation_lift_vs_baseline
                     if item.validation_lift_vs_baseline is not None
@@ -452,7 +592,6 @@ def _analysis(
         candidates=ordered_candidates,
     )
 
-
 def build_no_trade_context_stability_report(
     forward_report: dict[str, object],
     *,
@@ -465,6 +604,12 @@ def build_no_trade_context_stability_report(
     min_discovery_direction_share: Decimal = Decimal("0.60"),
     min_validation_direction_share: Decimal = Decimal("0.55"),
     min_validation_lift: Decimal = Decimal("0.05"),
+    validation_block_count: int = DEFAULT_VALIDATION_BLOCK_COUNT,
+    min_validation_block_rows: int = DEFAULT_MIN_VALIDATION_BLOCK_ROWS,
+    min_validation_block_direction_share: Decimal = (
+        DEFAULT_MIN_VALIDATION_BLOCK_DIRECTION_SHARE
+    ),
+    required_validation_blocks: int = DEFAULT_REQUIRED_VALIDATION_BLOCKS,
 ) -> NoTradeContextStabilityReport:
     if not ZERO < split_fraction < ONE:
         raise ValueError("split_fraction must be between zero and one")
@@ -476,9 +621,24 @@ def build_no_trade_context_stability_report(
         raise ValueError("material thresholds must be unique")
     if min_discovery_rows <= 0 or min_validation_rows <= 0:
         raise ValueError("minimum sample sizes must be positive")
+    if validation_block_count <= 0:
+        raise ValueError("validation_block_count must be positive")
+    if min_validation_block_rows <= 0:
+        raise ValueError("min_validation_block_rows must be positive")
+    if (
+        required_validation_blocks <= 0
+        or required_validation_blocks > validation_block_count
+    ):
+        raise ValueError(
+            "required_validation_blocks must be in [1, validation_block_count]"
+        )
     for value, field in (
         (min_discovery_direction_share, "min_discovery_direction_share"),
         (min_validation_direction_share, "min_validation_direction_share"),
+        (
+            min_validation_block_direction_share,
+            "min_validation_block_direction_share",
+        ),
     ):
         if not Decimal("0.5") < value <= ONE:
             raise ValueError(f"{field} must be in (0.5, 1]")
@@ -532,6 +692,12 @@ def build_no_trade_context_stability_report(
                         min_validation_direction_share
                     ),
                     min_validation_lift=min_validation_lift,
+                    validation_block_count=validation_block_count,
+                    min_validation_block_rows=min_validation_block_rows,
+                    min_validation_block_direction_share=(
+                        min_validation_block_direction_share
+                    ),
+                    required_validation_blocks=required_validation_blocks,
                 )
             )
 
@@ -550,6 +716,12 @@ def build_no_trade_context_stability_report(
         min_discovery_direction_share=min_discovery_direction_share,
         min_validation_direction_share=min_validation_direction_share,
         min_validation_lift=min_validation_lift,
+        validation_block_count=validation_block_count,
+        min_validation_block_rows=min_validation_block_rows,
+        min_validation_block_direction_share=(
+            min_validation_block_direction_share
+        ),
+        required_validation_blocks=required_validation_blocks,
         material_thresholds_bps=tuple(sorted(material_thresholds_bps)),
         source_outcome_count=len(outcomes),
         strategy_abstained_outcomes=sum(

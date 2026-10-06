@@ -165,7 +165,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_FORWARD_OPPORTUNITY_SCHEMA_VERSION: "2"
-          EXPECTED_CONTEXT_STABILITY_SCHEMA_VERSION: "2"
+          EXPECTED_CONTEXT_STABILITY_SCHEMA_VERSION: "3"
         run: |
           set -euo pipefail
           /usr/bin/gh api \
@@ -278,6 +278,13 @@ jobs:
               if (
                   receipt.get("directional_candidate_source")
                   != "strategy_abstained_only"
+              ):
+                  continue
+              if receipt.get("market_aware") is not True:
+                  continue
+              if (
+                  receipt.get("validation_block_consistency_required")
+                  is not True
               ):
                   continue
               upstream = receipt.get("upstream_run_id")

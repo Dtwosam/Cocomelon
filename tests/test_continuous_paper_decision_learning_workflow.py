@@ -100,6 +100,10 @@ def test_decision_learning_workflow_is_authority_negative() -> None:
     assert "eligibility-blocked labels" in source
     assert "directional_candidate_source" in source
     assert "stability candidate source" in source
+    assert "market-aware / multi-block validation" in source
+    assert "validation blocks / required / min rows" in source
+    assert '"market_aware": stability["market_aware"]' in source
+    assert '"validation_block_consistency_required": stability[' in source
     assert "continuous-paper-decision-learning-evidence" in source
     assert "retention-days: 90" in source
     assert "private_key" not in lowered
