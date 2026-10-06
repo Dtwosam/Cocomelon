@@ -207,6 +207,14 @@ jobs:
             --min-group-rows 20 \
             > decision-learning-evidence/no-trade-forward-opportunity.json
 
+      - name: Build chronological no-trade context stability
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        run: |
+          set -euo pipefail
+          cocomelon-no-trade-context-stability \
+            --input decision-learning-evidence/no-trade-forward-opportunity.json \
+            > decision-learning-evidence/no-trade-context-stability.json
+
       - name: Record authenticated decision-learning receipt
         if: ${{ steps.upstream.outputs.eligible == 'true' }}
         env:
@@ -226,6 +234,11 @@ jobs:
                   encoding="utf-8"
               )
           )
+          stability = json.loads(
+              Path("decision-learning-evidence/no-trade-context-stability.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           receipt = {
               "source_kind": "continuous_paper_decision_learning",
               "upstream_run_id": int(os.environ["UPSTREAM_RUN_ID"]),
@@ -236,6 +249,10 @@ jobs:
               "decision_state_digest": report["decision_state_digest"],
               "feature_state_digest": report["feature_state_digest"],
               "forward_label": report["forward_label"],
+              "context_stability_schema_version": stability["schema_version"],
+              "validated_context_candidate_count": stability[
+                  "validated_candidate_count"
+              ],
               "hypothetical_pnl": False,
               "cost_complete": False,
               "research_only": True,
@@ -273,6 +290,16 @@ jobs:
                   f"(LONG-favored {item['favored_long']}, "
                   f"SHORT-favored {item['favored_short']}, flat {item['flat']})"
               )
+          stability = json.loads(
+              Path("decision-learning-evidence/no-trade-context-stability.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print(
+              "- chronologically validated material context candidates: "
+              f"{stability['validated_candidate_count']}"
+          )
+          print("- discovery patterns must survive a later holdout period")
           print("- labels are future market returns, not hypothetical PnL")
           print("- cost complete: false")
           print("- research-only: true")
