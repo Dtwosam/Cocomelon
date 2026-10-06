@@ -647,6 +647,22 @@ def build_no_trade_abstention_tree_report(
         raise NoTradeAbstentionTreeError(
             "NO_TRADE_TREE_SOURCE_EXECUTION_AUTHORITY_INVALID"
         )
+    source_decision_digest = _string(
+        forward_report.get("decision_state_digest"),
+        "decision_state_digest",
+    )
+    source_feature_digest = _string(
+        forward_report.get("feature_state_digest"),
+        "feature_state_digest",
+    )
+    if source_decision_digest != decisions.state_digest:
+        raise NoTradeAbstentionTreeError(
+            "NO_TRADE_TREE_DECISION_STATE_DIGEST_MISMATCH"
+        )
+    if source_feature_digest != features.state_digest:
+        raise NoTradeAbstentionTreeError(
+            "NO_TRADE_TREE_FEATURE_STATE_DIGEST_MISMATCH"
+        )
 
     resolved = _resolve_rows(forward_report, decisions, features)
     horizons = tuple(sorted({item.horizon_ms for item in resolved}))
@@ -672,14 +688,8 @@ def build_no_trade_abstention_tree_report(
         "min_training_rows": min_training_rows,
         "min_validation_rows": min_validation_rows,
         "validation_blocks": validation_blocks,
-        "source_decision_state_digest": _string(
-            forward_report.get("decision_state_digest"),
-            "decision_state_digest",
-        ),
-        "source_feature_state_digest": _string(
-            forward_report.get("feature_state_digest"),
-            "feature_state_digest",
-        ),
+        "source_decision_state_digest": source_decision_digest,
+        "source_feature_state_digest": source_feature_digest,
         "strategy_abstention_rows": len(resolved),
         "evaluations": evaluations,
         "completed_horizons": sum(
