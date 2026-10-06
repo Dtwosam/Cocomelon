@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from itertools import combinations
+from itertools import combinations, product
 from typing import Final, cast
 
 ZERO: Final = Decimal("0")
@@ -282,6 +282,7 @@ def _parse_outcome(raw_value: object) -> _Outcome:
             raw.get("forward_mark_return"),
             "forward_mark_return",
         ),
+        market=_string(raw.get("market"), "market"),
         reason_codes=reasons,
         decision_stage=decision_stage,
         context=context,
@@ -296,18 +297,21 @@ def _parse_outcome(raw_value: object) -> _Outcome:
 
 def _context_keys(
     outcome: _Outcome,
-    dimensions: tuple[str, str],
-) -> tuple[tuple[str, str], ...]:
+    dimensions: tuple[str, ...],
+) -> tuple[tuple[str, ...], ...]:
     values: list[tuple[str, ...]] = []
     for dimension in dimensions:
         if dimension == "reason_code":
             values.append(outcome.reason_codes)
         else:
             values.append((outcome.context[dimension],))
-    return tuple(
-        (left, right)
-        for left in values[0]
-        for right in values[1]
+    return tuple(tuple(item) for item in product(*values))
+
+
+def _candidate_dimension_sets() -> tuple[tuple[str, ...], ...]:
+    return (
+        ("market",),
+        *tuple(combinations(DEFAULT_CONTEXT_DIMENSIONS, 2)),
     )
 
 
