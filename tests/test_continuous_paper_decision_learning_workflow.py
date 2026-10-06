@@ -85,6 +85,9 @@ def test_decision_learning_workflow_is_authority_negative() -> None:
 
     assert "cocomelon-no-trade-forward-opportunity" in source
     assert "cocomelon-no-trade-context-stability" in source
+    assert "cocomelon-no-trade-abstention-tree" in source
+    assert "no-trade-abstention-tree.json" in source
+    assert "abstention tree has no development qualification authority" in source
     assert "no-trade-context-stability.json" in source
     assert "chronologically validated material context candidates" in source
     assert "discovery patterns must survive a later holdout period" in source
