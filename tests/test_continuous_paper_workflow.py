@@ -1029,10 +1029,17 @@ def test_upgrade_handoff_rebuilds_loss_streak_context_after_successor() -> None:
     assert "Rebuild loss-streak context audit after handoff" in source
     assert "id: deferred_loss_streak_context_audit" in source
     assert 'echo "ready=true" >> "$GITHUB_OUTPUT"' in source
+    upload_at = source.index("- name: Upload loss-streak context audit")
+    upload_block = source[upload_at:source.index(
+        "- name: Rebuild deferred cooldown evidence after handoff",
+        upload_at,
+    )]
     assert (
-        "steps.deferred_loss_streak_context_audit.outputs.ready == 'true'"
-        in source
+        "hashFiles('continuous-paper-state/"
+        "loss-streak-context-audit-summary.json') != ''"
+        in upload_block
     )
+    assert "outputs.ready" not in upload_block
     assert "loss-streak-context-audit-summary.json" in source
     assert "continuous-paper-loss-streak-context-" in source
     assert "RESEARCH ONLY / NO EXECUTION / NO STRATEGY CHANGE" in source
