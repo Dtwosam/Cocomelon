@@ -637,6 +637,22 @@ jobs:
             --output-dir "$STATE_ROOT/learning-decisions" \
             > "$STATE_ROOT/learning-decisions-summary.json"
 
+      - name: Upload compact continuous decision learning source
+        id: decision_learning_upload
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.decision_fact_export.outcome == 'success' && hashFiles('continuous-paper-state/learning-decisions/records/*.json') != '' && hashFiles('continuous-paper-state/learning-features/records/*.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-decision-learning-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            continuous-paper-state/session-summary.json
+            continuous-paper-state/learning-features
+            continuous-paper-state/learning-decisions
+            continuous-paper-state/learning-decisions-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Pack durable continuous paper state
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
         shell: bash
