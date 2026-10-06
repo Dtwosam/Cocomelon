@@ -103,6 +103,10 @@ from cocomelon.research.closed_trade_stop_reentry import (
 from cocomelon.research.closed_trade_utc_hour import (
     closed_trade_utc_hour_summary,
 )
+from cocomelon.research.continuous_paper_capacity_release_books import (
+    CapacityReleaseBookCapture,
+    CapacityReleaseBookStore,
+)
 from cocomelon.research.continuous_paper_drawdown import (
     ContinuousPaperDrawdownTracker,
     drawdown_summary,
@@ -660,12 +664,14 @@ class _ContinuousOpeningOpportunitySink:
         path_store: ContinuousPaperOpeningOpportunityPathStore,
         exit_book_store: ContinuousPaperOpeningOpportunityExitBookStore,
         replacement_funding_store: ContinuousPaperReplacementFundingStore,
+        capacity_release_book_capture: CapacityReleaseBookCapture,
         rank_tracker: LatestCoarseRankTracker,
     ) -> None:
         self._store = store
         self._path_store = path_store
         self._exit_book_store = exit_book_store
         self._replacement_funding_store = replacement_funding_store
+        self._capacity_release_book_capture = capacity_release_book_capture
         self._rank_tracker = rank_tracker
         self.error: str | None = None
         self.path_error: str | None = None
@@ -690,6 +696,11 @@ class _ContinuousOpeningOpportunitySink:
             if self.error is None:
                 self.error = f"{type(exc).__name__}: {exc}"
             return
+
+        self._capacity_release_book_capture.register_from_trace(
+            trace,
+            opportunity_id=evidence.opportunity_id,
+        )
 
         try:
             self._path_store.register(
@@ -8570,6 +8581,21 @@ async def run_continuous_paper_session(
     )
 
     component_started = time.perf_counter()
+    capacity_release_book_store = CapacityReleaseBookStore(
+        root / "capacity-release-books",
+        capture_started_at_ms=started_at_ms,
+        latency_ms=replay_config.execution.latency_ms,
+        max_book_age_ms=replay_config.execution.max_book_age_ms,
+    )
+    capacity_release_book_capture = CapacityReleaseBookCapture(
+        capacity_release_book_store
+    )
+    record_startup_component(
+        "capacity_release_book_store",
+        component_started,
+    )
+
+    component_started = time.perf_counter()
     original_stop_book_store = OriginalStopBookEvidenceStore(
         root / "original-stop-books",
         started_at_ms=started_at_ms,
@@ -8584,6 +8610,7 @@ async def run_continuous_paper_session(
         opening_opportunity_path_store,
         opening_opportunity_exit_book_store,
         replacement_funding_store,
+        capacity_release_book_capture,
         rank_tracker,
     )
     component_started = time.perf_counter()
@@ -9113,6 +9140,7 @@ async def run_continuous_paper_session(
                     delayed_entry_execution_shadow,
                     delayed_entry_120s_execution_shadow,
                     original_stop_book_capture,
+                    capacity_release_book_capture,
                 )
             ),
         )

@@ -1039,3 +1039,20 @@ def test_upgrade_handoff_rebuilds_loss_streak_context_after_successor() -> None:
         < gate_at
         < compact_at
     )
+
+
+def test_capacity_release_books_are_watched_and_exported() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    module = (
+        "src/cocomelon/research/"
+        "continuous_paper_capacity_release_books.py"
+    )
+    assert module in source
+    assert module in source.split("changed_runtime=", 1)[1]
+    assert "continuous-paper-state/capacity-release-books" in source
+    assert source.index(
+        "continuous-paper-state/opening-opportunities"
+    ) < source.index(
+        "continuous-paper-state/capacity-release-books"
+    )
