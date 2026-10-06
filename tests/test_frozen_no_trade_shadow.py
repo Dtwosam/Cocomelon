@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from decimal import Decimal
+
 import pytest
 
 from cocomelon.research.frozen_no_trade_shadow import (
