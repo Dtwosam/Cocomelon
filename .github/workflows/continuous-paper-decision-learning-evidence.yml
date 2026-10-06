@@ -47,7 +47,7 @@ jobs:
       - name: Install Cocomelon
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e .
+          python -m pip install -e . "scikit-learn>=1.7,<2"
 
       - name: Verify worker and download exact decision source
         id: upstream
@@ -215,6 +215,16 @@ jobs:
             --input decision-learning-evidence/no-trade-forward-opportunity.json \
             > decision-learning-evidence/no-trade-context-stability.json
 
+      - name: Build abstention-only shallow tree holdout
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        run: |
+          set -euo pipefail
+          cocomelon-no-trade-abstention-tree \
+            --input decision-learning-evidence/no-trade-forward-opportunity.json \
+            --decision-store-dir incoming/decision/learning-decisions \
+            --feature-store-dir incoming/decision/learning-features \
+            > decision-learning-evidence/no-trade-abstention-tree.json
+
       - name: Record authenticated decision-learning receipt
         if: ${{ steps.upstream.outputs.eligible == 'true' }}
         env:
@@ -239,6 +249,11 @@ jobs:
                   encoding="utf-8"
               )
           )
+          tree = json.loads(
+              Path("decision-learning-evidence/no-trade-abstention-tree.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           receipt = {
               "source_kind": "continuous_paper_decision_learning",
               "upstream_run_id": int(os.environ["UPSTREAM_RUN_ID"]),
@@ -256,6 +271,12 @@ jobs:
               ],
               "directional_candidate_source": stability[
                   "directional_candidate_source"
+              ],
+              "abstention_tree_schema_version": tree["schema_version"],
+              "abstention_tree_model_family": tree["model_family"],
+              "abstention_tree_report_id": tree["report_id"],
+              "abstention_tree_completed_horizons": tree[
+                  "completed_horizons"
               ],
               "hypothetical_pnl": False,
               "cost_complete": False,
@@ -315,6 +336,11 @@ jobs:
                   encoding="utf-8"
               )
           )
+          tree = json.loads(
+              Path("decision-learning-evidence/no-trade-abstention-tree.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           print(
               "- chronologically validated material context candidates: "
               f"{stability['validated_candidate_count']}"
@@ -331,6 +357,26 @@ jobs:
               f"{stability['eligibility_blocked_outcomes']}"
           )
           print("- discovery patterns must survive a later holdout period")
+          print(
+              "- abstention shallow-tree completed horizons: "
+              f"{tree['completed_horizons']}"
+          )
+          for evaluation in tree["evaluations"]:
+              if evaluation["status"] != "completed":
+                  print(
+                      f"- tree {evaluation['horizon_ms'] // 60000}m: "
+                      f"not ready ({evaluation['reason']})"
+                  )
+                  continue
+              validation = evaluation["validation"]
+              print(
+                  f"- tree {evaluation['horizon_ms'] // 60000}m holdout: "
+                  f"{evaluation['validation_rows']} rows, "
+                  f"direction hit {validation['direction_hit_rate']}, "
+                  "mean directional mark return "
+                  f"{validation['mean_directional_mark_return']}"
+              )
+          print("- abstention tree has no development qualification authority")
           print("- labels are future market returns, not hypothetical PnL")
           print("- cost complete: false")
           print("- research-only: true")
