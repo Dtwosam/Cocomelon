@@ -164,7 +164,8 @@ jobs:
         if: ${{ steps.worker.outputs.run_id != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          EXPECTED_CONTEXT_STABILITY_SCHEMA_VERSION: "1"
+          EXPECTED_FORWARD_OPPORTUNITY_SCHEMA_VERSION: "2"
+          EXPECTED_CONTEXT_STABILITY_SCHEMA_VERSION: "2"
         run: |
           set -euo pipefail
           /usr/bin/gh api \
