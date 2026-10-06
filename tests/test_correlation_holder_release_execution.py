@@ -16,6 +16,7 @@ from cocomelon.research.continuous_paper_capacity_release_books import (
     CapacityReleaseBookEvidence,
     CapacityReleaseBookRegistration,
     PendingCapacityReleaseExecution,
+    paper_execution_config_payload,
 )
 from cocomelon.research.correlation_holder_release_execution import (
     CorrelationHolderReleaseExecutionError,
@@ -98,6 +99,8 @@ def _evidence(
     quantity: str = "1",
     execution_bid_size: str = "2",
     execution_received_ms: int = 1_360,
+    config: PaperExecutionConfig | None = None,
+    bind_config: bool = True,
 ) -> CapacityReleaseBookEvidence:
     registration = CapacityReleaseBookRegistration(
         opportunity_id="opportunity-sol-short-1",
@@ -111,6 +114,7 @@ def _evidence(
         risk_decision_id="risk-sol",
     )
     instrument = _instrument()
+    resolved_config = PaperExecutionConfig() if config is None else config
     pending = PendingCapacityReleaseExecution(
         registration=registration,
         release_position=_position(quantity=quantity),
@@ -118,6 +122,11 @@ def _evidence(
         plan_reference_price=Decimal("101"),
         plan_book_event=_book(received_ms=1_100),
         plan_instrument=instrument,
+        execution_config=(
+            paper_execution_config_payload(resolved_config)
+            if bind_config
+            else None
+        ),
     )
     return CapacityReleaseBookEvidence(
         pending=pending,
@@ -198,14 +207,16 @@ def test_holder_release_partial_fill_never_claims_terminal_contribution() -> Non
 
 
 def test_holder_release_no_fill_is_visible_without_faking_close() -> None:
+    config = PaperExecutionConfig(max_ioc_slippage_bps=Decimal("1"))
     result = correlation_holder_release_execution_summary(
         (
             _evidence(
                 execution_bid_size="2",
                 execution_received_ms=1_360,
+                config=config,
             ),
         ),
-        PaperExecutionConfig(max_ioc_slippage_bps=Decimal("1")),
+        config,
     )
 
     assert result["full_release_fills"] == 0
@@ -223,13 +234,14 @@ def test_holder_release_no_fill_is_visible_without_faking_close() -> None:
 
 
 def test_holder_release_refuses_latency_config_that_evidence_cannot_support() -> None:
+    config = PaperExecutionConfig(latency_ms=500)
     with pytest.raises(
         CorrelationHolderReleaseExecutionError,
         match="predates configured paper latency",
     ):
         correlation_holder_release_execution_summary(
-            (_evidence(),),
-            PaperExecutionConfig(latency_ms=500),
+            (_evidence(config=config),),
+            config,
         )
 
 
@@ -244,3 +256,42 @@ def test_holder_release_refuses_duplicate_registration_evidence() -> None:
             (item, item),
             PaperExecutionConfig(),
         )
+
+
+
+def test_holder_release_skips_legacy_unbound_execution_config() -> None:
+    result = correlation_holder_release_execution_summary(
+        (_evidence(bind_config=False),),
+        PaperExecutionConfig(),
+    )
+
+    assert result["captured_release_books"] == 1
+    assert result["exact_execution_config_records"] == 0
+    assert result["unbound_execution_config_records"] == 1
+    assert result["execution_config_mismatch_records"] == 0
+    assert result["planned_release_exits"] == 0
+    assert result["full_release_fills"] == 0
+    assert result["full_close_terminal_contribution_by_plan"] == {}
+    rows = result["release_results"]
+    assert isinstance(rows, list)
+    row = rows[0]
+    assert isinstance(row, dict)
+    assert row["status"] == "unbound_execution_config"
+    assert row["execution_result"] is None
+
+
+def test_holder_release_skips_execution_config_mismatch() -> None:
+    result = correlation_holder_release_execution_summary(
+        (_evidence(),),
+        PaperExecutionConfig(max_ioc_slippage_bps=Decimal("20")),
+    )
+
+    assert result["exact_execution_config_records"] == 0
+    assert result["unbound_execution_config_records"] == 0
+    assert result["execution_config_mismatch_records"] == 1
+    assert result["planned_release_exits"] == 0
+    rows = result["release_results"]
+    assert isinstance(rows, list)
+    row = rows[0]
+    assert isinstance(row, dict)
+    assert row["status"] == "execution_config_mismatch"
