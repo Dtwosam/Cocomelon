@@ -265,13 +265,29 @@ jobs:
           print(f"- decision records: {report['decision_records']}")
           print(f"- NO_TRADE decisions: {report['no_trade_decisions']}")
           print(f"- resolved decision contexts: {report['resolved_decisions']}")
+          stages = {
+              (str(item["horizon_ms"]), item["decision_stage"]): item
+              for item in report["decision_stage_summary"]
+          }
           for horizon_ms in ("900000", "3600000"):
               item = report["horizon_summary"][horizon_ms]
+              strategy_abstained = stages.get(
+                  (horizon_ms, "strategy_abstained")
+              )
+              eligibility_blocked = stages.get(
+                  (horizon_ms, "eligibility_blocked")
+              )
               print(
                   f"- {int(horizon_ms) // 60000}m labeled outcomes: "
                   f"{item['outcomes']} "
                   f"(LONG-favored {item['favored_long']}, "
                   f"SHORT-favored {item['favored_short']}, flat {item['flat']})"
+              )
+              print(
+                  f"- {int(horizon_ms) // 60000}m strategy-abstained / "
+                  "eligibility-blocked labels: "
+                  f"{0 if strategy_abstained is None else strategy_abstained['outcomes']} / "
+                  f"{0 if eligibility_blocked is None else eligibility_blocked['outcomes']}"
               )
           print("- labels are future market returns, not hypothetical PnL")
           print("- cost complete: false")
