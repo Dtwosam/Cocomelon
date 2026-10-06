@@ -102,6 +102,14 @@ def test_decision_learning_workflow_is_authority_negative() -> None:
     assert "stability candidate source" in source
     assert "market-aware / multi-block validation" in source
     assert "validation blocks / required / min rows" in source
+    assert "cocomelon-frozen-no-trade-shadow" in source
+    assert "frozen-no-trade-shadow.json" in source
+    assert "frozen_no_trade_shadow_schema_version" in source
+    assert "frozen_no_trade_candidate_id" in source
+    assert "frozen_no_trade_candidate_spec_id" in source
+    assert "frozen MON shadow matching/material outcomes" in source
+    assert "frozen MON shadow SHORT share / ready for review" in source
+    assert "frozen MON prospective cutover ms" in source
     assert '"market_aware": stability["market_aware"]' in source
     assert '"validation_block_consistency_required": stability[' in source
     assert "continuous-paper-decision-learning-evidence" in source
