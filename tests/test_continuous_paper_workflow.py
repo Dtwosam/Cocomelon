@@ -912,3 +912,41 @@ def test_upgrade_handoff_rebuilds_cooldown_evidence_after_successor_dispatch() -
         < gate_at
         < compact_at
     )
+
+
+
+def test_upgrade_handoff_builds_correlation_priority_after_markouts() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert (
+        '"src/cocomelon/research/prospective_correlation_bucket_priority.py"'
+        in source
+    )
+    assert (
+        '"src/cocomelon/research/deferred_correlation_bucket_priority.py"'
+        in source
+    )
+    assert (
+        '"scripts/rebuild_deferred_correlation_bucket_priority.py"'
+        in source
+    )
+    assert "Rebuild correlation bucket priority audit after handoff" in source
+    assert (
+        "prospective-correlation-bucket-priority-summary.json"
+        in source
+    )
+    assert "RESEARCH ONLY / NO EXECUTION / NO RISK CHANGE" in source
+
+    markout_at = source.index(
+        "- name: Rebuild deferred full-stack markouts after handoff"
+    )
+    priority_at = source.index(
+        "- name: Rebuild correlation bucket priority audit after handoff"
+    )
+    capacity_at = source.index(
+        "- name: Rebuild deferred capacity-reflow economics after handoff"
+    )
+    compact_at = source.index(
+        "- name: Upload compact continuous learning source"
+    )
+    assert markout_at < priority_at < capacity_at < compact_at
