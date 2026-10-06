@@ -1013,6 +1013,10 @@ def test_upgrade_handoff_rebuilds_loss_streak_context_after_successor() -> None:
     assert "loss-streak-context-audit-summary.json" in source
     assert "continuous-paper-loss-streak-context-" in source
     assert "RESEARCH ONLY / NO EXECUTION / NO STRATEGY CHANGE" in source
+    assert "baseline resolved / unresolved / non-loss controls" in source
+    assert "loss share=" in source
+    assert "baseline=" in source
+    assert "delta=" in source
 
     fast_dispatch_at = source.index(
         "- name: Queue exact successor from fast resume"
