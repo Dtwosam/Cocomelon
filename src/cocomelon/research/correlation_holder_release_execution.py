@@ -18,6 +18,7 @@ from cocomelon.execution.planner import (
 )
 from cocomelon.research.continuous_paper_capacity_release_books import (
     CapacityReleaseBookEvidence,
+    paper_execution_config_payload,
 )
 
 ZERO: Final = Decimal("0")
@@ -39,11 +40,15 @@ def _gross_pnl(
     return (entry_price - exit_price) * quantity
 
 
-def _validate_config(
+def _config_status(
     evidence: CapacityReleaseBookEvidence,
     config: PaperExecutionConfig,
-) -> None:
+) -> str | None:
     pending = evidence.pending
+    if pending.execution_config is None:
+        return "unbound_execution_config"
+    if pending.execution_config != paper_execution_config_payload(config):
+        return "execution_config_mismatch"
     if pending.plan_observed_at_ms + config.latency_ms > (
         evidence.execution_observed_at_ms
     ):
@@ -67,6 +72,7 @@ def _validate_config(
         raise CorrelationHolderReleaseExecutionError(
             "release execution config does not match captured instrument"
         )
+    return None
 
 
 def _terminal_contribution(
@@ -95,6 +101,9 @@ def correlation_holder_release_execution_summary(
     rows: list[dict[str, object]] = []
     full_close_terminal_contribution_by_plan: dict[str, str] = {}
 
+    exact_config_records = 0
+    unbound_execution_config_records = 0
+    execution_config_mismatch_records = 0
     planned = 0
     planning_rejected = 0
     full_fills = 0
@@ -121,7 +130,35 @@ def correlation_holder_release_execution_summary(
                 "duplicate capacity release execution evidence"
             )
         seen_registration_ids.add(registration_id)
-        _validate_config(item, config)
+        config_status = _config_status(item, config)
+        if config_status is not None:
+            if config_status == "unbound_execution_config":
+                unbound_execution_config_records += 1
+            else:
+                execution_config_mismatch_records += 1
+            rows.append(
+                {
+                    "registration_id": registration_id,
+                    "opportunity_id": registration.opportunity_id,
+                    "opportunity_timestamp_ms": (
+                        registration.opportunity_timestamp_ms
+                    ),
+                    "opportunity_market": registration.opportunity_market,
+                    "opportunity_direction": registration.opportunity_direction,
+                    "release_market": registration.release_market,
+                    "release_direction": registration.release_direction,
+                    "release_correlation_bucket": (
+                        registration.release_correlation_bucket
+                    ),
+                    "release_opening_plan_id": item.release_opening_plan_id,
+                    "status": config_status,
+                    "planning_approved": False,
+                    "execution_result": None,
+                    "complete_close": False,
+                }
+            )
+            continue
+        exact_config_records += 1
 
         position = item.release_position
         if position.quantity <= ZERO:
@@ -172,6 +209,7 @@ def correlation_holder_release_execution_summary(
             "plan_observed_at_ms": item.pending.plan_observed_at_ms,
             "execution_observed_at_ms": item.execution_observed_at_ms,
             "requested_quantity": str(position.quantity),
+            "status": "eligible_exact_replay",
             "planning_approved": False,
             "planning_rejection": None,
             "execution_result": None,
@@ -280,6 +318,13 @@ def correlation_holder_release_execution_summary(
         "changes_risk_limits": False,
         "changes_positions": False,
         "captured_release_books": len(evidence),
+        "exact_execution_config_records": exact_config_records,
+        "unbound_execution_config_records": (
+            unbound_execution_config_records
+        ),
+        "execution_config_mismatch_records": (
+            execution_config_mismatch_records
+        ),
         "planned_release_exits": planned,
         "planning_rejected_release_exits": planning_rejected,
         "full_release_fills": full_fills,
@@ -310,6 +355,7 @@ def correlation_holder_release_execution_summary(
         },
         "release_results": rows,
         "holder_release_execution_modeled": True,
+        "exact_execution_config_required": True,
         "newcomer_entry_modeled": False,
         "newcomer_exit_modeled": False,
         "replacement_trade_modeled": False,
