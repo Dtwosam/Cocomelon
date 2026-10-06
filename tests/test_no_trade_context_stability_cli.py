@@ -65,7 +65,7 @@ def test_no_trade_context_stability_cli_emits_research_report(
                 "--min-discovery-direction-share",
                 "0.6",
                 "--min-validation-direction-share",
-                "0.5",
+                "0.51",
                 "--min-validation-lift",
                 "0",
             ]
