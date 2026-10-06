@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -536,14 +537,7 @@ def test_loss_streak_baseline_tracks_unresolved_legacy_control_rows(
             opened_at_ms=timestamp,
             pnl="5",
         )
-        legacy = TradeJournalEntry(
-            **{
-                field: getattr(legacy, field)
-                for field in legacy.__dataclass_fields__
-                if field != "replay_run_id"
-            },
-            replay_run_id=None,
-        )
+        legacy = replace(legacy, replay_run_id=None)
         trades.append(legacy)
 
         result = loss_streak_context_audit(
