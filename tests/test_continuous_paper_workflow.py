@@ -855,3 +855,60 @@ def test_compact_learning_source_includes_weekly_drawdown_5m_candidate() -> None
         "prospective-weekly-drawdown-5m-exit-source.json"
         in upload
     )
+
+
+
+def test_upgrade_handoff_rebuilds_cooldown_evidence_after_successor_dispatch() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert (
+        '"src/cocomelon/research/deferred_consecutive_loss_cooldown.py"'
+        in source
+    )
+    assert (
+        '"scripts/rebuild_deferred_consecutive_loss_cooldown.py"'
+        in source
+    )
+    changed_runtime = source.split("changed_runtime=", 1)[1]
+    assert (
+        "src/cocomelon/research/deferred_consecutive_loss_cooldown.py"
+        in changed_runtime
+    )
+    assert (
+        "scripts/rebuild_deferred_consecutive_loss_cooldown.py"
+        in changed_runtime
+    )
+    assert "Rebuild deferred cooldown evidence after handoff" in source
+    assert "id: deferred_cooldown_rebuild" in source
+    assert (
+        "python scripts/rebuild_deferred_consecutive_loss_cooldown.py"
+        in source
+    )
+    assert "RESEARCH ONLY / NO EXECUTION / NO RISK CHANGE" in source
+
+    fallback_at = source.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    markout_at = source.index(
+        "- name: Rebuild deferred full-stack markouts after handoff"
+    )
+    capacity_at = source.index(
+        "- name: Rebuild deferred capacity-reflow economics after handoff"
+    )
+    cooldown_at = source.index(
+        "- name: Rebuild deferred cooldown evidence after handoff"
+    )
+    gate_at = source.index(
+        "- name: Fail closed on upgrade handoff source"
+    )
+    compact_at = source.index(
+        "- name: Upload compact continuous learning source"
+    )
+    assert (
+        fallback_at
+        < markout_at
+        < capacity_at
+        < cooldown_at
+        < gate_at
+        < compact_at
+    )
