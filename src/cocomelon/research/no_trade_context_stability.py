@@ -604,6 +604,12 @@ def build_no_trade_context_stability_report(
     min_discovery_direction_share: Decimal = Decimal("0.60"),
     min_validation_direction_share: Decimal = Decimal("0.55"),
     min_validation_lift: Decimal = Decimal("0.05"),
+    validation_block_count: int = DEFAULT_VALIDATION_BLOCK_COUNT,
+    min_validation_block_rows: int = DEFAULT_MIN_VALIDATION_BLOCK_ROWS,
+    min_validation_block_direction_share: Decimal = (
+        DEFAULT_MIN_VALIDATION_BLOCK_DIRECTION_SHARE
+    ),
+    required_validation_blocks: int = DEFAULT_REQUIRED_VALIDATION_BLOCKS,
 ) -> NoTradeContextStabilityReport:
     if not ZERO < split_fraction < ONE:
         raise ValueError("split_fraction must be between zero and one")
@@ -615,9 +621,24 @@ def build_no_trade_context_stability_report(
         raise ValueError("material thresholds must be unique")
     if min_discovery_rows <= 0 or min_validation_rows <= 0:
         raise ValueError("minimum sample sizes must be positive")
+    if validation_block_count <= 0:
+        raise ValueError("validation_block_count must be positive")
+    if min_validation_block_rows <= 0:
+        raise ValueError("min_validation_block_rows must be positive")
+    if (
+        required_validation_blocks <= 0
+        or required_validation_blocks > validation_block_count
+    ):
+        raise ValueError(
+            "required_validation_blocks must be in [1, validation_block_count]"
+        )
     for value, field in (
         (min_discovery_direction_share, "min_discovery_direction_share"),
         (min_validation_direction_share, "min_validation_direction_share"),
+        (
+            min_validation_block_direction_share,
+            "min_validation_block_direction_share",
+        ),
     ):
         if not Decimal("0.5") < value <= ONE:
             raise ValueError(f"{field} must be in (0.5, 1]")
@@ -671,6 +692,12 @@ def build_no_trade_context_stability_report(
                         min_validation_direction_share
                     ),
                     min_validation_lift=min_validation_lift,
+                    validation_block_count=validation_block_count,
+                    min_validation_block_rows=min_validation_block_rows,
+                    min_validation_block_direction_share=(
+                        min_validation_block_direction_share
+                    ),
+                    required_validation_blocks=required_validation_blocks,
                 )
             )
 
@@ -689,6 +716,12 @@ def build_no_trade_context_stability_report(
         min_discovery_direction_share=min_discovery_direction_share,
         min_validation_direction_share=min_validation_direction_share,
         min_validation_lift=min_validation_lift,
+        validation_block_count=validation_block_count,
+        min_validation_block_rows=min_validation_block_rows,
+        min_validation_block_direction_share=(
+            min_validation_block_direction_share
+        ),
+        required_validation_blocks=required_validation_blocks,
         material_thresholds_bps=tuple(sorted(material_thresholds_bps)),
         source_outcome_count=len(outcomes),
         strategy_abstained_outcomes=sum(
