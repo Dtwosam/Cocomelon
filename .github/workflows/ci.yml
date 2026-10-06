@@ -143,6 +143,9 @@ jobs:
           tests/test_continuous_paper_learning_sync_cli.py
           tests/test_context_conditioned_paper.py
           tests/test_context_conditioned_paper_cli.py
+          tests/test_continuous_paper_decision_facts.py
+          tests/test_no_trade_forward_opportunity.py
+          tests/test_no_trade_forward_opportunity_cli.py
           tests/test_continuous_paper_learning_workflow.py
           tests/test_continuous_paper_learning_catchup_workflow.py
           tests/test_continuous_paper_learning_cycle_workflow.py
