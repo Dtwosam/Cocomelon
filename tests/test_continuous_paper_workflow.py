@@ -1005,6 +1005,11 @@ def test_upgrade_handoff_rebuilds_loss_streak_context_after_successor() -> None:
     )
     assert "Rebuild loss-streak context audit after handoff" in source
     assert "id: deferred_loss_streak_context_audit" in source
+    assert 'echo "ready=true" >> "$GITHUB_OUTPUT"' in source
+    assert (
+        "steps.deferred_loss_streak_context_audit.outputs.ready == 'true'"
+        in source
+    )
     assert "loss-streak-context-audit-summary.json" in source
     assert "continuous-paper-loss-streak-context-" in source
     assert "RESEARCH ONLY / NO EXECUTION / NO STRATEGY CHANGE" in source
