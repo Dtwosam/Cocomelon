@@ -148,6 +148,9 @@ jobs:
           tests/test_no_trade_forward_opportunity_cli.py
           tests/test_no_trade_context_stability.py
           tests/test_no_trade_context_stability_cli.py
+          tests/test_no_trade_context_candidate.py
+          tests/test_no_trade_context_prospective.py
+          tests/test_no_trade_context_prospective_cli.py
           tests/test_continuous_paper_learning_workflow.py
           tests/test_continuous_paper_decision_learning_workflow.py
           tests/test_continuous_paper_decision_learning_catchup_workflow.py
