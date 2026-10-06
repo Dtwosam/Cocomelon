@@ -950,3 +950,50 @@ def test_upgrade_handoff_builds_correlation_priority_after_markouts() -> None:
         "- name: Upload compact continuous learning source"
     )
     assert markout_at < priority_at < capacity_at < compact_at
+
+
+
+def test_upgrade_handoff_rebuilds_loss_streak_context_after_successor() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert '"src/cocomelon/research/loss_streak_context_audit.py"' in source
+    assert (
+        '"src/cocomelon/research/deferred_loss_streak_context_audit.py"'
+        in source
+    )
+    assert (
+        '"scripts/rebuild_deferred_loss_streak_context_audit.py"'
+        in source
+    )
+    changed_runtime = source.split("changed_runtime=", 1)[1]
+    assert "src/cocomelon/research/loss_streak_context_audit.py" in changed_runtime
+    assert (
+        "src/cocomelon/research/deferred_loss_streak_context_audit.py"
+        in changed_runtime
+    )
+    assert (
+        "scripts/rebuild_deferred_loss_streak_context_audit.py"
+        in changed_runtime
+    )
+    assert "Rebuild loss-streak context audit after handoff" in source
+    assert "id: deferred_loss_streak_context_audit" in source
+    assert "loss-streak-context-audit-summary.json" in source
+    assert "continuous-paper-loss-streak-context-" in source
+    assert "RESEARCH ONLY / NO EXECUTION / NO STRATEGY CHANGE" in source
+
+    fast_dispatch_at = source.index(
+        "- name: Queue exact successor from fast resume"
+    )
+    fallback_at = source.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    loss_audit_at = source.index(
+        "- name: Rebuild loss-streak context audit after handoff"
+    )
+    gate_at = source.index(
+        "- name: Fail closed on upgrade handoff source"
+    )
+    compact_at = source.index(
+        "- name: Upload compact continuous learning source"
+    )
+    assert fast_dispatch_at < fallback_at < loss_audit_at < gate_at < compact_at
