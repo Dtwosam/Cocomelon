@@ -109,6 +109,10 @@ def test_decision_learning_workflow_is_authority_negative() -> None:
     assert '"prospective_candidate_id": prospective["candidate_id"]' in source
     assert "frozen prospective candidate" in source
     assert "prospective matching / material outcomes" in source
+    assert "prospective_report_schema_version" in source
+    assert "prospective_ready_for_review" in source
+    assert "prospective_blocks_directionally_consistent" in source
+    assert "prospective directional share / consistent blocks / review-ready" in source
     assert '"market_aware": stability["market_aware"]' in source
     assert '"validation_block_consistency_required": stability[' in source
     assert "continuous-paper-decision-learning-evidence" in source

@@ -120,6 +120,7 @@ def test_prospective_score_uses_only_post_freeze_matching_abstentions() -> None:
     assert payload["hypothetical_pnl"] is False
     assert payload["cost_complete"] is False
     assert payload["execution_authority"] is False
+    assert payload["ready_for_review"] is False
 
 
 def test_prospective_score_is_empty_before_frozen_boundary() -> None:
@@ -145,3 +146,93 @@ def test_prospective_score_is_empty_before_frozen_boundary() -> None:
     assert payload["matching_outcomes"] == 0
     assert payload["material_outcomes"] == 0
     assert payload["material_same_direction_share"] is None
+    assert payload["ready_for_review"] is False
+
+
+
+def _review_gate_report(
+    freeze,
+    *,
+    middle_same_direction: int,
+) -> dict[str, object]:
+    outcomes: list[dict[str, object]] = []
+    timestamp = freeze.prospective_not_before_ms
+    same_counts = (8, middle_same_direction, 8)
+
+    for same_count in same_counts:
+        for index in range(10):
+            outcomes.append(
+                _outcome(
+                    timestamp_ms=timestamp,
+                    value="-0.01" if index < same_count else "0.01",
+                )
+            )
+            timestamp += 1
+        timestamp += 1_000
+
+    return _forward_report(
+        outcomes,
+        as_of_ms=timestamp + freeze.horizon_ms,
+    )
+
+
+def test_prospective_review_gate_rejects_one_flipped_future_block() -> None:
+    freeze = verify_no_trade_context_candidate_freeze(
+        FREEZE,
+        selection_record_path=SOURCE,
+    )
+
+    report = build_no_trade_context_prospective_report(
+        _review_gate_report(
+            freeze,
+            middle_same_direction=3,
+        ),
+        freeze,
+    )
+    payload = report.to_dict()
+
+    assert payload["material_outcomes"] == 30
+    assert payload["material_same_direction_share"] == (
+        "0.6333333333333333333333333333"
+    )
+    assert payload["prospective_block_outcomes"] == (10, 10, 10)
+    assert payload["prospective_block_same_direction_shares"] == (
+        "0.8",
+        "0.3",
+        "0.8",
+    )
+    assert payload["prospective_blocks_meeting_row_floor"] == 3
+    assert payload["prospective_blocks_directionally_consistent"] == 2
+    assert payload["ready_for_review"] is False
+
+
+def test_prospective_review_gate_opens_only_after_consistent_future_evidence() -> None:
+    freeze = verify_no_trade_context_candidate_freeze(
+        FREEZE,
+        selection_record_path=SOURCE,
+    )
+
+    report = build_no_trade_context_prospective_report(
+        _review_gate_report(
+            freeze,
+            middle_same_direction=7,
+        ),
+        freeze,
+    )
+    payload = report.to_dict()
+
+    assert payload["material_outcomes"] == 30
+    assert payload["material_same_direction_share"] == (
+        "0.7666666666666666666666666667"
+    )
+    assert payload["prospective_block_outcomes"] == (10, 10, 10)
+    assert payload["prospective_block_same_direction_shares"] == (
+        "0.8",
+        "0.7",
+        "0.8",
+    )
+    assert payload["prospective_blocks_meeting_row_floor"] == 3
+    assert payload["prospective_blocks_directionally_consistent"] == 3
+    assert payload["ready_for_review"] is True
+    assert payload["promotion_authority"] is False
+    assert payload["execution_authority"] is False

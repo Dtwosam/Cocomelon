@@ -172,6 +172,7 @@ jobs:
           EXPECTED_FORWARD_OPPORTUNITY_SCHEMA_VERSION: "2"
           EXPECTED_CONTEXT_STABILITY_SCHEMA_VERSION: "3"
           EXPECTED_PROSPECTIVE_CANDIDATE_SCHEMA_VERSION: "1"
+          EXPECTED_PROSPECTIVE_REPORT_SCHEMA_VERSION: "2"
           EXPECTED_PROSPECTIVE_CANDIDATE_ID: "2f72dd8fcb0b8cef3a4eb991d472a0e9c50f550954d1b3d8a0ddd3d6fe1cfd23"
         run: |
           set -euo pipefail
@@ -305,6 +306,14 @@ jobs:
               if (
                   receipt.get("prospective_candidate_id")
                   != os.environ["EXPECTED_PROSPECTIVE_CANDIDATE_ID"]
+              ):
+                  continue
+              expected_prospective_report_schema = int(
+                  os.environ["EXPECTED_PROSPECTIVE_REPORT_SCHEMA_VERSION"]
+              )
+              if (
+                  receipt.get("prospective_report_schema_version")
+                  != expected_prospective_report_schema
               ):
                   continue
               upstream = receipt.get("upstream_run_id")

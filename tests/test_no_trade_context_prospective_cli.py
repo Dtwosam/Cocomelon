@@ -55,5 +55,7 @@ def test_prospective_cli_emits_authority_negative_report(
         "2f72dd8fcb0b8cef3a4eb991d472a0e9c50f550954d1b3d8a0ddd3d6fe1cfd23"
     )
     assert payload["matching_outcomes"] == 0
+    assert payload["schema_version"] == 2
+    assert payload["ready_for_review"] is False
     assert payload["research_only"] is True
     assert payload["execution_authority"] is False
