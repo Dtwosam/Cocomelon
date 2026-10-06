@@ -8584,7 +8584,8 @@ async def run_continuous_paper_session(
     capacity_release_book_store = CapacityReleaseBookStore(
         root / "capacity-release-books",
         capture_started_at_ms=started_at_ms,
-        max_capture_lag_ms=replay_config.execution.max_book_age_ms,
+        latency_ms=replay_config.execution.latency_ms,
+        max_book_age_ms=replay_config.execution.max_book_age_ms,
     )
     capacity_release_book_capture = CapacityReleaseBookCapture(
         capacity_release_book_store
