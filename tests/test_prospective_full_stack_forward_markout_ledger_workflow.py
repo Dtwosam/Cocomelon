@@ -103,6 +103,7 @@ def test_full_stack_fast_markout_accepts_fail_closed_handoff() -> None:
     source = _source()
 
     assert 'if [ "$EVENT_NAME" = "workflow_run" ]; then' in source
+    assert "EVENT_CONCLUSION" not in source
     assert 'resolution_mode="completed_event"' in source
     assert 'run.get("conclusion") in {"success", "failure"}' in source
     assert (
