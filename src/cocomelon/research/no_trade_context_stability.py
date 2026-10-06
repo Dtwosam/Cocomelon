@@ -366,6 +366,33 @@ def _direction_count(rows: tuple[_Outcome, ...], direction: str) -> int:
     return sum(item.direction == direction for item in rows)
 
 
+def _chronological_validation_blocks(
+    rows: tuple[_Outcome, ...],
+    *,
+    block_count: int,
+) -> tuple[tuple[_Outcome, ...], ...]:
+    if block_count <= 0:
+        raise ValueError("validation block count must be positive")
+    if not rows:
+        return ()
+    timestamps = tuple(sorted({item.decision_timestamp_ms for item in rows}))
+    resolved_blocks = min(block_count, len(timestamps))
+    timestamp_blocks: list[set[int]] = []
+    for index in range(resolved_blocks):
+        start = (len(timestamps) * index) // resolved_blocks
+        end = (len(timestamps) * (index + 1)) // resolved_blocks
+        timestamp_blocks.append(set(timestamps[start:end]))
+    return tuple(
+        tuple(
+            item
+            for item in rows
+            if item.decision_timestamp_ms in block_timestamps
+        )
+        for block_timestamps in timestamp_blocks
+        if block_timestamps
+    )
+
+
 def _analysis(
     rows: tuple[_Outcome, ...],
     *,
