@@ -927,7 +927,7 @@ jobs:
           PY
 
       - name: Upload loss-streak context audit
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_loss_streak_context_audit.outcome == 'success' && steps.deferred_loss_streak_context_audit.outputs.ready == 'true' }}
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-streak-context-audit-summary.json') != '' }}
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
