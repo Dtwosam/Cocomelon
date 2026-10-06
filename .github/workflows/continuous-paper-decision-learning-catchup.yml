@@ -262,10 +262,23 @@ jobs:
                   or receipt.get("cost_complete") is not False
               ):
                   raise SystemExit("trusted decision-learning receipt is invalid")
+              expected_forward_schema = int(
+                  os.environ["EXPECTED_FORWARD_OPPORTUNITY_SCHEMA_VERSION"]
+              )
+              if (
+                  receipt.get("forward_opportunity_schema_version")
+                  != expected_forward_schema
+              ):
+                  continue
               expected_schema = int(
                   os.environ["EXPECTED_CONTEXT_STABILITY_SCHEMA_VERSION"]
               )
               if receipt.get("context_stability_schema_version") != expected_schema:
+                  continue
+              if (
+                  receipt.get("directional_candidate_source")
+                  != "strategy_abstained_only"
+              ):
                   continue
               upstream = receipt.get("upstream_run_id")
               if (
