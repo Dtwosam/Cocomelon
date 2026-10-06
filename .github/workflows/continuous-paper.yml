@@ -92,6 +92,8 @@ on:
       - "src/cocomelon/research/prospective_combined_entry_filter.py"
       - "src/cocomelon/research/prospective_full_stack_entry_exit.py"
       - "src/cocomelon/research/prospective_full_stack_forward_markout.py"
+      - "src/cocomelon/research/deferred_full_stack_forward_markout.py"
+      - "scripts/rebuild_deferred_full_stack_forward_markout.py"
       - "src/cocomelon/research/prospective_long_trend_carveout_execution_shadow_source.py"
       - "src/cocomelon/research/prospective_weekly_drawdown_5m_exit_source.py"
       - "src/cocomelon/research/prospective_full_stack_capacity_reflow.py"
