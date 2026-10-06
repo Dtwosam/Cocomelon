@@ -62,6 +62,9 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     fast_cleanup_at = source.index(
         "- name: Remove local fast resume archive"
     )
+    deferred_markout_at = source.index(
+        "- name: Rebuild deferred full-stack markouts after handoff"
+    )
     durable_upload_at = source.index(
         "- name: Upload durable continuous paper state"
     )
@@ -69,7 +72,8 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
         "- name: Queue fallback exact successor continuous paper worker"
     )
     assert fast_upload_at < fast_dispatch_at < fast_cleanup_at
-    assert fast_cleanup_at < durable_upload_at < fallback_dispatch_at
+    assert fast_cleanup_at < deferred_markout_at < durable_upload_at
+    assert deferred_markout_at < fallback_dispatch_at
 
 def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
@@ -132,6 +136,9 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
     fast_cleanup_at = source.index(
         "- name: Remove local fast resume archive"
     )
+    deferred_markout_at = source.index(
+        "- name: Rebuild deferred full-stack markouts after handoff"
+    )
     decision_export_at = source.index(
         "- name: Export compact continuous decision facts"
     )
@@ -150,6 +157,7 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
         < fast_upload_at
         < fast_dispatch_at
         < fast_cleanup_at
+        < deferred_markout_at
         < decision_export_at
         < durable_pack_at
         < durable_upload_at
@@ -169,6 +177,49 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
     )
     assert fallback_dispatch_at < research_gate_at < comparison_dispatch_at
     assert comparison_dispatch_at < first_terminal_research_upload_at
+
+
+def test_upgrade_handoff_rebuilds_full_stack_markouts_after_successor_dispatch() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert (
+        '"src/cocomelon/research/deferred_full_stack_forward_markout.py"'
+        in source
+    )
+    assert (
+        '"scripts/rebuild_deferred_full_stack_forward_markout.py"'
+        in source
+    )
+    changed_runtime = source.split("changed_runtime=", 1)[1]
+    assert (
+        "src/cocomelon/research/deferred_full_stack_forward_markout.py"
+        in changed_runtime
+    )
+    assert (
+        "scripts/rebuild_deferred_full_stack_forward_markout.py"
+        in changed_runtime
+    )
+    assert "Rebuild deferred full-stack markouts after handoff" in source
+    assert "id: deferred_full_stack_markout_rebuild" in source
+    assert "continue-on-error: true" in source
+    assert 'if [ "$exit_reason" != "upgrade_requested" ]; then' in source
+    assert (
+        "python scripts/rebuild_deferred_full_stack_forward_markout.py"
+        in source
+    )
+    assert "successor already dispatched: true" in source
+    assert "RESEARCH ONLY / NO EXECUTION / NO READINESS" in source
+
+    dispatch_at = source.index(
+        "- name: Queue exact successor from fast resume"
+    )
+    rebuild_at = source.index(
+        "- name: Rebuild deferred full-stack markouts after handoff"
+    )
+    compact_at = source.index(
+        "- name: Upload compact continuous learning source"
+    )
+    assert dispatch_at < rebuild_at < compact_at
 
 
 def test_continuous_paper_failure_still_dispatches_exact_state() -> None:
