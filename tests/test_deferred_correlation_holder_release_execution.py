@@ -127,9 +127,9 @@ def test_deferred_holder_release_rebuild_uses_bound_record_config(
     assert payload["exact_execution_config_records"] == 1
     assert payload["unbound_execution_config_records"] == 0
     assert payload["full_release_fills"] == 1
-    assert payload["full_close_terminal_contribution_by_plan"] == {
-        "holder-plan": "0.774595"
-    }
+    terminal = payload["full_close_terminal_contribution_by_plan"]
+    assert isinstance(terminal, dict)
+    assert Decimal(str(terminal["holder-plan"])) == Decimal("0.774595")
     assert payload["execution_config_authority"] == "bound_per_record"
     assert payload["deferred_post_handoff_rebuild"] is True
     assert payload["execution_authority"] is False
