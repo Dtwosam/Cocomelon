@@ -7,10 +7,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Final, cast
+from collections.abc import Sequence
+from typing import Final
 
 from cocomelon.domain.execution import InstrumentExecutionSpec
 from cocomelon.domain.journal import TradeJournalEntry
+from cocomelon.domain.market import MarketId
 from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.evidence.openings import BaselineOpeningTrace
 from cocomelon.execution.accounting import PaperPosition
@@ -132,21 +134,22 @@ def _book_from_payload(raw: object) -> StreamEvent:
         dex, coin = market_raw.split(":", 1)
     else:
         dex, coin = "", market_raw
-    from cocomelon.domain.market import MarketId
-
     def levels(value: object) -> tuple[dict[str, object], ...]:
         if not isinstance(value, list):
             raise CapacityReleaseBookEvidenceError(
                 "book levels must be an array"
             )
-        return tuple(
-            {
-                "px": Decimal(str(_level_payload(item)["px"])),
-                "sz": Decimal(str(_level_payload(item)["sz"])),
-                "n": _level_payload(item)["n"],
-            }
-            for item in value
-        )
+        output: list[dict[str, object]] = []
+        for item in value:
+            encoded = _level_payload(item)
+            output.append(
+                {
+                    "px": Decimal(str(encoded["px"])),
+                    "sz": Decimal(str(encoded["sz"])),
+                    "n": encoded["n"],
+                }
+            )
+        return tuple(output)
 
     exchange_ms = raw["exchange_time_ms"]
     received_ms = raw["received_at_ms"]
@@ -197,6 +200,41 @@ def _instrument_payload(
         "metadata_received_at_ms": instrument.metadata_received_at_ms,
         "metadata_source": instrument.metadata_source,
     }
+
+
+def _instrument_from_payload(
+    raw: object,
+) -> InstrumentExecutionSpec:
+    if not isinstance(raw, dict):
+        raise CapacityReleaseBookEvidenceError(
+            "capacity release instrument must be an object"
+        )
+    try:
+        market_raw = str(raw["market"])
+        if ":" in market_raw:
+            dex, coin = market_raw.split(":", 1)
+        else:
+            dex, coin = "", market_raw
+        return InstrumentExecutionSpec(
+            market=MarketId(dex=dex, coin=coin),
+            sz_decimals=int(raw["sz_decimals"]),
+            venue_max_leverage=_decimal(
+                raw["venue_max_leverage"],
+                "venue_max_leverage",
+            ),
+            minimum_order_notional=_decimal(
+                raw["minimum_order_notional"],
+                "minimum_order_notional",
+            ),
+            metadata_received_at_ms=int(
+                raw["metadata_received_at_ms"]
+            ),
+            metadata_source=str(raw["metadata_source"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise CapacityReleaseBookEvidenceError(
+            "capacity release instrument is invalid"
+        ) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -350,6 +388,36 @@ class CapacityReleaseBookEvidence:
         }
 
 
+    @classmethod
+    def from_dict(
+        cls,
+        raw: object,
+    ) -> CapacityReleaseBookEvidence:
+        if not isinstance(raw, dict):
+            raise CapacityReleaseBookEvidenceError(
+                "capacity release evidence must be an object"
+            )
+        try:
+            return cls(
+                registration=CapacityReleaseBookRegistration.from_dict(
+                    raw["registration"]
+                ),
+                release_opening_plan_id=str(
+                    raw["release_opening_plan_id"]
+                ),
+                release_opened_at_ms=int(raw["release_opened_at_ms"]),
+                observed_at_ms=int(raw["observed_at_ms"]),
+                observation_lag_ms=int(raw["observation_lag_ms"]),
+                book_event=_book_from_payload(raw["book"]),
+                instrument=_instrument_from_payload(raw["instrument"]),
+                schema_version=int(raw["schema_version"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise CapacityReleaseBookEvidenceError(
+                "capacity release evidence is invalid"
+            ) from exc
+
+
 class CapacityReleaseBookStore:
     def __init__(
         self,
@@ -468,11 +536,13 @@ class CapacityReleaseBookStore:
     def capture(
         self,
         *,
-        positions: tuple[PaperPosition, ...],
+        positions: Sequence[PaperPosition],
         instrument: InstrumentExecutionSpec,
         book: StreamEvent,
         now_ms: int,
     ) -> int:
+        if now_ms < 0:
+            raise ValueError("now_ms must be non-negative")
         if book.kind is not StreamKind.L2_BOOK:
             return 0
         observed_at_ms = _received_ms(book)
@@ -524,16 +594,13 @@ class CapacityReleaseBookStore:
             for path in sorted(self.registrations_root.glob("*.json"))
         )
 
-    def iter_records(self) -> tuple[dict[str, object], ...]:
-        values: list[dict[str, object]] = []
-        for path in sorted(self.records_root.glob("*.json")):
-            raw = self._read(path)
-            if not isinstance(raw, dict):
-                raise CapacityReleaseBookEvidenceError(
-                    "capacity release record must be an object"
-                )
-            values.append(cast(dict[str, object], raw))
-        return tuple(values)
+    def iter_records(
+        self,
+    ) -> tuple[CapacityReleaseBookEvidence, ...]:
+        return tuple(
+            CapacityReleaseBookEvidence.from_dict(self._read(path))
+            for path in sorted(self.records_root.glob("*.json"))
+        )
 
     def summary(self, *, now_ms: int) -> dict[str, object]:
         registrations = self.iter_registrations()
@@ -566,7 +633,12 @@ class CapacityReleaseBookCapture:
         self.store = store
         self.error: str | None = None
 
-    def record_opening_trace(self, trace: BaselineOpeningTrace) -> None:
+    def register_from_trace(
+        self,
+        trace: BaselineOpeningTrace,
+        *,
+        opportunity_id: str,
+    ) -> None:
         decision = trace.submission.risk_decision
         if decision.approved:
             return
@@ -576,10 +648,12 @@ class CapacityReleaseBookCapture:
         for position in request.open_positions:
             if position.correlation_bucket != request.correlation_bucket:
                 continue
+            if position.market == request.market:
+                continue
             try:
                 self.store.register(
                     CapacityReleaseBookRegistration(
-                        opportunity_id=trace.evaluation.decision.decision_id,
+                        opportunity_id=opportunity_id,
                         opportunity_timestamp_ms=request.timestamp_ms,
                         opportunity_market=request.market.canonical,
                         opportunity_direction=request.direction.value,
@@ -600,7 +674,7 @@ class CapacityReleaseBookCapture:
 
     def observe_mark(
         self,
-        positions: tuple[PaperPosition, ...],
+        positions: Sequence[PaperPosition],
         mark_event: StreamEvent,
         *,
         now_ms: int,
@@ -609,7 +683,7 @@ class CapacityReleaseBookCapture:
 
     def observe_book(
         self,
-        positions: tuple[PaperPosition, ...],
+        positions: Sequence[PaperPosition],
         instrument: InstrumentExecutionSpec,
         book: StreamEvent,
         *,
