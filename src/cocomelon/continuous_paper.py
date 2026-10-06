@@ -521,7 +521,7 @@ class ContinuousPaperConfig:
     context_poll_seconds: int = 30
     websocket_server_silence_timeout_ms: int = 15_000
     websocket_redundant_lane_reconnect_stagger_ms: int = 5_000
-    websocket_l2_failover_headroom_ms: int = 1_000
+    websocket_l2_failover_headroom_ms: int = 2_000
     selection_refresh_seconds: int = 300
     checkpoint_seconds: int = 30
     warmup_5m_bars: int = 25
