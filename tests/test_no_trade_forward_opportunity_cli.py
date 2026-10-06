@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from cocomelon import continuous_paper_decision_export_cli
-from cocomelon import no_trade_forward_opportunity_cli
+from cocomelon import (
+    continuous_paper_decision_export_cli,
+    no_trade_forward_opportunity_cli,
+)
 from cocomelon.evaluation.store import EvaluationFactStore
 
 
