@@ -38,7 +38,10 @@ def test_risk_rejected_ledger_binds_exact_compact_source() -> None:
         in source
     )
     assert 'run.get("head_branch") != "main"' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert 'run.get("conclusion") not in {"success", "failure"}' in source
+    assert 'actions/runs/$candidate_run_id/jobs?per_page=100' in source
+    assert '"Run continuous paper trader"' in source
+    assert '"Upload compact continuous learning source"' in source
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
     assert (
@@ -116,22 +119,22 @@ def test_risk_rejected_ledger_surfaces_combined_block_reasons() -> None:
     assert 'values.get("mean_directional_return")' in source
 
 
-def test_risk_rejected_ledger_non_success_wake_falls_back() -> None:
+def test_risk_rejected_ledger_accepts_authenticated_fail_closed_handoff() -> None:
     source = _source()
 
+    assert 'if [ "$EVENT_NAME" = "workflow_run" ]; then' in source
+    assert 'resolution_mode="completed_event"' in source
+    assert 'run.get("conclusion") in {"success", "failure"}' in source
     assert (
-        'if [ "$EVENT_NAME" = "workflow_run" ] && '
-        '[ "$EVENT_CONCLUSION" = "success" ]; then'
+        'run.get("conclusion") not in {"success", "failure"}'
         in source
     )
-    assert 'resolution_mode="successful_event"' in source
+    assert 'actions/runs/$candidate_run_id/jobs?per_page=100' in source
+    assert 'job.get("name") == "paper"' in source
+    assert '"Run continuous paper trader"' in source
+    assert '"Upload compact continuous learning source"' in source
     assert (
-        'resolution_mode="latest_successful_after_non_success_wake"'
-        in source
-    )
-    assert (
-        "actions/workflows/continuous-paper.yml/runs?"
-        "branch=main&status=completed&per_page=50"
+        'resolution_mode="latest_completed_with_authenticated_compact_artifact"'
         in source
     )
 
@@ -166,7 +169,7 @@ def test_risk_rejected_source_skips_empty_successful_handoffs() -> None:
     source = _source()
 
     assert "artifact_for_run()" in source
-    assert "latest_successful_with_compact_artifact" in source
+    assert "latest_completed_with_authenticated_compact_artifact" in source
     assert "selected source has no authenticated compact artifact" in source
     assert "artifact_candidates" in source
     assert 'EVENT_NAME" != "workflow_dispatch"' in source
