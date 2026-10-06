@@ -210,13 +210,16 @@ def test_holder_release_no_fill_is_visible_without_faking_close() -> None:
 
     assert result["full_release_fills"] == 0
     assert result["partial_release_fills"] == 0
-    assert result["no_release_fills"] == 0
+    assert result["no_release_fills"] == 1
     assert result["execution_rejected_release_exits"] == 0
     rows = result["release_results"]
     assert isinstance(rows, list)
     row = rows[0]
     assert isinstance(row, dict)
-    assert row["execution_result"] == "full"
+    assert row["execution_result"] == "no_fill"
+    assert row["filled_quantity"] == "0.000"
+    assert row["full_close_terminal_contribution"] is None
+    assert row["complete_close"] is False
 
 
 def test_holder_release_refuses_latency_config_that_evidence_cannot_support() -> None:
