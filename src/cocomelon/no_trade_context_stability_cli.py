@@ -9,6 +9,10 @@ from pathlib import Path
 
 from cocomelon.research.no_trade_context_stability import (
     DEFAULT_MATERIAL_THRESHOLDS_BPS,
+    DEFAULT_MIN_VALIDATION_BLOCK_DIRECTION_SHARE,
+    DEFAULT_MIN_VALIDATION_BLOCK_ROWS,
+    DEFAULT_REQUIRED_VALIDATION_BLOCKS,
+    DEFAULT_VALIDATION_BLOCK_COUNT,
     build_no_trade_context_stability_report,
 )
 
@@ -57,6 +61,26 @@ def build_parser() -> argparse.ArgumentParser:
         type=_decimal,
         default=Decimal("0.05"),
     )
+    parser.add_argument(
+        "--validation-block-count",
+        type=int,
+        default=DEFAULT_VALIDATION_BLOCK_COUNT,
+    )
+    parser.add_argument(
+        "--min-validation-block-rows",
+        type=int,
+        default=DEFAULT_MIN_VALIDATION_BLOCK_ROWS,
+    )
+    parser.add_argument(
+        "--min-validation-block-direction-share",
+        type=_decimal,
+        default=DEFAULT_MIN_VALIDATION_BLOCK_DIRECTION_SHARE,
+    )
+    parser.add_argument(
+        "--required-validation-blocks",
+        type=int,
+        default=DEFAULT_REQUIRED_VALIDATION_BLOCKS,
+    )
     return parser
 
 
@@ -80,6 +104,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             min_discovery_direction_share=args.min_discovery_direction_share,
             min_validation_direction_share=args.min_validation_direction_share,
             min_validation_lift=args.min_validation_lift,
+            validation_block_count=args.validation_block_count,
+            min_validation_block_rows=args.min_validation_block_rows,
+            min_validation_block_direction_share=(
+                args.min_validation_block_direction_share
+            ),
+            required_validation_blocks=args.required_validation_blocks,
         )
     except (
         OSError,
