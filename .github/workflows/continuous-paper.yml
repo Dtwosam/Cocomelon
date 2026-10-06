@@ -1,4 +1,5 @@
 name: Continuous Mainnet Paper Trader
+run-name: Continuous Paper · ${{ inputs.source_run_id || github.run_id }}
 
 on:
   push:
@@ -182,20 +183,73 @@ jobs:
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$SOURCE_RUN_ID" ]; then
             exit 0
           fi
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?per_page=100" \
+            > /tmp/continuous-paper-guard-runs.json
           ACTIVE="$(
-            gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?per_page=100" |
-            python -c '
-          import json, os, sys
-          payload = json.load(sys.stdin)
+            python - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/continuous-paper-guard-runs.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           current = int(os.environ["GITHUB_RUN_ID"])
-          active = [
-              run for run in payload.get("workflow_runs", [])
-              if run.get("id") != current
-              and run.get("status") in {"queued", "pending", "in_progress"}
-              and run.get("head_branch") == "main"
-          ]
-          print(active[0]["id"] if active else "")
-          '
+          repository = os.environ["GITHUB_REPOSITORY"]
+
+          for run in payload.get("workflow_runs", []):
+              run_id = run.get("id")
+              if (
+                  run_id == current
+                  or not isinstance(run_id, int)
+                  or run.get("head_branch") != "main"
+              ):
+                  continue
+              status = run.get("status")
+              if status in {"queued", "pending"}:
+                  print(run_id)
+                  break
+              if status != "in_progress":
+                  continue
+
+              jobs_raw = subprocess.run(
+                  [
+                      "gh",
+                      "api",
+                      f"repos/{repository}/actions/runs/{run_id}/jobs?per_page=100",
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              jobs = json.loads(jobs_raw.stdout).get("jobs", [])
+              paper_jobs = [
+                  job for job in jobs if job.get("name") == "paper"
+              ]
+              if len(paper_jobs) != 1:
+                  # Fail safe while a new run is still materializing.
+                  print(run_id)
+                  break
+              steps = {
+                  step.get("name"): step.get("status")
+                  for step in paper_jobs[0].get("steps", [])
+                  if isinstance(step.get("name"), str)
+              }
+              trader_status = steps.get("Run continuous paper trader")
+              if trader_status is None:
+                  # Startup before the trader step is visible is still active.
+                  print(run_id)
+                  break
+              if trader_status in {"queued", "pending", "in_progress"}:
+                  print(run_id)
+                  break
+              # The workflow may remain in_progress for deferred research
+              # after trading has stopped. That tail must not block recovery.
+          PY
           )"
           if [ -n "$ACTIVE" ]; then
             echo "continuous paper runtime already active in run $ACTIVE"
@@ -629,11 +683,47 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh workflow run continuous-paper.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref main \
-            -f "source_run_id=$GITHUB_RUN_ID" \
-            -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
+          expected_title="Continuous Paper · $GITHUB_RUN_ID"
+          find_successor() {
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" |
+              EXPECTED_TITLE="$expected_title" python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          expected = os.environ["EXPECTED_TITLE"]
+          matches = [
+              run
+              for run in payload.get("workflow_runs", [])
+              if run.get("name") == "Continuous Mainnet Paper Trader"
+              and run.get("display_title") == expected
+              and run.get("head_branch") == "main"
+              and run.get("id") != int(os.environ["GITHUB_RUN_ID"])
+          ]
+          print(matches[0]["id"] if matches else "")
+          '
+          }
+          successor_run_id="$(find_successor)"
+          if [ -z "$successor_run_id" ]; then
+            gh workflow run continuous-paper.yml \
+              --repo "$GITHUB_REPOSITORY" \
+              --ref main \
+              -f "source_run_id=$GITHUB_RUN_ID" \
+              -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
+            for poll in $(seq 1 20); do
+              sleep 3
+              successor_run_id="$(find_successor)"
+              if [ -n "$successor_run_id" ]; then
+                break
+              fi
+              echo "::notice::waiting for exact successor dispatch receipt ($poll/20)"
+            done
+          fi
+          if [ -z "$successor_run_id" ]; then
+            echo "::error::exact successor dispatch did not materialize"
+            exit 1
+          fi
+          echo "successor_run_id=$successor_run_id" >> "$GITHUB_OUTPUT"
+          echo "exact successor dispatch receipt: $successor_run_id"
 
       - name: Remove local fast resume archive
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
@@ -728,11 +818,47 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh workflow run continuous-paper.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref main \
-            -f "source_run_id=$GITHUB_RUN_ID" \
-            -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
+          expected_title="Continuous Paper · $GITHUB_RUN_ID"
+          find_successor() {
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" |
+              EXPECTED_TITLE="$expected_title" python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          expected = os.environ["EXPECTED_TITLE"]
+          matches = [
+              run
+              for run in payload.get("workflow_runs", [])
+              if run.get("name") == "Continuous Mainnet Paper Trader"
+              and run.get("display_title") == expected
+              and run.get("head_branch") == "main"
+              and run.get("id") != int(os.environ["GITHUB_RUN_ID"])
+          ]
+          print(matches[0]["id"] if matches else "")
+          '
+          }
+          successor_run_id="$(find_successor)"
+          if [ -z "$successor_run_id" ]; then
+            gh workflow run continuous-paper.yml \
+              --repo "$GITHUB_REPOSITORY" \
+              --ref main \
+              -f "source_run_id=$GITHUB_RUN_ID" \
+              -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
+            for poll in $(seq 1 20); do
+              sleep 3
+              successor_run_id="$(find_successor)"
+              if [ -n "$successor_run_id" ]; then
+                break
+              fi
+              echo "::notice::waiting for fallback successor dispatch receipt ($poll/20)"
+            done
+          fi
+          if [ -z "$successor_run_id" ]; then
+            echo "::error::fallback exact successor dispatch did not materialize"
+            exit 1
+          fi
+          echo "successor_run_id=$successor_run_id" >> "$GITHUB_OUTPUT"
+          echo "fallback exact successor dispatch receipt: $successor_run_id"
 
       - name: Rebuild deferred full-stack markouts after handoff
         id: deferred_full_stack_markout_rebuild
