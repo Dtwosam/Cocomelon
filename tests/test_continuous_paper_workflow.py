@@ -79,6 +79,11 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
     assert "--markdown-out /tmp/continuous-paper-state-size.md" in source
     assert 'tee -a "$GITHUB_STEP_SUMMARY"' in source
     assert "- name: Pack fast continuous paper resume state" in source
+    assert "- name: Export compact continuous decision facts" in source
+    assert "id: decision_fact_export" in source
+    assert "cocomelon-continuous-paper-decision-export" in source
+    assert "--facts \"$STATE_ROOT/facts.sqlite3\"" in source
+    assert "--output-dir \"$STATE_ROOT/learning-decisions\"" in source
     assert "continuous-paper-resume.tar.zst" in source
     assert "zstd -T0 -3 --no-progress" in source
     assert "compression-level: 0" in source
@@ -127,6 +132,9 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
     fast_cleanup_at = source.index(
         "- name: Remove local fast resume archive"
     )
+    decision_export_at = source.index(
+        "- name: Export compact continuous decision facts"
+    )
     durable_pack_at = source.index(
         "- name: Pack durable continuous paper state"
     )
@@ -142,6 +150,7 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
         < fast_upload_at
         < fast_dispatch_at
         < fast_cleanup_at
+        < decision_export_at
         < durable_pack_at
         < durable_upload_at
         < fallback_dispatch_at
@@ -313,6 +322,8 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
     assert "src/cocomelon/research/closed_trade_stability.py" in source
     assert "src/cocomelon/research/closed_trade_utc_hour.py" in source
     assert "src/cocomelon/research/continuous_paper_trade_paths.py" in source
+    assert "src/cocomelon/research/continuous_paper_decision_export.py" in source
+    assert "src/cocomelon/research/continuous_paper_decision_facts.py" in source
     assert "src/cocomelon/research/continuous_paper_opening_rank.py" in source
     assert "src/cocomelon/research/continuous_paper_opening_opportunity.py" in source
     assert (
