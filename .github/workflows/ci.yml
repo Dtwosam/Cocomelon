@@ -249,6 +249,8 @@ jobs:
           tests/test_prospective_full_stack_capacity_reflow.py
           tests/test_prospective_correlation_bucket_priority.py
           tests/test_deferred_correlation_bucket_priority.py
+          tests/test_loss_streak_context_audit.py
+          tests/test_deferred_loss_streak_context_audit.py
           tests/test_prospective_full_stack_exit_capacity_reflow.py
           tests/test_prospective_full_stack_reflow_exact_ledger.py
           tests/test_prospective_full_stack_reflow_exact_ledger_workflow.py
