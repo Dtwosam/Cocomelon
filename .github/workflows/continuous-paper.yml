@@ -780,6 +780,16 @@ jobs:
           )
           PY
 
+      - name: Upload full-stack fast-markout research summary
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-full-stack-forward-markout-summary.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-full-stack-forward-markout-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/prospective-full-stack-forward-markout-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Rebuild correlation bucket priority audit after handoff
         id: deferred_correlation_priority_rebuild
         if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_full_stack_markout_rebuild.outcome == 'success' && hashFiles('continuous-paper-state/prospective-full-stack-forward-markout-summary.json') != '' }}
@@ -817,6 +827,16 @@ jobs:
               f"{payload['changes_entry_priority']}"
           )
           PY
+
+      - name: Upload correlation bucket priority audit
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-correlation-bucket-priority-summary.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-correlation-bucket-priority-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/prospective-correlation-bucket-priority-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
 
       - name: Rebuild loss-streak context audit after handoff
         id: deferred_loss_streak_context_audit
@@ -1289,26 +1309,6 @@ jobs:
                       )
                   )
           PY
-
-      - name: Upload correlation bucket priority audit
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-correlation-bucket-priority-summary.json') != '' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-correlation-bucket-priority-${{ github.run_id }}-${{ github.run_attempt }}
-          path: continuous-paper-state/prospective-correlation-bucket-priority-summary.json
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 6
-
-      - name: Upload full-stack fast-markout research summary
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-full-stack-forward-markout-summary.json') != '' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-full-stack-forward-markout-${{ github.run_id }}-${{ github.run_attempt }}
-          path: continuous-paper-state/prospective-full-stack-forward-markout-summary.json
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 6
 
       - name: Render full-stack fast-markout research summary
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-full-stack-forward-markout-summary.json') != '' }}

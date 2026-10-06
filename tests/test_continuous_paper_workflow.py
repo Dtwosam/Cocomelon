@@ -814,6 +814,17 @@ def test_full_stack_fast_markout_is_exported_and_runtime_watched() -> None:
     assert "long-trend carveout clean start / evaluated / admit" in source
     assert "clean {minutes}m stack spread / carveout spread" in source
 
+    markout_rebuild_at = source.index(
+        "- name: Rebuild deferred full-stack markouts after handoff"
+    )
+    markout_upload_at = source.index(
+        "- name: Upload full-stack fast-markout research summary"
+    )
+    priority_rebuild_at = source.index(
+        "- name: Rebuild correlation bucket priority audit after handoff"
+    )
+    assert markout_rebuild_at < markout_upload_at < priority_rebuild_at
+
 
 def test_long_trend_execution_shadow_source_is_compact_and_watched() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
@@ -940,8 +951,17 @@ def test_upgrade_handoff_builds_correlation_priority_after_markouts() -> None:
     markout_at = source.index(
         "- name: Rebuild deferred full-stack markouts after handoff"
     )
+    markout_upload_at = source.index(
+        "- name: Upload full-stack fast-markout research summary"
+    )
     priority_at = source.index(
         "- name: Rebuild correlation bucket priority audit after handoff"
+    )
+    priority_upload_at = source.index(
+        "- name: Upload correlation bucket priority audit"
+    )
+    loss_audit_at = source.index(
+        "- name: Rebuild loss-streak context audit after handoff"
     )
     capacity_at = source.index(
         "- name: Rebuild deferred capacity-reflow economics after handoff"
@@ -949,7 +969,15 @@ def test_upgrade_handoff_builds_correlation_priority_after_markouts() -> None:
     compact_at = source.index(
         "- name: Upload compact continuous learning source"
     )
-    assert markout_at < priority_at < capacity_at < compact_at
+    assert (
+        markout_at
+        < markout_upload_at
+        < priority_at
+        < priority_upload_at
+        < loss_audit_at
+        < capacity_at
+        < compact_at
+    )
 
 
 
