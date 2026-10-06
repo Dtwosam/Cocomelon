@@ -215,6 +215,14 @@ jobs:
             --input decision-learning-evidence/no-trade-forward-opportunity.json \
             > decision-learning-evidence/no-trade-context-stability.json
 
+      - name: Build frozen MON abstention shadow
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        run: |
+          set -euo pipefail
+          cocomelon-frozen-no-trade-shadow \
+            --input decision-learning-evidence/no-trade-forward-opportunity.json \
+            > decision-learning-evidence/frozen-no-trade-shadow.json
+
       - name: Record authenticated decision-learning receipt
         if: ${{ steps.upstream.outputs.eligible == 'true' }}
         env:
@@ -236,6 +244,11 @@ jobs:
           )
           stability = json.loads(
               Path("decision-learning-evidence/no-trade-context-stability.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          shadow = json.loads(
+              Path("decision-learning-evidence/frozen-no-trade-shadow.json").read_text(
                   encoding="utf-8"
               )
           )
@@ -261,6 +274,14 @@ jobs:
               "validation_block_consistency_required": stability[
                   "validation_block_consistency_required"
               ],
+              "frozen_no_trade_shadow_schema_version": shadow["schema_version"],
+              "frozen_no_trade_candidate_id": shadow["candidate_id"],
+              "frozen_no_trade_candidate_spec_id": shadow["candidate_spec_id"],
+              "frozen_no_trade_validation_not_before_ms": shadow[
+                  "validation_not_before_ms"
+              ],
+              "frozen_no_trade_material_outcomes": shadow["material_outcomes"],
+              "frozen_no_trade_ready_for_review": shadow["ready_for_review"],
               "hypothetical_pnl": False,
               "cost_complete": False,
               "research_only": True,
@@ -337,6 +358,25 @@ jobs:
               f"{stability['validation_block_count']} / "
               f"{stability['required_validation_blocks']} / "
               f"{stability['min_validation_block_rows']}"
+          )
+          shadow = json.loads(
+              Path("decision-learning-evidence/frozen-no-trade-shadow.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print(
+              "- frozen MON shadow matching/material outcomes: "
+              f"{shadow['matching_labeled_outcomes']} / "
+              f"{shadow['material_outcomes']}"
+          )
+          print(
+              "- frozen MON shadow SHORT share / ready for review: "
+              f"{shadow['short_material_share']} / "
+              f"{shadow['ready_for_review']}"
+          )
+          print(
+              "- frozen MON prospective cutover ms: "
+              f"{shadow['validation_not_before_ms']}"
           )
           print(
               "- stability source outcomes / strategy-abstained / "
