@@ -233,6 +233,13 @@ def test_loss_streak_audit_finds_recurring_context_across_streaks(
     assert result["execution_authority"] is False
     assert result["changes_strategy"] is False
     assert result["changes_risk_limits"] is False
+    assert result["baseline_resolved_trade_count"] == 8
+    assert result["baseline_unresolved_trade_count"] == 0
+    assert result["baseline_normalization_complete"] is True
+    assert result["non_loss_control_trade_count"] == 1
+    assert result["qualifying_loss_trade_count"] == 7
+    assert result["recurring_patterns_baseline_normalized"] is True
+    assert result["normalization_strategy_authority"] is False
 
     latest = result["latest_qualifying_streak"]
     assert isinstance(latest, dict)
@@ -248,6 +255,13 @@ def test_loss_streak_audit_finds_recurring_context_across_streaks(
         for item in recurring
     }
     assert patterns[("direction", "short")]["qualifying_streaks"] == 2
+    assert patterns[("direction", "short")]["qualifying_loss_trade_share"] == "1"
+    assert patterns[("direction", "short")]["baseline_trade_share"] == "1"
+    assert patterns[("direction", "short")]["loss_share_lift_vs_baseline"] == "0"
+    assert patterns[("direction", "short")]["non_loss_trade_share"] == "1"
+    assert patterns[("direction", "short")]["loss_share_delta_vs_non_loss"] == "0"
+    assert patterns[("direction", "short")]["entry_time_context"] is True
+    assert patterns[("direction", "short")]["strategy_authority"] is False
     assert patterns[("exit_reason", "MARK_STOP_TRIGGERED")][
         "qualifying_streaks"
     ] == 2
@@ -357,3 +371,197 @@ def test_loss_streak_audit_fails_closed_on_missing_feature(
             )
     finally:
         facts.close()
+
+
+
+def test_loss_streak_audit_highlights_context_overrepresented_vs_winners(
+    tmp_path: Path,
+) -> None:
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    features = LearningFeatureSnapshotStore(tmp_path / "features")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    trades: list[TradeJournalEntry] = []
+    try:
+        timestamp = 2_000_000
+        for streak_index in range(2):
+            for index in range(3):
+                feature = _feature(as_of_ms=timestamp - 1_000)
+                trade = _trade(
+                    suffix=f"loss-{streak_index}-{index}",
+                    feature=feature,
+                    opened_at_ms=timestamp,
+                    pnl="-5",
+                    direction=Direction.SHORT,
+                )
+                _record(
+                    trade,
+                    feature,
+                    facts,
+                    features,
+                    ranks,
+                    strategy="mean_reversion",
+                    ordinal=2,
+                )
+                trades.append(trade)
+                timestamp += 120_000
+
+            feature = _feature(
+                as_of_ms=timestamp - 1_000,
+                trend=TrendRegime.UP,
+                volatility=VolatilityRegime.NORMAL,
+                return_15m="0.01",
+                return_1h="0.02",
+                imbalance="0.2",
+            )
+            winner = _trade(
+                suffix=f"separator-{streak_index}",
+                feature=feature,
+                opened_at_ms=timestamp,
+                pnl="6",
+                direction=Direction.LONG,
+                exit_reason="OPPOSITE_FRESH_THESIS",
+            )
+            _record(
+                winner,
+                feature,
+                facts,
+                features,
+                ranks,
+                strategy="trend",
+                ordinal=8,
+            )
+            trades.append(winner)
+            timestamp += 120_000
+
+        for index in range(4):
+            feature = _feature(
+                as_of_ms=timestamp - 1_000,
+                trend=TrendRegime.UP,
+                volatility=VolatilityRegime.NORMAL,
+                return_15m="0.01",
+                return_1h="0.02",
+                imbalance="0.2",
+            )
+            winner = _trade(
+                suffix=f"control-{index}",
+                feature=feature,
+                opened_at_ms=timestamp,
+                pnl="6",
+                direction=Direction.LONG,
+                exit_reason="OPPOSITE_FRESH_THESIS",
+            )
+            _record(
+                winner,
+                feature,
+                facts,
+                features,
+                ranks,
+                strategy="trend",
+                ordinal=8,
+            )
+            trades.append(winner)
+            timestamp += 120_000
+
+        result = loss_streak_context_audit(
+            tuple(trades),
+            facts,
+            features,
+            ranks,
+        )
+    finally:
+        facts.close()
+
+    assert result["baseline_resolved_trade_count"] == 12
+    assert result["non_loss_control_trade_count"] == 6
+    assert result["qualifying_loss_trade_count"] == 6
+
+    recurring = result["recurring_dominant_patterns"]
+    assert isinstance(recurring, tuple)
+    patterns = {
+        (item["field"], item["value"]): item
+        for item in recurring
+    }
+    short = patterns[("direction", "short")]
+    assert short["qualifying_loss_trade_share"] == "1"
+    assert short["baseline_trade_share"] == "0.5"
+    assert short["loss_share_lift_vs_baseline"] == "0.5"
+    assert short["non_loss_trade_share"] == "0"
+    assert short["loss_share_delta_vs_non_loss"] == "1"
+
+    high_vol = patterns[("volatility_regime", "high")]
+    assert high_vol["qualifying_loss_trade_share"] == "1"
+    assert high_vol["baseline_trade_share"] == "0.5"
+    assert high_vol["loss_share_lift_vs_baseline"] == "0.5"
+    assert high_vol["non_loss_trade_share"] == "0"
+    assert high_vol["loss_share_delta_vs_non_loss"] == "1"
+
+
+def test_loss_streak_baseline_tracks_unresolved_legacy_control_rows(
+    tmp_path: Path,
+) -> None:
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    features = LearningFeatureSnapshotStore(tmp_path / "features")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    trades: list[TradeJournalEntry] = []
+    try:
+        timestamp = 3_000_000
+        for streak_index in range(2):
+            for index in range(3):
+                feature = _feature(as_of_ms=timestamp - 1_000)
+                trade = _trade(
+                    suffix=f"resolved-{streak_index}-{index}",
+                    feature=feature,
+                    opened_at_ms=timestamp,
+                    pnl="-4",
+                )
+                _record(trade, feature, facts, features, ranks)
+                trades.append(trade)
+                timestamp += 120_000
+            if streak_index == 0:
+                feature = _feature(as_of_ms=timestamp - 1_000)
+                winner = _trade(
+                    suffix="resolved-winner",
+                    feature=feature,
+                    opened_at_ms=timestamp,
+                    pnl="5",
+                )
+                _record(winner, feature, facts, features, ranks)
+                trades.append(winner)
+                timestamp += 120_000
+
+        legacy_feature = _feature(as_of_ms=timestamp - 1_000)
+        legacy = _trade(
+            suffix="legacy-control",
+            feature=legacy_feature,
+            opened_at_ms=timestamp,
+            pnl="5",
+        )
+        legacy = TradeJournalEntry(
+            **{
+                field: getattr(legacy, field)
+                for field in legacy.__dataclass_fields__
+                if field != "replay_run_id"
+            },
+            replay_run_id=None,
+        )
+        trades.append(legacy)
+
+        result = loss_streak_context_audit(
+            tuple(trades),
+            facts,
+            features,
+            ranks,
+        )
+    finally:
+        facts.close()
+
+    assert result["baseline_resolved_trade_count"] == 7
+    assert result["baseline_unresolved_trade_count"] == 1
+    assert result["baseline_unresolved_reason_counts"] == {
+        "missing replay_run_id": 1
+    }
+    assert result["baseline_normalization_complete"] is False
+
+    recurring = result["recurring_dominant_patterns"]
+    assert isinstance(recurring, tuple)
+    assert all(item["baseline_complete"] is False for item in recurring)
