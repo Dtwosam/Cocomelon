@@ -77,6 +77,9 @@ def test_no_trade_context_stability_cli_emits_research_report(
     assert payload["command"] == "no-trade-context-stability"
     assert payload["chronological_holdout_required"] is True
     assert payload["directional_candidate_source"] == "strategy_abstained_only"
+    assert payload["market_aware"] is True
+    assert payload["validation_block_consistency_required"] is True
+    assert payload["validation_block_count"] == 3
     assert payload["strategy_abstained_outcomes"] == 20
     assert payload["exploratory_only"] is True
     assert payload["execution_authority"] is False
