@@ -1070,9 +1070,13 @@ def test_capacity_release_books_are_watched_and_exported() -> None:
     assert rebuild_script in source
     assert rebuild_script in source.split("changed_runtime=", 1)[1]
     assert "continuous-paper-state/capacity-release-books" in source
-    assert source.index(
+    compact = source.split(
+        "- name: Upload compact continuous learning source",
+        1,
+    )[1].split("- name:", 1)[0]
+    assert compact.index(
         "continuous-paper-state/opening-opportunities"
-    ) < source.index(
+    ) < compact.index(
         "continuous-paper-state/capacity-release-books"
     )
 
