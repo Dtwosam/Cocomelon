@@ -3,9 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 
 LEARNING_SOURCE_WORKFLOWS = (
-    ".github/workflows/prospective-two-strike-stop-filter-ledger.yml",
-    ".github/workflows/prospective-full-stack-reflow-exact-ledger.yml",
-    ".github/workflows/prospective-consecutive-loss-cooldown-ledger.yml",
+    (
+        ".github/workflows/prospective-two-strike-stop-filter-ledger.yml",
+        "latest_successful_with_compact_artifact",
+    ),
+    (
+        ".github/workflows/prospective-full-stack-reflow-exact-ledger.yml",
+        "latest_completed_with_authenticated_compact_artifact",
+    ),
+    (
+        ".github/workflows/prospective-consecutive-loss-cooldown-ledger.yml",
+        "latest_successful_with_compact_artifact",
+    ),
 )
 
 CADENCE_SOURCE_WORKFLOWS = (
@@ -84,8 +93,8 @@ def test_full_stack_matched_source_accepts_only_durable_upgrade_handoff_failures
     assert "selected source has no authenticated compact artifact" in resolver
 
 
-def test_learning_source_consumers_skip_artifactless_success_runs() -> None:
-    for path in LEARNING_SOURCE_WORKFLOWS:
+def test_learning_source_consumers_skip_artifactless_runs() -> None:
+    for path, fallback_mode in LEARNING_SOURCE_WORKFLOWS:
         source = _source(path)
         resolver = source.split(
             "      - name: Resolve exact source paper run",
@@ -94,7 +103,7 @@ def test_learning_source_consumers_skip_artifactless_success_runs() -> None:
 
         assert "artifact_for_run()" in resolver
         assert "continuous-paper-learning-source-" in resolver
-        assert "latest_successful_with_compact_artifact" in resolver
+        assert fallback_mode in resolver
         assert (
             "selected source has no authenticated compact artifact"
             in resolver
@@ -103,6 +112,10 @@ def test_learning_source_consumers_skip_artifactless_success_runs() -> None:
             "expected exactly one non-expired source artifact named"
             not in resolver
         )
+        if "reflow-exact" in path:
+            assert 'actions/runs/$candidate_run_id/jobs?per_page=100' in resolver
+            assert '"Run continuous paper trader"' in resolver
+            assert '"Upload compact continuous learning source"' in resolver
 
 
 def test_exact_path_export_skips_artifactless_success_runs() -> None:
