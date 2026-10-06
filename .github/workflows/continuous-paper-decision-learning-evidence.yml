@@ -1,0 +1,301 @@
+name: Continuous Paper Decision Learning Evidence
+
+on:
+  workflow_run:
+    workflows: ["Continuous Mainnet Paper Trader"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      upstream_run_id:
+        description: Exact continuous-paper worker run ID to evaluate
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: continuous-paper-decision-learning-evidence
+  cancel-in-progress: false
+
+env:
+  COCOMELON_EXECUTION_MODE: paper
+
+jobs:
+  evaluate:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_branch == 'main' &&
+       (github.event.workflow_run.conclusion == 'success' ||
+        github.event.workflow_run.conclusion == 'failure'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout current decision-learning control plane
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Verify worker and download exact decision source
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          DISPATCH_RUN_ID: ${{ inputs.upstream_run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            RUN_ID="$EVENT_RUN_ID"
+          else
+            RUN_ID="$DISPATCH_RUN_ID"
+          fi
+          if ! [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "upstream continuous-paper run id is invalid" >&2
+            exit 64
+          fi
+
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > /tmp/upstream-run.json
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" > /tmp/upstream-jobs.json
+          RUN_ID="$RUN_ID" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(Path("/tmp/upstream-run.json").read_text(encoding="utf-8"))
+          if run.get("id") != int(os.environ["RUN_ID"]):
+              raise SystemExit("upstream continuous-paper run id changed")
+          if run.get("head_branch") != "main":
+              raise SystemExit("upstream continuous-paper run is not from main")
+          if run.get("conclusion") not in {"success", "failure"}:
+              raise SystemExit("upstream continuous-paper run conclusion is invalid")
+          if run.get("path") != ".github/workflows/continuous-paper.yml":
+              raise SystemExit("upstream continuous-paper workflow path is invalid")
+          if run.get("name") != "Continuous Mainnet Paper Trader":
+              raise SystemExit("upstream continuous-paper workflow name is invalid")
+          if run.get("event") not in {"push", "workflow_dispatch", "schedule"}:
+              raise SystemExit("upstream continuous-paper event is invalid")
+          repository = run.get("head_repository") or {}
+          if repository.get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("upstream continuous-paper run is from another repository")
+          head_sha = run.get("head_sha")
+          if (
+              not isinstance(head_sha, str)
+              or len(head_sha) != 40
+              or any(char not in "0123456789abcdef" for char in head_sha)
+          ):
+              raise SystemExit("upstream continuous-paper head sha is invalid")
+          attempt = run.get("run_attempt")
+          if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt <= 0:
+              raise SystemExit("upstream continuous-paper run attempt is invalid")
+
+          jobs = json.loads(Path("/tmp/upstream-jobs.json").read_text(encoding="utf-8"))
+          paper_jobs = [job for job in jobs.get("jobs", []) if job.get("name") == "paper"]
+          if len(paper_jobs) != 1:
+              raise SystemExit("upstream run does not have exactly one paper job")
+          steps = {
+              step.get("name"): step.get("conclusion")
+              for step in paper_jobs[0].get("steps", [])
+              if isinstance(step.get("name"), str)
+          }
+          required = (
+              "Run continuous paper trader",
+              "Export compact continuous decision facts",
+              "Upload compact continuous decision learning source",
+          )
+          missing = [name for name in required if steps.get(name) != "success"]
+          if missing:
+              print(
+                  "SKIP_DECISION_SOURCE:"
+                  + ",".join(missing),
+                  file=open("/tmp/decision-source-skip.txt", "w", encoding="utf-8"),
+              )
+          PY
+
+          if [ -s /tmp/decision-source-skip.txt ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            cat /tmp/decision-source-skip.txt
+            exit 0
+          fi
+
+          RUN_ATTEMPT="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          print(json.loads(Path("/tmp/upstream-run.json").read_text(encoding="utf-8"))["run_attempt"])
+          PY
+          )"
+          HEAD_SHA="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          print(json.loads(Path("/tmp/upstream-run.json").read_text(encoding="utf-8"))["head_sha"])
+          PY
+          )"
+          ARTIFACT_NAME="continuous-paper-decision-learning-source-${RUN_ID}-${RUN_ATTEMPT}"
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" > /tmp/upstream-artifacts.json
+
+          ARTIFACT_ROW="$(
+            python - "$ARTIFACT_NAME" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          expected = sys.argv[1]
+          payload = json.loads(Path("/tmp/upstream-artifacts.json").read_text(encoding="utf-8"))
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if item.get("name") == expected and item.get("expired") is False
+          ]
+          if not matches:
+              print("SKIP")
+              raise SystemExit(0)
+          if len(matches) != 1:
+              raise SystemExit("expected exactly one decision-learning source artifact")
+          artifact = matches[0]
+          digest = artifact.get("digest")
+          if not isinstance(digest, str) or not digest.startswith("sha256:"):
+              raise SystemExit("decision-learning source artifact digest is missing")
+          print(str(artifact["id"]) + "\t" + digest)
+          PY
+          )"
+          if [ "$ARTIFACT_ROW" = "SKIP" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "No authenticated decision-learning source artifact is available."
+            exit 0
+          fi
+
+          IFS=$'\t' read -r ARTIFACT_ID ARTIFACT_DIGEST <<< "$ARTIFACT_ROW"
+          mkdir -p incoming/decision
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > /tmp/decision-source.zip
+          unzip -q /tmp/decision-source.zip -d incoming/decision
+          test -d incoming/decision/learning-features/records
+          test -d incoming/decision/learning-decisions/records
+          test -s incoming/decision/learning-decisions-summary.json
+
+          {
+            echo "eligible=true"
+            echo "run_id=$RUN_ID"
+            echo "run_attempt=$RUN_ATTEMPT"
+            echo "head_sha=$HEAD_SHA"
+            echo "artifact_id=$ARTIFACT_ID"
+            echo "artifact_digest=$ARTIFACT_DIGEST"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build no-trade forward opportunity evidence
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        run: |
+          set -euo pipefail
+          mkdir -p decision-learning-evidence
+          AS_OF_MS="$(date +%s%3N)"
+          cocomelon-no-trade-forward-opportunity \
+            --decision-store-dir incoming/decision/learning-decisions \
+            --feature-store-dir incoming/decision/learning-features \
+            --as-of-ms "$AS_OF_MS" \
+            --min-group-rows 20 \
+            > decision-learning-evidence/no-trade-forward-opportunity.json
+
+      - name: Record authenticated decision-learning receipt
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        env:
+          UPSTREAM_RUN_ID: ${{ steps.upstream.outputs.run_id }}
+          UPSTREAM_RUN_ATTEMPT: ${{ steps.upstream.outputs.run_attempt }}
+          UPSTREAM_HEAD_SHA: ${{ steps.upstream.outputs.head_sha }}
+          UPSTREAM_ARTIFACT_ID: ${{ steps.upstream.outputs.artifact_id }}
+          UPSTREAM_ARTIFACT_DIGEST: ${{ steps.upstream.outputs.artifact_digest }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(
+              Path("decision-learning-evidence/no-trade-forward-opportunity.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          receipt = {
+              "source_kind": "continuous_paper_decision_learning",
+              "upstream_run_id": int(os.environ["UPSTREAM_RUN_ID"]),
+              "upstream_run_attempt": int(os.environ["UPSTREAM_RUN_ATTEMPT"]),
+              "upstream_head_sha": os.environ["UPSTREAM_HEAD_SHA"],
+              "upstream_artifact_id": int(os.environ["UPSTREAM_ARTIFACT_ID"]),
+              "upstream_artifact_digest": os.environ["UPSTREAM_ARTIFACT_DIGEST"],
+              "decision_state_digest": report["decision_state_digest"],
+              "feature_state_digest": report["feature_state_digest"],
+              "forward_label": report["forward_label"],
+              "hypothetical_pnl": False,
+              "cost_complete": False,
+              "research_only": True,
+              "promotion_eligible": False,
+              "execution_ready": False,
+              "schema_version": 1,
+          }
+          Path("decision-learning-evidence/source-receipt.json").write_text(
+              json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Render decision-learning summary
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path("decision-learning-evidence/no-trade-forward-opportunity.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print("## Continuous paper decision learning")
+          print(f"- decision records: {report['decision_records']}")
+          print(f"- NO_TRADE decisions: {report['no_trade_decisions']}")
+          print(f"- resolved decision contexts: {report['resolved_decisions']}")
+          for horizon_ms in ("900000", "3600000"):
+              item = report["horizon_summary"][horizon_ms]
+              print(
+                  f"- {int(horizon_ms) // 60000}m labeled outcomes: "
+                  f"{item['outcomes']} "
+                  f"(LONG-favored {item['favored_long']}, "
+                  f"SHORT-favored {item['favored_short']}, flat {item['flat']})"
+              )
+          print("- labels are future market returns, not hypothetical PnL")
+          print("- cost complete: false")
+          print("- research-only: true")
+          print("- promotion eligible: false")
+          print("- execution enabled: false")
+          PY
+
+      - name: Note unavailable source
+        if: ${{ steps.upstream.outputs.eligible != 'true' }}
+        run: |
+          {
+            echo "## Continuous paper decision learning"
+            echo "- no authenticated decision-learning source to evaluate"
+            echo "- research-only: true"
+            echo "- execution enabled: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish decision-learning evidence
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-decision-learning-evidence
+          path: decision-learning-evidence
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6

@@ -147,6 +147,7 @@ jobs:
           tests/test_no_trade_forward_opportunity.py
           tests/test_no_trade_forward_opportunity_cli.py
           tests/test_continuous_paper_learning_workflow.py
+          tests/test_continuous_paper_decision_learning_workflow.py
           tests/test_continuous_paper_learning_catchup_workflow.py
           tests/test_continuous_paper_learning_cycle_workflow.py
           tests/test_research_learning_sync.py
