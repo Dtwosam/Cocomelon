@@ -35,13 +35,35 @@ def paper_execution_config_payload(
         "config_version": config.config_version,
         "latency_ms": config.latency_ms,
         "max_book_age_ms": config.max_book_age_ms,
+        "max_asset_ctx_age_ms": config.max_asset_ctx_age_ms,
+        "max_position_age_ms": config.max_position_age_ms,
+        "funding_reconciliation_grace_ms": (
+            config.funding_reconciliation_grace_ms
+        ),
         "max_ioc_slippage_bps": str(config.max_ioc_slippage_bps),
         "taker_fee_rate": str(config.taker_fee_rate),
         "fee_schedule_id": config.fee_schedule_id,
         "native_perp_min_notional": str(
             config.native_perp_min_notional
         ),
+        "paper_max_gross_leverage": str(
+            config.paper_max_gross_leverage
+        ),
     }
+
+
+def _optional_positive_integer(
+    value: object,
+    field: str,
+) -> int | None:
+    if value is None:
+        return None
+    result = _integer(value, field)
+    if result <= 0:
+        raise CapacityReleaseBookEvidenceError(
+            f"{field} must be positive when set"
+        )
+    return result
 
 
 def _validated_execution_config_payload(
@@ -57,10 +79,14 @@ def _validated_execution_config_payload(
         "config_version",
         "latency_ms",
         "max_book_age_ms",
+        "max_asset_ctx_age_ms",
+        "max_position_age_ms",
+        "funding_reconciliation_grace_ms",
         "max_ioc_slippage_bps",
         "taker_fee_rate",
         "fee_schedule_id",
         "native_perp_min_notional",
+        "paper_max_gross_leverage",
     }
     if set(raw) != required:
         raise CapacityReleaseBookEvidenceError(
@@ -78,9 +104,17 @@ def _validated_execution_config_payload(
         raw.get("max_book_age_ms"),
         "execution max_book_age_ms",
     )
-    if max_book_age_ms <= 0:
+    max_asset_ctx_age_ms = _integer(
+        raw.get("max_asset_ctx_age_ms"),
+        "execution max_asset_ctx_age_ms",
+    )
+    funding_grace_ms = _integer(
+        raw.get("funding_reconciliation_grace_ms"),
+        "execution funding_reconciliation_grace_ms",
+    )
+    if max_book_age_ms <= 0 or max_asset_ctx_age_ms <= 0:
         raise CapacityReleaseBookEvidenceError(
-            "execution max_book_age_ms must be positive"
+            "execution age limits must be positive"
         )
     max_slippage = _decimal(
         raw.get("max_ioc_slippage_bps"),
@@ -94,7 +128,16 @@ def _validated_execution_config_payload(
         raw.get("native_perp_min_notional"),
         "execution native_perp_min_notional",
     )
-    if max_slippage < ZERO or taker_fee < ZERO or native_min <= ZERO:
+    paper_leverage = _decimal(
+        raw.get("paper_max_gross_leverage"),
+        "execution paper_max_gross_leverage",
+    )
+    if (
+        max_slippage <= ZERO
+        or taker_fee < ZERO
+        or native_min <= ZERO
+        or paper_leverage <= ZERO
+    ):
         raise CapacityReleaseBookEvidenceError(
             "execution config economics are invalid"
         )
@@ -102,6 +145,12 @@ def _validated_execution_config_payload(
         "config_version": config_version,
         "latency_ms": latency_ms,
         "max_book_age_ms": max_book_age_ms,
+        "max_asset_ctx_age_ms": max_asset_ctx_age_ms,
+        "max_position_age_ms": _optional_positive_integer(
+            raw.get("max_position_age_ms"),
+            "execution max_position_age_ms",
+        ),
+        "funding_reconciliation_grace_ms": funding_grace_ms,
         "max_ioc_slippage_bps": str(max_slippage),
         "taker_fee_rate": str(taker_fee),
         "fee_schedule_id": _text(
@@ -109,7 +158,43 @@ def _validated_execution_config_payload(
             "execution fee_schedule_id",
         ),
         "native_perp_min_notional": str(native_min),
+        "paper_max_gross_leverage": str(paper_leverage),
     }
+
+
+def paper_execution_config_from_payload(
+    raw: object,
+) -> PaperExecutionConfig:
+    payload = _validated_execution_config_payload(raw)
+    if payload is None:
+        raise CapacityReleaseBookEvidenceError(
+            "execution config lineage is missing"
+        )
+    return PaperExecutionConfig(
+        config_version=str(payload["config_version"]),
+        latency_ms=int(payload["latency_ms"]),
+        max_book_age_ms=int(payload["max_book_age_ms"]),
+        max_asset_ctx_age_ms=int(payload["max_asset_ctx_age_ms"]),
+        max_position_age_ms=(
+            None
+            if payload["max_position_age_ms"] is None
+            else int(payload["max_position_age_ms"])
+        ),
+        funding_reconciliation_grace_ms=int(
+            payload["funding_reconciliation_grace_ms"]
+        ),
+        max_ioc_slippage_bps=Decimal(
+            str(payload["max_ioc_slippage_bps"])
+        ),
+        taker_fee_rate=Decimal(str(payload["taker_fee_rate"])),
+        fee_schedule_id=str(payload["fee_schedule_id"]),
+        native_perp_min_notional=Decimal(
+            str(payload["native_perp_min_notional"])
+        ),
+        paper_max_gross_leverage=Decimal(
+            str(payload["paper_max_gross_leverage"])
+        ),
+    )
 
 
 class CapacityReleaseBookEvidenceError(RuntimeError):
