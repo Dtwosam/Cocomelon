@@ -10,6 +10,8 @@ on:
       - "src/cocomelon/no_trade_forward_opportunity_cli.py"
       - "src/cocomelon/research/no_trade_context_stability.py"
       - "src/cocomelon/no_trade_context_stability_cli.py"
+      - "src/cocomelon/research/frozen_no_trade_shadow.py"
+      - "src/cocomelon/frozen_no_trade_shadow_cli.py"
   schedule:
     - cron: "*/15 * * * *"
   workflow_run:
@@ -166,6 +168,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_FORWARD_OPPORTUNITY_SCHEMA_VERSION: "2"
           EXPECTED_CONTEXT_STABILITY_SCHEMA_VERSION: "3"
+          EXPECTED_FROZEN_NO_TRADE_SHADOW_SCHEMA_VERSION: "1"
+          EXPECTED_FROZEN_NO_TRADE_CANDIDATE_ID: "mon-normal-volatility-short-1h-50bps-v1"
         run: |
           set -euo pipefail
           /usr/bin/gh api \
@@ -285,6 +289,19 @@ jobs:
               if (
                   receipt.get("validation_block_consistency_required")
                   is not True
+              ):
+                  continue
+              expected_shadow_schema = int(
+                  os.environ["EXPECTED_FROZEN_NO_TRADE_SHADOW_SCHEMA_VERSION"]
+              )
+              if (
+                  receipt.get("frozen_no_trade_shadow_schema_version")
+                  != expected_shadow_schema
+              ):
+                  continue
+              if (
+                  receipt.get("frozen_no_trade_candidate_id")
+                  != os.environ["EXPECTED_FROZEN_NO_TRADE_CANDIDATE_ID"]
               ):
                   continue
               upstream = receipt.get("upstream_run_id")
