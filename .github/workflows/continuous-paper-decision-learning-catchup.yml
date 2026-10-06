@@ -6,6 +6,10 @@ on:
     paths:
       - ".github/workflows/continuous-paper-decision-learning-catchup.yml"
       - ".github/workflows/continuous-paper-decision-learning-evidence.yml"
+      - "src/cocomelon/research/no_trade_forward_opportunity.py"
+      - "src/cocomelon/no_trade_forward_opportunity_cli.py"
+      - "src/cocomelon/research/no_trade_context_stability.py"
+      - "src/cocomelon/no_trade_context_stability_cli.py"
   schedule:
     - cron: "*/15 * * * *"
   workflow_run:
