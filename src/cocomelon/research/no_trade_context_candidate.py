@@ -175,9 +175,7 @@ def _selection_payload(
     ):
         _require_artifact_digest(_string(raw.get(field), field), field)
     for field in ("source_evidence_head_sha", "source_upstream_head_sha"):
-        _require_commit_sha(_string(raw.get(field), field)
-
-        )
+        _require_commit_sha(_string(raw.get(field), field), field)
     for field in (
         "source_evidence_run_id",
         "source_evidence_run_attempt",
