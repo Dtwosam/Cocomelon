@@ -325,11 +325,11 @@ def build_no_trade_forward_opportunity_report(
     resolved: list[_ResolvedDecision] = []
     missing_features: list[str] = []
     for fact in no_trade:
-        verified = features.load(fact.feature_snapshot_id)
-        if verified is None:
+        loaded_feature = features.load(fact.feature_snapshot_id)
+        if loaded_feature is None:
             missing_features.append(fact.feature_snapshot_id)
             continue
-        feature = verified.snapshot
+        feature = loaded_feature.snapshot
         if feature.market != fact.market:
             raise NoTradeForwardOpportunityError(
                 "NO_TRADE_FORWARD_FEATURE_MARKET_MISMATCH"
