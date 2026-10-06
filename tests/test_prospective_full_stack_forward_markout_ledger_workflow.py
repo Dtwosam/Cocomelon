@@ -36,7 +36,11 @@ def test_full_stack_fast_markout_binds_exact_compact_source() -> None:
         in source
     )
     assert 'run.get("head_branch") != "main"' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert 'run.get("conclusion") not in {"success", "failure"}' in source
+    assert 'actions/runs/$candidate_run_id/jobs?per_page=100' in source
+    assert 'job.get("name") == "paper"' in source
+    assert '"Run continuous paper trader"' in source
+    assert '"Upload compact continuous learning source"' in source
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
     assert (
@@ -95,25 +99,24 @@ def test_full_stack_fast_markout_legacy_source_waits() -> None:
     assert "Fail closed on ledger drift" not in compact
 
 
-def test_full_stack_fast_markout_non_success_wake_falls_back() -> None:
+def test_full_stack_fast_markout_accepts_fail_closed_handoff() -> None:
     source = _source()
 
+    assert 'if [ "$EVENT_NAME" = "workflow_run" ]; then' in source
+    assert 'resolution_mode="completed_event"' in source
+    assert 'run.get("conclusion") in {"success", "failure"}' in source
     assert (
-        'if [ "$EVENT_NAME" = "workflow_run" ] && '
-        '[ "$EVENT_CONCLUSION" = "success" ]; then'
+        'run.get("conclusion") not in {"success", "failure"}'
         in source
     )
-    assert 'resolution_mode="successful_event"' in source
+    assert 'actions/runs/$candidate_run_id/jobs?per_page=100' in source
+    assert 'job.get("name") == "paper"' in source
+    assert '"Run continuous paper trader"' in source
+    assert '"Upload compact continuous learning source"' in source
     assert (
-        'resolution_mode="latest_successful_after_non_success_wake"'
+        "latest_completed_with_authenticated_compact_artifact"
         in source
     )
-    assert (
-        "actions/workflows/continuous-paper.yml/runs?"
-        "branch=main&status=completed&per_page=50"
-        in source
-    )
-    assert "latest_successful_with_compact_artifact" in source
 
 
 def test_full_stack_fast_markout_status_uses_quoted_python_builders() -> None:
