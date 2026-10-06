@@ -395,6 +395,10 @@ This file records decisions that should not be casually re-litigated in later ch
 
 **Scoring semantics:** Future evidence counts only post-boundary, strategy-abstained decisions that match the frozen context and 1h horizon. The scorer records raw directional markout and material-move direction share. It does not assume a fill, does not claim hypothetical PnL, and is not cost-complete.
 
+**Review gate:** Prospective evidence becomes `ready_for_review` only after at least 30 material outcomes, at least 60% alignment with the frozen direction overall, and three chronological future blocks with at least five material outcomes each and at least 55% directional alignment in every block. A flipped or undersampled block keeps the candidate unready even when the aggregate share looks favorable.
+
+**Review authority:** `ready_for_review` is not promotion authority. It only means the frozen hypothesis has accumulated enough clean future evidence for a later explicit research review. It cannot mutate the active paper strategy, bypass tradeability/risk gates, or enable live execution.
+
 **Immutability:** Market, volatility regime, direction, horizon, material threshold, source lineage, selection policy, and prospective boundary are immutable for this candidate. Any retune creates a new candidate identity and a new future boundary.
 
 **Authority:** Prospective scoring is paper research only. It cannot change entries, suppress either direction globally, relax risk/tradeability gates, authorize promotion, or enable live execution.
