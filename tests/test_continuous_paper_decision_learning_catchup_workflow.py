@@ -11,6 +11,10 @@ def test_decision_learning_catchup_finds_authenticated_decision_source() -> None
     source = WORKFLOW.read_text(encoding="utf-8")
 
     assert 'branches: [main]' in source
+    assert "src/cocomelon/research/no_trade_forward_opportunity.py" in source
+    assert "src/cocomelon/no_trade_forward_opportunity_cli.py" in source
+    assert "src/cocomelon/research/no_trade_context_stability.py" in source
+    assert "src/cocomelon/no_trade_context_stability_cli.py" in source
     assert 'cron: "*/15 * * * *"' in source
     assert '"Continuous Mainnet Paper Trader"' in source
     assert '"Continuous Paper Decision Learning Evidence"' in source
