@@ -46,10 +46,10 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert 'EVENT_NAME: ${{ github.event_name }}' in source
     assert "SOURCE_RUN_ID" in source
     assert 'if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$SOURCE_RUN_ID" ]' in source
-    assert (
-        'run.get("status") in {"queued", "pending", "in_progress"}'
-        in source
-    )
+    assert 'status in {"queued", "pending"}' in source
+    assert 'status != "in_progress"' in source
+    assert '"Run continuous paper trader"' in source
+    assert 'trader_status in {"queued", "pending", "in_progress"}' in source
     assert "Queue exact successor from fast resume" in source
     assert "Queue fallback exact successor continuous paper worker" in source
     assert "\n  continue:\n" not in source
@@ -74,6 +74,64 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert fast_upload_at < fast_dispatch_at < fast_cleanup_at
     assert fast_cleanup_at < durable_upload_at < fallback_dispatch_at
     assert fallback_dispatch_at < deferred_markout_at
+
+def test_guard_ignores_post_handoff_research_tails() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    guard_at = source.index(
+        "- name: Skip bootstrap/watchdog when a continuous paper run is already active"
+    )
+    checkout_at = source.index("- uses: actions/checkout@v7", guard_at)
+    guard = source[guard_at:checkout_at]
+
+    assert "actions/runs/{run_id}/jobs?per_page=100" in guard
+    assert 'job.get("name") == "paper"' in guard
+    assert '"Run continuous paper trader"' in guard
+    assert 'trader_status = steps.get("Run continuous paper trader")' in guard
+    assert 'trader_status in {"queued", "pending", "in_progress"}' in guard
+    assert (
+        "The workflow may remain in_progress for deferred research"
+        in guard
+    )
+    assert "after trading has stopped" in guard
+
+
+def test_successor_dispatch_requires_visible_exact_receipt() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert (
+        "run-name: Continuous Paper · "
+        "${{ inputs.source_run_id || github.run_id }}"
+        in source
+    )
+
+    fast_at = source.index("- name: Queue exact successor from fast resume")
+    cleanup_at = source.index(
+        "- name: Remove local fast resume archive",
+        fast_at,
+    )
+    fast = source[fast_at:cleanup_at]
+    assert 'expected_title="Continuous Paper · $GITHUB_RUN_ID"' in fast
+    assert "event=workflow_dispatch&per_page=100" in fast
+    assert 'run.get("display_title") == expected' in fast
+    assert "for poll in $(seq 1 20)" in fast
+    assert "exact successor dispatch did not materialize" in fast
+    assert 'echo "successor_run_id=$successor_run_id"' in fast
+
+    fallback_at = source.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    deferred_at = source.index(
+        "- name: Rebuild deferred full-stack markouts after handoff",
+        fallback_at,
+    )
+    fallback = source[fallback_at:deferred_at]
+    assert 'expected_title="Continuous Paper · $GITHUB_RUN_ID"' in fallback
+    assert "event=workflow_dispatch&per_page=100" in fallback
+    assert 'run.get("display_title") == expected' in fallback
+    assert "for poll in $(seq 1 20)" in fallback
+    assert "fallback exact successor dispatch did not materialize" in fallback
+    assert 'echo "successor_run_id=$successor_run_id"' in fallback
+
 
 def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
