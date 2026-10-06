@@ -15,6 +15,11 @@ def test_decision_learning_catchup_finds_authenticated_decision_source() -> None
     assert "src/cocomelon/no_trade_forward_opportunity_cli.py" in source
     assert "src/cocomelon/research/no_trade_context_stability.py" in source
     assert "src/cocomelon/no_trade_context_stability_cli.py" in source
+    assert "src/cocomelon/research/no_trade_context_candidate.py" in source
+    assert "src/cocomelon/research/no_trade_context_prospective.py" in source
+    assert "src/cocomelon/no_trade_context_prospective_cli.py" in source
+    assert "mon-normal-short-1h-v1.json" in source
+    assert "mon-normal-short-1h-v1-source.json" in source
     assert 'cron: "*/15 * * * *"' in source
     assert '"Continuous Mainnet Paper Trader"' in source
     assert '"Continuous Paper Decision Learning Evidence"' in source
@@ -67,6 +72,10 @@ def test_decision_learning_catchup_trusts_authority_negative_receipt() -> None:
     assert '"strategy_abstained_only"' in source
     assert 'receipt.get("market_aware") is not True' in source
     assert 'receipt.get("validation_block_consistency_required")' in source
+    assert 'EXPECTED_PROSPECTIVE_CANDIDATE_SCHEMA_VERSION: "1"' in source
+    assert 'EXPECTED_PROSPECTIVE_CANDIDATE_ID:' in source
+    assert 'receipt.get("prospective_candidate_schema_version")' in source
+    assert 'receipt.get("prospective_candidate_id")' in source
 
 
 def test_decision_learning_catchup_dispatches_only_missing_worker() -> None:
