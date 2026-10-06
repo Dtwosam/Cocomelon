@@ -519,7 +519,7 @@ class ContinuousPaperConfig:
     duration_seconds: int = 19_800
     deep_limit: int = 20
     context_poll_seconds: int = 30
-    websocket_server_silence_timeout_ms: int = 15_000
+    websocket_server_silence_timeout_ms: int = 4_000
     websocket_redundant_lane_reconnect_stagger_ms: int = 5_000
     websocket_l2_failover_headroom_ms: int = 2_000
     selection_refresh_seconds: int = 300
