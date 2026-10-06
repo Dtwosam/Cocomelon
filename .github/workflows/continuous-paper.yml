@@ -511,7 +511,7 @@ jobs:
             --duration-seconds 19800 \
             --deep-limit 20 \
             --context-poll-seconds 30 \
-            --websocket-server-silence-timeout-ms 15000 \
+            --websocket-server-silence-timeout-ms 4000 \
             --websocket-redundant-lane-reconnect-stagger-ms 5000 \
             --websocket-l2-failover-headroom-ms 2000 \
             --selection-refresh-seconds 300 \
