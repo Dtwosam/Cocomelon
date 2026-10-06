@@ -8,8 +8,12 @@ from typing import Final, cast
 ZERO: Final = Decimal("0")
 ONE: Final = Decimal("1")
 BPS: Final = Decimal("10000")
-NO_TRADE_CONTEXT_STABILITY_SCHEMA_VERSION = 1
+NO_TRADE_CONTEXT_STABILITY_SCHEMA_VERSION = 2
 DEFAULT_MATERIAL_THRESHOLDS_BPS: Final = (50, 100, 200)
+ELIGIBLE_DECISION_STAGES: Final = ("strategy_abstained",)
+KNOWN_DECISION_STAGES: Final = frozenset(
+    {"strategy_abstained", "eligibility_blocked", "other"}
+)
 DEFAULT_CONTEXT_DIMENSIONS: Final = (
     "reason_code",
     "trend_regime",
@@ -31,6 +35,7 @@ class _Outcome:
     horizon_ms: int
     forward_return: Decimal
     reason_codes: tuple[str, ...]
+    decision_stage: str
     context: dict[str, str]
 
     @property
@@ -124,6 +129,11 @@ class NoTradeContextStabilityReport:
     min_validation_direction_share: Decimal
     min_validation_lift: Decimal
     material_thresholds_bps: tuple[int, ...]
+    source_outcome_count: int
+    strategy_abstained_outcomes: int
+    eligibility_blocked_outcomes: int
+    other_outcomes: int
+    eligible_decision_stages: tuple[str, ...]
     analyses: tuple[ContextStabilityAnalysis, ...]
     schema_version: int = NO_TRADE_CONTEXT_STABILITY_SCHEMA_VERSION
 
@@ -142,6 +152,12 @@ class NoTradeContextStabilityReport:
             ),
             "min_validation_lift": str(self.min_validation_lift),
             "material_thresholds_bps": self.material_thresholds_bps,
+            "source_outcome_count": self.source_outcome_count,
+            "strategy_abstained_outcomes": self.strategy_abstained_outcomes,
+            "eligibility_blocked_outcomes": self.eligibility_blocked_outcomes,
+            "other_outcomes": self.other_outcomes,
+            "eligible_decision_stages": self.eligible_decision_stages,
+            "directional_candidate_source": "strategy_abstained_only",
             "analyses": tuple(item.to_dict() for item in self.analyses),
             "validated_candidate_count": sum(
                 item.validated_candidate_count for item in self.analyses
@@ -214,6 +230,11 @@ def _parse_outcome(raw_value: object) -> _Outcome:
         for field in DEFAULT_CONTEXT_DIMENSIONS
         if field != "reason_code"
     }
+    decision_stage = _string(raw.get("decision_stage"), "decision_stage")
+    if decision_stage not in KNOWN_DECISION_STAGES:
+        raise NoTradeContextStabilityError(
+            "decision_stage is not recognized"
+        )
     outcome = _Outcome(
         decision_timestamp_ms=_integer(
             raw.get("decision_timestamp_ms"),
@@ -225,6 +246,7 @@ def _parse_outcome(raw_value: object) -> _Outcome:
             "forward_mark_return",
         ),
         reason_codes=reasons,
+        decision_stage=decision_stage,
         context=context,
     )
     favored = _string(raw.get("favored_direction"), "favored_direction")
@@ -480,8 +502,13 @@ def build_no_trade_context_stability_report(
         _parse_outcome(item)
         for item in _sequence(forward_report.get("outcomes"), "outcomes")
     )
+    strategy_abstained = tuple(
+        item
+        for item in outcomes
+        if item.decision_stage in ELIGIBLE_DECISION_STAGES
+    )
     by_horizon: dict[int, list[_Outcome]] = {}
-    for item in outcomes:
+    for item in strategy_abstained:
         by_horizon.setdefault(item.horizon_ms, []).append(item)
 
     analyses: list[ContextStabilityAnalysis] = []
@@ -524,5 +551,16 @@ def build_no_trade_context_stability_report(
         min_validation_direction_share=min_validation_direction_share,
         min_validation_lift=min_validation_lift,
         material_thresholds_bps=tuple(sorted(material_thresholds_bps)),
+        source_outcome_count=len(outcomes),
+        strategy_abstained_outcomes=sum(
+            item.decision_stage == "strategy_abstained" for item in outcomes
+        ),
+        eligibility_blocked_outcomes=sum(
+            item.decision_stage == "eligibility_blocked" for item in outcomes
+        ),
+        other_outcomes=sum(
+            item.decision_stage == "other" for item in outcomes
+        ),
+        eligible_decision_stages=ELIGIBLE_DECISION_STAGES,
         analyses=tuple(analyses),
     )
