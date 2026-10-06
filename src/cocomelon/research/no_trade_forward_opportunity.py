@@ -16,11 +16,23 @@ from cocomelon.research.learning_feature_snapshots import (
 )
 
 ZERO: Final = Decimal("0")
-NO_TRADE_FORWARD_SCHEMA_VERSION = 1
+NO_TRADE_FORWARD_SCHEMA_VERSION = 2
 FORWARD_HORIZON_FIELDS: Final = {
     15 * 60 * 1000: "return_15m",
     60 * 60 * 1000: "return_1h",
 }
+ELIGIBILITY_BLOCK_REASONS: Final = frozenset(
+    {"not_rankable", "not_deep_ready", "missing_primary_data"}
+)
+STRATEGY_ABSTENTION_REASONS: Final = frozenset(
+    {
+        "no_primary_thesis",
+        "primary_conflict",
+        "context_veto",
+        "below_decision_threshold",
+        "invalid_invalidation",
+    }
+)
 MARGINAL_CONTEXT_DIMENSIONS: Final = (
     "trend_regime",
     "volatility_regime",
@@ -54,6 +66,7 @@ class NoTradeForwardOutcome:
     forward_mark_return: Decimal
     favored_direction: Direction
     reason_codes: tuple[str, ...]
+    decision_stage: str
     trend_regime: str
     volatility_regime: str
     return_15m_sign: str
@@ -84,6 +97,7 @@ class NoTradeForwardOutcome:
             "forward_mark_return": str(self.forward_mark_return),
             "favored_direction": self.favored_direction.value,
             "reason_codes": self.reason_codes,
+            "decision_stage": self.decision_stage,
             "trend_regime": self.trend_regime,
             "volatility_regime": self.volatility_regime,
             "return_15m_sign": self.return_15m_sign,
@@ -106,6 +120,7 @@ class NoTradeForwardOpportunityReport:
     missing_forward_return_by_horizon: dict[str, int]
     horizon_summary: dict[str, object]
     reason_summary: dict[str, tuple[dict[str, object], ...]]
+    decision_stage_summary: tuple[dict[str, object], ...]
     marginal_summary: dict[str, tuple[dict[str, object], ...]]
     outcomes: tuple[NoTradeForwardOutcome, ...]
     decision_state_digest: str
@@ -129,6 +144,7 @@ class NoTradeForwardOpportunityReport:
             ),
             "horizon_summary": self.horizon_summary,
             "reason_summary": self.reason_summary,
+            "decision_stage_summary": self.decision_stage_summary,
             "marginal_summary": self.marginal_summary,
             "outcomes": tuple(item.to_dict() for item in self.outcomes),
             "decision_state_digest": self.decision_state_digest,
@@ -151,6 +167,15 @@ def _sign_bucket(value: Decimal | None) -> str:
     if value < ZERO:
         return "negative"
     return "flat"
+
+
+def _decision_stage(reason_codes: tuple[str, ...]) -> str:
+    reasons = set(reason_codes)
+    if reasons & ELIGIBILITY_BLOCK_REASONS:
+        return "eligibility_blocked"
+    if reasons & STRATEGY_ABSTENTION_REASONS:
+        return "strategy_abstained"
+    return "other"
 
 
 def _favored_direction(value: Decimal) -> Direction:
@@ -252,6 +277,19 @@ def _reason_summary(
             key_values=tuple(values),
         )
     }
+
+
+def _decision_stage_summary(
+    outcomes: tuple[NoTradeForwardOutcome, ...],
+    *,
+    min_group_rows: int,
+) -> tuple[dict[str, object], ...]:
+    return _grouped_summary(
+        outcomes,
+        min_group_rows=min_group_rows,
+        key_name="decision_stage",
+        key_values=tuple((item.decision_stage, item) for item in outcomes),
+    )
 
 
 def _marginal_summary(
@@ -387,6 +425,7 @@ def build_no_trade_forward_opportunity_report(
                     forward_mark_return=raw_return,
                     favored_direction=_favored_direction(raw_return),
                     reason_codes=row.fact.reason_codes,
+                    decision_stage=_decision_stage(row.fact.reason_codes),
                     trend_regime=row.feature.trend_regime.value,
                     volatility_regime=row.feature.volatility_regime.value,
                     return_15m_sign=_sign_bucket(
@@ -426,6 +465,10 @@ def build_no_trade_forward_opportunity_report(
             min_group_rows=min_group_rows,
         ),
         reason_summary=_reason_summary(
+            ordered_outcomes,
+            min_group_rows=min_group_rows,
+        ),
+        decision_stage_summary=_decision_stage_summary(
             ordered_outcomes,
             min_group_rows=min_group_rows,
         ),

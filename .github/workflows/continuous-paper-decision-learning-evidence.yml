@@ -249,9 +249,13 @@ jobs:
               "decision_state_digest": report["decision_state_digest"],
               "feature_state_digest": report["feature_state_digest"],
               "forward_label": report["forward_label"],
+              "forward_opportunity_schema_version": report["schema_version"],
               "context_stability_schema_version": stability["schema_version"],
               "validated_context_candidate_count": stability[
                   "validated_candidate_count"
+              ],
+              "directional_candidate_source": stability[
+                  "directional_candidate_source"
               ],
               "hypothetical_pnl": False,
               "cost_complete": False,
@@ -282,6 +286,10 @@ jobs:
           print(f"- decision records: {report['decision_records']}")
           print(f"- NO_TRADE decisions: {report['no_trade_decisions']}")
           print(f"- resolved decision contexts: {report['resolved_decisions']}")
+          stages = {
+              (str(item["horizon_ms"]), item["decision_stage"]): item
+              for item in report["decision_stage_summary"]
+          }
           for horizon_ms in ("900000", "3600000"):
               item = report["horizon_summary"][horizon_ms]
               print(
@@ -289,6 +297,18 @@ jobs:
                   f"{item['outcomes']} "
                   f"(LONG-favored {item['favored_long']}, "
                   f"SHORT-favored {item['favored_short']}, flat {item['flat']})"
+              )
+              strategy_abstained = stages.get(
+                  (horizon_ms, "strategy_abstained")
+              )
+              eligibility_blocked = stages.get(
+                  (horizon_ms, "eligibility_blocked")
+              )
+              print(
+                  f"- {int(horizon_ms) // 60000}m strategy-abstained / "
+                  "eligibility-blocked labels: "
+                  f"{0 if strategy_abstained is None else strategy_abstained['outcomes']} / "
+                  f"{0 if eligibility_blocked is None else eligibility_blocked['outcomes']}"
               )
           stability = json.loads(
               Path("decision-learning-evidence/no-trade-context-stability.json").read_text(
@@ -298,6 +318,17 @@ jobs:
           print(
               "- chronologically validated material context candidates: "
               f"{stability['validated_candidate_count']}"
+          )
+          print(
+              "- stability candidate source: "
+              f"{stability['directional_candidate_source']}"
+          )
+          print(
+              "- stability source outcomes / strategy-abstained / "
+              "eligibility-blocked: "
+              f"{stability['source_outcome_count']} / "
+              f"{stability['strategy_abstained_outcomes']} / "
+              f"{stability['eligibility_blocked_outcomes']}"
           )
           print("- discovery patterns must survive a later holdout period")
           print("- labels are future market returns, not hypothetical PnL")

@@ -26,6 +26,7 @@ def test_no_trade_context_stability_cli_emits_research_report(
                 "forward_mark_return": value,
                 "favored_direction": "long" if value[0] != "-" else "short",
                 "reason_codes": ["no_primary_thesis"],
+                "decision_stage": "strategy_abstained",
                 "trend_regime": "up",
                 "volatility_regime": "high",
                 "return_15m_sign": "positive",
@@ -75,5 +76,7 @@ def test_no_trade_context_stability_cli_emits_research_report(
     payload = json.loads(capsys.readouterr().out)
     assert payload["command"] == "no-trade-context-stability"
     assert payload["chronological_holdout_required"] is True
+    assert payload["directional_candidate_source"] == "strategy_abstained_only"
+    assert payload["strategy_abstained_outcomes"] == 20
     assert payload["exploratory_only"] is True
     assert payload["execution_authority"] is False
