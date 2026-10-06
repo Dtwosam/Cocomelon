@@ -53,6 +53,7 @@ from cocomelon.continuous_paper import (
     _is_systemic_l2_failure,
     _iter_until_stop,
     _l2_event_fresh_for_promotion,
+    _l2_lane_reconnect_grace_ms,
     _l2_supervisor_stale_after_ms,
     _latest_epoch_stale_l2_market_keys,
     _load_checkpoint,
@@ -2453,18 +2454,56 @@ def test_l2_supervisor_failover_has_freshness_headroom() -> None:
         )
 
 
-def test_runtime_staggers_redundant_l2_lane_reconnects() -> None:
+def test_runtime_staggers_redundant_l2_lane_reconnects_before_cutoff() -> None:
+    config = ContinuousPaperConfig()
+    replay = BaselineReplayConfig()
+    stale_after_ms = _l2_supervisor_stale_after_ms(
+        max_book_age_ms=replay.eligibility.max_book_age_ms,
+        failover_headroom_ms=config.websocket_l2_failover_headroom_ms,
+    )
+    lane_zero_grace_ms = _l2_lane_reconnect_grace_ms(
+        lane=0,
+        configured_stagger_ms=(
+            config.websocket_redundant_lane_reconnect_stagger_ms
+        ),
+        failover_headroom_ms=config.websocket_l2_failover_headroom_ms,
+    )
+    lane_one_grace_ms = _l2_lane_reconnect_grace_ms(
+        lane=1,
+        configured_stagger_ms=(
+            config.websocket_redundant_lane_reconnect_stagger_ms
+        ),
+        failover_headroom_ms=config.websocket_l2_failover_headroom_ms,
+    )
+
+    assert stale_after_ms == 3_000
+    assert lane_zero_grace_ms == 0
+    assert lane_one_grace_ms == 1_000
+    assert (
+        stale_after_ms + lane_one_grace_ms
+        < replay.eligibility.max_book_age_ms
+    )
+
     source = Path("src/cocomelon/continuous_paper.py").read_text(
         encoding="utf-8"
     )
-
-    assert (
-        "systemic_l2_stale_reconnect_grace_ms=(\n"
-        "                        lane\n"
-        "                        * config.websocket_redundant_lane_reconnect_stagger_ms"
-        in source
-    )
+    assert "_l2_lane_reconnect_grace_ms(" in source
     assert "max_systemic_l2_targeted_resubscribes=1" in source
+
+
+def test_l2_lane_reconnect_grace_never_uses_reserved_cutoff_runway() -> None:
+    assert _l2_lane_reconnect_grace_ms(
+        lane=1,
+        configured_stagger_ms=5_000,
+        failover_headroom_ms=2_000,
+        pre_cutoff_reserve_ms=1_000,
+    ) == 1_000
+    assert _l2_lane_reconnect_grace_ms(
+        lane=1,
+        configured_stagger_ms=5_000,
+        failover_headroom_ms=500,
+        pre_cutoff_reserve_ms=1_000,
+    ) == 0
 
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:

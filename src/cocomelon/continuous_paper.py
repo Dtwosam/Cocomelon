@@ -1505,6 +1505,32 @@ def _l2_supervisor_stale_after_ms(
     return max_book_age_ms - failover_headroom_ms
 
 
+def _l2_lane_reconnect_grace_ms(
+    *,
+    lane: int,
+    configured_stagger_ms: int,
+    failover_headroom_ms: int,
+    pre_cutoff_reserve_ms: int = 1_000,
+) -> int:
+    if lane < 0:
+        raise ValueError("lane must be non-negative")
+    if configured_stagger_ms < 0:
+        raise ValueError("configured_stagger_ms must be non-negative")
+    if failover_headroom_ms < 0:
+        raise ValueError("failover_headroom_ms must be non-negative")
+    if pre_cutoff_reserve_ms < 0:
+        raise ValueError("pre_cutoff_reserve_ms must be non-negative")
+
+    available_grace_ms = max(
+        0,
+        failover_headroom_ms - pre_cutoff_reserve_ms,
+    )
+    return min(
+        lane * configured_stagger_ms,
+        available_grace_ms,
+    )
+
+
 def _is_systemic_l2_count(
     required_count: int,
     unhealthy_count: int,
@@ -9844,8 +9870,15 @@ async def run_continuous_paper_session(
                     ),
                     systemic_l2_stale_reconnect_fraction=0.5,
                     systemic_l2_stale_reconnect_grace_ms=(
-                        lane
-                        * config.websocket_redundant_lane_reconnect_stagger_ms
+                        _l2_lane_reconnect_grace_ms(
+                            lane=lane,
+                            configured_stagger_ms=(
+                                config.websocket_redundant_lane_reconnect_stagger_ms
+                            ),
+                            failover_headroom_ms=(
+                                config.websocket_l2_failover_headroom_ms
+                            ),
+                        )
                     ),
                     max_systemic_l2_targeted_resubscribes=1,
                     activity_hook=lane_activity_hook,
