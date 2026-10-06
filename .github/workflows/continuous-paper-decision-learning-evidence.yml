@@ -215,6 +215,16 @@ jobs:
             --input decision-learning-evidence/no-trade-forward-opportunity.json \
             > decision-learning-evidence/no-trade-context-stability.json
 
+      - name: Score frozen no-trade context candidate prospectively
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        run: |
+          set -euo pipefail
+          cocomelon-no-trade-context-prospective \
+            --input decision-learning-evidence/no-trade-forward-opportunity.json \
+            --freeze research/no_trade_context_candidates/mon-normal-short-1h-v1.json \
+            --selection-record research/no_trade_context_candidates/mon-normal-short-1h-v1-source.json \
+            > decision-learning-evidence/no-trade-context-prospective.json
+
       - name: Record authenticated decision-learning receipt
         if: ${{ steps.upstream.outputs.eligible == 'true' }}
         env:
@@ -236,6 +246,11 @@ jobs:
           )
           stability = json.loads(
               Path("decision-learning-evidence/no-trade-context-stability.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          prospective = json.loads(
+              Path("decision-learning-evidence/no-trade-context-prospective.json").read_text(
                   encoding="utf-8"
               )
           )
@@ -261,6 +276,14 @@ jobs:
               "validation_block_consistency_required": stability[
                   "validation_block_consistency_required"
               ],
+              "prospective_candidate_id": prospective["candidate_id"],
+              "prospective_candidate_schema_version": prospective["schema_version"],
+              "prospective_not_before_ms": prospective["prospective_not_before_ms"],
+              "prospective_label_window_open": prospective[
+                  "prospective_label_window_open"
+              ],
+              "prospective_matching_outcomes": prospective["matching_outcomes"],
+              "prospective_material_outcomes": prospective["material_outcomes"],
               "hypothetical_pnl": False,
               "cost_complete": False,
               "research_only": True,
@@ -319,6 +342,11 @@ jobs:
                   encoding="utf-8"
               )
           )
+          prospective = json.loads(
+              Path("decision-learning-evidence/no-trade-context-prospective.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           print(
               "- chronologically validated material context candidates: "
               f"{stability['validated_candidate_count']}"
@@ -346,6 +374,19 @@ jobs:
               f"{stability['eligibility_blocked_outcomes']}"
           )
           print("- discovery patterns must survive a later holdout period")
+          print(
+              "- frozen prospective candidate: "
+              f"{prospective['candidate_id']}"
+          )
+          print(
+              "- prospective matching / material outcomes: "
+              f"{prospective['matching_outcomes']} / "
+              f"{prospective['material_outcomes']}"
+          )
+          print(
+              "- prospective label window open: "
+              f"{prospective['prospective_label_window_open']}"
+          )
           print("- labels are future market returns, not hypothetical PnL")
           print("- cost complete: false")
           print("- research-only: true")

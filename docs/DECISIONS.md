@@ -379,3 +379,24 @@ This file records decisions that should not be casually re-litigated in later ch
 **Goal:** Build a trader that can identify when a market favors LONG, when it favors SHORT, and when the correct action is NO_TRADE, rather than chasing recent side-level win/loss streaks.
 
 **Safety:** This decision does not relax independent risk limits, evidence integrity, promotion gates, or the live-trading prohibition.
+
+
+## D-035 — Freeze the first skipped-opportunity context candidate before prospective reuse
+
+**Date:** 2026-10-06
+
+**Decision:** The first continuous-paper skipped-opportunity pattern that survives strategy-abstention-only filtering, market-aware discovery, aggregate chronological holdout, and three later validation blocks is frozen as a research-only prospective shadow candidate. It does not modify the active paper strategy.
+
+**Frozen candidate:** Candidate `2f72dd8fcb0b8cef3a4eb991d472a0e9c50f550954d1b3d8a0ddd3d6fe1cfd23` studies strategy abstentions in market `MON` while volatility regime is `normal`, with SHORT as the frozen direction, a 1h forward horizon, and a 50 bps material-move analysis threshold. The authenticated source evidence artifact digest is `sha256:b91486afbd31778b075712512b81d7e94b6c2db716683fc0fe4d4954ba388ca1`.
+
+**Touched evidence:** The discovery/validation evidence remains touched research evidence. It contained 52 discovery material outcomes with a 61.54% SHORT share and 25 later material outcomes with a 76% SHORT share. The later block shares were 75%, 75%, and 77.78%. These numbers justify freezing a hypothesis only; they do not authorize a trade.
+
+**Prospective boundary:** The candidate is frozen at `1791291300000` ms and may score prospective decisions only from `1791312900000` ms onward, preserving the existing six-hour prospective embargo. Decisions before that boundary are never backfilled into prospective evidence.
+
+**Scoring semantics:** Future evidence counts only post-boundary, strategy-abstained decisions that match the frozen context and 1h horizon. The scorer records raw directional markout and material-move direction share. It does not assume a fill, does not claim hypothetical PnL, and is not cost-complete.
+
+**Immutability:** Market, volatility regime, direction, horizon, material threshold, source lineage, selection policy, and prospective boundary are immutable for this candidate. Any retune creates a new candidate identity and a new future boundary.
+
+**Authority:** Prospective scoring is paper research only. It cannot change entries, suppress either direction globally, relax risk/tradeability gates, authorize promotion, or enable live execution.
+
+**LIVE TRADING: DISABLED.**
