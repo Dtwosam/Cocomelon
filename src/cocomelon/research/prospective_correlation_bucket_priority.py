@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final, cast
 
@@ -31,13 +29,6 @@ ZERO: Final = Decimal("0")
 
 class ProspectiveCorrelationBucketPriorityError(RuntimeError):
     pass
-
-
-@dataclass(frozen=True, slots=True)
-class _ResolvedRelease:
-    option: CapacityReleaseOpportunityOption
-    lineage: ContinuousPaperOpeningLineage
-    rank: ContinuousPaperOpeningRankEvidence
 
 
 def _closed_by_plan(
