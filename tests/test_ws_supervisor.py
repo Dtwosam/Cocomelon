@@ -431,7 +431,7 @@ def test_systemic_l2_stale_targets_resubscribe_without_claiming_freshness() -> N
     asyncio.run(run())
 
 
-def test_broad_systemic_l2_staleness_bypasses_targeted_resubscribe() -> None:
+def test_broad_systemic_l2_staleness_targets_resubscribe_before_reconnect() -> None:
     async def run() -> None:
         now = [1_000]
 
@@ -448,48 +448,37 @@ def test_broad_systemic_l2_staleness_bypasses_targeted_resubscribe() -> None:
                 },
             }
 
-        first_rows: list[tuple[int, object]] = [
+        rows: list[tuple[int, object]] = [
             (1_000, book_for("BTC", 1_000)),
             (1_001, book_for("ETH", 1_001)),
             (1_002, book_for("SOL", 1_002)),
             (1_003, book_for("DOGE", 1_003)),
             (7_000, trade(1, 7_000)),
-        ]
-        second_rows: list[tuple[int, object]] = [
-            (8_000, book_for("BTC", 8_000)),
-            (8_001, book_for("ETH", 8_001)),
-            (8_002, book_for("SOL", 8_002)),
-            (8_003, book_for("DOGE", 8_003)),
-            (8_004, trade(2, 8_004)),
+            (7_001, book_for("BTC", 7_001)),
+            (7_002, book_for("ETH", 7_002)),
+            (7_003, book_for("SOL", 7_003)),
+            (7_004, book_for("DOGE", 7_004)),
+            (7_005, trade(2, 7_005)),
         ]
 
         class ClockedConnection(FakeConnection):
-            def __init__(self, rows: list[tuple[int, object]]) -> None:
-                super().__init__([])
-                self.clock_rows = rows
-
             async def recv_json(self) -> dict[str, object]:
-                timestamp_ms, row = self.clock_rows.pop(0)
+                timestamp_ms, row = rows.pop(0)
                 now[0] = timestamp_ms
                 assert isinstance(row, dict)
                 return row
 
-        first = ClockedConnection(first_rows)
-        second = ClockedConnection(second_rows)
-        pool = [first, second]
-        sleeps: list[float] = []
+        connection = ClockedConnection([])
+        gaps: list[DataGap] = []
 
         async def factory() -> ClockedConnection:
-            return pool.pop(0)
+            return connection
 
         async def event_sink(_event: StreamEvent) -> None:
             return None
 
-        async def gap_sink(_gap: DataGap) -> None:
-            return None
-
-        async def fake_sleep(value: float) -> None:
-            sleeps.append(value)
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
 
         supervisor = WebSocketSupervisor(
             factory,
@@ -507,25 +496,36 @@ def test_broad_systemic_l2_staleness_bypasses_targeted_resubscribe() -> None:
                 now[0] / 1000,
                 tz=UTC,
             ),
-            sleep=fake_sleep,
             stale_after_ms=5_000,
             systemic_l2_stale_reconnect_fraction=0.5,
             max_systemic_l2_targeted_resubscribes=1,
         )
         await supervisor.run(
-            max_sessions=2,
-            max_messages_per_session=5,
+            max_sessions=1,
+            max_messages_per_session=10,
         )
 
-        first_methods = [item.get("method") for item in first.sent]
-        assert "unsubscribe" not in first_methods
-        assert supervisor.health.reconnect_count == 1
+        methods = [item.get("method") for item in connection.sent]
+        assert methods.count("unsubscribe") == 4
+        assert methods.count("subscribe") == 9
+        assert supervisor.health.reconnect_count == 0
         assert (
             supervisor.health.systemic_l2_targeted_resubscribe_count
-            == 0
+            == 1
         )
-        assert supervisor.health.systemic_l2_stale_reconnect_count == 1
-        assert sleeps == [1.0]
+        assert supervisor.health.systemic_l2_stale_reconnect_count == 0
+        assert supervisor.stale_l2_streams(now_ms=7_005) == ()
+        recovered = {
+            gap.stream_id
+            for gap in gaps
+            if gap.reason == "recovered"
+        }
+        assert {
+            "l2Book:BTC",
+            "l2Book:ETH",
+            "l2Book:SOL",
+            "l2Book:DOGE",
+        } <= recovered
 
     asyncio.run(run())
 
