@@ -896,6 +896,14 @@ def test_upgrade_handoff_rebuilds_cooldown_evidence_after_successor_dispatch() -
         in source
     )
     assert "RESEARCH ONLY / NO EXECUTION / NO RISK CHANGE" in source
+    assert "Upload early cooldown evidence" in source
+    assert (
+        "steps.deferred_cooldown_rebuild.outputs.ready == 'true'"
+        in source
+    )
+    assert "continuous-paper-cooldown-evidence-" in source
+    assert "1h fee-adjusted PnL=" in source
+    assert "robust option/market=" in source
 
     fallback_at = source.index(
         "- name: Queue fallback exact successor continuous paper worker"
@@ -903,11 +911,23 @@ def test_upgrade_handoff_rebuilds_cooldown_evidence_after_successor_dispatch() -
     markout_at = source.index(
         "- name: Rebuild deferred full-stack markouts after handoff"
     )
-    capacity_at = source.index(
-        "- name: Rebuild deferred capacity-reflow economics after handoff"
+    priority_at = source.index(
+        "- name: Rebuild correlation bucket priority audit after handoff"
+    )
+    loss_audit_at = source.index(
+        "- name: Rebuild loss-streak context audit after handoff"
     )
     cooldown_at = source.index(
         "- name: Rebuild deferred cooldown evidence after handoff"
+    )
+    cooldown_upload_at = source.index(
+        "- name: Upload early cooldown evidence"
+    )
+    holder_at = source.index(
+        "- name: Rebuild exact correlation holder release economics after handoff"
+    )
+    capacity_at = source.index(
+        "- name: Rebuild deferred capacity-reflow economics after handoff"
     )
     gate_at = source.index(
         "- name: Fail closed on upgrade handoff source"
@@ -918,12 +938,15 @@ def test_upgrade_handoff_rebuilds_cooldown_evidence_after_successor_dispatch() -
     assert (
         fallback_at
         < markout_at
-        < capacity_at
+        < priority_at
+        < loss_audit_at
         < cooldown_at
+        < cooldown_upload_at
+        < holder_at
+        < capacity_at
         < gate_at
         < compact_at
     )
-
 
 
 def test_upgrade_handoff_builds_correlation_priority_after_markouts() -> None:
