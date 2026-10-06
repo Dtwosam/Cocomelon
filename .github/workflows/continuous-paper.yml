@@ -937,6 +937,92 @@ jobs:
           retention-days: 90
           compression-level: 6
 
+      - name: Rebuild deferred cooldown evidence after handoff
+        id: deferred_cooldown_rebuild
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/session-summary.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          exit_reason="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/session-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          print(payload.get("exit_reason", ""))
+          PY
+          )"
+          if [ "$exit_reason" != "upgrade_requested" ]; then
+            echo "deferred cooldown rebuild not needed for exit reason: $exit_reason"
+            exit 0
+          fi
+          python scripts/rebuild_deferred_consecutive_loss_cooldown.py \
+            "$STATE_ROOT" \
+            | tee /tmp/deferred-cooldown-rebuild.json
+          test -s \
+            "$STATE_ROOT/prospective-consecutive-loss-cooldown-shadow-summary.json"
+          test -s \
+            "$STATE_ROOT/prospective-consecutive-loss-cooldown-shadow-state.json"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/"
+                  "prospective-consecutive-loss-cooldown-shadow-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          print("## Deferred post-handoff cooldown rebuild")
+          print("- successor already dispatched: true")
+          print("- authority: RESEARCH ONLY / NO EXECUTION / NO RISK CHANGE")
+          print(
+              "- clean / candidate-eligible cooldown rejects: "
+              f"{payload['clean_cooldown_rejections']} / "
+              f"{payload['candidate_eligible_cooldown_rejections']}"
+          )
+          for window_ms, item in sorted(
+              payload["relaxation_windows"].items(),
+              key=lambda entry: int(entry[0]),
+          ):
+              robustness = item["one_hour_robustness"]
+              print(
+                  f"- {int(window_ms) // 60000}m relaxation "
+                  f"unblock/fillable: "
+                  f"{item['would_unblock_opportunities']} / "
+                  f"{item['fillable_opportunities']}; "
+                  f"1h fee-adjusted PnL="
+                  f"{robustness['total_entry_fee_adjusted_pnl']}; "
+                  f"robust option/market="
+                  f"{robustness['positive_after_removing_any_one_option']} / "
+                  f"{robustness['positive_after_removing_any_one_market']}"
+              )
+          print(
+              "- execution authority / changes risk limits: "
+              f"{payload['execution_authority']} / "
+              f"{payload['changes_risk_limits']}"
+          )
+          PY
+
+      - name: Upload early cooldown evidence
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_cooldown_rebuild.outcome == 'success' && steps.deferred_cooldown_rebuild.outputs.ready == 'true' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-cooldown-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            continuous-paper-state/prospective-consecutive-loss-cooldown-shadow-state.json
+            continuous-paper-state/prospective-consecutive-loss-cooldown-shadow-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Rebuild exact correlation holder release economics after handoff
         id: deferred_holder_release_execution
         if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/capacity-release-books/protocol.json') != '' }}
@@ -1052,59 +1138,6 @@ jobs:
               "- execution / promotion authority: "
               f"{payload['execution_authority']} / "
               f"{payload['promotion_authority']}"
-          )
-          PY
-
-      - name: Rebuild deferred cooldown evidence after handoff
-        id: deferred_cooldown_rebuild
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/session-summary.json') != '' }}
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          exit_reason="$(
-            python - <<'PY'
-          import json
-          from pathlib import Path
-
-          payload = json.loads(
-              Path(
-                  "continuous-paper-state/session-summary.json"
-              ).read_text(encoding="utf-8")
-          )
-          print(payload.get("exit_reason", ""))
-          PY
-          )"
-          if [ "$exit_reason" != "upgrade_requested" ]; then
-            echo "deferred cooldown rebuild not needed for exit reason: $exit_reason"
-            exit 0
-          fi
-          python scripts/rebuild_deferred_consecutive_loss_cooldown.py \
-            "$STATE_ROOT" \
-            | tee /tmp/deferred-cooldown-rebuild.json
-          test -s \
-            "$STATE_ROOT/prospective-consecutive-loss-cooldown-shadow-summary.json"
-          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json
-          from pathlib import Path
-
-          payload = json.loads(
-              Path(
-                  "/tmp/deferred-cooldown-rebuild.json"
-              ).read_text(encoding="utf-8")
-          )
-          print("## Deferred post-handoff cooldown rebuild")
-          print("- successor already dispatched: true")
-          print("- authority: RESEARCH ONLY / NO EXECUTION / NO RISK CHANGE")
-          print(
-              "- clean / candidate-eligible cooldown rejects: "
-              f"{payload['clean_cooldown_rejections']} / "
-              f"{payload['candidate_eligible_cooldown_rejections']}"
-          )
-          print(
-              "- execution authority / changes risk limits: "
-              f"{payload['execution_authority']} / "
-              f"{payload['changes_risk_limits']}"
           )
           PY
 
