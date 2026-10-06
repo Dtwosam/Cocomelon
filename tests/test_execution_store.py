@@ -574,6 +574,48 @@ def test_database_enforces_one_active_position_per_market(tmp_path: Path) -> Non
     store.close()
 
 
+def test_batched_position_history_scans_event_table_once(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "paper.sqlite3"
+    order = plan()
+    paper_fill = fill(order)
+    execution = attempt(order)
+    opened = opened_state(order, paper_fill)
+    store = PaperExecutionStore(path)
+    store.persist_plan(order)
+    store.persist_execution(execution, (paper_fill,), opened)
+
+    marked = mark_to_market(
+        opened,
+        {MARKET: Decimal("105")},
+        2_000,
+    )
+    store.persist_account(marked)
+
+    statements: list[str] = []
+    store.raw_connection().set_trace_callback(statements.append)
+    histories = store.load_position_histories(
+        (
+            (order.plan_id, 1_500),
+            (order.plan_id, 2_500),
+        )
+    )
+    store.raw_connection().set_trace_callback(None)
+    store.close()
+
+    early = histories[(order.plan_id, 1_500)]
+    late = histories[(order.plan_id, 2_500)]
+    assert tuple(item.updated_at_ms for item in early) == (1_300,)
+    assert tuple(item.updated_at_ms for item in late) == (1_300, 2_000)
+    scans = [
+        statement
+        for statement in statements
+        if "FROM paper_position_events" in statement
+    ]
+    assert len(scans) == 1
+
+
 def test_position_history_loads_exact_state_at_or_before_timestamp(
     tmp_path: Path,
 ) -> None:
