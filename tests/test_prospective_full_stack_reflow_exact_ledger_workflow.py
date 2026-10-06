@@ -35,7 +35,11 @@ def test_full_stack_reflow_exact_ledger_binds_exact_compact_source() -> None:
     )
     assert 'run.get("head_branch") != "main"' in source
     assert 'run.get("status") != "completed"' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert 'run.get("conclusion") not in {"success", "failure"}' in source
+    assert 'actions/runs/$candidate_run_id/jobs?per_page=100' in source
+    assert 'job.get("name") == "paper"' in source
+    assert '"Run continuous paper trader"' in source
+    assert '"Upload compact continuous learning source"' in source
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
     assert (
@@ -43,7 +47,7 @@ def test_full_stack_reflow_exact_ledger_binds_exact_compact_source() -> None:
         '$candidate_run_id-$candidate_attempt"'
         in source
     )
-    assert "latest_successful_with_compact_artifact" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert "source artifact digest is missing or invalid" in source
     assert "prospective-full-stack-capacity-reflow-summary.json" in source
     assert "journal.sqlite3" not in source
@@ -73,24 +77,19 @@ def test_full_stack_reflow_exact_ledger_keeps_horizons_separate() -> None:
     assert 'summary["by_horizon"][str(horizon_ms)]' in source
 
 
-def test_full_stack_reflow_exact_ledger_non_success_wake_falls_back() -> None:
+def test_full_stack_reflow_exact_ledger_accepts_fail_closed_handoff() -> None:
     source = _source()
 
-    assert (
-        'if [ "$EVENT_NAME" = "workflow_run" ] && '
-        '[ "$EVENT_CONCLUSION" = "success" ]; then'
-        in source
-    )
-    assert 'resolution_mode="successful_event"' in source
-    assert (
-        'resolution_mode="latest_successful_after_non_success_wake"'
-        in source
-    )
-    assert (
-        "actions/workflows/continuous-paper.yml/runs?"
-        "branch=main&status=completed&per_page=50"
-        in source
-    )
+    assert "paper_run_is_evidence_eligible()" in source
+    assert "wait_for_paper_run_completion()" in source
+    assert '"Measure durable continuous paper state"' in source
+    assert '"Upload durable continuous paper state"' in source
+    assert '"Upload compact continuous learning source"' in source
+    assert 'failed_steps != {"Fail closed on upgrade handoff source"}' in source
+    assert 'resolution_mode="durable_upgrade_handoff_event"' in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
+    assert "selected source paper run is not evidence-eligible" in source
+
 
 
 def test_full_stack_reflow_exact_ledger_status_is_authority_negative() -> None:

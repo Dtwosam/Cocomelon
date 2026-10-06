@@ -122,21 +122,16 @@ def test_risk_rejected_ledger_surfaces_combined_block_reasons() -> None:
 def test_risk_rejected_ledger_accepts_authenticated_fail_closed_handoff() -> None:
     source = _source()
 
-    assert 'if [ "$EVENT_NAME" = "workflow_run" ]; then' in source
-    assert 'resolution_mode="completed_event"' in source
-    assert 'run.get("conclusion") in {"success", "failure"}' in source
-    assert (
-        'run.get("conclusion") not in {"success", "failure"}'
-        in source
-    )
-    assert 'actions/runs/$candidate_run_id/jobs?per_page=100' in source
-    assert 'job.get("name") == "paper"' in source
-    assert '"Run continuous paper trader"' in source
+    assert "paper_run_is_evidence_eligible()" in source
+    assert "wait_for_paper_run_completion()" in source
+    assert '"Measure durable continuous paper state"' in source
+    assert '"Upload durable continuous paper state"' in source
     assert '"Upload compact continuous learning source"' in source
-    assert (
-        'resolution_mode="latest_completed_with_authenticated_compact_artifact"'
-        in source
-    )
+    assert 'failed_steps != {"Fail closed on upgrade handoff source"}' in source
+    assert 'resolution_mode="durable_upgrade_handoff_event"' in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
+    assert "selected source paper run is not evidence-eligible" in source
+
 
 
 def test_risk_rejected_waiting_and_blocked_status_use_quoted_builders() -> None:
@@ -169,7 +164,7 @@ def test_risk_rejected_source_skips_empty_successful_handoffs() -> None:
     source = _source()
 
     assert "artifact_for_run()" in source
-    assert "latest_completed_with_authenticated_compact_artifact" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert "selected source has no authenticated compact artifact" in source
     assert "artifact_candidates" in source
     assert 'EVENT_NAME" != "workflow_dispatch"' in source
