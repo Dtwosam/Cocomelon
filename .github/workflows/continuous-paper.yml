@@ -901,11 +901,22 @@ jobs:
               "- recurring dominant patterns: "
               f"{len(payload['recurring_dominant_patterns'])}"
           )
+          print(
+              "- baseline resolved / unresolved / non-loss controls: "
+              f"{payload['baseline_resolved_trade_count']} / "
+              f"{payload['baseline_unresolved_trade_count']} / "
+              f"{payload['non_loss_control_trade_count']}"
+          )
           for item in payload["recurring_dominant_patterns"][:8]:
               print(
                   "- recurring: "
                   f"{item['field']}={item['value']} "
-                  f"across {item['qualifying_streaks']} streaks"
+                  f"across {item['qualifying_streaks']} streaks; "
+                  f"loss share={item['qualifying_loss_trade_share']} "
+                  f"baseline={item['baseline_trade_share']} "
+                  f"lift={item['loss_share_lift_vs_baseline']} "
+                  f"non-loss={item['non_loss_trade_share']} "
+                  f"delta={item['loss_share_delta_vs_non_loss']}"
               )
           print(
               "- execution / strategy / risk authority: "
