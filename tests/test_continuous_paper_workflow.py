@@ -1012,37 +1012,11 @@ def test_upgrade_handoff_rebuilds_loss_streak_context_after_successor() -> None:
     )
     assert "loss-streak-context-audit-summary.json" in source
     assert "continuous-paper-loss-streak-context-" in source
-def test_upgrade_handoff_rebuilds_loss_streak_context_after_successor() -> None:
-    source = WORKFLOW.read_text(encoding="utf-8")
-
-    assert '"src/cocomelon/research/loss_streak_context_audit.py"' in source
-    assert (
-        '"src/cocomelon/research/deferred_loss_streak_context_audit.py"'
-        in source
-    )
-    assert (
-        '"scripts/rebuild_deferred_loss_streak_context_audit.py"'
-        in source
-    )
-    changed_runtime = source.split("changed_runtime=", 1)[1]
-    assert "src/cocomelon/research/loss_streak_context_audit.py" in changed_runtime
-    assert (
-        "src/cocomelon/research/deferred_loss_streak_context_audit.py"
-        in changed_runtime
-    )
-    assert (
-        "scripts/rebuild_deferred_loss_streak_context_audit.py"
-        in changed_runtime
-    )
-    assert "Rebuild loss-streak context audit after handoff" in source
-    assert "id: deferred_loss_streak_context_audit" in source
-    assert 'echo "ready=true" >> "$GITHUB_OUTPUT"' in source
-    assert (
-        "steps.deferred_loss_streak_context_audit.outputs.ready == 'true'"
-        in source
-    )
-    assert "loss-streak-context-audit-summary.json" in source
-    assert "continuous-paper-loss-streak-context-" in source
+    assert "RESEARCH ONLY / NO EXECUTION / NO STRATEGY CHANGE" in source
+    assert "baseline resolved / unresolved / non-loss controls" in source
+    assert "loss share=" in source
+    assert "baseline=" in source
+    assert "delta=" in source
 
     fast_dispatch_at = source.index(
         "- name: Queue exact successor from fast resume"
