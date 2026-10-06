@@ -342,6 +342,11 @@ jobs:
                   encoding="utf-8"
               )
           )
+          prospective = json.loads(
+              Path("decision-learning-evidence/no-trade-context-prospective.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           print(
               "- chronologically validated material context candidates: "
               f"{stability['validated_candidate_count']}"
