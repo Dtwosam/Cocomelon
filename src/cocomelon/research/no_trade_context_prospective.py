@@ -14,7 +14,12 @@ from cocomelon.research.no_trade_context_candidate import (
 
 ZERO = Decimal("0")
 BPS = Decimal("10000")
-NO_TRADE_CONTEXT_PROSPECTIVE_SCHEMA_VERSION = 1
+NO_TRADE_CONTEXT_PROSPECTIVE_SCHEMA_VERSION = 2
+PROSPECTIVE_REVIEW_MIN_MATERIAL_OUTCOMES = 30
+PROSPECTIVE_REVIEW_MIN_SAME_DIRECTION_SHARE = Decimal("0.60")
+PROSPECTIVE_REVIEW_BLOCK_COUNT = 3
+PROSPECTIVE_REVIEW_MIN_BLOCK_ROWS = 5
+PROSPECTIVE_REVIEW_MIN_BLOCK_SAME_DIRECTION_SHARE = Decimal("0.55")
 
 
 class NoTradeContextProspectiveError(RuntimeError):
@@ -69,6 +74,34 @@ def _mean(values: tuple[Decimal, ...]) -> Decimal | None:
     return sum(values, ZERO) / Decimal(len(values))
 
 
+def _chronological_blocks(
+    rows: tuple[tuple[int, Decimal], ...],
+    *,
+    count: int,
+) -> tuple[tuple[tuple[int, Decimal], ...], ...]:
+    if count <= 0:
+        raise ValueError("count must be positive")
+    if not rows:
+        return ()
+    timestamps = tuple(sorted({timestamp for timestamp, _value in rows}))
+    resolved = min(count, len(timestamps))
+    blocks: list[tuple[tuple[int, Decimal], ...]] = []
+    for index in range(resolved):
+        start = (len(timestamps) * index) // resolved
+        end = (len(timestamps) * (index + 1)) // resolved
+        block_timestamps = set(timestamps[start:end])
+        if not block_timestamps:
+            continue
+        blocks.append(
+            tuple(
+                item
+                for item in rows
+                if item[0] in block_timestamps
+            )
+        )
+    return tuple(blocks)
+
+
 def _matches_context(
     raw: dict[str, object],
     freeze: NoTradeContextCandidateFreeze,
@@ -114,6 +147,11 @@ class NoTradeContextProspectiveReport:
     first_matching_decision_ms: int | None
     last_matching_decision_ms: int | None
     observation_span_ms: int
+    prospective_block_outcomes: tuple[int, ...]
+    prospective_block_same_direction_shares: tuple[Decimal | None, ...]
+    prospective_blocks_meeting_row_floor: int
+    prospective_blocks_directionally_consistent: int
+    ready_for_review: bool
     schema_version: int = NO_TRADE_CONTEXT_PROSPECTIVE_SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, object]:
@@ -163,6 +201,29 @@ class NoTradeContextProspectiveReport:
             "first_matching_decision_ms": self.first_matching_decision_ms,
             "last_matching_decision_ms": self.last_matching_decision_ms,
             "observation_span_ms": self.observation_span_ms,
+            "prospective_review_min_material_outcomes": (
+                PROSPECTIVE_REVIEW_MIN_MATERIAL_OUTCOMES
+            ),
+            "prospective_review_min_same_direction_share": str(
+                PROSPECTIVE_REVIEW_MIN_SAME_DIRECTION_SHARE
+            ),
+            "prospective_review_block_count": PROSPECTIVE_REVIEW_BLOCK_COUNT,
+            "prospective_review_min_block_rows": PROSPECTIVE_REVIEW_MIN_BLOCK_ROWS,
+            "prospective_review_min_block_same_direction_share": str(
+                PROSPECTIVE_REVIEW_MIN_BLOCK_SAME_DIRECTION_SHARE
+            ),
+            "prospective_block_outcomes": self.prospective_block_outcomes,
+            "prospective_block_same_direction_shares": tuple(
+                None if value is None else str(value)
+                for value in self.prospective_block_same_direction_shares
+            ),
+            "prospective_blocks_meeting_row_floor": (
+                self.prospective_blocks_meeting_row_floor
+            ),
+            "prospective_blocks_directionally_consistent": (
+                self.prospective_blocks_directionally_consistent
+            ),
+            "ready_for_review": self.ready_for_review,
             "prospective_only": True,
             "paper_only": True,
             "research_only": True,
@@ -243,7 +304,12 @@ def build_no_trade_context_prospective_report(
     ordered = tuple(sorted(matches, key=lambda item: (item[0], item[1])))
     returns = tuple(value for _, value in ordered)
     threshold = Decimal(freeze.threshold_bps) / BPS
-    material = tuple(value for value in returns if abs(value) >= threshold)
+    material_rows = tuple(
+        (timestamp, value)
+        for timestamp, value in ordered
+        if abs(value) >= threshold
+    )
+    material = tuple(value for _timestamp, value in material_rows)
     aligned = tuple(
         value if freeze.direction is Direction.LONG else -value
         for value in returns
@@ -262,6 +328,50 @@ def build_no_trade_context_prospective_report(
     first = ordered[0][0] if ordered else None
     last = ordered[-1][0] if ordered else None
     span = 0 if first is None or last is None else last - first
+
+    prospective_blocks = _chronological_blocks(
+        material_rows,
+        count=PROSPECTIVE_REVIEW_BLOCK_COUNT,
+    )
+    block_outcomes = tuple(len(block) for block in prospective_blocks)
+    block_shares = tuple(
+        (
+            Decimal(
+                sum(
+                    (
+                        value if freeze.direction is Direction.LONG else -value
+                    ) > ZERO
+                    for _timestamp, value in block
+                )
+            )
+            / Decimal(len(block))
+            if block
+            else None
+        )
+        for block in prospective_blocks
+    )
+    blocks_meeting_row_floor = sum(
+        count >= PROSPECTIVE_REVIEW_MIN_BLOCK_ROWS
+        for count in block_outcomes
+    )
+    blocks_directionally_consistent = sum(
+        count >= PROSPECTIVE_REVIEW_MIN_BLOCK_ROWS
+        and block_share is not None
+        and block_share >= PROSPECTIVE_REVIEW_MIN_BLOCK_SAME_DIRECTION_SHARE
+        for count, block_share in zip(
+            block_outcomes,
+            block_shares,
+            strict=True,
+        )
+    )
+    ready_for_review = (
+        len(material) >= PROSPECTIVE_REVIEW_MIN_MATERIAL_OUTCOMES
+        and share is not None
+        and share >= PROSPECTIVE_REVIEW_MIN_SAME_DIRECTION_SHARE
+        and len(prospective_blocks) == PROSPECTIVE_REVIEW_BLOCK_COUNT
+        and blocks_meeting_row_floor == PROSPECTIVE_REVIEW_BLOCK_COUNT
+        and blocks_directionally_consistent == PROSPECTIVE_REVIEW_BLOCK_COUNT
+    )
 
     return NoTradeContextProspectiveReport(
         candidate_id=freeze.candidate_id,
@@ -285,6 +395,13 @@ def build_no_trade_context_prospective_report(
         first_matching_decision_ms=first,
         last_matching_decision_ms=last,
         observation_span_ms=span,
+        prospective_block_outcomes=block_outcomes,
+        prospective_block_same_direction_shares=block_shares,
+        prospective_blocks_meeting_row_floor=blocks_meeting_row_floor,
+        prospective_blocks_directionally_consistent=(
+            blocks_directionally_consistent
+        ),
+        ready_for_review=ready_for_review,
     )
 
 
