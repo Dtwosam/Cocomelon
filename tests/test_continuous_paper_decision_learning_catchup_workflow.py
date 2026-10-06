@@ -55,6 +55,8 @@ def test_decision_learning_catchup_trusts_authority_negative_receipt() -> None:
     assert 'receipt.get("hypothetical_pnl") is not False' in source
     assert 'receipt.get("cost_complete") is not False' in source
     assert "source-receipt.json" in source
+    assert 'EXPECTED_CONTEXT_STABILITY_SCHEMA_VERSION: "1"' in source
+    assert 'receipt.get("context_stability_schema_version") != expected_schema' in source
 
 
 def test_decision_learning_catchup_dispatches_only_missing_worker() -> None:

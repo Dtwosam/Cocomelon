@@ -160,6 +160,7 @@ jobs:
         if: ${{ steps.worker.outputs.run_id != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED_CONTEXT_STABILITY_SCHEMA_VERSION: "1"
         run: |
           set -euo pipefail
           /usr/bin/gh api \
@@ -256,6 +257,11 @@ jobs:
                   or receipt.get("cost_complete") is not False
               ):
                   raise SystemExit("trusted decision-learning receipt is invalid")
+              expected_schema = int(
+                  os.environ["EXPECTED_CONTEXT_STABILITY_SCHEMA_VERSION"]
+              )
+              if receipt.get("context_stability_schema_version") != expected_schema:
+                  continue
               upstream = receipt.get("upstream_run_id")
               if (
                   isinstance(upstream, bool)
