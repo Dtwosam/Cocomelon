@@ -39,7 +39,7 @@ class _Outcome:
             return "long"
         if self.forward_return < ZERO:
             return "short"
-        return "flat"
+        return "no_trade"
 
 
 @dataclass(frozen=True, slots=True)
