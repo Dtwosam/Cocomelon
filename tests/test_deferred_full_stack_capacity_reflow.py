@@ -400,6 +400,12 @@ def test_deferred_capacity_reflow_rejects_authority_drift(
         def close(self) -> None:
             pass
 
+        def load_position_histories(
+            self,
+            requests: tuple[tuple[str, int], ...],
+        ) -> dict[tuple[str, int], tuple[object, ...]]:
+            return {request: () for request in requests}
+
     for name in (
         "ContinuousPaperOpeningOpportunityStore",
         "ContinuousPaperOpeningLineageStore",
