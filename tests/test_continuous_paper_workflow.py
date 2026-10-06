@@ -1048,11 +1048,92 @@ def test_capacity_release_books_are_watched_and_exported() -> None:
         "src/cocomelon/research/"
         "continuous_paper_capacity_release_books.py"
     )
+    release_execution = (
+        "src/cocomelon/research/"
+        "correlation_holder_release_execution.py"
+    )
+    deferred_release_execution = (
+        "src/cocomelon/research/"
+        "deferred_correlation_holder_release_execution.py"
+    )
+    rebuild_script = (
+        "scripts/rebuild_correlation_holder_release_execution.py"
+    )
     assert module in source
     assert module in source.split("changed_runtime=", 1)[1]
+    assert release_execution in source
+    assert release_execution in source.split("changed_runtime=", 1)[1]
+    assert deferred_release_execution in source
+    assert deferred_release_execution in source.split(
+        "changed_runtime=", 1
+    )[1]
+    assert rebuild_script in source
+    assert rebuild_script in source.split("changed_runtime=", 1)[1]
     assert "continuous-paper-state/capacity-release-books" in source
-    assert source.index(
+    compact = source.split(
+        "- name: Upload compact continuous learning source",
+        1,
+    )[1].split("- name:", 1)[0]
+    assert compact.index(
         "continuous-paper-state/opening-opportunities"
-    ) < source.index(
+    ) < compact.index(
         "continuous-paper-state/capacity-release-books"
+    )
+
+
+def test_holder_release_execution_rebuild_is_after_successor_and_before_reflow() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert (
+        "Rebuild exact correlation holder release economics after handoff"
+        in source
+    )
+    assert "id: deferred_holder_release_execution" in source
+    assert (
+        "python scripts/rebuild_correlation_holder_release_execution.py"
+        in source
+    )
+    assert (
+        "correlation-holder-release-execution-summary.json"
+        in source
+    )
+    assert (
+        "continuous-paper-correlation-holder-release-execution-"
+        "${{ github.run_id }}-${{ github.run_attempt }}"
+        in source
+    )
+    assert "legacy-unbound release books" in source
+    assert "RESEARCH ONLY / NO EXECUTION / NO RISK CHANGE" in source
+
+    fallback_at = source.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    holder_at = source.index(
+        "- name: Rebuild exact correlation holder release economics after handoff"
+    )
+    holder_upload_at = source.index(
+        "- name: Upload exact correlation holder release economics"
+    )
+    capacity_at = source.index(
+        "- name: Rebuild deferred capacity-reflow economics after handoff"
+    )
+    compact_at = source.index(
+        "- name: Upload compact continuous learning source"
+    )
+    assert (
+        fallback_at
+        < holder_at
+        < holder_upload_at
+        < capacity_at
+        < compact_at
+    )
+
+    compact = source.split(
+        "- name: Upload compact continuous learning source",
+        1,
+    )[1].split("- name:", 1)[0]
+    assert (
+        "continuous-paper-state/"
+        "correlation-holder-release-execution-summary.json"
+        in compact
     )
