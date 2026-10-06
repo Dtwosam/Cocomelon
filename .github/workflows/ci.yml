@@ -208,6 +208,7 @@ jobs:
           tests/test_closed_trade_stop_reentry.py
           tests/test_post_freshness_paper_cohort.py
           tests/test_prospective_consecutive_loss_cooldown_shadow.py
+          tests/test_deferred_consecutive_loss_cooldown.py
           tests/test_prospective_consecutive_loss_cooldown_ledger.py
           tests/test_prospective_consecutive_loss_cooldown_ledger_workflow.py
           tests/test_profit_lock_execution_ledger.py
