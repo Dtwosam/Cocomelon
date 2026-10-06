@@ -15,6 +15,8 @@ def test_decision_learning_catchup_finds_authenticated_decision_source() -> None
     assert "src/cocomelon/no_trade_forward_opportunity_cli.py" in source
     assert "src/cocomelon/research/no_trade_context_stability.py" in source
     assert "src/cocomelon/no_trade_context_stability_cli.py" in source
+    assert "src/cocomelon/research/no_trade_abstention_tree.py" in source
+    assert "src/cocomelon/no_trade_abstention_tree_cli.py" in source
     assert 'cron: "*/15 * * * *"' in source
     assert '"Continuous Mainnet Paper Trader"' in source
     assert '"Continuous Paper Decision Learning Evidence"' in source
@@ -61,6 +63,11 @@ def test_decision_learning_catchup_trusts_authority_negative_receipt() -> None:
     assert "source-receipt.json" in source
     assert 'EXPECTED_FORWARD_OPPORTUNITY_SCHEMA_VERSION: "2"' in source
     assert 'EXPECTED_CONTEXT_STABILITY_SCHEMA_VERSION: "2"' in source
+    assert 'EXPECTED_ABSTENTION_TREE_SCHEMA_VERSION: "1"' in source
+    assert "EXPECTED_ABSTENTION_TREE_MODEL_FAMILY" in source
+    assert 'receipt.get("abstention_tree_schema_version")' in source
+    assert 'receipt.get("abstention_tree_model_family")' in source
+    assert 'receipt.get("abstention_tree_report_id")' in source
     assert 'receipt.get("forward_opportunity_schema_version")' in source
     assert 'receipt.get("context_stability_schema_version") != expected_schema' in source
     assert 'receipt.get("directional_candidate_source")' in source
