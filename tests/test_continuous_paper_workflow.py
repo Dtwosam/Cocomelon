@@ -996,4 +996,18 @@ def test_upgrade_handoff_rebuilds_loss_streak_context_after_successor() -> None:
     compact_at = source.index(
         "- name: Upload compact continuous learning source"
     )
-    assert fast_dispatch_at < fallback_at < loss_audit_at < gate_at < compact_at
+    priority_at = source.index(
+        "- name: Rebuild correlation bucket priority audit after handoff"
+    )
+    capacity_at = source.index(
+        "- name: Rebuild deferred capacity-reflow economics after handoff"
+    )
+    assert (
+        fast_dispatch_at
+        < fallback_at
+        < priority_at
+        < loss_audit_at
+        < capacity_at
+        < gate_at
+        < compact_at
+    )
