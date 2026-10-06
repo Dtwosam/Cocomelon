@@ -150,13 +150,15 @@ def test_holder_release_full_close_exposes_exact_terminal_contribution() -> None
     assert result["full_release_fills"] == 1
     assert result["partial_release_fills"] == 0
     assert result["no_release_fills"] == 0
-    assert result["gross_realized_pnl"] == "0.9"
-    assert result["close_fees"] == "0.045405"
-    assert result["fully_closed_terminal_contribution"] == "0.824595"
-    assert result["unclosed_quantity"] == "0.000"
-    assert result["full_close_terminal_contribution_by_plan"] == {
-        "holder-plan-btc": "0.824595"
-    }
+    assert Decimal(str(result["gross_realized_pnl"])) == Decimal("0.9")
+    assert Decimal(str(result["close_fees"])) == Decimal("0.045405")
+    assert Decimal(
+        str(result["fully_closed_terminal_contribution"])
+    ) == Decimal("0.824595")
+    assert Decimal(str(result["unclosed_quantity"])) == Decimal("0")
+    terminal = result["full_close_terminal_contribution_by_plan"]
+    assert isinstance(terminal, dict)
+    assert Decimal(str(terminal["holder-plan-btc"])) == Decimal("0.824595")
     rows = result["release_results"]
     assert isinstance(rows, list)
     assert len(rows) == 1
@@ -168,10 +170,14 @@ def test_holder_release_full_close_exposes_exact_terminal_contribution() -> None
     assert row["execution_result"] == "full"
     assert row["filled_quantity"] == "1.000"
     assert row["average_exit_price"] == "100.9"
-    assert row["gross_realized_pnl"] == "0.9"
-    assert row["close_fee"] == "0.045405"
-    assert row["incremental_release_net_pnl"] == "0.854595"
-    assert row["full_close_terminal_contribution"] == "0.824595"
+    assert Decimal(str(row["gross_realized_pnl"])) == Decimal("0.9")
+    assert Decimal(str(row["close_fee"])) == Decimal("0.045405")
+    assert Decimal(str(row["incremental_release_net_pnl"])) == Decimal(
+        "0.854595"
+    )
+    assert Decimal(
+        str(row["full_close_terminal_contribution"])
+    ) == Decimal("0.824595")
     assert row["complete_close"] is True
     assert result["holder_release_execution_modeled"] is True
     assert result["newcomer_entry_modeled"] is False
