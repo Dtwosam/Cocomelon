@@ -100,15 +100,20 @@ def _registration() -> CapacityReleaseBookRegistration:
     )
 
 
-def test_release_book_store_binds_exact_holder_plan_and_survives_restart(
+def _store(root: Path) -> CapacityReleaseBookStore:
+    return CapacityReleaseBookStore(
+        root,
+        capture_started_at_ms=900,
+        latency_ms=250,
+        max_book_age_ms=1_000,
+    )
+
+
+def test_release_books_stage_plan_then_capture_latency_eligible_execution(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "capacity-release-books"
-    store = CapacityReleaseBookStore(
-        root,
-        capture_started_at_ms=900,
-        max_capture_lag_ms=1_000,
-    )
+    store = _store(root)
     registration = _registration()
 
     assert store.register(registration) is True
@@ -118,52 +123,138 @@ def test_release_book_store_binds_exact_holder_plan_and_survives_restart(
             positions=(_position(),),
             instrument=_instrument(),
             book=_book(received_ms=1_100),
+            reference_price=Decimal("101"),
             now_ms=1_100,
+        )
+        == 0
+    )
+    pending = store.iter_pending()
+    assert len(pending) == 1
+    assert pending[0].registration == registration
+    assert pending[0].release_opening_plan_id == "holder-plan-btc"
+    assert pending[0].plan_observed_at_ms == 1_100
+    assert pending[0].plan_reference_price == Decimal("101")
+    assert store.iter_records() == ()
+
+    assert (
+        store.capture(
+            positions=(_position(),),
+            instrument=_instrument(),
+            book=_book(received_ms=1_300),
+            reference_price=Decimal("101"),
+            now_ms=1_300,
+        )
+        == 0
+    )
+    assert len(store.iter_pending()) == 1
+
+    assert (
+        store.capture(
+            positions=(_position(),),
+            instrument=_instrument(),
+            book=_book(received_ms=1_360),
+            reference_price=Decimal("101"),
+            now_ms=1_360,
         )
         == 1
     )
-
     records = store.iter_records()
     assert len(records) == 1
     evidence = records[0]
     assert evidence.registration == registration
     assert evidence.release_opening_plan_id == "holder-plan-btc"
-    assert evidence.release_opened_at_ms == 500
-    assert evidence.observation_lag_ms == 100
-    assert evidence.book_event == _book(received_ms=1_100)
-    assert evidence.instrument == _instrument()
+    assert evidence.release_position == _position()
+    assert evidence.pending.plan_book_event == _book(received_ms=1_100)
+    assert evidence.pending.plan_instrument == _instrument()
+    assert evidence.execution_book_event == _book(received_ms=1_360)
+    assert evidence.execution_instrument == _instrument()
+    assert store.iter_pending() == ()
+
+
+def test_release_plan_survives_restart_before_execution_book(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "capacity-release-books"
+    first = _store(root)
+    first.register(_registration())
+    first.capture(
+        positions=(_position(),),
+        instrument=_instrument(),
+        book=_book(received_ms=1_100),
+        reference_price=Decimal("101"),
+        now_ms=1_100,
+    )
 
     restored = CapacityReleaseBookStore(
         root,
         capture_started_at_ms=50_000,
-        max_capture_lag_ms=1_000,
+        latency_ms=250,
+        max_book_age_ms=1_000,
     )
     assert restored.capture_started_at_ms == 900
-    assert restored.iter_records() == records
-    assert restored.summary(now_ms=1_200) == {
-        "research_only": True,
-        "execution_authority": False,
-        "promotion_authority": False,
-        "changes_risk_limits": False,
-        "changes_entry_priority": False,
-        "capture_started_at_ms": 900,
-        "max_capture_lag_ms": 1_000,
-        "registrations": 1,
-        "captured": 1,
-        "pending": 0,
-        "missed": 0,
-        "schema_version": 1,
-    }
+    assert len(restored.iter_pending()) == 1
+    assert (
+        restored.capture(
+            positions=(_position(),),
+            instrument=_instrument(),
+            book=_book(received_ms=1_360),
+            reference_price=Decimal("101"),
+            now_ms=1_360,
+        )
+        == 1
+    )
+    assert len(restored.iter_records()) == 1
+    assert restored.iter_pending() == ()
 
 
-def test_release_book_store_never_accepts_late_or_pre_opportunity_book(
+def test_release_books_never_accept_stale_plan_or_execution_book(
     tmp_path: Path,
 ) -> None:
-    store = CapacityReleaseBookStore(
-        tmp_path / "capacity-release-books",
-        capture_started_at_ms=900,
-        max_capture_lag_ms=1_000,
+    plan_store = _store(tmp_path / "late-plan")
+    plan_store.register(_registration())
+    assert (
+        plan_store.capture(
+            positions=(_position(),),
+            instrument=_instrument(),
+            book=_book(received_ms=2_001, exchange_ms=2_000),
+            reference_price=Decimal("101"),
+            now_ms=2_001,
+        )
+        == 0
     )
+    assert plan_store.iter_pending() == ()
+    plan_summary = plan_store.summary(now_ms=2_001)
+    assert plan_summary["missed_plan"] == 1
+    assert plan_summary["captured"] == 0
+
+    execution_store = _store(tmp_path / "late-execution")
+    execution_store.register(_registration())
+    execution_store.capture(
+        positions=(_position(),),
+        instrument=_instrument(),
+        book=_book(received_ms=1_100),
+        reference_price=Decimal("101"),
+        now_ms=1_100,
+    )
+    assert (
+        execution_store.capture(
+            positions=(_position(),),
+            instrument=_instrument(),
+            book=_book(received_ms=2_351, exchange_ms=2_350),
+            reference_price=Decimal("101"),
+            now_ms=2_351,
+        )
+        == 0
+    )
+    execution_summary = execution_store.summary(now_ms=2_351)
+    assert execution_summary["missed_execution"] == 1
+    assert execution_summary["captured"] == 0
+
+
+def test_release_plan_rejects_pre_opportunity_exchange_timestamp(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path / "capacity-release-books")
     store.register(_registration())
 
     assert (
@@ -171,34 +262,19 @@ def test_release_book_store_never_accepts_late_or_pre_opportunity_book(
             positions=(_position(),),
             instrument=_instrument(),
             book=_book(received_ms=1_100, exchange_ms=990),
+            reference_price=Decimal("101"),
             now_ms=1_100,
         )
         == 0
     )
-    assert (
-        store.capture(
-            positions=(_position(),),
-            instrument=_instrument(),
-            book=_book(received_ms=2_001, exchange_ms=2_000),
-            now_ms=2_001,
-        )
-        == 0
-    )
+    assert store.iter_pending() == ()
     assert store.iter_records() == ()
-    summary = store.summary(now_ms=2_001)
-    assert summary["captured"] == 0
-    assert summary["pending"] == 0
-    assert summary["missed"] == 1
 
 
 def test_release_book_capture_registers_only_same_bucket_correlation_holders(
     tmp_path: Path,
 ) -> None:
-    store = CapacityReleaseBookStore(
-        tmp_path / "capacity-release-books",
-        capture_started_at_ms=900,
-        max_capture_lag_ms=1_000,
-    )
+    store = _store(tmp_path / "capacity-release-books")
     capture = CapacityReleaseBookCapture(store)
     risk_decision = SimpleNamespace(
         approved=False,
@@ -251,11 +327,7 @@ def test_release_book_capture_registers_only_same_bucket_correlation_holders(
 def test_release_book_capture_ignores_non_correlation_rejections(
     tmp_path: Path,
 ) -> None:
-    store = CapacityReleaseBookStore(
-        tmp_path / "capacity-release-books",
-        capture_started_at_ms=900,
-        max_capture_lag_ms=1_000,
-    )
+    store = _store(tmp_path / "capacity-release-books")
     capture = CapacityReleaseBookCapture(store)
     trace = SimpleNamespace(
         submission=SimpleNamespace(
