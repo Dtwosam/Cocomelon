@@ -84,6 +84,10 @@ def test_decision_learning_workflow_is_authority_negative() -> None:
     lowered = source.lower()
 
     assert "cocomelon-no-trade-forward-opportunity" in source
+    assert "cocomelon-no-trade-context-stability" in source
+    assert "no-trade-context-stability.json" in source
+    assert "chronologically validated material context candidates" in source
+    assert "discovery patterns must survive a later holdout period" in source
     assert "no-trade-forward-opportunity.json" in source
     assert '"hypothetical_pnl": False' in source
     assert '"cost_complete": False' in source
