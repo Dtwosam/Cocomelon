@@ -104,6 +104,10 @@ The system is expected to learn **when** a LONG, SHORT, or NO_TRADE decision fit
 
 When continuing development in a new chat, preserve this objective: make Cocomelon understand the market state well enough to choose the appropriate side or abstain. Any directional restriction requires reproducible context-conditioned net expectancy after costs and the normal chronological/OOS/shadow validation gates.
 
+### Frozen MON prospective review rule — D-035
+
+The frozen MON + normal-volatility + SHORT 1h/50bps candidate is prospective research only. Its future scorer must not become review-ready until it has at least 30 material post-cutover outcomes, at least 60% alignment with the frozen SHORT direction overall, and three chronological future blocks with at least five material outcomes and at least 55% SHORT alignment in every block. Review-ready still means research review only; it has no promotion, strategy, risk-bypass, or execution authority.
+
 ## 2. Locked safety boundaries
 
 - Hyperliquid testnet is forbidden.
