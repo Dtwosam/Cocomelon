@@ -15,7 +15,10 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.evidence.openings import BaselineOpeningTrace
-from cocomelon.execution.accounting import PaperPosition
+from cocomelon.execution.accounting import (
+    PaperPosition,
+    PositionSide,
+)
 
 SCHEMA_VERSION: Final = 1
 CORRELATION_BUCKET_REASON: Final = "correlation_bucket_exhausted"
@@ -54,8 +57,31 @@ def _decimal(value: object, field: str) -> Decimal:
     return result
 
 
+def _integer(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise CapacityReleaseBookEvidenceError(
+            f"{field} must be a non-negative integer"
+        )
+    return value
+
+
+def _text(value: object, field: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise CapacityReleaseBookEvidenceError(
+            f"{field} must be a non-empty string"
+        )
+    return value
+
+
 def _received_ms(event: StreamEvent) -> int:
     return int(event.receive_time.timestamp() * 1000)
+
+
+def _market(value: str) -> MarketId:
+    if ":" not in value:
+        return MarketId("", value)
+    dex, coin = value.split(":", 1)
+    return MarketId(dex, coin)
 
 
 def _level_payload(value: object) -> dict[str, object]:
@@ -68,7 +94,7 @@ def _level_payload(value: object) -> dict[str, object]:
     n = value.get("n", 0)
     if (
         px <= ZERO
-        or sz < ZERO
+        or sz <= ZERO
         or isinstance(n, bool)
         or not isinstance(n, int)
         or n < 0
@@ -113,27 +139,7 @@ def _book_from_payload(raw: object) -> StreamEvent:
         raise CapacityReleaseBookEvidenceError(
             "capacity release book must be an object"
         )
-    required = {
-        "market",
-        "exchange_time_ms",
-        "received_at_ms",
-        "schema_version",
-        "source",
-        "event_key",
-        "bids",
-        "asks",
-    }
-    if set(raw) != required:
-        raise CapacityReleaseBookEvidenceError(
-            "capacity release book fields are invalid"
-        )
-    market_raw = raw["market"]
-    if not isinstance(market_raw, str) or not market_raw:
-        raise CapacityReleaseBookEvidenceError("book market is invalid")
-    if ":" in market_raw:
-        dex, coin = market_raw.split(":", 1)
-    else:
-        dex, coin = "", market_raw
+
     def levels(value: object) -> tuple[dict[str, object], ...]:
         if not isinstance(value, list):
             raise CapacityReleaseBookEvidenceError(
@@ -151,38 +157,27 @@ def _book_from_payload(raw: object) -> StreamEvent:
             )
         return tuple(output)
 
-    exchange_ms = raw["exchange_time_ms"]
-    received_ms = raw["received_at_ms"]
-    schema = raw["schema_version"]
-    for value, field in (
-        (exchange_ms, "exchange_time_ms"),
-        (received_ms, "received_at_ms"),
-        (schema, "schema_version"),
-    ):
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            raise CapacityReleaseBookEvidenceError(
-                f"{field} must be a non-negative integer"
-            )
-    source = raw["source"]
-    event_key = raw["event_key"]
-    if not isinstance(source, str) or not source:
-        raise CapacityReleaseBookEvidenceError("book source is invalid")
-    if not isinstance(event_key, str) or not event_key:
-        raise CapacityReleaseBookEvidenceError("book event key is invalid")
     return StreamEvent(
         kind=StreamKind.L2_BOOK,
-        market=MarketId(dex=dex, coin=coin),
-        exchange_time_ms=exchange_ms,
+        market=_market(_text(raw.get("market"), "book market")),
+        exchange_time_ms=_integer(
+            raw.get("exchange_time_ms"),
+            "exchange_time_ms",
+        ),
         receive_time=datetime.fromtimestamp(
-            received_ms / 1000,
+            _integer(raw.get("received_at_ms"), "received_at_ms")
+            / 1000,
             tz=UTC,
         ),
-        schema_version=schema,
-        source=source,
-        event_key=event_key,
+        schema_version=_integer(
+            raw.get("schema_version"),
+            "schema_version",
+        ),
+        source=_text(raw.get("source"), "book source"),
+        event_key=_text(raw.get("event_key"), "book event key"),
         payload={
-            "bids": levels(raw["bids"]),
-            "asks": levels(raw["asks"]),
+            "bids": levels(raw.get("bids")),
+            "asks": levels(raw.get("asks")),
         },
     )
 
@@ -210,30 +205,139 @@ def _instrument_from_payload(
             "capacity release instrument must be an object"
         )
     try:
-        market_raw = str(raw["market"])
-        if ":" in market_raw:
-            dex, coin = market_raw.split(":", 1)
-        else:
-            dex, coin = "", market_raw
         return InstrumentExecutionSpec(
-            market=MarketId(dex=dex, coin=coin),
-            sz_decimals=int(raw["sz_decimals"]),
+            market=_market(
+                _text(raw.get("market"), "instrument market")
+            ),
+            sz_decimals=_integer(
+                raw.get("sz_decimals"),
+                "sz_decimals",
+            ),
             venue_max_leverage=_decimal(
-                raw["venue_max_leverage"],
+                raw.get("venue_max_leverage"),
                 "venue_max_leverage",
             ),
             minimum_order_notional=_decimal(
-                raw["minimum_order_notional"],
+                raw.get("minimum_order_notional"),
                 "minimum_order_notional",
             ),
-            metadata_received_at_ms=int(
-                raw["metadata_received_at_ms"]
+            metadata_received_at_ms=_integer(
+                raw.get("metadata_received_at_ms"),
+                "metadata_received_at_ms",
             ),
-            metadata_source=str(raw["metadata_source"]),
+            metadata_source=_text(
+                raw.get("metadata_source"),
+                "metadata_source",
+            ),
         )
-    except (KeyError, TypeError, ValueError) as exc:
+    except ValueError as exc:
         raise CapacityReleaseBookEvidenceError(
             "capacity release instrument is invalid"
+        ) from exc
+
+
+def _position_payload(position: PaperPosition) -> dict[str, object]:
+    return {
+        "market": position.market.canonical,
+        "side": position.side.value,
+        "quantity": str(position.quantity),
+        "average_entry_price": str(position.average_entry_price),
+        "stop_price": str(position.stop_price),
+        "opening_plan_id": position.opening_plan_id,
+        "opened_at_ms": position.opened_at_ms,
+        "updated_at_ms": position.updated_at_ms,
+        "initial_risk_decision_id": position.initial_risk_decision_id,
+        "correlation_bucket": position.correlation_bucket,
+        "cost_buffer_fraction": str(position.cost_buffer_fraction),
+        "planned_risk": str(position.planned_risk),
+        "cumulative_realized_gross_pnl": str(
+            position.cumulative_realized_gross_pnl
+        ),
+        "cumulative_fees": str(position.cumulative_fees),
+        "cumulative_funding": str(position.cumulative_funding),
+        "venue_max_leverage": str(position.venue_max_leverage),
+        "latest_mark": (
+            None
+            if position.latest_mark is None
+            else str(position.latest_mark)
+        ),
+    }
+
+
+def _position_from_payload(raw: object) -> PaperPosition:
+    if not isinstance(raw, dict):
+        raise CapacityReleaseBookEvidenceError(
+            "release position must be an object"
+        )
+    latest = raw.get("latest_mark")
+    try:
+        return PaperPosition(
+            market=_market(_text(raw.get("market"), "position market")),
+            side=PositionSide(
+                _text(raw.get("side"), "position side")
+            ),
+            quantity=_decimal(raw.get("quantity"), "quantity"),
+            average_entry_price=_decimal(
+                raw.get("average_entry_price"),
+                "average_entry_price",
+            ),
+            stop_price=_decimal(
+                raw.get("stop_price"),
+                "stop_price",
+            ),
+            opening_plan_id=_text(
+                raw.get("opening_plan_id"),
+                "opening_plan_id",
+            ),
+            opened_at_ms=_integer(
+                raw.get("opened_at_ms"),
+                "opened_at_ms",
+            ),
+            updated_at_ms=_integer(
+                raw.get("updated_at_ms"),
+                "updated_at_ms",
+            ),
+            initial_risk_decision_id=_text(
+                raw.get("initial_risk_decision_id"),
+                "initial_risk_decision_id",
+            ),
+            correlation_bucket=_text(
+                raw.get("correlation_bucket"),
+                "correlation_bucket",
+            ),
+            cost_buffer_fraction=_decimal(
+                raw.get("cost_buffer_fraction"),
+                "cost_buffer_fraction",
+            ),
+            planned_risk=_decimal(
+                raw.get("planned_risk"),
+                "planned_risk",
+            ),
+            cumulative_realized_gross_pnl=_decimal(
+                raw.get("cumulative_realized_gross_pnl"),
+                "cumulative_realized_gross_pnl",
+            ),
+            cumulative_fees=_decimal(
+                raw.get("cumulative_fees"),
+                "cumulative_fees",
+            ),
+            cumulative_funding=_decimal(
+                raw.get("cumulative_funding"),
+                "cumulative_funding",
+            ),
+            venue_max_leverage=_decimal(
+                raw.get("venue_max_leverage"),
+                "venue_max_leverage",
+            ),
+            latest_mark=(
+                None
+                if latest is None
+                else _decimal(latest, "latest_mark")
+            ),
+        )
+    except ValueError as exc:
+        raise CapacityReleaseBookEvidenceError(
+            "release position is invalid"
         ) from exc
 
 
@@ -316,90 +420,240 @@ class CapacityReleaseBookRegistration:
             )
         try:
             return cls(
-                opportunity_id=str(raw["opportunity_id"]),
-                opportunity_timestamp_ms=int(
-                    raw["opportunity_timestamp_ms"]
+                opportunity_id=_text(
+                    raw.get("opportunity_id"),
+                    "opportunity_id",
                 ),
-                opportunity_market=str(raw["opportunity_market"]),
-                opportunity_direction=str(raw["opportunity_direction"]),
-                release_market=str(raw["release_market"]),
-                release_direction=str(raw["release_direction"]),
-                release_correlation_bucket=str(
-                    raw["release_correlation_bucket"]
+                opportunity_timestamp_ms=_integer(
+                    raw.get("opportunity_timestamp_ms"),
+                    "opportunity_timestamp_ms",
                 ),
-                strategy_decision_id=str(raw["strategy_decision_id"]),
-                risk_decision_id=str(raw["risk_decision_id"]),
-                schema_version=int(raw["schema_version"]),
+                opportunity_market=_text(
+                    raw.get("opportunity_market"),
+                    "opportunity_market",
+                ),
+                opportunity_direction=_text(
+                    raw.get("opportunity_direction"),
+                    "opportunity_direction",
+                ),
+                release_market=_text(
+                    raw.get("release_market"),
+                    "release_market",
+                ),
+                release_direction=_text(
+                    raw.get("release_direction"),
+                    "release_direction",
+                ),
+                release_correlation_bucket=_text(
+                    raw.get("release_correlation_bucket"),
+                    "release_correlation_bucket",
+                ),
+                strategy_decision_id=_text(
+                    raw.get("strategy_decision_id"),
+                    "strategy_decision_id",
+                ),
+                risk_decision_id=_text(
+                    raw.get("risk_decision_id"),
+                    "risk_decision_id",
+                ),
+                schema_version=_integer(
+                    raw.get("schema_version"),
+                    "schema_version",
+                ),
             )
-        except (KeyError, TypeError, ValueError) as exc:
+        except ValueError as exc:
             raise CapacityReleaseBookEvidenceError(
                 "registration is invalid"
             ) from exc
 
 
 @dataclass(frozen=True, slots=True)
-class CapacityReleaseBookEvidence:
+class PendingCapacityReleaseExecution:
     registration: CapacityReleaseBookRegistration
-    release_opening_plan_id: str
-    release_opened_at_ms: int
-    observed_at_ms: int
-    observation_lag_ms: int
-    book_event: StreamEvent
-    instrument: InstrumentExecutionSpec
+    release_position: PaperPosition
+    plan_observed_at_ms: int
+    plan_reference_price: Decimal
+    plan_book_event: StreamEvent
+    plan_instrument: InstrumentExecutionSpec
     schema_version: int = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
-        if not self.release_opening_plan_id.strip():
+        if (
+            self.release_position.market.canonical
+            != self.registration.release_market
+        ):
+            raise ValueError("pending release position market mismatch")
+        if (
+            self.release_position.side.value
+            != self.registration.release_direction
+        ):
+            raise ValueError("pending release position direction mismatch")
+        if (
+            self.release_position.opened_at_ms
+            > self.registration.opportunity_timestamp_ms
+        ):
+            raise ValueError("release position opened after opportunity")
+        if self.plan_observed_at_ms < (
+            self.registration.opportunity_timestamp_ms
+        ):
+            raise ValueError("release plan book precedes opportunity")
+        if (
+            not self.plan_reference_price.is_finite()
+            or self.plan_reference_price <= ZERO
+        ):
             raise ValueError(
-                "release_opening_plan_id must not be empty"
+                "plan_reference_price must be positive and finite"
             )
-        if self.release_opened_at_ms < 0:
-            raise ValueError("release_opened_at_ms must be non-negative")
-        if self.observed_at_ms < self.registration.opportunity_timestamp_ms:
-            raise ValueError("release book precedes opportunity")
-        if self.observation_lag_ms != (
-            self.observed_at_ms
-            - self.registration.opportunity_timestamp_ms
-        ):
-            raise ValueError("observation_lag_ms mismatch")
         if (
-            self.book_event.market.canonical
+            self.plan_book_event.market.canonical
+            != self.registration.release_market
+            or self.plan_instrument.market.canonical
             != self.registration.release_market
         ):
-            raise ValueError("release book market mismatch")
+            raise ValueError("release plan market mismatch")
         if (
-            self.instrument.market.canonical
-            != self.registration.release_market
-        ):
-            raise ValueError("release instrument market mismatch")
-        if (
-            self.book_event.exchange_time_ms is None
-            or self.book_event.exchange_time_ms
+            self.plan_book_event.exchange_time_ms is None
+            or self.plan_book_event.exchange_time_ms
             < self.registration.opportunity_timestamp_ms
-            or self.book_event.exchange_time_ms > self.observed_at_ms
+            or self.plan_book_event.exchange_time_ms
+            > self.plan_observed_at_ms
         ):
             raise ValueError(
-                "release book exchange timestamp is invalid"
+                "release plan book exchange timestamp is invalid"
             )
-        if self.instrument.metadata_received_at_ms > self.observed_at_ms:
+        if (
+            self.plan_instrument.metadata_received_at_ms
+            > self.plan_observed_at_ms
+        ):
             raise ValueError(
-                "release instrument metadata is from the future"
+                "release plan instrument metadata is from the future"
             )
         if self.schema_version != SCHEMA_VERSION:
-            raise ValueError("unsupported evidence schema")
+            raise ValueError("unsupported pending schema")
+
+    @property
+    def release_opening_plan_id(self) -> str:
+        return self.release_position.opening_plan_id
 
     def to_dict(self) -> dict[str, object]:
         return {
             "registration": self.registration.to_dict(),
-            "release_opening_plan_id": self.release_opening_plan_id,
-            "release_opened_at_ms": self.release_opened_at_ms,
-            "observed_at_ms": self.observed_at_ms,
-            "observation_lag_ms": self.observation_lag_ms,
-            "book": _book_payload(self.book_event),
-            "instrument": _instrument_payload(self.instrument),
+            "release_position": _position_payload(
+                self.release_position
+            ),
+            "plan_observed_at_ms": self.plan_observed_at_ms,
+            "plan_reference_price": str(
+                self.plan_reference_price
+            ),
+            "plan_book": _book_payload(self.plan_book_event),
+            "plan_instrument": _instrument_payload(
+                self.plan_instrument
+            ),
             "schema_version": self.schema_version,
         }
 
+    @classmethod
+    def from_dict(
+        cls,
+        raw: object,
+    ) -> PendingCapacityReleaseExecution:
+        if not isinstance(raw, dict):
+            raise CapacityReleaseBookEvidenceError(
+                "pending release execution must be an object"
+            )
+        try:
+            return cls(
+                registration=CapacityReleaseBookRegistration.from_dict(
+                    raw.get("registration")
+                ),
+                release_position=_position_from_payload(
+                    raw.get("release_position")
+                ),
+                plan_observed_at_ms=_integer(
+                    raw.get("plan_observed_at_ms"),
+                    "plan_observed_at_ms",
+                ),
+                plan_reference_price=_decimal(
+                    raw.get("plan_reference_price"),
+                    "plan_reference_price",
+                ),
+                plan_book_event=_book_from_payload(
+                    raw.get("plan_book")
+                ),
+                plan_instrument=_instrument_from_payload(
+                    raw.get("plan_instrument")
+                ),
+                schema_version=_integer(
+                    raw.get("schema_version"),
+                    "schema_version",
+                ),
+            )
+        except ValueError as exc:
+            raise CapacityReleaseBookEvidenceError(
+                "pending release execution is invalid"
+            ) from exc
+
+
+@dataclass(frozen=True, slots=True)
+class CapacityReleaseBookEvidence:
+    pending: PendingCapacityReleaseExecution
+    execution_observed_at_ms: int
+    execution_book_event: StreamEvent
+    execution_instrument: InstrumentExecutionSpec
+    schema_version: int = SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        if (
+            self.execution_book_event.market.canonical
+            != self.pending.registration.release_market
+            or self.execution_instrument.market.canonical
+            != self.pending.registration.release_market
+        ):
+            raise ValueError("release execution market mismatch")
+        if (
+            self.execution_book_event.exchange_time_ms is None
+            or self.execution_book_event.exchange_time_ms
+            > self.execution_observed_at_ms
+        ):
+            raise ValueError(
+                "release execution book exchange timestamp is invalid"
+            )
+        if (
+            self.execution_instrument.metadata_received_at_ms
+            > self.execution_observed_at_ms
+        ):
+            raise ValueError(
+                "release execution instrument metadata is from future"
+            )
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError("unsupported evidence schema")
+
+    @property
+    def registration(self) -> CapacityReleaseBookRegistration:
+        return self.pending.registration
+
+    @property
+    def release_position(self) -> PaperPosition:
+        return self.pending.release_position
+
+    @property
+    def release_opening_plan_id(self) -> str:
+        return self.pending.release_opening_plan_id
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "pending": self.pending.to_dict(),
+            "execution_observed_at_ms": (
+                self.execution_observed_at_ms
+            ),
+            "execution_book": _book_payload(
+                self.execution_book_event
+            ),
+            "execution_instrument": _instrument_payload(
+                self.execution_instrument
+            ),
+            "schema_version": self.schema_version,
+        }
 
     @classmethod
     def from_dict(
@@ -412,20 +666,25 @@ class CapacityReleaseBookEvidence:
             )
         try:
             return cls(
-                registration=CapacityReleaseBookRegistration.from_dict(
-                    raw["registration"]
+                pending=PendingCapacityReleaseExecution.from_dict(
+                    raw.get("pending")
                 ),
-                release_opening_plan_id=str(
-                    raw["release_opening_plan_id"]
+                execution_observed_at_ms=_integer(
+                    raw.get("execution_observed_at_ms"),
+                    "execution_observed_at_ms",
                 ),
-                release_opened_at_ms=int(raw["release_opened_at_ms"]),
-                observed_at_ms=int(raw["observed_at_ms"]),
-                observation_lag_ms=int(raw["observation_lag_ms"]),
-                book_event=_book_from_payload(raw["book"]),
-                instrument=_instrument_from_payload(raw["instrument"]),
-                schema_version=int(raw["schema_version"]),
+                execution_book_event=_book_from_payload(
+                    raw.get("execution_book")
+                ),
+                execution_instrument=_instrument_from_payload(
+                    raw.get("execution_instrument")
+                ),
+                schema_version=_integer(
+                    raw.get("schema_version"),
+                    "schema_version",
+                ),
             )
-        except (KeyError, TypeError, ValueError) as exc:
+        except ValueError as exc:
             raise CapacityReleaseBookEvidenceError(
                 "capacity release evidence is invalid"
             ) from exc
@@ -437,29 +696,33 @@ class CapacityReleaseBookStore:
         root: str | Path,
         *,
         capture_started_at_ms: int,
-        max_capture_lag_ms: int,
+        latency_ms: int,
+        max_book_age_ms: int,
     ) -> None:
         if capture_started_at_ms < 0:
             raise ValueError(
                 "capture_started_at_ms must be non-negative"
             )
-        if max_capture_lag_ms <= 0:
-            raise ValueError("max_capture_lag_ms must be positive")
+        if latency_ms < 0:
+            raise ValueError("latency_ms must be non-negative")
+        if max_book_age_ms <= 0:
+            raise ValueError("max_book_age_ms must be positive")
         self.root = Path(root)
         self.registrations_root = self.root / "registrations"
+        self.pending_root = self.root / "pending"
         self.records_root = self.root / "records"
         self.protocol_path = self.root / "protocol.json"
-        self.registrations_root.mkdir(parents=True, exist_ok=True)
-        self.records_root.mkdir(parents=True, exist_ok=True)
-        self.max_capture_lag_ms = max_capture_lag_ms
+        for path in (
+            self.registrations_root,
+            self.pending_root,
+            self.records_root,
+        ):
+            path.mkdir(parents=True, exist_ok=True)
+        self.latency_ms = latency_ms
+        self.max_book_age_ms = max_book_age_ms
         self.capture_started_at_ms = self._load_or_create_protocol(
             capture_started_at_ms
         )
-        self._pending = {
-            item.registration_id: item
-            for item in self.iter_registrations()
-            if not self._record_path(item.registration_id).exists()
-        }
 
     @staticmethod
     def _write(path: Path, payload: object) -> None:
@@ -493,7 +756,8 @@ class CapacityReleaseBookStore:
         candidate = {
             "schema_version": SCHEMA_VERSION,
             "capture_started_at_ms": started_at_ms,
-            "max_capture_lag_ms": self.max_capture_lag_ms,
+            "latency_ms": self.latency_ms,
+            "max_book_age_ms": self.max_book_age_ms,
         }
         if not self.protocol_path.exists():
             self._write(self.protocol_path, candidate)
@@ -501,24 +765,34 @@ class CapacityReleaseBookStore:
         raw = self._read(self.protocol_path)
         if (
             not isinstance(raw, dict)
+            or set(raw) != set(candidate)
             or raw.get("schema_version") != SCHEMA_VERSION
-            or raw.get("max_capture_lag_ms") != self.max_capture_lag_ms
+            or raw.get("latency_ms") != self.latency_ms
+            or raw.get("max_book_age_ms") != self.max_book_age_ms
         ):
             raise CapacityReleaseBookEvidenceError(
                 "capacity release protocol mismatch"
             )
-        value = raw.get("capture_started_at_ms")
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise CapacityReleaseBookEvidenceError(
-                "capture_started_at_ms is invalid"
-            )
-        return value
+        return _integer(
+            raw.get("capture_started_at_ms"),
+            "capture_started_at_ms",
+        )
+
+    @staticmethod
+    def _file_name(registration_id: str) -> str:
+        return f"{registration_id}.json"
 
     def _registration_path(self, registration_id: str) -> Path:
-        return self.registrations_root / f"{registration_id}.json"
+        return (
+            self.registrations_root
+            / self._file_name(registration_id)
+        )
+
+    def _pending_path(self, registration_id: str) -> Path:
+        return self.pending_root / self._file_name(registration_id)
 
     def _record_path(self, registration_id: str) -> Path:
-        return self.records_root / f"{registration_id}.json"
+        return self.records_root / self._file_name(registration_id)
 
     def register(
         self,
@@ -542,9 +816,24 @@ class CapacityReleaseBookStore:
                 )
             return False
         self._write(path, registration.to_dict())
-        if not self._record_path(registration.registration_id).exists():
-            self._pending[registration.registration_id] = registration
         return True
+
+    def _matching_position(
+        self,
+        registration: CapacityReleaseBookRegistration,
+        positions: Sequence[PaperPosition],
+    ) -> PaperPosition | None:
+        matches = tuple(
+            position
+            for position in positions
+            if position.market.canonical
+            == registration.release_market
+            and position.side.value
+            == registration.release_direction
+            and position.opened_at_ms
+            <= registration.opportunity_timestamp_ms
+        )
+        return matches[0] if len(matches) == 1 else None
 
     def capture(
         self,
@@ -552,6 +841,7 @@ class CapacityReleaseBookStore:
         positions: Sequence[PaperPosition],
         instrument: InstrumentExecutionSpec,
         book: StreamEvent,
+        reference_price: Decimal,
         now_ms: int,
     ) -> int:
         if now_ms < 0:
@@ -560,46 +850,73 @@ class CapacityReleaseBookStore:
             return 0
         observed_at_ms = _received_ms(book)
         captured = 0
-        for registration_id, registration in tuple(
-            self._pending.items()
-        ):
+        for registration in self.iter_registrations():
+            registration_id = registration.registration_id
+            record_path = self._record_path(registration_id)
+            if record_path.exists():
+                continue
             if registration.release_market != book.market.canonical:
                 continue
-            if observed_at_ms < registration.opportunity_timestamp_ms:
+
+            pending_path = self._pending_path(registration_id)
+            if not pending_path.exists():
+                if observed_at_ms < registration.opportunity_timestamp_ms:
+                    continue
+                if (
+                    observed_at_ms
+                    - registration.opportunity_timestamp_ms
+                    > self.max_book_age_ms
+                ):
+                    continue
+                if (
+                    book.exchange_time_ms is None
+                    or book.exchange_time_ms
+                    < registration.opportunity_timestamp_ms
+                ):
+                    continue
+                position = self._matching_position(
+                    registration,
+                    positions,
+                )
+                if position is None:
+                    continue
+                pending = PendingCapacityReleaseExecution(
+                    registration=registration,
+                    release_position=position,
+                    plan_observed_at_ms=observed_at_ms,
+                    plan_reference_price=reference_price,
+                    plan_book_event=book,
+                    plan_instrument=instrument,
+                )
+                self._write(pending_path, pending.to_dict())
                 continue
-            lag = observed_at_ms - registration.opportunity_timestamp_ms
-            if lag > self.max_capture_lag_ms:
+
+            pending = PendingCapacityReleaseExecution.from_dict(
+                self._read(pending_path)
+            )
+            earliest_execution_ms = (
+                pending.plan_observed_at_ms + self.latency_ms
+            )
+            if observed_at_ms < earliest_execution_ms:
+                continue
+            if (
+                observed_at_ms - earliest_execution_ms
+                > self.max_book_age_ms
+            ):
                 continue
             if (
                 book.exchange_time_ms is None
-                or book.exchange_time_ms
-                < registration.opportunity_timestamp_ms
+                or book.exchange_time_ms < earliest_execution_ms
             ):
                 continue
-            matches = tuple(
-                position
-                for position in positions
-                if position.market.canonical
-                == registration.release_market
-                and position.side.value
-                == registration.release_direction
-                and position.opened_at_ms
-                <= registration.opportunity_timestamp_ms
+            evidence = CapacityReleaseBookEvidence(
+                pending=pending,
+                execution_observed_at_ms=observed_at_ms,
+                execution_book_event=book,
+                execution_instrument=instrument,
             )
-            if len(matches) != 1:
-                continue
-            position = matches[0]
-            payload = CapacityReleaseBookEvidence(
-                registration=registration,
-                release_opening_plan_id=position.opening_plan_id,
-                release_opened_at_ms=position.opened_at_ms,
-                observed_at_ms=observed_at_ms,
-                observation_lag_ms=lag,
-                book_event=book,
-                instrument=instrument,
-            ).to_dict()
-            self._write(self._record_path(registration_id), payload)
-            del self._pending[registration_id]
+            self._write(record_path, evidence.to_dict())
+            pending_path.unlink(missing_ok=True)
             captured += 1
         return captured
 
@@ -613,6 +930,16 @@ class CapacityReleaseBookStore:
             for path in sorted(self.registrations_root.glob("*.json"))
         )
 
+    def iter_pending(
+        self,
+    ) -> tuple[PendingCapacityReleaseExecution, ...]:
+        return tuple(
+            PendingCapacityReleaseExecution.from_dict(
+                self._read(path)
+            )
+            for path in sorted(self.pending_root.glob("*.json"))
+        )
+
     def iter_records(
         self,
     ) -> tuple[CapacityReleaseBookEvidence, ...]:
@@ -623,13 +950,44 @@ class CapacityReleaseBookStore:
 
     def summary(self, *, now_ms: int) -> dict[str, object]:
         registrations = self.iter_registrations()
+        pending = self.iter_pending()
         records = self.iter_records()
-        expired = sum(
-            registration.registration_id in self._pending
-            and now_ms
-            > registration.opportunity_timestamp_ms
-            + self.max_capture_lag_ms
-            for registration in registrations
+        pending_ids = {
+            item.registration.registration_id for item in pending
+        }
+        recorded_ids = {
+            item.registration.registration_id for item in records
+        }
+        missed_plan = 0
+        missed_execution = 0
+        for registration in registrations:
+            registration_id = registration.registration_id
+            if registration_id in recorded_ids:
+                continue
+            if registration_id in pending_ids:
+                staged = next(
+                    item
+                    for item in pending
+                    if item.registration.registration_id
+                    == registration_id
+                )
+                if now_ms > (
+                    staged.plan_observed_at_ms
+                    + self.latency_ms
+                    + self.max_book_age_ms
+                ):
+                    missed_execution += 1
+                continue
+            if now_ms > (
+                registration.opportunity_timestamp_ms
+                + self.max_book_age_ms
+            ):
+                missed_plan += 1
+        active_pending = (
+            len(registrations)
+            - len(records)
+            - missed_plan
+            - missed_execution
         )
         return {
             "research_only": True,
@@ -638,11 +996,14 @@ class CapacityReleaseBookStore:
             "changes_risk_limits": False,
             "changes_entry_priority": False,
             "capture_started_at_ms": self.capture_started_at_ms,
-            "max_capture_lag_ms": self.max_capture_lag_ms,
+            "latency_ms": self.latency_ms,
+            "max_book_age_ms": self.max_book_age_ms,
             "registrations": len(registrations),
+            "plan_staged": len(pending),
             "captured": len(records),
-            "pending": len(self._pending) - expired,
-            "missed": expired,
+            "pending": active_pending,
+            "missed_plan": missed_plan,
+            "missed_execution": missed_execution,
             "schema_version": SCHEMA_VERSION,
         }
 
@@ -709,12 +1070,12 @@ class CapacityReleaseBookCapture:
         reference_price: Decimal,
         now_ms: int,
     ) -> None:
-        del reference_price
         try:
             self.store.capture(
                 positions=positions,
                 instrument=instrument,
                 book=book,
+                reference_price=reference_price,
                 now_ms=now_ms,
             )
         except Exception as exc:
