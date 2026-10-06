@@ -5,7 +5,10 @@ from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
-from cocomelon.domain.execution import InstrumentExecutionSpec
+from cocomelon.domain.execution import (
+    InstrumentExecutionSpec,
+    PaperExecutionConfig,
+)
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction
 from cocomelon.domain.stream import StreamEvent, StreamKind
@@ -106,6 +109,7 @@ def _store(root: Path) -> CapacityReleaseBookStore:
         capture_started_at_ms=900,
         latency_ms=250,
         max_book_age_ms=1_000,
+        execution_config=PaperExecutionConfig(),
     )
 
 
@@ -134,6 +138,19 @@ def test_release_books_stage_plan_then_capture_latency_eligible_execution(
     assert pending[0].release_opening_plan_id == "holder-plan-btc"
     assert pending[0].plan_observed_at_ms == 1_100
     assert pending[0].plan_reference_price == Decimal("101")
+    assert pending[0].execution_config == {
+        "config_version": "phase7-v1",
+        "latency_ms": 250,
+        "max_book_age_ms": 1000,
+        "max_asset_ctx_age_ms": 5000,
+        "max_position_age_ms": None,
+        "funding_reconciliation_grace_ms": 300000,
+        "max_ioc_slippage_bps": "25",
+        "taker_fee_rate": "0.00045",
+        "fee_schedule_id": "hyperliquid-native-base-2026-08-23",
+        "native_perp_min_notional": "10",
+        "paper_max_gross_leverage": "3",
+    }
     assert store.iter_records() == ()
 
     assert (
@@ -190,6 +207,7 @@ def test_release_plan_survives_restart_before_execution_book(
         capture_started_at_ms=50_000,
         latency_ms=250,
         max_book_age_ms=1_000,
+        execution_config=PaperExecutionConfig(),
     )
     assert restored.capture_started_at_ms == 900
     assert len(restored.iter_pending()) == 1
