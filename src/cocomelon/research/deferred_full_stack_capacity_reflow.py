@@ -295,18 +295,26 @@ def rebuild_deferred_full_stack_capacity_reflow(
             momentum_summary,
         )
 
+        history_requests = tuple(
+            (
+                release.release_opening_plan_id,
+                release.opportunity_timestamp_ms,
+            )
+            for release in evaluation.releases
+        )
+        position_histories = paper.load_position_histories(
+            history_requests
+        )
+
         try:
             fill = prospective_capacity_reflow_fill_feasibility_summary(
                 opportunities,
                 evaluation.releases,
                 config,
                 position_history_loader=(
-                    lambda plan_id, through_ms: (
-                        paper.load_position_history(
-                            plan_id,
-                            through_ms=through_ms,
-                        )
-                    )
+                    lambda plan_id, through_ms: position_histories[
+                        (plan_id, through_ms)
+                    ]
                 ),
             )
         except Exception as exc:
