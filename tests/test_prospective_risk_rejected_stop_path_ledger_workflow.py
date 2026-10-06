@@ -112,20 +112,24 @@ def test_stop_path_workflow_waits_for_legacy_source() -> None:
     assert "predates observed stop-path lineage" in compact
 
 
-def test_stop_path_non_success_wake_falls_back() -> None:
+def test_stop_path_accepts_authenticated_fail_closed_handoff() -> None:
     source = _source()
 
+    assert 'if [ "$EVENT_NAME" = "workflow_run" ]; then' in source
+    assert 'resolution_mode="completed_event"' in source
+    assert 'run.get("conclusion") in {"success", "failure"}' in source
     assert (
-        'if [ "$EVENT_NAME" = "workflow_run" ] && '
-        '[ "$EVENT_CONCLUSION" = "success" ]; then'
+        'run.get("conclusion") not in {"success", "failure"}'
         in source
     )
-    assert 'resolution_mode="successful_event"' in source
+    assert 'actions/runs/$candidate_run_id/jobs?per_page=100' in source
+    assert 'job.get("name") == "paper"' in source
+    assert '"Run continuous paper trader"' in source
+    assert '"Upload compact continuous learning source"' in source
     assert (
-        'resolution_mode="latest_successful_after_non_success_wake"'
+        'resolution_mode="latest_completed_with_authenticated_compact_artifact"'
         in source
     )
-    assert "latest_successful_with_compact_artifact" in source
 
 
 def test_stop_path_workflow_surfaces_post_integrity_cohort() -> None:
