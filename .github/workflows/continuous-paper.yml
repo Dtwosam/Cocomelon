@@ -1329,7 +1329,7 @@ jobs:
           PY
 
       - name: Upload cooldown context stability
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/cooldown-context-stability-summary.json') != '' }}
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/cooldown-context-stability-summary.json') != '' && hashFiles('continuous-paper-state/cooldown-context-selection-record.json') != '' }}
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
