@@ -1532,6 +1532,12 @@ def test_loss_context_paired_shadow_runtime_handoff_is_non_blocking() -> None:
     shadow_upload_at = source.index(
         "- name: Upload paired loss-context portfolio shadow state"
     )
+    review_at = source.index(
+        "- name: Review paired loss-context portfolio shadow"
+    )
+    review_upload_at = source.index(
+        "- name: Upload paired loss-context portfolio shadow review"
+    )
     deferred_research_at = source.index(
         "- name: Rebuild deferred full-stack markouts after handoff"
     )
@@ -1539,11 +1545,20 @@ def test_loss_context_paired_shadow_runtime_handoff_is_non_blocking() -> None:
         fast_dispatch_at
         < fallback_dispatch_at
         < shadow_upload_at
+        < review_at
+        < review_upload_at
         < deferred_research_at
     )
-    shadow_upload = source[
-        shadow_upload_at:deferred_research_at
-    ]
+    shadow_upload = source[shadow_upload_at:review_at]
     assert "continue-on-error: true" in shadow_upload
     assert "loss-context-paired-portfolio-shadow-summary.json" in shadow_upload
     assert "loss-context-paired-portfolio-shadow" in shadow_upload
+
+    review = source[review_at:review_upload_at]
+    assert "continue-on-error: true" in review
+    assert "cocomelon-loss-context-paired-shadow-review" in review
+    assert "review-ledger.jsonl" in review
+    assert "candidate absolute total / realized net PnL" in review
+    assert "candidate-minus-baseline total / realized / max-DD delta" in review
+    assert "ready for review / failures" in review
+    assert "RESEARCH REVIEW ONLY / NO STRATEGY CHANGE" in review
