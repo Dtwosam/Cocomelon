@@ -107,6 +107,12 @@ on:
       - "src/cocomelon/research/deferred_consecutive_loss_cooldown.py"
       - "src/cocomelon/research/loss_streak_context_audit.py"
       - "src/cocomelon/research/deferred_loss_streak_context_audit.py"
+      - "src/cocomelon/research/loss_context_candidate.py"
+      - "src/cocomelon/research/loss_context_prospective.py"
+      - "src/cocomelon/research/loss_context_account_readiness.py"
+      - "src/cocomelon/loss_context_candidate_cli.py"
+      - "src/cocomelon/loss_context_prospective_cli.py"
+      - "src/cocomelon/loss_context_account_readiness_cli.py"
       - "scripts/rebuild_deferred_consecutive_loss_cooldown.py"
       - "scripts/rebuild_deferred_loss_streak_context_audit.py"
       - "src/cocomelon/research/prospective_long_trend_carveout_execution_shadow_source.py"
@@ -1352,6 +1358,20 @@ jobs:
           )
           PY
 
+      - name: Evaluate loss-context fixed-schedule account economics
+        id: loss_context_account_readiness
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-candidate-freeze.json') != '' && hashFiles('continuous-paper-state/loss-context-prospective-report.json') != '' && hashFiles('continuous-paper-state/journal.sqlite3') != '' && hashFiles('continuous-paper-state/facts.sqlite3') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cocomelon-loss-context-account-readiness \
+            --state-root "$STATE_ROOT" \
+            --freeze "$STATE_ROOT/loss-context-candidate-freeze.json" \
+            --prospective "$STATE_ROOT/loss-context-prospective-report.json" \
+            --output "$STATE_ROOT/loss-context-account-readiness-report.json"
+          test -s "$STATE_ROOT/loss-context-account-readiness-report.json"
+
       - name: Upload immutable loss-context candidate
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-candidate-freeze.json') != '' }}
         continue-on-error: true
@@ -1361,6 +1381,17 @@ jobs:
           path: |
             continuous-paper-state/loss-context-candidate-freeze.json
             continuous-paper-state/loss-context-prospective-report.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Upload loss-context account readiness
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-account-readiness-report.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-loss-context-account-readiness-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/loss-context-account-readiness-report.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 6

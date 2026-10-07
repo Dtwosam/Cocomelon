@@ -264,6 +264,7 @@ jobs:
           tests/test_deferred_loss_streak_context_audit.py
           tests/test_loss_context_candidate.py
           tests/test_loss_context_prospective.py
+          tests/test_loss_context_account_readiness.py
           tests/test_prospective_full_stack_exit_capacity_reflow.py
           tests/test_prospective_full_stack_reflow_exact_ledger.py
           tests/test_prospective_full_stack_reflow_exact_ledger_workflow.py
