@@ -485,6 +485,8 @@ def test_pullback_forward_markout_separates_pullback_from_chase(
         pullback,
     )
 
+    assert result["enabled"] is True
+    assert result["error"] is None
     assert result["risk_approved_evaluated"] == 2
     assert result["pullback_admitted"] == 1
     assert result["pullback_blocked"] == 1
