@@ -38,6 +38,7 @@ from cocomelon.evidence.epochs import (
 from cocomelon.evidence.openings import (
     BaselineOpeningEngine,
     BaselineOpeningTrace,
+    OpeningCandidateFilter,
     _instrument,
 )
 from cocomelon.execution.accounting import PaperPosition
@@ -295,6 +296,7 @@ class BaselineReplayPipeline:
         closed_lifecycle_sink: ClosedLifecycleSink | None = None,
         opening_research_observer: OpeningResearchObserver | None = None,
         position_research_observer: PositionResearchObserver | None = None,
+        opening_candidate_filter: OpeningCandidateFilter | None = None,
     ) -> None:
         if not replay_run_id.strip():
             raise ValueError("replay_run_id must not be empty")
@@ -324,7 +326,12 @@ class BaselineReplayPipeline:
             replay_config=replay_config,
         )
         self._state = self._decision_engine.state_book
-        self._opening = BaselineOpeningEngine(replay_config, execution, self._state)
+        self._opening = BaselineOpeningEngine(
+            replay_config,
+            execution,
+            self._state,
+            candidate_filter=opening_candidate_filter,
+        )
         self._latest_evaluation: dict[str, EpochMarketEvaluation] = {}
         self._lifecycles: dict[str, _OpenTradeLifecycle] = {}
         self._completed: dict[str, TradeJournalEntry] = {}
