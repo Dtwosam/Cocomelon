@@ -744,9 +744,11 @@ jobs:
           matches = [
               run
               for run in payload.get("workflow_runs", [])
-              if run.get("name") == "Continuous Mainnet Paper Trader"
+              if run.get("path") == ".github/workflows/continuous-paper.yml"
               and run.get("display_title") == expected
               and run.get("head_branch") == "main"
+              and (run.get("head_repository") or {}).get("full_name")
+              == os.environ["GITHUB_REPOSITORY"]
               and run.get("id") != int(os.environ["GITHUB_RUN_ID"])
           ]
           print(matches[0]["id"] if matches else "")
@@ -902,9 +904,11 @@ jobs:
           matches = [
               run
               for run in payload.get("workflow_runs", [])
-              if run.get("name") == "Continuous Mainnet Paper Trader"
+              if run.get("path") == ".github/workflows/continuous-paper.yml"
               and run.get("display_title") == expected
               and run.get("head_branch") == "main"
+              and (run.get("head_repository") or {}).get("full_name")
+              == os.environ["GITHUB_REPOSITORY"]
               and run.get("id") != int(os.environ["GITHUB_RUN_ID"])
           ]
           print(matches[0]["id"] if matches else "")
