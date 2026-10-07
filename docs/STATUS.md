@@ -4808,3 +4808,14 @@ This removes the old correlation-only heuristic and prospectively captures exact
 Existing evidence is not backfilled. The change improves future execution evidence coverage only and does not alter active trading, risk limits, sizing, positions, or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Loss-context exact replacement-entry replay — 2026-10-07
+
+The loss-context path now replays replacement entries only after an exact D-043 holder full close. Every opportunity/holder path carries its own full-close terminal contribution into the counterfactual account before the ordinary risk engine, opening planner, and IOC fill simulator are rerun.
+
+The report separates risk approval, planning approval, full/partial/no fills, execution rejection, fill notional, fees, and the exact release-option IDs that produced a replacement fill. The same holder appearing at different opportunity times is evaluated independently.
+
+Replacement exits and replacement PnL remain unmodeled at this stage. No active strategy, risk, sizing, position, stop, promotion, or live-order behavior changes.
+
+**LIVE TRADING: DISABLED.**

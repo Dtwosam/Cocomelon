@@ -438,3 +438,10 @@ This remains research-only. It does not alter active positions, strategy, LONG/S
 Holder-release execution evidence now uses the same exact single-position risk-capacity test as D-042 when deciding which holder paths to capture. The capture is no longer a same-bucket correlation heuristic: it covers both aggregate-risk and correlation-bucket rejections, and only records a holder when removing that exact position makes positive capacity available.
 
 This is prospective evidence capture only. Historical gaps are not backfilled, and missing books cannot be converted into modeled fills. No strategy/risk/position behavior changes.
+
+
+### Loss-context replacement-entry replay — D-045
+
+Only D-043 exact full-close holder paths may enter replacement-entry research. Each path is replayed independently through the normal risk engine, opening planner, and IOC simulator after applying that specific holder exit's terminal account contribution.
+
+Per-opportunity exit economics are never collapsed by holder plan. Risk/planning rejection, no fill, partial fill, and full fill remain separate. A filled replacement can only advance to exit research; no replacement PnL or strategy authority is claimed here.

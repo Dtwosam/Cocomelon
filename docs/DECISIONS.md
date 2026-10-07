@@ -523,3 +523,18 @@ The rule is prospective. Existing historical release-book evidence is not guesse
 This changes research evidence coverage only. It does not alter active risk limits, release positions, entry priority, strategy direction, sizing, stops, promotion state, or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-045 — Replacement entries require exact post-release account replay
+
+A D-043 full holder close does not itself prove that the newly available opportunity becomes a real replacement trade. Each exact full-close release option must independently rerun the captured replacement opportunity through the normal risk engine, opening planner, and IOC simulator.
+
+The counterfactual account must first remove the holder's decision-time contribution and then apply that option's exact D-043 full-close terminal contribution. This terminal contribution is bound per opportunity/holder release option, not merely per opening plan, because the same holder can have different executable exit economics at different opportunity times.
+
+The replacement replay uses the captured opening opportunity, ordinary paper execution configuration, execution latency, L2 book, instrument metadata, sizing/risk limits, and fees. Risk rejection, planning rejection, no fill, partial fill, and full fill remain distinct evidence states.
+
+A full or partial replacement entry may advance only to later replacement-exit investigation. Entry fill evidence does not claim a replacement exit, replacement realized PnL, recursive reflow, strategy improvement, or promotion readiness.
+
+This stage is research-only and cannot alter active positions, strategy direction, risk limits, sizing, stops, promotion state, or execution authority.
+
+**LIVE TRADING: DISABLED.**

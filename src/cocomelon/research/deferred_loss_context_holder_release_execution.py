@@ -71,7 +71,7 @@ def _integer(value: object, field: str) -> int:
     return value
 
 
-def _release_options(
+def loss_context_release_options_from_payload(
     reflow: dict[str, object],
 ) -> tuple[CandidateCausedCapacityRelease, ...]:
     raw = reflow.get("release_options")
@@ -195,7 +195,7 @@ def rebuild_deferred_loss_context_holder_release_execution(
             "loss-context reflow already modeled replacement entries"
         )
 
-    releases = _release_options(reflow)
+    releases = loss_context_release_options_from_payload(reflow)
     expected = reflow.get("candidate_blocked_release_options")
     if not isinstance(expected, int) or isinstance(expected, bool):
         if reflow.get("enabled") is True:
