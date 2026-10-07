@@ -434,6 +434,14 @@ def test_paired_shadow_restores_open_lifecycle_across_safe_checkpoint(
         assert checkpoint["handoff_safe"] is True
         assert checkpoint["replay_config_digest"] == config.config_digest
         assert checkpoint["selected_markets"] == ["TEST"]
+        assert checkpoint["review_ledger_row_count"] == 1
+        assert isinstance(
+            checkpoint["review_ledger_latest_row_digest"],
+            str,
+        )
+        assert (
+            state_root / "review-ledger.jsonl"
+        ).is_file()
         assert isinstance(checkpoint["state_digest"], str)
     finally:
         first.close()
@@ -462,6 +470,11 @@ def test_paired_shadow_restores_open_lifecycle_across_safe_checkpoint(
         assert baseline_restored["open_position_count"] == 1
         assert candidate_restored["open_position_count"] == 0
         assert restored_summary["record_count"] == 3
+        assert restored_summary["review_ledger_row_count"] == 1
+        assert isinstance(
+            restored_summary["review_ledger_latest_row_digest"],
+            str,
+        )
 
         with pytest.raises(
             RuntimeError,
@@ -732,3 +745,56 @@ def test_paired_shadow_reconcile_refuses_to_drop_open_shadow_market(
             shadow.reconcile_markets((MarketId("", "OTHER"),))
     finally:
         shadow.close()
+
+
+
+def test_paired_shadow_rejects_tampered_review_ledger(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    state_root = tmp_path / "paired"
+    shadow = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="trend",
+        ),
+    )
+    try:
+        shadow.checkpoint(end_ms=EVALUATED_AT_MS)
+    finally:
+        shadow.close()
+
+    ledger_path = state_root / "review-ledger.jsonl"
+    rows = ledger_path.read_text(encoding="utf-8").splitlines()
+    payload = json.loads(rows[0])
+    payload["candidate_minus_baseline_total_account_pnl"] = "999"
+    rows[0] = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    ledger_path.write_text(
+        "\n".join(rows) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="review ledger row digest mismatch",
+    ):
+        LossContextPairedPortfolioShadow(
+            freeze=_freeze(),
+            replay_config=config,
+            selected_markets=(MARKET,),
+            state_root=state_root,
+            startup_timestamp_ms=EVALUATED_AT_MS,
+            decision_engine_factory=lambda: _ScriptedDecisionEngine(
+                config,
+                lead_strategy="trend",
+            ),
+        )

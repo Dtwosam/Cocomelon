@@ -648,3 +648,20 @@ The immutable D-048 portfolio-shadow candidate is restored before the trader sta
 This integration remains research/shadow only. It cannot modify LONG/SHORT preference, active entry admission, risk limits, sizing, stops, positions, cooldowns, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-054 — Paired shadow review requires profitable, diversified future proof
+
+The D-050/D-053 paired portfolio shadow may become eligible for research review only from its immutable, genuinely prospective A/B account history. A single latest snapshot, aggregate directional PnL, touched evidence, or a candidate that merely loses less than baseline is insufficient.
+
+Every safe handoff appends a canonical hash-chained review checkpoint and binds the latest ledger row count/digest into the durable paired-shadow checkpoint. Historical rows cannot be rewritten without breaking the chain or restart receipt. The first eligible ledger row is an anchor only: duration, trade-count growth, matching-context growth, market diversity, and chronological block deltas must come after that anchor. Legacy matching-context counts that predate per-market attribution remain visible but are explicitly excluded from market-diversity readiness.
+
+The minimum review floor is 72 hours after the D-048 prospective boundary, at least nine authenticated handoff checkpoints, at least 30 newly attributed matching-context blocks across at least four markets, no single blocked market above 50% of attributed matches, and at least 30 closed trades in each paired lane.
+
+Economically, the candidate account itself must have positive total account PnL and positive realized net PnL. It must also beat baseline on both total account PnL and realized net PnL while having maximum drawdown no worse than baseline. This prevents a "less bad but still losing" filter from qualifying.
+
+The eligible checkpoint history is divided into three chronological later blocks. Every block must contain at least five newly attributed matching-context blocks across at least two markets, and candidate-minus-baseline total-account-PnL and realized-net-PnL improvement must both be positive within every block. This blocks one short lucky interval from carrying the full claim.
+
+`ready_for_review` remains research review only. It does not activate the filter, suppress LONG or SHORT globally, alter strategy/risk/sizing/stops/cooldowns/positions, grant promotion authority, or enable live orders. If the gate is not ready, Cocomelon keeps collecting future evidence without relaxing thresholds.
+
+**LIVE TRADING: DISABLED.**

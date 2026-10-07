@@ -31,6 +31,11 @@ from cocomelon.evidence.lifecycle import (
 )
 from cocomelon.execution.accounting import PaperAccountState
 from cocomelon.execution.paper import PaperExecutionAdapter
+from cocomelon.research.loss_context_paired_shadow_review import (
+    LOSS_CONTEXT_PAIRED_SHADOW_REVIEW_LEDGER_FILENAME,
+    append_review_checkpoint,
+    review_ledger_receipt,
+)
 from cocomelon.research.loss_context_portfolio_shadow_candidate import (
     LossContextPortfolioShadowFreeze,
 )
@@ -444,6 +449,9 @@ class LossContextPairedPortfolioShadow:
         self._state_path = (
             root / LOSS_CONTEXT_PAIRED_SHADOW_STATE_FILENAME
         )
+        self._review_ledger_path = (
+            root / LOSS_CONTEXT_PAIRED_SHADOW_REVIEW_LEDGER_FILENAME
+        )
         self._markets = markets
         baseline_execution_path = root / "baseline-execution.sqlite3"
         candidate_execution_path = root / "candidate-execution.sqlite3"
@@ -580,6 +588,60 @@ class LossContextPairedPortfolioShadow:
                     f"shadow admission {field} must be non-negative"
                 )
             setattr(filter_, field, value)
+        blocked_by_market = raw.get("matching_context_blocked_by_market")
+        if blocked_by_market is None:
+            restored: dict[str, int] = {}
+        elif not isinstance(blocked_by_market, dict):
+            raise ValueError(
+                "shadow admission blocked-by-market must be an object"
+            )
+        else:
+            restored = {}
+            for market, value in blocked_by_market.items():
+                if not isinstance(market, str) or not market:
+                    raise ValueError(
+                        "shadow admission blocked market is invalid"
+                    )
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, int)
+                    or value < 0
+                ):
+                    raise ValueError(
+                        "shadow admission blocked market count is invalid"
+                    )
+                restored[market] = value
+        attributed = sum(restored.values())
+        raw_unattributed = raw.get(
+            "matching_context_blocked_unattributed"
+        )
+        if raw_unattributed is None:
+            unattributed = filter_.matching_context_blocked - attributed
+            if unattributed < 0:
+                raise ValueError(
+                    "shadow admission attributed blocks exceed total"
+                )
+        elif (
+            isinstance(raw_unattributed, bool)
+            or not isinstance(raw_unattributed, int)
+            or raw_unattributed < 0
+        ):
+            raise ValueError(
+                "shadow admission unattributed blocked count is invalid"
+            )
+        else:
+            unattributed = raw_unattributed
+        if (
+            attributed + unattributed
+            != filter_.matching_context_blocked
+        ):
+            raise ValueError(
+                "shadow admission blocked market counts do not reconcile"
+            )
+        filter_.matching_context_blocked_by_market = dict(
+            sorted(restored.items())
+        )
+        filter_.matching_context_blocked_unattributed = unattributed
 
     def _restore_lane(
         self,
@@ -702,6 +764,41 @@ class LossContextPairedPortfolioShadow:
             if raw.get(field) is not False:
                 raise RuntimeError(
                     "paired shadow durable authority mismatch"
+                )
+
+        review_count = raw.get("review_ledger_row_count")
+        review_digest = raw.get("review_ledger_latest_row_digest")
+        if review_count is None and review_digest is None:
+            if (
+                self._review_ledger_path.exists()
+                and self._review_ledger_path.stat().st_size > 0
+            ):
+                raise RuntimeError(
+                    "paired shadow review ledger exists without receipt"
+                )
+        elif (
+            isinstance(review_count, bool)
+            or not isinstance(review_count, int)
+            or review_count < 0
+            or (
+                review_digest is not None
+                and not isinstance(review_digest, str)
+            )
+        ):
+            raise RuntimeError(
+                "paired shadow review ledger receipt is invalid"
+            )
+        else:
+            receipt = review_ledger_receipt(
+                self._review_ledger_path,
+                candidate_id=self._freeze.candidate_id,
+            )
+            if (
+                receipt["row_count"] != review_count
+                or receipt["latest_row_digest"] != review_digest
+            ):
+                raise RuntimeError(
+                    "paired shadow review ledger receipt mismatch"
                 )
 
         self._record_count = self._nonnegative_int(
@@ -895,6 +992,14 @@ class LossContextPairedPortfolioShadow:
                 "matching_context_blocked": (
                     filter_.matching_context_blocked
                 ),
+                "matching_context_blocked_by_market": dict(
+                    sorted(
+                        filter_.matching_context_blocked_by_market.items()
+                    )
+                ),
+                "matching_context_blocked_unattributed": (
+                    filter_.matching_context_blocked_unattributed
+                ),
                 "admitted_after_boundary": (
                     filter_.admitted_after_boundary
                 ),
@@ -908,6 +1013,53 @@ class LossContextPairedPortfolioShadow:
                 for started_ms, ended_ms
                 in pipeline.known_gap_intervals
             ],
+        }
+
+    def _review_checkpoint_payload(
+        self,
+        *,
+        end_ms: int,
+        baseline: _LaneSnapshot,
+        candidate: _LaneSnapshot,
+    ) -> dict[str, object]:
+        return {
+            "portfolio_shadow_candidate_id": self._freeze.candidate_id,
+            "loss_context_candidate_id": (
+                self._freeze.loss_context_candidate_id
+            ),
+            "prospective_not_before_ms": (
+                self._freeze.prospective_not_before_ms
+            ),
+            "end_ms": end_ms,
+            "record_count": self._record_count,
+            "last_record_available_at_ms": (
+                self._last_record_available_at_ms
+            ),
+            "baseline": baseline.to_dict(),
+            "candidate": candidate.to_dict(),
+            "candidate_minus_baseline_equity": str(
+                candidate.equity - baseline.equity
+            ),
+            "candidate_minus_baseline_total_account_pnl": str(
+                candidate.total_account_pnl
+                - baseline.total_account_pnl
+            ),
+            "candidate_minus_baseline_realized_net_pnl": str(
+                candidate.realized_net_pnl - baseline.realized_net_pnl
+            ),
+            "candidate_minus_baseline_max_drawdown_fraction": str(
+                candidate.max_drawdown_fraction
+                - baseline.max_drawdown_fraction
+            ),
+            "baseline_admission": self._baseline_filter.summary_payload(),
+            "candidate_admission": self._candidate_filter.summary_payload(),
+            "research_only": True,
+            "shadow_only": True,
+            "changes_strategy": False,
+            "changes_risk_limits": False,
+            "changes_positions": False,
+            "promotion_authority": False,
+            "execution_authority": False,
         }
 
     def checkpoint(self, *, end_ms: int) -> dict[str, object]:
@@ -942,6 +1094,14 @@ class LossContextPairedPortfolioShadow:
         self._candidate_execution.store.persist_account(
             self._candidate_execution.account
         )
+        review_receipt = append_review_checkpoint(
+            self._review_ledger_path,
+            self._review_checkpoint_payload(
+                end_ms=end_ms,
+                baseline=baseline,
+                candidate=candidate,
+            ),
+        )
         payload: dict[str, object] = {
             "portfolio_shadow_candidate_id": self._freeze.candidate_id,
             "loss_context_candidate_id": (
@@ -957,6 +1117,10 @@ class LossContextPairedPortfolioShadow:
             ),
             "handoff_safe": True,
             "pending_opening_state_persisted": False,
+            "review_ledger_row_count": review_receipt["row_count"],
+            "review_ledger_latest_row_digest": (
+                review_receipt["latest_row_digest"]
+            ),
             "baseline": self._lane_state_payload(
                 pipeline=self._baseline,
                 execution=self._baseline_execution,
@@ -1053,6 +1217,10 @@ class LossContextPairedPortfolioShadow:
             offsets=self._candidate_offsets,
             end_ms=end_ms,
         )
+        review_receipt = review_ledger_receipt(
+            self._review_ledger_path,
+            candidate_id=self._freeze.candidate_id,
+        )
         return {
             "portfolio_shadow_candidate_id": self._freeze.candidate_id,
             "loss_context_candidate_id": (
@@ -1086,6 +1254,10 @@ class LossContextPairedPortfolioShadow:
             ),
             "handoff_safe": self.handoff_safe,
             "pending_opening_state_persisted": False,
+            "review_ledger_row_count": review_receipt["row_count"],
+            "review_ledger_latest_row_digest": (
+                review_receipt["latest_row_digest"]
+            ),
             "baseline": baseline.to_dict(),
             "candidate": candidate.to_dict(),
             "candidate_minus_baseline_equity": str(

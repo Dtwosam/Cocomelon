@@ -147,6 +147,8 @@ def test_shadow_entry_blocks_exact_context_not_entire_direction() -> None:
         is None
     )
     assert candidate.matching_context_blocked == 1
+    assert candidate.matching_context_blocked_by_market == {"TEST": 1}
+    assert candidate.matching_context_blocked_unattributed == 0
     assert candidate.admitted_after_boundary == 2
 
 
