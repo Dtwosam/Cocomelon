@@ -622,6 +622,15 @@ jobs:
               )
           )
           summary = ledger["summary"]
+          latest_source = ledger["source_history"][-1]
+          dispatched_run_id = int(os.environ["SOURCE_RUN_ID"])
+          dispatched_attempt = int(os.environ["SOURCE_RUN_ATTEMPT"])
+          accepted_run_id = int(latest_source["paper_run_id"])
+          accepted_attempt = int(latest_source["paper_run_attempt"])
+          stale_dispatch_ignored = (
+              (dispatched_run_id, dispatched_attempt)
+              < (accepted_run_id, accepted_attempt)
+          )
           post_integrity = summary.get("post_integrity_miss", {})
           if not isinstance(post_integrity, dict):
               post_integrity = {}
@@ -641,7 +650,9 @@ jobs:
               f"- candidate: `{ledger['candidate_id']}`",
               f"- candidate clean start: `{stamp(ledger['started_at_ms'])}`",
               f"- pullback evidence start: `{stamp(ledger['evidence_started_at_ms'])}`",
-              f"- source paper run / attempt: `{os.environ['SOURCE_RUN_ID']} / {os.environ['SOURCE_RUN_ATTEMPT']}`",
+              f"- dispatched source paper run / attempt: `{dispatched_run_id} / {dispatched_attempt}`",
+              f"- ledger latest accepted source: `{accepted_run_id} / {accepted_attempt}`",
+              f"- stale dispatched source ignored: `{stale_dispatch_ignored}`",
               f"- source resolution: `{os.environ['RESOLUTION_MODE']}`",
               f"- previous ledger workflow run: `{previous}`",
               f"- terminal / previous / new / pending: `{ledger['row_count']} / {ledger['previous_row_count']} / {ledger['new_row_count']} / {ledger['pending_opportunity_count']}`",
