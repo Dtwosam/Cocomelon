@@ -268,6 +268,7 @@ jobs:
           tests/test_loss_context_capacity_reflow.py
           tests/test_loss_context_holder_release_execution.py
           tests/test_loss_context_replacement_entry_fill.py
+          tests/test_loss_context_replacement_exit_pnl.py
           tests/test_prospective_full_stack_exit_capacity_reflow.py
           tests/test_prospective_full_stack_reflow_exact_ledger.py
           tests/test_prospective_full_stack_reflow_exact_ledger_workflow.py
