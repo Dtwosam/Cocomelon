@@ -523,3 +523,24 @@ def test_reflow_stays_disabled_until_d041_is_ready(tmp_path: Path) -> None:
     assert result.summary["gate_open"] is False
     assert result.summary["replacement_entries_modeled"] is False
     assert result.releases == ()
+
+
+
+def test_reflow_workflow_runs_after_account_gate() -> None:
+    source = Path(
+        ".github/workflows/continuous-paper.yml"
+    ).read_text(encoding="utf-8")
+    account_at = source.index(
+        "- name: Evaluate loss-context fixed-schedule account economics"
+    )
+    reflow_at = source.index(
+        "- name: Rebuild loss-context capacity reflow sensitivity"
+    )
+    upload_at = source.index(
+        "- name: Upload loss-context capacity reflow sensitivity"
+    )
+    cooldown_at = source.index(
+        "- name: Rebuild deferred cooldown evidence after handoff"
+    )
+    assert account_at < reflow_at < upload_at < cooldown_at
+    assert "rebuild_deferred_loss_context_capacity_reflow.py" in source

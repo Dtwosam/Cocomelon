@@ -110,6 +110,9 @@ on:
       - "src/cocomelon/research/loss_context_candidate.py"
       - "src/cocomelon/research/loss_context_prospective.py"
       - "src/cocomelon/research/loss_context_account_readiness.py"
+      - "src/cocomelon/research/loss_context_capacity_reflow.py"
+      - "src/cocomelon/research/deferred_loss_context_capacity_reflow.py"
+      - "scripts/rebuild_deferred_loss_context_capacity_reflow.py"
       - "src/cocomelon/loss_context_candidate_cli.py"
       - "src/cocomelon/loss_context_prospective_cli.py"
       - "src/cocomelon/loss_context_account_readiness_cli.py"
@@ -1392,6 +1395,29 @@ jobs:
         with:
           name: continuous-paper-loss-context-account-readiness-${{ github.run_id }}-${{ github.run_attempt }}
           path: continuous-paper-state/loss-context-account-readiness-report.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Rebuild loss-context capacity reflow sensitivity
+        id: loss_context_capacity_reflow
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-candidate-freeze.json') != '' && hashFiles('continuous-paper-state/loss-context-account-readiness-report.json') != '' && hashFiles('continuous-paper-state/session-summary.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/rebuild_deferred_loss_context_capacity_reflow.py \
+            "$STATE_ROOT" \
+            | tee /tmp/loss-context-capacity-reflow.json
+          test -s "$STATE_ROOT/loss-context-capacity-reflow-summary.json"
+
+      - name: Upload loss-context capacity reflow sensitivity
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-capacity-reflow-summary.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-loss-context-capacity-reflow-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/loss-context-capacity-reflow-summary.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
