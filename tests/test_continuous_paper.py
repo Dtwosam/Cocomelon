@@ -5411,3 +5411,52 @@ def test_runtime_persists_weekly_drawdown_5m_candidate_source() -> None:
         '"changes_risk_limits": False'
         in source[call : call + 3500]
     )
+
+
+
+def test_loss_context_paired_shadow_feed_stays_off_active_critical_path() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "LossContextPairedShadowRuntime" in source
+    assert "verify_loss_context_portfolio_shadow_freeze" in source
+    assert "loss_context_paired_shadow_runtime.submit_record(" in source
+    assert "loss_context_paired_shadow_runtime.submit_rank_snapshot(" in source
+    assert (
+        "loss_context_paired_shadow_runtime.submit_restore_warmup_complete()"
+        in source
+    )
+    assert "loss_context_paired_shadow_runtime.submit_reconcile(" in source
+    assert (
+        '"loss_context_paired_portfolio_shadow": ('
+        in source
+    )
+    assert (
+        '"non_blocking_active_paper_feed": True'
+        in source
+    )
+
+    process_at = source.index("async def process(", source.index("class _RecordPump"))
+    recent_at = source.index(
+        "def recent_closed_trades",
+        process_at,
+    )
+    process = source[process_at:recent_at]
+    active_at = process.index("self.pipeline.on_record(")
+    enqueue_at = process.index(
+        "self.loss_context_paired_shadow_runtime.submit_record("
+    )
+    assert active_at < enqueue_at
+    assert "await self.loss_context_paired_shadow_runtime.submit_record" not in process
+
+    final_checkpoint_at = source.index(
+        "await loss_context_paired_shadow_runtime.checkpoint("
+    )
+    active_persist_at = source.index("persist_checkpoint_sync()")
+    assert active_persist_at < final_checkpoint_at
+    assert (
+        "except Exception as exc:\n"
+        "                loss_context_paired_shadow_checkpoint_error"
+        in source
+    )
