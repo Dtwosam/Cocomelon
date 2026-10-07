@@ -4784,3 +4784,16 @@ When enabled, it examines later opportunities rejected for aggregate-risk or cor
 The output is still only capacity-release sensitivity. Replacement entry fills, exits, realized PnL, and recursive portfolio effects are not claimed yet. The next frontier is to replay those causally unblocked opportunities through the captured execution path.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Loss-context exact holder-release execution — 2026-10-07
+
+The loss-context reflow path now has an execution gate after causal capacity attribution. For every D-042 release option, Cocomelon looks for the matching captured holder-release book and replays the existing reduce-only paper execution path with the bound execution configuration.
+
+Only exact full closes are exposed to the next replacement-entry research stage. Missing capture, legacy/unbound execution configuration, planning rejection, partial fill, or no fill stays visible and cannot be counted as freed capacity.
+
+The output explicitly separates causal release options, captured books, missing records, exact-config records, full/partial/no fills, terminal contribution, and the subset ready for replacement-entry investigation.
+
+Research only; no strategy, risk, sizing, stop, position, promotion, or live-order change.
+
+**LIVE TRADING: DISABLED.**
