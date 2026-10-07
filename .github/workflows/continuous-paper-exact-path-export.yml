@@ -158,10 +158,8 @@ jobs:
           source_attempt=""
           artifact_id=""
           resolution_mode=""
-          strict_manual=false
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$DISPATCH_RUN_ID" ]; then
-            strict_manual=true
             source_run_id="$DISPATCH_RUN_ID"
             source_attempt="$DISPATCH_RUN_ATTEMPT"
             if [[ ! "$source_run_id" =~ ^[0-9]+$ ]]; then
@@ -183,22 +181,7 @@ jobs:
             fi
             artifact_id="$(artifact_for_run "$source_run_id" "$source_attempt")"
             resolution_mode="manual_exact"
-          elif [[ "$EVENT_RUN_ID" =~ ^[0-9]+$ && "$EVENT_RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
-            if paper_run_is_evidence_eligible "$EVENT_RUN_ID" "$EVENT_RUN_ATTEMPT"; then
-              artifact_id="$(artifact_for_run "$EVENT_RUN_ID" "$EVENT_RUN_ATTEMPT")"
-              if [ -n "$artifact_id" ]; then
-                source_run_id="$EVENT_RUN_ID"
-                source_attempt="$EVENT_RUN_ATTEMPT"
-                if [ "$EVENT_CONCLUSION" = "success" ]; then
-                  resolution_mode="successful_event"
-                else
-                  resolution_mode="durable_handoff_event"
-                fi
-              fi
-            fi
-          fi
-
-          if [ -z "$artifact_id" ] && [ "$strict_manual" != "true" ]; then
+          else
             runs_json="$(
               gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=100"
             )"
@@ -207,7 +190,8 @@ jobs:
           import json, os, sys
           payload = json.load(sys.stdin)
           repo = os.environ["GITHUB_REPOSITORY"]
-          for run in payload.get("workflow_runs", []):
+          runs = [
+              run for run in payload.get("workflow_runs", [])
               if (
                   run.get("path") == ".github/workflows/continuous-paper.yml"
                   and run.get("head_branch") == "main"
@@ -215,8 +199,10 @@ jobs:
                   and (run.get("head_repository") or {}).get("full_name") == repo
                   and isinstance(run.get("id"), int)
                   and isinstance(run.get("run_attempt"), int)
-              ):
-                  print(run["id"], run["run_attempt"], sep="\t")
+              )
+          ]
+          for run in sorted(runs, key=lambda item: item["id"], reverse=True):
+              print(run["id"], run["run_attempt"], sep="\t")
           '
             )
             for candidate in "${candidates[@]}"; do
@@ -231,7 +217,15 @@ jobs:
                 source_run_id="$candidate_run_id"
                 source_attempt="$candidate_attempt"
                 artifact_id="$candidate_artifact_id"
-                resolution_mode="latest_evidence_eligible_with_state_artifact"
+                if [ "$candidate_run_id" = "$EVENT_RUN_ID" ]; then
+                  if [ "$EVENT_CONCLUSION" = "success" ]; then
+                    resolution_mode="successful_event"
+                  else
+                    resolution_mode="durable_handoff_event"
+                  fi
+                else
+                  resolution_mode="latest_evidence_eligible_with_state_artifact"
+                fi
                 break
               fi
             done
