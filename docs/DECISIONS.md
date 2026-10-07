@@ -404,3 +404,24 @@ This file records decisions that should not be casually re-litigated in later ch
 **Authority:** Prospective scoring is paper research only. It cannot change entries, suppress either direction globally, relax risk/tradeability gates, authorize promotion, or enable live execution.
 
 **LIVE TRADING: DISABLED.**
+
+
+## D-036 — Cooldown relaxation contexts must be re-proven prospectively
+
+**Date:** 2026-10-07
+
+**Decision:** A context that appears to make the consecutive-loss cooldown too conservative may not relax the active risk veto directly. After the existing cooldown counterfactual, context-stability, and immutable selection stages choose a stable context, that exact context must be frozen once and re-evaluated on later continuous-paper evidence after the standard six-hour prospective embargo.
+
+**Context boundary:** A frozen cooldown candidate must retain the exact relaxation window and lead-strategy context selected by the touched evidence. Additional dimensions such as direction, elapsed-cooldown bucket, or rank band remain frozen when they are part of the selected context. Direction alone can never define a cooldown relaxation.
+
+**Economic target:** Prospective scoring uses the same settled 1h fee-adjusted mark-to-market PnL and directional-return semantics used by the context-selection research. It counts only opportunities that were actually eligible for the frozen relaxation window and match every frozen context dimension.
+
+**Review gate:** The frozen context remains unready until it has at least 30 post-embargo settled outcomes across at least four markets, at least 60% profitable outcomes, positive total fee-adjusted PnL and mean directional return, positive leave-one-option and leave-one-market PnL, and three chronological prospective blocks with at least five rows, at least 55% profitable outcomes, and positive PnL in every block.
+
+**Immutability:** The first frozen cooldown candidate is immutable. Later research cannot overwrite it with a newly selected context. A materially different cooldown hypothesis requires a new explicit candidate identity and a fresh prospective boundary.
+
+**Operational isolation:** Freeze restoration, scoring, and artifact publication run only in the post-handoff research tail after the exact successor has been dispatched and durable fallback state has been published. Missing/corrupt research state fails research closed and may not delay or alter the paper trader.
+
+**Authority:** `ready_for_review` is research review only. It does not change the one-hour cooldown, strategy logic, position sizing, risk limits, promotion state, or execution authority.
+
+**LIVE TRADING: DISABLED.**
