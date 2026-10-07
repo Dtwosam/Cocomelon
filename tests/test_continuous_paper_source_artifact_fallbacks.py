@@ -5,7 +5,7 @@ from pathlib import Path
 LEARNING_SOURCE_WORKFLOWS = (
     (
         ".github/workflows/prospective-two-strike-stop-filter-ledger.yml",
-        "latest_evidence_eligible_with_compact_artifact",
+        "latest_successful_with_compact_artifact",
     ),
     (
         ".github/workflows/prospective-full-stack-reflow-exact-ledger.yml",
@@ -116,7 +116,9 @@ def test_learning_source_consumers_skip_artifactless_runs() -> None:
             assert 'actions/runs/$candidate_run_id/jobs?per_page=100' in resolver
             assert '"Run continuous paper trader"' in resolver
             assert '"Upload compact continuous learning source"' in resolver
-            assert 'failed_steps != {"Fail closed on upgrade handoff source"}' in resolver
+            assert "allowed_failed_steps" in resolver
+            assert "frozenset(failed_steps) not in allowed_failed_steps" in resolver
+            assert "Queue exact successor from fast resume" in resolver
 
 
 def test_exact_path_export_skips_artifactless_success_runs() -> None:
