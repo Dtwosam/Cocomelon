@@ -456,3 +456,16 @@ A continuous-paper workflow's final GitHub conclusion is not, by itself, the eco
 For the observed redundant fallback-successor failure, eligibility additionally requires that the fast exact successor was already queued successfully. The only permitted failed-step sets are the existing fail-closed handoff-tail step alone, or that step together with the redundant fallback-successor step under the successful-fast-successor condition. Any other failed step, missing required publication, missing artifact, incomplete trader, invalid lineage, or missing successor continuity fails closed.
 
 This is an evidence-continuity rule only. It does not reinterpret failed trading/execution as success, does not modify strategy/risk/sizing/stops, and grants no promotion or live-order authority.
+
+
+### D-040 — Loss-context learning refreshes on every clean paper handoff
+
+Loss-context research must not depend on a runtime code upgrade to receive new evidence. After the exact successor paper worker has already been dispatched, the D-037/D-038 loss-context audit may rebuild from either of the two normal completed runtime exits: `duration_elapsed` or `upgrade_requested`.
+
+Any other or unknown session exit remains ineligible and fails research closed. The audit still requires the persisted journal, evaluation facts, entry-time feature snapshots, and opening-rank evidence; no missing lineage is guessed or backfilled.
+
+The post-handoff position is deliberate: research may take time or fail without delaying the next paper trader. A stable context remains research-only and still requires the immutable D-038 freeze, six-hour embargo, and genuinely later realized trades before review.
+
+This changes evidence cadence only. It does not block entries, prefer LONG or SHORT, change risk/sizing/stops, promote a candidate, or grant execution authority.
+
+**LIVE TRADING: DISABLED.**
