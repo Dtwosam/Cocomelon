@@ -5456,7 +5456,7 @@ def test_loss_context_paired_shadow_feed_stays_off_active_critical_path() -> Non
     active_persist_at = source.index("persist_checkpoint_sync()")
     assert active_persist_at < final_checkpoint_at
     assert (
-        "except Exception as exc:\n"
+        "except Exception as shadow_checkpoint_exc:\n"
         "                loss_context_paired_shadow_checkpoint_error"
         in source
     )
