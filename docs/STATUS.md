@@ -4760,3 +4760,16 @@ The recurring-loss context audit no longer waits for a code-upgrade exit. It reb
 That means Cocomelon can keep accumulating context-specific bad-entry evidence during ordinary operation instead of learning only when the repo changes. The D-038 prospective freeze and all authority-negative safeguards are unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Loss-context fixed-schedule account gate — 2026-10-07
+
+The recurring loss-context path now distinguishes “avoids losses” from “leaves a profitable portfolio.” After D-038 prospective scoring, a downstream paper-research gate evaluates the full resolved post-embargo cohort with matching bad-context trades removed and all non-matching realized trades unchanged.
+
+The filtered fixed-schedule portfolio must itself have positive net PnL and net-R while also improving on baseline. Both the filtered portfolio and its improvement must survive leave-one-trade and leave-one-market checks. The avoided-loss PnL must exactly reconcile to D-038, and unresolved future lineage keeps the gate closed.
+
+A pass does not activate the filter. It only permits the next research question: whether freed capacity and replacement opportunities preserve the benefit. Capacity reflow and recursive replacements remain unmodeled here and are required before any later strategy use.
+
+No LONG or SHORT side is suppressed globally. Strategy, risk, sizing, stops, promotion, and execution remain unchanged.
+
+**LIVE TRADING: DISABLED.**

@@ -408,3 +408,10 @@ Arbitrary failed runs remain ineligible. This rule preserves research continuity
 D-037/D-038 loss-context learning now refreshes after every clean continuous-paper handoff, not only after runtime upgrades. The accepted source exits are exactly `duration_elapsed` and `upgrade_requested`; unknown exits fail closed. The rebuild still occurs only after a successor has been dispatched, so research cannot hold up paper trading.
 
 This does not activate any loss-context filter. Stable contexts remain frozen research hypotheses and must satisfy the six-hour embargo plus the full prospective realized-PnL review gate before any later strategy-admission discussion.
+
+
+### Loss-context fixed-schedule account economics — D-041
+
+A D-038 loss-context candidate cannot advance merely because blocking matching future trades produces a positive delta. The same post-embargo resolved cohort must also show that the fixed-schedule portfolio left after those matches are removed is itself positive in realized net PnL and net-R, with leave-one-trade and leave-one-market robustness for both the filtered portfolio and its improvement. The improvement must exactly reconcile to D-038's avoided-loss PnL.
+
+Passing this stage permits only capacity-reflow investigation. It does not assume freed slots remain idle, does not model replacement or recursive trades, does not activate the filter, and grants no strategy, risk, promotion, or execution authority. Direction-only filtering remains forbidden.
