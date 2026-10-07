@@ -491,3 +491,12 @@ The reusable paired engine now exists but remains research-only and disconnected
 The paired portfolio shadow exposes pending opening markets in both lanes. A restart checkpoint is safe only when both sets are empty; otherwise the research shadow fails continuity closed rather than dropping a staged trade.
 
 The active continuous-paper trader must never be delayed by this rule. The next frontier is durable paired-shadow open-lifecycle/account checkpoint restoration at safe boundaries, followed by a bounded non-blocking runtime feed.
+
+
+### Durable paired-shadow restart state — D-052
+
+At a D-051 safe boundary, the paired loss-context shadow can persist and restore candidate-bound account/lifecycle state across rolling workers. The lane SQLite stores keep the account truth; the JSON checkpoint authenticates account state IDs plus open lifecycle/mark/exit/funding/gap lineage, counters and max drawdown.
+
+A restored shadow cannot evaluate new entries until fresh decision-state warmup is explicitly completed. Any candidate/account/lifecycle mismatch fails the research shadow closed and must not affect the active trader.
+
+The next build frontier is non-blocking runtime integration: a bounded ordered shadow feed, dynamic-market reconciliation, safe checkpoint publication, and independent failure telemetry.
