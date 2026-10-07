@@ -16,6 +16,7 @@ def test_continuous_paper_learning_catchup_is_scheduled_and_reactive() -> None:
     assert "branches: [main]" in source
     assert '".github/workflows/continuous-paper-learning-catchup.yml"' in source
     assert '"Continuous Mainnet Paper Trader"' in source
+    assert 'run["name"].startswith("Continuous Paper · ")' in source
     assert '"Continuous Paper Learning Evidence Sync"' in source
     assert "workflow_dispatch:" in source
     assert "actions: write" in source
