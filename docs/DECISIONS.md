@@ -566,3 +566,16 @@ A horizon may advance only to chronological portfolio replay when it is complete
 This stage is research-only and cannot change strategy, LONG/SHORT preference, risk limits, sizing, positions, stops, promotion state, or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-048 — Portfolio shadow proof requires a fresh immutable freeze
+
+D-047 only proves that the independently measured replacement paths are structurally capable of being composed. It does not authorize those touched paths to become a portfolio claim. Before any full loss-context portfolio shadow can begin, the complete shadow specification must be frozen immutably and evaluated only on genuinely later mainnet paper evidence.
+
+The freeze binds the original loss-context candidate, exact context dimensions/values, the complete ordered set of fixed exit horizons, source composition digest, source evidence boundary, and producer run identity. It preserves every D-046 horizon. No horizon may be selected, averaged, dropped, or retuned from the touched composition evidence.
+
+The portfolio shadow receives the standard six-hour prospective embargo after the freeze. Evidence before that boundary is ineligible for shadow-account proof. Any materially different context or horizon set requires a new candidate identity and a new future boundary.
+
+This freeze grants no strategy, risk, sizing, position, stop, promotion, or execution authority. The active continuous-paper strategy is unchanged. The next stage may build a separate prospective shadow account that evolves its own equity, cooldown, drawdown, capacity, entries, and exits from the future stream.
+
+**LIVE TRADING: DISABLED.**
