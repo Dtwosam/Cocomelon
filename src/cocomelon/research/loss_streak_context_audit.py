@@ -18,10 +18,29 @@ from cocomelon.research.learning_feature_snapshots import (
 )
 
 ZERO: Final = Decimal("0")
-LOSS_STREAK_CONTEXT_SCHEMA_VERSION = 2
+LOSS_STREAK_CONTEXT_SCHEMA_VERSION = 3
 DEFAULT_MIN_STREAK_LENGTH = 3
 DOMINANT_SHARE_MIN = Decimal("0.75")
 RECURRING_STREAK_MIN = 2
+CONTEXT_FILTER_SPLIT_FRACTION = Decimal("0.60")
+CONTEXT_FILTER_MIN_DISCOVERY_ROWS = 8
+CONTEXT_FILTER_MIN_VALIDATION_ROWS = 6
+CONTEXT_FILTER_MIN_VALIDATION_MARKETS = 3
+CONTEXT_FILTER_MIN_DISCOVERY_LOSS_SHARE = Decimal("0.65")
+CONTEXT_FILTER_MIN_VALIDATION_LOSS_SHARE = Decimal("0.60")
+CONTEXT_FILTER_BLOCK_COUNT = 2
+CONTEXT_FILTER_MIN_BLOCK_ROWS = 2
+CONTEXT_FILTER_MIN_BLOCK_LOSS_SHARE = Decimal("0.50")
+CONTEXT_FILTER_DIMENSION_SETS: Final = (
+    ("lead_strategy", "trend_regime"),
+    ("lead_strategy", "volatility_regime"),
+    ("lead_strategy", "return_15m_sign"),
+    ("lead_strategy", "return_1h_sign"),
+    ("lead_strategy", "rank_band"),
+    ("lead_strategy", "trend_regime", "volatility_regime"),
+    ("lead_strategy", "trend_regime", "direction"),
+    ("lead_strategy", "volatility_regime", "direction"),
+)
 
 
 class LossStreakContextAuditError(RuntimeError):
@@ -399,6 +418,330 @@ def _recurring_patterns(
             )
     return tuple(recurring)
 
+
+def _context_values(
+    row: dict[str, object],
+    dimensions: tuple[str, ...],
+) -> tuple[str, ...]:
+    return tuple(str(row[dimension]) for dimension in dimensions)
+
+
+def _chronological_context_split(
+    rows: tuple[dict[str, object], ...],
+) -> tuple[
+    int | None,
+    tuple[dict[str, object], ...],
+    tuple[dict[str, object], ...],
+]:
+    if not rows:
+        return None, (), ()
+    ordered = tuple(
+        sorted(
+            rows,
+            key=lambda row: (
+                int(row["closed_at_ms"]),
+                str(row["trade_id"]),
+            ),
+        )
+    )
+    timestamps = tuple(
+        sorted({int(row["closed_at_ms"]) for row in ordered})
+    )
+    if len(timestamps) < 2:
+        return timestamps[0], ordered, ()
+    split_index = int(
+        Decimal(len(timestamps)) * CONTEXT_FILTER_SPLIT_FRACTION
+    )
+    split_index = max(1, min(split_index, len(timestamps) - 1))
+    split_timestamp_ms = timestamps[split_index]
+    discovery = tuple(
+        row
+        for row in ordered
+        if int(row["closed_at_ms"]) < split_timestamp_ms
+    )
+    validation = tuple(
+        row
+        for row in ordered
+        if int(row["closed_at_ms"]) >= split_timestamp_ms
+    )
+    return split_timestamp_ms, discovery, validation
+
+
+def _context_loss_share(
+    rows: tuple[dict[str, object], ...],
+) -> Decimal | None:
+    if not rows:
+        return None
+    losses = sum(Decimal(str(row["net_pnl"])) < ZERO for row in rows)
+    return Decimal(losses) / Decimal(len(rows))
+
+
+def _context_filter_delta(
+    rows: tuple[dict[str, object], ...],
+) -> Decimal:
+    return sum(
+        (-Decimal(str(row["net_pnl"])) for row in rows),
+        ZERO,
+    )
+
+
+def _context_leave_one_trade_min_delta(
+    rows: tuple[dict[str, object], ...],
+) -> Decimal | None:
+    if len(rows) < 2:
+        return None
+    total = _context_filter_delta(rows)
+    return min(
+        total + Decimal(str(row["net_pnl"]))
+        for row in rows
+    )
+
+
+def _context_leave_one_market_min_delta(
+    rows: tuple[dict[str, object], ...],
+) -> Decimal | None:
+    by_market: dict[str, Decimal] = {}
+    for row in rows:
+        market = str(row["market"])
+        by_market[market] = (
+            by_market.get(market, ZERO)
+            - Decimal(str(row["net_pnl"]))
+        )
+    if len(by_market) < 2:
+        return None
+    total = sum(by_market.values(), ZERO)
+    return min(total - value for value in by_market.values())
+
+
+def _context_blocks(
+    rows: tuple[dict[str, object], ...],
+) -> tuple[tuple[dict[str, object], ...], ...]:
+    if not rows:
+        return ()
+    timestamps = tuple(
+        sorted({int(row["closed_at_ms"]) for row in rows})
+    )
+    resolved = min(CONTEXT_FILTER_BLOCK_COUNT, len(timestamps))
+    blocks: list[tuple[dict[str, object], ...]] = []
+    for index in range(resolved):
+        start = (len(timestamps) * index) // resolved
+        end = (len(timestamps) * (index + 1)) // resolved
+        selected = set(timestamps[start:end])
+        if selected:
+            blocks.append(
+                tuple(
+                    row
+                    for row in rows
+                    if int(row["closed_at_ms"]) in selected
+                )
+            )
+    return tuple(blocks)
+
+
+def _context_recurring_streaks(
+    streaks: tuple[dict[str, object], ...],
+    *,
+    dimensions: tuple[str, ...],
+    values: tuple[str, ...],
+) -> int:
+    count = 0
+    for streak in streaks:
+        raw = streak.get("trades")
+        if not isinstance(raw, tuple):
+            raise LossStreakContextAuditError(
+                "streak trades are invalid"
+            )
+        if any(
+            isinstance(row, dict)
+            and _context_values(row, dimensions) == values
+            for row in raw
+        ):
+            count += 1
+    return count
+
+
+def _context_filter_stability(
+    streaks: tuple[dict[str, object], ...],
+    baseline_rows: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    split_timestamp_ms, discovery, validation = (
+        _chronological_context_split(baseline_rows)
+    )
+    candidates: list[dict[str, object]] = []
+
+    for dimensions in CONTEXT_FILTER_DIMENSION_SETS:
+        discovery_groups: dict[
+            tuple[str, ...],
+            list[dict[str, object]],
+        ] = {}
+        validation_groups: dict[
+            tuple[str, ...],
+            list[dict[str, object]],
+        ] = {}
+        for row in discovery:
+            discovery_groups.setdefault(
+                _context_values(row, dimensions),
+                [],
+            ).append(row)
+        for row in validation:
+            validation_groups.setdefault(
+                _context_values(row, dimensions),
+                [],
+            ).append(row)
+
+        for values in sorted(discovery_groups):
+            recurring_streaks = _context_recurring_streaks(
+                streaks,
+                dimensions=dimensions,
+                values=values,
+            )
+            if recurring_streaks < RECURRING_STREAK_MIN:
+                continue
+
+            discovery_group = tuple(discovery_groups[values])
+            discovery_loss_share = _context_loss_share(discovery_group)
+            discovery_delta = _context_filter_delta(discovery_group)
+            if (
+                len(discovery_group) < CONTEXT_FILTER_MIN_DISCOVERY_ROWS
+                or discovery_loss_share is None
+                or discovery_loss_share
+                < CONTEXT_FILTER_MIN_DISCOVERY_LOSS_SHARE
+                or discovery_delta <= ZERO
+            ):
+                continue
+
+            validation_group = tuple(
+                validation_groups.get(values, ())
+            )
+            validation_loss_share = _context_loss_share(validation_group)
+            validation_delta = _context_filter_delta(validation_group)
+            validation_markets = len(
+                {str(row["market"]) for row in validation_group}
+            )
+            loo_trade = _context_leave_one_trade_min_delta(
+                validation_group
+            )
+            loo_market = _context_leave_one_market_min_delta(
+                validation_group
+            )
+            blocks = _context_blocks(validation_group)
+            block_rows = tuple(len(block) for block in blocks)
+            block_loss_shares = tuple(
+                _context_loss_share(block) for block in blocks
+            )
+            block_deltas = tuple(
+                _context_filter_delta(block) for block in blocks
+            )
+            consistent_blocks = sum(
+                len(block) >= CONTEXT_FILTER_MIN_BLOCK_ROWS
+                and loss_share is not None
+                and loss_share >= CONTEXT_FILTER_MIN_BLOCK_LOSS_SHARE
+                and delta > ZERO
+                for block, loss_share, delta in zip(
+                    blocks,
+                    block_loss_shares,
+                    block_deltas,
+                    strict=True,
+                )
+            )
+            stable = (
+                len(validation_group) >= CONTEXT_FILTER_MIN_VALIDATION_ROWS
+                and validation_markets
+                >= CONTEXT_FILTER_MIN_VALIDATION_MARKETS
+                and validation_loss_share is not None
+                and validation_loss_share
+                >= CONTEXT_FILTER_MIN_VALIDATION_LOSS_SHARE
+                and validation_delta > ZERO
+                and loo_trade is not None
+                and loo_trade > ZERO
+                and loo_market is not None
+                and loo_market > ZERO
+                and len(blocks) == CONTEXT_FILTER_BLOCK_COUNT
+                and consistent_blocks == CONTEXT_FILTER_BLOCK_COUNT
+            )
+            candidates.append(
+                {
+                    "dimensions": dimensions,
+                    "values": values,
+                    "recurring_loss_streaks": recurring_streaks,
+                    "discovery_rows": len(discovery_group),
+                    "discovery_markets": len(
+                        {str(row["market"]) for row in discovery_group}
+                    ),
+                    "discovery_loss_share": str(discovery_loss_share),
+                    "discovery_filter_delta_pnl": str(discovery_delta),
+                    "validation_rows": len(validation_group),
+                    "validation_markets": validation_markets,
+                    "validation_loss_share": (
+                        None
+                        if validation_loss_share is None
+                        else str(validation_loss_share)
+                    ),
+                    "validation_filter_delta_pnl": str(validation_delta),
+                    "validation_leave_one_trade_min_delta_pnl": (
+                        None if loo_trade is None else str(loo_trade)
+                    ),
+                    "validation_leave_one_market_min_delta_pnl": (
+                        None if loo_market is None else str(loo_market)
+                    ),
+                    "validation_block_rows": block_rows,
+                    "validation_block_loss_shares": tuple(
+                        None if value is None else str(value)
+                        for value in block_loss_shares
+                    ),
+                    "validation_block_filter_delta_pnl": tuple(
+                        str(value) for value in block_deltas
+                    ),
+                    "validation_blocks_consistent": consistent_blocks,
+                    "stable_on_validation": stable,
+                    "strategy_authority": False,
+                    "risk_authority": False,
+                    "execution_authority": False,
+                }
+            )
+
+    ordered = tuple(
+        sorted(
+            candidates,
+            key=lambda item: (
+                len(cast(tuple[str, ...], item["dimensions"])),
+                cast(tuple[str, ...], item["dimensions"]),
+                cast(tuple[str, ...], item["values"]),
+            ),
+        )
+    )
+    return {
+        "schema_version": 1,
+        "split_timestamp_ms": split_timestamp_ms,
+        "discovery_rows": len(discovery),
+        "validation_rows": len(validation),
+        "candidate_count": len(ordered),
+        "stable_candidate_count": sum(
+            item["stable_on_validation"] is True for item in ordered
+        ),
+        "candidates": ordered,
+        "candidate_dimension_sets": CONTEXT_FILTER_DIMENSION_SETS,
+        "direction_only_candidates_allowed": False,
+        "lead_strategy_context_required": True,
+        "entry_time_context_only": True,
+        "realized_net_pnl_economics_required": True,
+        "counterfactual_filter_delta_definition": (
+            "negative_of_realized_net_pnl_for_matching_trade"
+        ),
+        "chronological_holdout_required": True,
+        "leave_one_trade_robustness_required": True,
+        "leave_one_market_robustness_required": True,
+        "validation_block_consistency_required": True,
+        "prospective_freeze_required_before_strategy_use": True,
+        "research_only": True,
+        "descriptive_only": True,
+        "changes_strategy": False,
+        "changes_risk_limits": False,
+        "promotion_authority": False,
+        "execution_authority": False,
+    }
+
+
 def loss_streak_context_audit(
     trades: tuple[TradeJournalEntry, ...],
     facts: EvaluationFactStore,
@@ -465,6 +808,10 @@ def loss_streak_context_audit(
             baseline_complete=baseline_complete,
         )
     )
+    context_filter_stability = _context_filter_stability(
+        ordered,
+        baseline_rows,
+    )
     return {
         "research_only": True,
         "descriptive_only": True,
@@ -494,5 +841,6 @@ def loss_streak_context_audit(
         "current_consecutive_losses": current_length,
         "latest_qualifying_streak": latest,
         "recurring_dominant_patterns": recurring,
+        "context_filter_stability": context_filter_stability,
         "streaks": ordered,
     }
