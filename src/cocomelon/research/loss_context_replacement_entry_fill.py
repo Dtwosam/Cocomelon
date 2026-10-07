@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
 from typing import Final, cast
 
