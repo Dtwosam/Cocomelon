@@ -4751,3 +4751,12 @@ This fixes the observed case where valid compact, timing, cadence, feature, and 
 Control-plane/evidence continuity only. No strategy, risk, sizing, stop, promotion, or live-order behavior changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Loss-context research cadence hardened — 2026-10-07
+
+The recurring-loss context audit no longer waits for a code-upgrade exit. It rebuilds after either normal paper duration completion or an upgrade-requested handoff, but only after the successor has already been dispatched. Unknown exits remain rejected.
+
+That means Cocomelon can keep accumulating context-specific bad-entry evidence during ordinary operation instead of learning only when the repo changes. The D-038 prospective freeze and all authority-negative safeguards are unchanged.
+
+**LIVE TRADING: DISABLED.**
