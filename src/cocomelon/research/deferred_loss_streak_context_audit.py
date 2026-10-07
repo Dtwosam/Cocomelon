@@ -57,7 +57,10 @@ def rebuild_deferred_loss_streak_context_audit(
     root = Path(state_root)
     session = _load_object(root / "session-summary.json", "session summary")
     exit_reason = session.get("exit_reason")
-    if exit_reason not in ALLOWED_HANDOFF_EXIT_REASONS:
+    if (
+        not isinstance(exit_reason, str)
+        or exit_reason not in ALLOWED_HANDOFF_EXIT_REASONS
+    ):
         raise DeferredLossStreakContextAuditError(
             "deferred rebuild requires a completed paper handoff"
         )
