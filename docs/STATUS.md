@@ -4913,7 +4913,7 @@ This creates the infrastructure for a genuinely prospective account-level A/B te
 
 ### Paired loss-context shadow review gate — 2026-10-07
 
-Cocomelon now records each safe paired-shadow handoff into a hash-chained review ledger and binds the latest ledger receipt into the durable shadow checkpoint. Matching frozen-context blocks are tracked by market; older counts without historical market attribution remain visible but cannot help the new diversity gate.
+Cocomelon now records each safe paired-shadow handoff into a hash-chained review ledger and binds the latest ledger receipt into the durable shadow checkpoint. The first eligible ledger row is only an anchor; review duration, new closed trades, blocked setups, market diversity, and later-block economics must accrue after it. Matching frozen-context blocks are tracked by market; older counts without historical market attribution remain visible but cannot help the new diversity gate.
 
 The future review floor is intentionally hard: 72 hours, nine checkpoints, 30 newly attributed blocked setups, four markets, no market above 50% of blocks, and 30 closed trades in both baseline and candidate lanes. The candidate must be profitable in absolute total account PnL and realized net PnL, must beat baseline on both, and cannot have worse maximum drawdown.
 
