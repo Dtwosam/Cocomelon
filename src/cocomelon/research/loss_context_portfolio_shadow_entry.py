@@ -118,6 +118,7 @@ class LossContextPortfolioShadowEntryFilter:
     matching_context_blocked_by_market: dict[str, int] = field(
         default_factory=dict
     )
+    matching_context_blocked_unattributed: int = 0
     admitted_after_boundary: int = 0
 
     def __post_init__(self) -> None:
@@ -186,6 +187,9 @@ class LossContextPortfolioShadowEntryFilter:
             "matching_context_blocked": self.matching_context_blocked,
             "matching_context_blocked_by_market": dict(
                 sorted(self.matching_context_blocked_by_market.items())
+            ),
+            "matching_context_blocked_unattributed": (
+                self.matching_context_blocked_unattributed
             ),
             "admitted_after_boundary": self.admitted_after_boundary,
             "research_only": True,
