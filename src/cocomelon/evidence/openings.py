@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
 from decimal import ROUND_HALF_EVEN, Context, Decimal, localcontext
+from typing import Protocol
 
 from cocomelon.domain.execution import InstrumentExecutionSpec, PaperExecutionConfig
 from cocomelon.domain.market import MarketId, PerpMarketSnapshot
