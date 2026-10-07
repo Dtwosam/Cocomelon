@@ -444,3 +444,50 @@ def test_account_mark_refresh_is_durable_across_restart(tmp_path: Path) -> None:
     assert recovered.account.state_id == state_id
     assert recovered.account.updated_at_ms == EVALUATED_AT_MS
     recovered.close()
+
+
+
+def test_opening_candidate_filter_blocks_before_risk_or_execution(
+    tmp_path: Path,
+) -> None:
+    class _BlockBTC:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, int]] = []
+
+        def block_reason(
+            self,
+            evaluation: EpochMarketEvaluation,
+            *,
+            attempt_timestamp_ms: int,
+        ) -> str | None:
+            self.calls.append(
+                (
+                    evaluation.decision.market.canonical,
+                    attempt_timestamp_ms,
+                )
+            )
+            return "research_shadow_block"
+
+    adapter = _adapter(tmp_path / "opening-filter.sqlite3")
+    state = _state(BTC)
+    candidate_filter = _BlockBTC()
+    engine = BaselineOpeningEngine(
+        BaselineReplayConfig(),
+        adapter,
+        state,
+        candidate_filter=candidate_filter,
+    )
+    engine.stage_epoch(_epoch(BTC))
+    eligible_ms = EVALUATED_AT_MS + 250
+
+    outcomes = engine.on_book(
+        _book(BTC, receive_ms=eligible_ms),
+        eligible_ms,
+    )
+
+    assert outcomes == ()
+    assert engine.take_traces() == ()
+    assert engine.pending_markets == ()
+    assert adapter.account.positions == ()
+    assert candidate_filter.calls == [(BTC.canonical, eligible_ms)]
+    adapter.close()
