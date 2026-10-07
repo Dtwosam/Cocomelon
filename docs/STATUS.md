@@ -4948,3 +4948,16 @@ Status output now distinguishes the dispatched source from the ledger's latest a
 No trading economics or authority changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Loss-context handoff chain repair — 2026-10-07
+
+The paired loss-context A/B shadow was installed but remained disabled because no trusted portfolio-shadow freeze had reached the next paper worker. The upstream loss-streak audit itself was rebuilding successfully; the chain broke immediately afterward because generated research files were rediscovered with step-level `hashFiles(...)` conditions and the next steps were skipped.
+
+The loss-context post-handoff chain now propagates explicit verified readiness receipts from audit -> immutable context freeze -> prospective realized scoring -> fixed-schedule account economics -> capacity reflow -> exact holder release -> replacement entry/exit -> portfolio composition -> immutable portfolio-shadow freeze. Each producer still validates its own file before declaring readiness.
+
+A separate filename mismatch was also repaired: portfolio composition now consumes the account-readiness file actually emitted by the CLI, `loss-context-account-readiness-report.json`.
+
+This repair does not make any candidate pass an economic gate. It only allows already-valid research stages to run instead of being silently skipped, so the genuinely prospective paired-account clock can begin once the existing gates really qualify.
+
+**LIVE TRADING: DISABLED.**
