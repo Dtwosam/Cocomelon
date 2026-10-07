@@ -500,3 +500,14 @@ At a D-051 safe boundary, the paired loss-context shadow can persist and restore
 A restored shadow cannot evaluate new entries until fresh decision-state warmup is explicitly completed. Any candidate/account/lifecycle mismatch fails the research shadow closed and must not affect the active trader.
 
 The next build frontier is non-blocking runtime integration: a bounded ordered shadow feed, dynamic-market reconciliation, safe checkpoint publication, and independent failure telemetry.
+
+
+### Non-blocking paired-shadow runtime rule — D-053
+
+The paired loss-context portfolio A/B shadow is allowed to observe ordinary continuous-paper records only through a bounded non-blocking side feed. The active paper pipeline processes first; the shadow enqueue happens afterward and is never awaited. Paired replay, SQLite accounting, risk, simulated execution, and checkpoint work live on a dedicated worker thread so research cannot stall the market-data event loop.
+
+Rank snapshots, decision-state warmup completion, and shortlist reconciliations share the same ordered actor. A shortlist change may not strand an open shadow position; if active coverage would drop such a market, the shadow fails closed instead of inventing missing marks/exits. Any queue overflow, replay/state error, unsafe staged opening, or checkpoint failure affects only research.
+
+The immutable portfolio-shadow candidate is restored before runtime when trusted evidence exists. Active paper persists first at handoff, then the shadow attempts its safe checkpoint; the resulting state is carried inside the authenticated paper state. Dedicated shadow publication occurs only after successor dispatch.
+
+No active entry, direction, risk, sizing, stop, position, cooldown, promotion, or live-order behavior changes. The next frontier after this runtime plumbing is a clean prospective paired-account review gate that requires enough future duration/trades/markets and robust candidate-minus-baseline economics before any strategy-admission discussion.
