@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final
+from typing import Final, cast
 
 from cocomelon.domain.evaluation import DecisionEvaluationFact
 from cocomelon.domain.features import FeatureSnapshot
