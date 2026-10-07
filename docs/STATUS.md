@@ -4773,3 +4773,14 @@ A pass does not activate the filter. It only permits the next research question:
 No LONG or SHORT side is suppressed globally. Strategy, risk, sizing, stops, promotion, and execution remain unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Loss-context capacity-reflow causality — 2026-10-07
+
+The D-041 account gate now has a downstream reflow investigation. It stays disabled until the frozen loss-context candidate is prospectively review-ready and the filtered fixed-schedule portfolio is profitable and robust.
+
+When enabled, it examines later opportunities rejected for aggregate-risk or correlation-bucket capacity and reruns the normal capacity math with one captured active position removed. The release is credited to the loss-context candidate only when that exact holder was opened after the prospective boundary and its entry context matches the immutable frozen bad setup. A replacement opportunity that itself matches the same bad setup is excluded.
+
+The output is still only capacity-release sensitivity. Replacement entry fills, exits, realized PnL, and recursive portfolio effects are not claimed yet. The next frontier is to replay those causally unblocked opportunities through the captured execution path.
+
+**LIVE TRADING: DISABLED.**
