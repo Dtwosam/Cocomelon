@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Final
 
@@ -115,6 +115,9 @@ class LossContextPortfolioShadowEntryFilter:
     rank_ordinal_provider: RankOrdinalProvider | None = None
     pre_boundary_blocked: int = 0
     matching_context_blocked: int = 0
+    matching_context_blocked_by_market: dict[str, int] = field(
+        default_factory=dict
+    )
     admitted_after_boundary: int = 0
 
     def __post_init__(self) -> None:
@@ -158,6 +161,10 @@ class LossContextPortfolioShadowEntryFilter:
         )
         if self.block_matching_context and values == self.freeze.values:
             self.matching_context_blocked += 1
+            market = decision.market.canonical
+            self.matching_context_blocked_by_market[market] = (
+                self.matching_context_blocked_by_market.get(market, 0) + 1
+            )
             return CONTEXT_BLOCK_REASON
 
         self.admitted_after_boundary += 1
@@ -177,6 +184,9 @@ class LossContextPortfolioShadowEntryFilter:
             "block_matching_context": self.block_matching_context,
             "pre_boundary_blocked": self.pre_boundary_blocked,
             "matching_context_blocked": self.matching_context_blocked,
+            "matching_context_blocked_by_market": dict(
+                sorted(self.matching_context_blocked_by_market.items())
+            ),
             "admitted_after_boundary": self.admitted_after_boundary,
             "research_only": True,
             "shadow_only": True,
