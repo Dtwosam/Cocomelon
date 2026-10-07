@@ -58,3 +58,18 @@ def test_exact_path_export_streams_only_small_research_slice() -> None:
     assert "trade_path_tree_sha256" in source
     assert "session trade-path count does not match exported records" in source
     assert "continuous-paper-exact-paths-" in source
+
+
+def test_exact_path_export_accepts_only_durable_handoff_tail_failures() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "paper_run_is_evidence_eligible()" in source
+    assert '"Run continuous paper trader"' in source
+    assert '"Measure durable continuous paper state"' in source
+    assert '"Upload durable continuous paper state"' in source
+    assert 'frozenset({"Fail closed on upgrade handoff source"})' in source
+    assert '"Queue fallback exact successor continuous paper worker"' in source
+    assert '"Queue exact successor from fast resume"' in source
+    assert 'resolution_mode="durable_handoff_event"' in source
+    assert "latest_evidence_eligible_with_state_artifact" in source
+    assert "selected source paper run is not evidence-eligible" in source
