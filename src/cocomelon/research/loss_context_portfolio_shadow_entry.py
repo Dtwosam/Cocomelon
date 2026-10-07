@@ -163,6 +163,56 @@ class LossContextPortfolioShadowEntryFilter:
         self.admitted_after_boundary += 1
         return None
 
+    def restore_summary_payload(
+        self,
+        payload: dict[str, object],
+    ) -> None:
+        if payload.get("portfolio_shadow_candidate_id") != self.freeze.candidate_id:
+            raise LossContextPortfolioShadowEntryFilterError(
+                "shadow admission candidate identity mismatch"
+            )
+        if payload.get("block_matching_context") is not self.block_matching_context:
+            raise LossContextPortfolioShadowEntryFilterError(
+                "shadow admission lane mismatch"
+            )
+        dimensions = payload.get("dimensions")
+        values = payload.get("values")
+        if (
+            not isinstance(dimensions, (list, tuple))
+            or tuple(str(item) for item in dimensions) != self.freeze.dimensions
+            or not isinstance(values, (list, tuple))
+            or tuple(str(item) for item in values) != self.freeze.values
+        ):
+            raise LossContextPortfolioShadowEntryFilterError(
+                "shadow admission context mismatch"
+            )
+        if payload.get("prospective_not_before_ms") != (
+            self.freeze.prospective_not_before_ms
+        ):
+            raise LossContextPortfolioShadowEntryFilterError(
+                "shadow admission prospective boundary mismatch"
+            )
+
+        def counter(field: str) -> int:
+            value = payload.get(field)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+            ):
+                raise LossContextPortfolioShadowEntryFilterError(
+                    f"shadow admission {field} must be non-negative"
+                )
+            return value
+
+        self.pre_boundary_blocked = counter("pre_boundary_blocked")
+        self.matching_context_blocked = counter(
+            "matching_context_blocked"
+        )
+        self.admitted_after_boundary = counter(
+            "admitted_after_boundary"
+        )
+
     def summary_payload(self) -> dict[str, object]:
         return {
             "portfolio_shadow_candidate_id": self.freeze.candidate_id,
