@@ -4,6 +4,8 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.domain.features import (
     EligibilityDecision,
@@ -337,3 +339,56 @@ def test_paired_shadow_does_not_block_same_direction_outside_context(
     assert isinstance(candidate_admission, dict)
     assert candidate_admission["matching_context_blocked"] == 0
     assert candidate_admission["admitted_after_boundary"] == 1
+
+
+
+def test_paired_shadow_refuses_handoff_with_pending_openings(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    shadow = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=tmp_path,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="mean_reversion",
+        ),
+    )
+    try:
+        shadow.on_record(
+            _snapshot_record(),
+            EVALUATED_AT_MS - 1_000,
+        )
+        shadow.on_record(_trigger_record(), EVALUATED_AT_MS)
+
+        assert tuple(
+            market.canonical
+            for market in shadow.baseline_pending_opening_markets
+        ) == ("TEST",)
+        assert tuple(
+            market.canonical
+            for market in shadow.candidate_pending_opening_markets
+        ) == ("TEST",)
+        assert shadow.handoff_safe is False
+        with pytest.raises(
+            RuntimeError,
+            match="handoff would drop pending openings",
+        ):
+            shadow.assert_handoff_safe()
+
+        shadow.on_record(
+            _book(OPEN_BOOK_MS, bid="99.9", ask="100.1"),
+            OPEN_BOOK_MS,
+        )
+        assert shadow.handoff_safe is True
+        shadow.assert_handoff_safe()
+
+        payload = shadow.summary_payload(end_ms=OPEN_BOOK_MS)
+        assert payload["handoff_safe"] is True
+        assert payload["pending_opening_state_persisted"] is False
+        assert payload["handoff_requires_no_pending_openings"] is True
+    finally:
+        shadow.close()

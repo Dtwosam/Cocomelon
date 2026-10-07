@@ -484,3 +484,10 @@ The D-048 portfolio candidate must be tested against a paired baseline account o
 Keep every account-state consequence separate and recursive: equity, daily PnL, seven-day peak/drawdown, consecutive-loss cooldown, positions, capacity, fills, exits, fees, and funding. Do not approximate the portfolio result by summing independent replacement paths.
 
 The reusable paired engine now exists but remains research-only and disconnected from the active continuous-paper account. The next build frontier is durable paired-shadow state/evidence capture across ordinary rolling paper handoffs, followed by a clean future review gate.
+
+
+### Paired shadow handoff safety — D-051
+
+The paired portfolio shadow exposes pending opening markets in both lanes. A restart checkpoint is safe only when both sets are empty; otherwise the research shadow fails continuity closed rather than dropping a staged trade.
+
+The active continuous-paper trader must never be delayed by this rule. The next frontier is durable paired-shadow open-lifecycle/account checkpoint restoration at safe boundaries, followed by a bounded non-blocking runtime feed.
