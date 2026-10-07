@@ -219,6 +219,38 @@ class LossContextPairedPortfolioShadow:
         self._last_record_available_at_ms = record.available_at_ms
         self._update_drawdowns()
 
+    @property
+    def baseline_pending_opening_markets(self) -> tuple[MarketId, ...]:
+        return self._baseline.pending_opening_markets
+
+    @property
+    def candidate_pending_opening_markets(self) -> tuple[MarketId, ...]:
+        return self._candidate.pending_opening_markets
+
+    @property
+    def handoff_safe(self) -> bool:
+        return (
+            not self.baseline_pending_opening_markets
+            and not self.candidate_pending_opening_markets
+        )
+
+    def assert_handoff_safe(self) -> None:
+        if self.handoff_safe:
+            return
+        baseline = ",".join(
+            market.canonical
+            for market in self.baseline_pending_opening_markets
+        )
+        candidate = ",".join(
+            market.canonical
+            for market in self.candidate_pending_opening_markets
+        )
+        raise RuntimeError(
+            "paired shadow handoff would drop pending openings; "
+            f"baseline={baseline or 'none'}; "
+            f"candidate={candidate or 'none'}"
+        )
+
     def _lane_snapshot(
         self,
         pipeline: BaselineReplayPipeline,
@@ -287,6 +319,16 @@ class LossContextPairedPortfolioShadow:
             "last_record_available_at_ms": (
                 self._last_record_available_at_ms
             ),
+            "baseline_pending_opening_markets": tuple(
+                market.canonical
+                for market in self.baseline_pending_opening_markets
+            ),
+            "candidate_pending_opening_markets": tuple(
+                market.canonical
+                for market in self.candidate_pending_opening_markets
+            ),
+            "handoff_safe": self.handoff_safe,
+            "pending_opening_state_persisted": False,
             "baseline": baseline.to_dict(),
             "candidate": candidate.to_dict(),
             "candidate_minus_baseline_equity": str(
@@ -311,6 +353,7 @@ class LossContextPairedPortfolioShadow:
             "paired_same_execution_required": True,
             "candidate_difference_is_opening_admission_only": True,
             "horizon_selection_performed": False,
+            "handoff_requires_no_pending_openings": True,
             "research_only": True,
             "shadow_only": True,
             "changes_strategy": False,
