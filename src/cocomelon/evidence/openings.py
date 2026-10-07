@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Context, Decimal, localcontext
+from typing import Protocol
 
 from cocomelon.domain.execution import InstrumentExecutionSpec, PaperExecutionConfig
 from cocomelon.domain.market import MarketId, PerpMarketSnapshot
@@ -25,6 +26,15 @@ BPS = Decimal("10000")
 ONE = Decimal("1")
 ZERO = Decimal("0")
 AUTHORITATIVE_CONTEXT = Context(prec=28, rounding=ROUND_HALF_EVEN)
+
+
+class OpeningCandidateFilter(Protocol):
+    def block_reason(
+        self,
+        evaluation: EpochMarketEvaluation,
+        *,
+        attempt_timestamp_ms: int,
+    ) -> str | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,10 +139,13 @@ class BaselineOpeningEngine:
         replay_config: BaselineReplayConfig,
         execution: PaperExecutionAdapter,
         state_book: RecordedStateBook,
+        *,
+        candidate_filter: OpeningCandidateFilter | None = None,
     ) -> None:
         self._config = replay_config
         self._execution = execution
         self._state = state_book
+        self._candidate_filter = candidate_filter
         self._pending: list[_PendingOpening] = []
         self._books: dict[str, StreamEvent] = {}
         self._traces: list[BaselineOpeningTrace] = []
@@ -301,6 +314,15 @@ class BaselineOpeningEngine:
                 > self._config.execution.max_book_age_ms
             ):
                 break
+
+            if self._candidate_filter is not None:
+                block_reason = self._candidate_filter.block_reason(
+                    pending.evaluation,
+                    attempt_timestamp_ms=now_ms,
+                )
+                if block_reason is not None:
+                    self._pending.pop(0)
+                    continue
 
             request, instrument, reference = self._risk_request(
                 pending,

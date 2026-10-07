@@ -4852,3 +4852,14 @@ The freeze preserves all fixed replacement horizons, binds the exact loss-contex
 No active paper behavior changes. The next frontier is a separate future shadow account whose equity, risk vetoes, cooldowns, drawdown state, capacity, entries, exits, fees, funding, and realized PnL evolve independently alongside the unchanged baseline paper account.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Loss-context shadow entry admission — 2026-10-07
+
+The reusable entry gate for the future D-048 A/B paper shadow is now defined. It operates at the opening boundary, before ordinary risk evaluation and paper IOC execution, rather than rewriting the strategy decision itself.
+
+The baseline shadow will only enforce the fresh prospective start boundary. The candidate shadow will additionally block an opening when every frozen loss-context dimension matches. Other LONG and SHORT setups continue unchanged. Rank-conditioned candidates use the contemporaneous coarse rank available at the opening attempt.
+
+The hook is opt-in and is not wired into the active paper trader. No current strategy, exits, risk limits, sizing, cooldowns, positions, or execution authority change.
+
+**LIVE TRADING: DISABLED.**
