@@ -4,10 +4,11 @@ import asyncio
 import json
 import queue
 import threading
+from collections.abc import Sequence
 from concurrent.futures import Future
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Protocol, Sequence
+from typing import Final, Protocol
 
 from cocomelon.domain.features import OpportunityRank
 from cocomelon.domain.market import MarketId
