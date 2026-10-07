@@ -720,6 +720,10 @@ class LossContextPairedPortfolioShadow:
         *,
         evaluate_decisions: bool = True,
     ) -> None:
+        if evaluate_decisions and self._restore_warmup_required:
+            raise RuntimeError(
+                "restored paired shadow requires decision-state warmup"
+            )
         if self._last_record_available_at_ms is not None and (
             record.available_at_ms < self._last_record_available_at_ms
         ):
@@ -772,12 +776,134 @@ class LossContextPairedPortfolioShadow:
             f"candidate={candidate or 'none'}"
         )
 
+    def reconcile_markets(
+        self,
+        selected_markets: Sequence[MarketId],
+    ) -> None:
+        markets = tuple(
+            sorted(
+                selected_markets,
+                key=lambda item: item.canonical,
+            )
+        )
+        if not markets:
+            raise ValueError("selected_markets must not be empty")
+        self._baseline.reconcile_markets(markets)
+        self._candidate.reconcile_markets(markets)
+
+    def _lane_state_payload(
+        self,
+        *,
+        pipeline: BaselineReplayPipeline,
+        execution: PaperExecutionAdapter,
+        snapshot: _LaneSnapshot,
+        filter_: LossContextPortfolioShadowEntryFilter,
+    ) -> dict[str, object]:
+        return {
+            "account_state_id": execution.account.state_id,
+            "max_drawdown_fraction": str(
+                snapshot.max_drawdown_fraction
+            ),
+            "cumulative_activity": {
+                "closed_trade_count": snapshot.closed_trade_count,
+                "risk_evaluations": snapshot.risk_evaluations,
+                "risk_approvals": snapshot.risk_approvals,
+                "risk_rejections": snapshot.risk_rejections,
+                "opening_execution_attempts": (
+                    snapshot.opening_execution_attempts
+                ),
+                "opening_fills": snapshot.opening_fills,
+            },
+            "admission": {
+                "pre_boundary_blocked": (
+                    filter_.pre_boundary_blocked
+                ),
+                "matching_context_blocked": (
+                    filter_.matching_context_blocked
+                ),
+                "admitted_after_boundary": (
+                    filter_.admitted_after_boundary
+                ),
+            },
+            "open_lifecycles": [
+                _lifecycle_payload(item)
+                for item in pipeline.open_lifecycle_checkpoints
+            ],
+            "known_gap_intervals": [
+                [started_ms, ended_ms]
+                for started_ms, ended_ms
+                in pipeline.known_gap_intervals
+            ],
+        }
+
+    def checkpoint(self, *, end_ms: int) -> dict[str, object]:
+        if end_ms < 0:
+            raise ValueError("end_ms must be non-negative")
+        self.assert_handoff_safe()
+        if self._restore_warmup_required:
+            raise RuntimeError(
+                "paired shadow cannot checkpoint before restore warmup"
+            )
+        self._update_drawdowns()
+        baseline = self._lane_snapshot(
+            self._baseline,
+            self._baseline_execution,
+            max_drawdown=self._baseline_max_drawdown,
+            offsets=self._baseline_offsets,
+            end_ms=end_ms,
+        )
+        candidate = self._lane_snapshot(
+            self._candidate,
+            self._candidate_execution,
+            max_drawdown=self._candidate_max_drawdown,
+            offsets=self._candidate_offsets,
+            end_ms=end_ms,
+        )
+        payload: dict[str, object] = {
+            "portfolio_shadow_candidate_id": self._freeze.candidate_id,
+            "loss_context_candidate_id": (
+                self._freeze.loss_context_candidate_id
+            ),
+            "record_count": self._record_count,
+            "last_record_available_at_ms": (
+                self._last_record_available_at_ms
+            ),
+            "handoff_safe": True,
+            "pending_opening_state_persisted": False,
+            "baseline": self._lane_state_payload(
+                pipeline=self._baseline,
+                execution=self._baseline_execution,
+                snapshot=baseline,
+                filter_=self._baseline_filter,
+            ),
+            "candidate": self._lane_state_payload(
+                pipeline=self._candidate,
+                execution=self._candidate_execution,
+                snapshot=candidate,
+                filter_=self._candidate_filter,
+            ),
+            "research_only": True,
+            "shadow_only": True,
+            "paper_only": True,
+            "changes_strategy": False,
+            "changes_risk_limits": False,
+            "changes_positions": False,
+            "promotion_authority": False,
+            "execution_authority": False,
+            "schema_version": (
+                LOSS_CONTEXT_PAIRED_SHADOW_STATE_SCHEMA_VERSION
+            ),
+        }
+        _write_json_atomic(self._state_path, payload)
+        return payload
+
     def _lane_snapshot(
         self,
         pipeline: BaselineReplayPipeline,
         execution: PaperExecutionAdapter,
         *,
         max_drawdown: Decimal,
+        offsets: _LaneOffsets,
         end_ms: int,
     ) -> _LaneSnapshot:
         account = execution.account
@@ -800,14 +926,25 @@ class LossContextPairedPortfolioShadow:
             open_position_count=len(account.positions),
             gross_open_notional=account.gross_open_notional,
             available_margin=account.available_margin,
-            closed_trade_count=len(closed),
-            risk_evaluations=activity.risk_evaluations,
-            risk_approvals=activity.risk_approvals,
-            risk_rejections=activity.risk_rejections,
-            opening_execution_attempts=(
-                activity.opening_execution_attempts
+            closed_trade_count=(
+                offsets.closed_trade_count + len(closed)
             ),
-            opening_fills=activity.opening_fills,
+            risk_evaluations=(
+                offsets.risk_evaluations + activity.risk_evaluations
+            ),
+            risk_approvals=(
+                offsets.risk_approvals + activity.risk_approvals
+            ),
+            risk_rejections=(
+                offsets.risk_rejections + activity.risk_rejections
+            ),
+            opening_execution_attempts=(
+                offsets.opening_execution_attempts
+                + activity.opening_execution_attempts
+            ),
+            opening_fills=(
+                offsets.opening_fills + activity.opening_fills
+            ),
         )
 
     def summary_payload(self, *, end_ms: int) -> dict[str, object]:
@@ -818,12 +955,14 @@ class LossContextPairedPortfolioShadow:
             self._baseline,
             self._baseline_execution,
             max_drawdown=self._baseline_max_drawdown,
+            offsets=self._baseline_offsets,
             end_ms=end_ms,
         )
         candidate = self._lane_snapshot(
             self._candidate,
             self._candidate_execution,
             max_drawdown=self._candidate_max_drawdown,
+            offsets=self._candidate_offsets,
             end_ms=end_ms,
         )
         return {
@@ -839,6 +978,15 @@ class LossContextPairedPortfolioShadow:
             "record_count": self._record_count,
             "last_record_available_at_ms": (
                 self._last_record_available_at_ms
+            ),
+            "restored_from_checkpoint": (
+                self._restored_from_checkpoint
+            ),
+            "restore_warmup_required": (
+                self._restore_warmup_required
+            ),
+            "durable_state_checkpoint_exists": (
+                self._state_path.exists()
             ),
             "baseline_pending_opening_markets": tuple(
                 market.canonical
