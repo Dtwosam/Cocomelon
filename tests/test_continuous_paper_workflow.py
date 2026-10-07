@@ -1494,3 +1494,56 @@ def test_loss_context_summary_never_frames_direction_as_authority() -> None:
     assert "direction-only candidates allowed" in audit
     assert "context-filter candidates / stable" in audit
     assert "execution / strategy / risk authority" in audit
+
+
+
+def test_loss_context_paired_shadow_runtime_handoff_is_non_blocking() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    for path in (
+        "src/cocomelon/research/loss_context_paired_portfolio_shadow.py",
+        "src/cocomelon/research/loss_context_paired_shadow_runtime.py",
+        "src/cocomelon/research/loss_context_portfolio_shadow_candidate.py",
+    ):
+        assert f'"{path}"' in source
+        changed_runtime = source.split("changed_runtime=", 1)[1]
+        assert path in changed_runtime
+
+    restore_at = source.index(
+        "- name: Restore immutable loss-context shadow candidate for runtime"
+    )
+    trader_at = source.index("- name: Run continuous paper trader")
+    assert restore_at < trader_at
+    restore_block = source[restore_at:trader_at]
+    assert "continue-on-error: true" in restore_block
+    assert (
+        "continuous-paper-loss-context-portfolio-shadow-candidate"
+        in restore_block
+    )
+    assert "verify_loss_context_portfolio_shadow_freeze" in restore_block
+    assert "restored=none" in restore_block
+
+    fast_dispatch_at = source.index(
+        "- name: Queue exact successor from fast resume"
+    )
+    fallback_dispatch_at = source.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    shadow_upload_at = source.index(
+        "- name: Upload paired loss-context portfolio shadow state"
+    )
+    deferred_research_at = source.index(
+        "- name: Rebuild deferred full-stack markouts after handoff"
+    )
+    assert (
+        fast_dispatch_at
+        < fallback_dispatch_at
+        < shadow_upload_at
+        < deferred_research_at
+    )
+    shadow_upload = source[
+        shadow_upload_at:deferred_research_at
+    ]
+    assert "continue-on-error: true" in shadow_upload
+    assert "loss-context-paired-portfolio-shadow-summary.json" in shadow_upload
+    assert "loss-context-paired-portfolio-shadow" in shadow_upload
