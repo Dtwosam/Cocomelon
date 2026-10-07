@@ -1592,7 +1592,7 @@ jobs:
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload immutable loss-context candidate
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.loss_context_freeze.outputs.ready == 'true' && steps.loss_context_prospective.outputs.ready == 'true' }}
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.loss_context_freeze.outputs.ready == 'true' }}
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
