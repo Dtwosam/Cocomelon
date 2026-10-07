@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Final, Sequence
+from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
