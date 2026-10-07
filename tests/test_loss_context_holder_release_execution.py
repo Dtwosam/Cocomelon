@@ -6,7 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from cocomelon.domain.execution import InstrumentExecutionSpec, PaperExecutionConfig
+from cocomelon.domain.execution import (
+    InstrumentExecutionSpec,
+    PaperExecutionConfig,
+)
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.execution.accounting import PaperPosition, PositionSide
