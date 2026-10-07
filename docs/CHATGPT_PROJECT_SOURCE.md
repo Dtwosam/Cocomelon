@@ -484,3 +484,12 @@ The D-048 portfolio candidate must be tested against a paired baseline account o
 Keep every account-state consequence separate and recursive: equity, daily PnL, seven-day peak/drawdown, consecutive-loss cooldown, positions, capacity, fills, exits, fees, and funding. Do not approximate the portfolio result by summing independent replacement paths.
 
 The reusable paired engine now exists but remains research-only and disconnected from the active continuous-paper account. The next build frontier is durable paired-shadow state/evidence capture across ordinary rolling paper handoffs, followed by a clean future review gate.
+
+
+### Paired portfolio shadow resume rule — D-051
+
+The D-050 paired shadow now persists a digest-bound research checkpoint alongside its two independent execution stores. Resume must fail closed unless candidate identity, replay config, selected markets, account timestamps, open lifecycles, gaps, counters, admissions, and drawdown state match.
+
+Both current paper accounts are materialized at checkpoint even when one lane has never traded. Restored open positions rebuild their ordinary plan/fill/funding lifecycle. A restored shadow cannot evaluate new decisions until a separate warmup pass is completed and explicitly confirmed.
+
+The next build frontier is to feed this durable paired engine authenticated genuinely-future normalized evidence without adding a second full strategy/risk/execution workload to the active paper trader's latency-critical event loop.
