@@ -81,10 +81,12 @@ def _record(
     )
 
 
-def _snapshot_record() -> ReplayRecord:
+def _snapshot_record(
+    receive_ms: int = EVALUATED_AT_MS - 1_000,
+) -> ReplayRecord:
     return _record(
         kind="market_snapshot",
-        available_at_ms=EVALUATED_AT_MS - 1_000,
+        available_at_ms=receive_ms,
         payload={
             "meta": {
                 "wire_name": MARKET.wire_name,
@@ -392,3 +394,283 @@ def test_paired_shadow_refuses_handoff_with_pending_openings(
         assert payload["handoff_requires_no_pending_openings"] is True
     finally:
         shadow.close()
+
+
+
+def test_paired_shadow_restores_open_lifecycle_across_safe_checkpoint(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    state_root = tmp_path / "paired"
+    first = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="mean_reversion",
+        ),
+    )
+    try:
+        first.on_record(
+            _snapshot_record(),
+            EVALUATED_AT_MS - 1_000,
+        )
+        first.on_record(_trigger_record(), EVALUATED_AT_MS)
+        first.on_record(
+            _book(OPEN_BOOK_MS, bid="99.9", ask="100.1"),
+            OPEN_BOOK_MS,
+        )
+        before = first.summary_payload(end_ms=OPEN_BOOK_MS)
+        baseline_before = before["baseline"]
+        candidate_before = before["candidate"]
+        assert isinstance(baseline_before, dict)
+        assert isinstance(candidate_before, dict)
+        assert baseline_before["open_position_count"] == 1
+        assert candidate_before["open_position_count"] == 0
+        checkpoint = first.checkpoint(end_ms=OPEN_BOOK_MS)
+        assert checkpoint["handoff_safe"] is True
+        assert checkpoint["replay_config_digest"] == config.config_digest
+        assert checkpoint["selected_markets"] == ["TEST"]
+        assert isinstance(checkpoint["state_digest"], str)
+    finally:
+        first.close()
+
+    restored = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=state_root,
+        startup_timestamp_ms=OPEN_BOOK_MS + 1,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="mean_reversion",
+        ),
+    )
+    try:
+        restored_summary = restored.summary_payload(
+            end_ms=OPEN_BOOK_MS
+        )
+        baseline_restored = restored_summary["baseline"]
+        candidate_restored = restored_summary["candidate"]
+        assert isinstance(baseline_restored, dict)
+        assert isinstance(candidate_restored, dict)
+        assert restored_summary["restored_from_checkpoint"] is True
+        assert restored_summary["restore_warmup_required"] is True
+        assert baseline_restored["open_position_count"] == 1
+        assert candidate_restored["open_position_count"] == 0
+        assert restored_summary["record_count"] == 3
+
+        with pytest.raises(
+            RuntimeError,
+            match="requires decision-state warmup",
+        ):
+            restored.on_record(
+                _mark(STOP_MARK_MS, mark="94"),
+                STOP_MARK_MS,
+            )
+
+        warmup_ms = OPEN_BOOK_MS + 10
+        restored.on_record(
+            _snapshot_record(warmup_ms),
+            warmup_ms,
+            evaluate_decisions=False,
+        )
+        restored.mark_restore_warmup_complete()
+        restored.on_record(
+            _mark(STOP_MARK_MS, mark="94"),
+            STOP_MARK_MS,
+        )
+        restored.on_record(
+            _book(CLOSE_BOOK_MS, bid="93.9", ask="94.0"),
+            CLOSE_BOOK_MS,
+        )
+        final = restored.summary_payload(end_ms=CLOSE_BOOK_MS)
+        baseline_final = final["baseline"]
+        candidate_final = final["candidate"]
+        assert isinstance(baseline_final, dict)
+        assert isinstance(candidate_final, dict)
+        assert baseline_final["closed_trade_count"] == 1
+        assert baseline_final["open_position_count"] == 0
+        assert candidate_final["closed_trade_count"] == 0
+        assert Decimal(
+            str(final["candidate_minus_baseline_total_account_pnl"])
+        ) > 0
+        assert final["restore_warmup_required"] is False
+    finally:
+        restored.close()
+
+
+def test_paired_shadow_rejects_checkpoint_candidate_mismatch(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    state_root = tmp_path / "paired"
+    first = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="trend",
+        ),
+    )
+    try:
+        first.checkpoint(end_ms=EVALUATED_AT_MS)
+    finally:
+        first.close()
+
+    original = _freeze()
+    other_freeze = LossContextPortfolioShadowFreeze(
+        loss_context_candidate_id=original.loss_context_candidate_id,
+        source_composition_digest="d" * 64,
+        source_max_timestamp_ms=original.source_max_timestamp_ms,
+        source_paper_run_id=original.source_paper_run_id,
+        source_paper_run_attempt=original.source_paper_run_attempt,
+        source_paper_head_sha=original.source_paper_head_sha,
+        dimensions=original.dimensions,
+        values=original.values,
+        horizons_ms=original.horizons_ms,
+        frozen_at_ms=original.frozen_at_ms,
+        prospective_not_before_ms=original.prospective_not_before_ms,
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="candidate identity mismatch",
+    ):
+        LossContextPairedPortfolioShadow(
+            freeze=other_freeze,
+            replay_config=config,
+            selected_markets=(MARKET,),
+            state_root=state_root,
+            startup_timestamp_ms=EVALUATED_AT_MS,
+            decision_engine_factory=lambda: _ScriptedDecisionEngine(
+                config,
+                lead_strategy="trend",
+            ),
+        )
+
+
+
+def test_paired_shadow_rejects_execution_stores_without_checkpoint(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    state_root = tmp_path / "paired"
+    shadow = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="trend",
+        ),
+    )
+    shadow.close()
+
+    with pytest.raises(
+        RuntimeError,
+        match="execution store exists without checkpoint",
+    ):
+        LossContextPairedPortfolioShadow(
+            freeze=_freeze(),
+            replay_config=config,
+            selected_markets=(MARKET,),
+            state_root=state_root,
+            startup_timestamp_ms=EVALUATED_AT_MS,
+            decision_engine_factory=lambda: _ScriptedDecisionEngine(
+                config,
+                lead_strategy="trend",
+            ),
+        )
+
+
+def test_paired_shadow_rejects_tampered_checkpoint_digest(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    state_root = tmp_path / "paired"
+    shadow = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="trend",
+        ),
+    )
+    try:
+        shadow.checkpoint(end_ms=EVALUATED_AT_MS)
+    finally:
+        shadow.close()
+
+    state_path = state_root / "paired-shadow-state.json"
+    payload = json.loads(state_path.read_text(encoding="utf-8"))
+    payload["record_count"] = 999
+    state_path.write_text(
+        json.dumps(payload, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="state digest mismatch",
+    ):
+        LossContextPairedPortfolioShadow(
+            freeze=_freeze(),
+            replay_config=config,
+            selected_markets=(MARKET,),
+            state_root=state_root,
+            startup_timestamp_ms=EVALUATED_AT_MS,
+            decision_engine_factory=lambda: _ScriptedDecisionEngine(
+                config,
+                lead_strategy="trend",
+            ),
+        )
+
+
+def test_paired_shadow_rejects_replay_config_mismatch(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    state_root = tmp_path / "paired"
+    shadow = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="trend",
+        ),
+    )
+    try:
+        shadow.checkpoint(end_ms=EVALUATED_AT_MS)
+    finally:
+        shadow.close()
+
+    changed = BaselineReplayConfig(correlation_bucket="other")
+    with pytest.raises(
+        RuntimeError,
+        match="replay configuration mismatch",
+    ):
+        LossContextPairedPortfolioShadow(
+            freeze=_freeze(),
+            replay_config=changed,
+            selected_markets=(MARKET,),
+            state_root=state_root,
+            startup_timestamp_ms=EVALUATED_AT_MS,
+            decision_engine_factory=lambda: _ScriptedDecisionEngine(
+                changed,
+                lead_strategy="trend",
+            ),
+        )
