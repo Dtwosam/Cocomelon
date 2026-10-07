@@ -381,3 +381,16 @@ Evidence continuity/finalization:
 During the clean campaign, do **not** tune this candidate from emerging evidence. No feature/context/direction/horizon/cost/occupancy/threshold/runtime/control-plane changes are allowed for this campaign. Unrelated research may continue only if it cannot contaminate the campaign.
 
 Live trading remains disabled and all existing paper/shadow/risk/promotion/explicit-authorization gates remain unchanged.
+
+
+## 11. Current loss-context learning frontier — 2026-10-07
+
+### Recurring loss-context prospective rule — D-038
+
+A bad recent side is never enough to suppress LONG or SHORT. Loss-context research first requires a repeated `lead_strategy` + entry-time market-state pattern to improve realized net PnL on chronological holdout evidence across markets. Direction-only candidates are forbidden.
+
+The first stable context is frozen immutably and cannot count future trades until six hours after the freeze. Prospective scoring uses actual realized net PnL from later matching paper trades: avoiding a loser is positive evidence; avoiding a winner is negative evidence. Any unresolved future lineage keeps the candidate unready.
+
+The future review floor is 30 matching trades across at least four markets, >=60% beneficial avoidances, positive total/mean delta, positive leave-one-trade and leave-one-market delta, plus three later blocks with >=5 rows, >=55% beneficial avoidances, and positive delta in every block.
+
+This path is research-only. It does not block entries, modify strategy/risk/sizing, promote a candidate, or enable live trading.
