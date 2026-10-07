@@ -501,6 +501,202 @@ class LossContextPairedPortfolioShadow:
         self._restore_state_if_present()
 
     @staticmethod
+    def _nonnegative_int(raw: object, field: str) -> int:
+        if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+            raise ValueError(f"{field} must be a non-negative integer")
+        return raw
+
+    @staticmethod
+    def _gap_intervals_from_payload(
+        raw: object,
+    ) -> tuple[tuple[int, int | None], ...]:
+        if not isinstance(raw, list):
+            raise ValueError("shadow gap intervals must be an array")
+        intervals: list[tuple[int, int | None]] = []
+        for item in raw:
+            if not isinstance(item, list) or len(item) != 2:
+                raise ValueError("shadow gap interval is invalid")
+            started = int(item[0])
+            ended = None if item[1] is None else int(item[1])
+            if started < 0 or (ended is not None and ended < started):
+                raise ValueError("shadow gap interval chronology is invalid")
+            intervals.append((started, ended))
+        return tuple(intervals)
+
+    @staticmethod
+    def _restore_filter_counts(
+        filter_: LossContextPortfolioShadowEntryFilter,
+        raw: object,
+    ) -> None:
+        if not isinstance(raw, dict):
+            raise ValueError("shadow admission state must be an object")
+        for field in (
+            "pre_boundary_blocked",
+            "matching_context_blocked",
+            "admitted_after_boundary",
+        ):
+            value = raw.get(field)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(
+                    f"shadow admission {field} must be an integer"
+                )
+            if value < 0:
+                raise ValueError(
+                    f"shadow admission {field} must be non-negative"
+                )
+            setattr(filter_, field, value)
+
+    def _restore_lane(
+        self,
+        *,
+        raw: object,
+        pipeline: BaselineReplayPipeline,
+        execution: PaperExecutionAdapter,
+    ) -> tuple[_LaneOffsets, Decimal]:
+        if not isinstance(raw, dict):
+            raise ValueError("shadow lane state must be an object")
+        account_state_id = raw.get("account_state_id")
+        if (
+            not isinstance(account_state_id, str)
+            or account_state_id != execution.account.state_id
+        ):
+            raise RuntimeError(
+                "paired shadow durable account state mismatch"
+            )
+        lifecycle_raw = raw.get("open_lifecycles")
+        if not isinstance(lifecycle_raw, list):
+            raise ValueError(
+                "shadow open_lifecycles must be an array"
+            )
+        checkpoints = tuple(
+            _lifecycle_from_payload(item) for item in lifecycle_raw
+        )
+        pipeline.restore_gap_intervals(
+            self._gap_intervals_from_payload(
+                raw.get("known_gap_intervals")
+            )
+        )
+        _restore_open_lifecycles(
+            pipeline,
+            execution,
+            checkpoints,
+        )
+        max_drawdown = Decimal(str(raw.get("max_drawdown_fraction")))
+        if (
+            not max_drawdown.is_finite()
+            or max_drawdown < ZERO
+            or max_drawdown > Decimal("1")
+        ):
+            raise ValueError(
+                "shadow max drawdown must be in [0, 1]"
+            )
+        return (
+            _LaneOffsets.from_payload(raw.get("cumulative_activity")),
+            max_drawdown,
+        )
+
+    def _restore_state_if_present(self) -> None:
+        if not self._state_path.exists():
+            return
+        try:
+            raw = json.loads(
+                self._state_path.read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                "paired shadow durable state is unreadable"
+            ) from exc
+        if not isinstance(raw, dict):
+            raise ValueError("paired shadow durable state must be an object")
+        if (
+            raw.get("schema_version")
+            != LOSS_CONTEXT_PAIRED_SHADOW_STATE_SCHEMA_VERSION
+        ):
+            raise ValueError("paired shadow durable state schema mismatch")
+        if raw.get("portfolio_shadow_candidate_id") != self._freeze.candidate_id:
+            raise RuntimeError(
+                "paired shadow durable candidate identity mismatch"
+            )
+        if raw.get("handoff_safe") is not True:
+            raise RuntimeError(
+                "paired shadow durable state was not handoff-safe"
+            )
+        if raw.get("pending_opening_state_persisted") is not False:
+            raise RuntimeError(
+                "paired shadow pending-opening contract mismatch"
+            )
+        for field in (
+            "research_only",
+            "shadow_only",
+            "paper_only",
+        ):
+            if raw.get(field) is not True:
+                raise RuntimeError(
+                    "paired shadow durable authority mismatch"
+                )
+        for field in (
+            "changes_strategy",
+            "changes_risk_limits",
+            "changes_positions",
+            "promotion_authority",
+            "execution_authority",
+        ):
+            if raw.get(field) is not False:
+                raise RuntimeError(
+                    "paired shadow durable authority mismatch"
+                )
+
+        self._record_count = self._nonnegative_int(
+            raw.get("record_count"),
+            "record_count",
+        )
+        last = raw.get("last_record_available_at_ms")
+        if last is not None:
+            self._last_record_available_at_ms = self._nonnegative_int(
+                last,
+                "last_record_available_at_ms",
+            )
+
+        baseline_raw = raw.get("baseline")
+        candidate_raw = raw.get("candidate")
+        (
+            self._baseline_offsets,
+            self._baseline_max_drawdown,
+        ) = self._restore_lane(
+            raw=baseline_raw,
+            pipeline=self._baseline,
+            execution=self._baseline_execution,
+        )
+        (
+            self._candidate_offsets,
+            self._candidate_max_drawdown,
+        ) = self._restore_lane(
+            raw=candidate_raw,
+            pipeline=self._candidate,
+            execution=self._candidate_execution,
+        )
+        if not isinstance(baseline_raw, dict) or not isinstance(
+            candidate_raw,
+            dict,
+        ):
+            raise ValueError("shadow lane state must be an object")
+        self._restore_filter_counts(
+            self._baseline_filter,
+            baseline_raw.get("admission"),
+        )
+        self._restore_filter_counts(
+            self._candidate_filter,
+            candidate_raw.get("admission"),
+        )
+        self._restored_from_checkpoint = True
+        self._restore_warmup_required = True
+
+    def mark_restore_warmup_complete(self) -> None:
+        if not self._restored_from_checkpoint:
+            return
+        self._restore_warmup_required = False
+
+    @staticmethod
     def _drawdown(account: PaperAccountState) -> Decimal:
         peak = account.rolling_7d_peak_equity
         if peak <= ZERO:
