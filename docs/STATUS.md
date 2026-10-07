@@ -4889,9 +4889,9 @@ This closes a subtle continuity hole where a worker restart between strategy dec
 
 ### Durable paired-shadow restart state — 2026-10-07
 
-The paired loss-context A/B engine now has a safe-boundary checkpoint/restore path. Each lane keeps its own SQLite paper account/fills/funding store, while the checkpoint binds the immutable candidate ID, exact account state ID, open lifecycle checkpoints, mark observations, exit-plan lineage, known data gaps, cumulative activity/admission counters, record position, and max drawdown.
+The paired loss-context A/B engine now has a safe-boundary checkpoint/restore path. Each lane keeps its own SQLite paper account/fills/funding store, while the checkpoint binds the immutable candidate ID, replay-config digest, exact selected markets, account state ID, open lifecycle checkpoints, mark observations, exit-plan lineage, known data gaps, cumulative activity/admission counters, record position, and max drawdown under a canonical content digest. Both account snapshots are materialized even when a lane has made no trade.
 
-A restored shadow refuses new evaluated decisions until decision-state warmup is explicitly completed. It also rejects candidate-ID changes, account/lifecycle mismatches, missing plans, malformed gaps, unsafe staged-opening checkpoints, or authority-bearing state.
+A restored shadow refuses new evaluated decisions until decision-state warmup is explicitly completed. It also rejects candidate-ID changes, replay-config or selected-market changes, account/lifecycle mismatches, missing plans, malformed gaps, missing checkpoint/store pairs, tampered receipts, unsafe staged-opening checkpoints, or authority-bearing state.
 
 This still is not wired into the active record pump. The next frontier is a bounded non-blocking shadow feed and handoff publication/restore workflow that can fail independently without slowing the real paper trader.
 
