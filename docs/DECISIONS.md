@@ -716,3 +716,18 @@ The eligible checkpoint history is divided into three chronological later blocks
 **Authority:** Evidence-continuity plumbing only. No strategy, LONG/SHORT preference, risk, sizing, stop, cooldown, position, readiness threshold, promotion, paper execution, or live-order behavior changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+## D-058 — Cooldown post-handoff research must advance by explicit readiness receipts
+
+**Date:** 2026-10-07
+
+**Decision:** The cooldown research tail follows the same verified sequencing rule as D-057. Once deferred cooldown evidence, context stability, context selection, or prospective scoring has successfully written and validated its output, that producer emits an explicit `ready=true` receipt. The immediately following cooldown stage consumes that receipt instead of trying to rediscover the newly generated file with a fresh `hashFiles(...)` expression.
+
+**Observed failure:** A real handoff rebuilt cooldown evidence and context stability successfully, but the selection stage could still be skipped even though its input had just been produced. That strands the immutable prospective candidate path and prevents clean future evidence from accumulating.
+
+**Safety boundary:** This only fixes evidence continuity. A selection record with no stable candidate still produces no freeze. The active one-hour consecutive-loss cooldown is unchanged unless a separately frozen context later satisfies every locked prospective economic and safety gate.
+
+**Authority:** No risk-limit, cooldown-duration, strategy, direction preference, sizing, position, promotion, paper execution, or live-order change.
+
+**LIVE TRADING: DISABLED.**
