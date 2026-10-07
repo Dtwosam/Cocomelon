@@ -766,6 +766,7 @@ def test_record_pump_drops_duplicate_event_keys() -> None:
         "pipeline_finalize",
         "journal_trade_updates",
         "cadence_shadow",
+        "loss_context_paired_shadow_enqueue",
     }
 
 
