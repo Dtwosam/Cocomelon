@@ -469,3 +469,16 @@ The post-handoff position is deliberate: research may take time or fail without 
 This changes evidence cadence only. It does not block entries, prefer LONG or SHORT, change risk/sizing/stops, promote a candidate, or grant execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-041 — Loss-context filters must leave a profitable fixed-schedule portfolio
+
+D-038 review readiness proves that one frozen recurring setup remains harmful on later realized paper trades. A positive avoided-loss delta is not sufficient account-level evidence: removing bad trades can make a losing strategy less negative while the remaining portfolio still loses money.
+
+Before a D-038 candidate may advance to capacity-reflow investigation, Cocomelon must evaluate the same post-embargo resolved future cohort on a fixed schedule. Trades matching the immutable frozen context contribute zero, while all non-matching trades retain their actual realized net PnL and net-R. The resulting filtered portfolio must have positive total net PnL and net-R, the improvement versus baseline must also be positive, and both the filtered portfolio and the improvement must remain positive after removing any one trade and any one market. The avoided-loss PnL must exactly reconcile to D-038's prospective filter delta; cohort drift or unresolved future lineage fails closed.
+
+Passing this gate permits only later capacity-reflow research. It does not assume freed risk or correlation capacity stays idle and does not model replacement or recursive portfolio effects. Those effects remain required before any strategy-admission decision.
+
+Direction-level counts are diagnostic only and direction-only filtering remains forbidden. This gate cannot alter paper entries, side preference, risk, sizing, stops, promotion state, or execution authority.
+
+**LIVE TRADING: DISABLED.**
