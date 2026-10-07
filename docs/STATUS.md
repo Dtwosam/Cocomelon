@@ -4885,3 +4885,14 @@ The paired loss-context portfolio shadow now exposes staged opening markets for 
 This closes a subtle continuity hole where a worker restart between strategy decision and execution-book resolution could silently drop a trade from the A/B path. Pending opening serialization is still absent, so the current safe boundary is explicit: only checkpoint/restart the shadow when both pending sets are empty. The active paper trader remains independent and must never wait on this research guard.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Durable paired-shadow restart state — 2026-10-07
+
+The paired loss-context A/B engine now has a safe-boundary checkpoint/restore path. Each lane keeps its own SQLite paper account/fills/funding store, while the checkpoint binds the immutable candidate ID, exact account state ID, open lifecycle checkpoints, mark observations, exit-plan lineage, known data gaps, cumulative activity/admission counters, record position, and max drawdown.
+
+A restored shadow refuses new evaluated decisions until decision-state warmup is explicitly completed. It also rejects candidate-ID changes, account/lifecycle mismatches, missing plans, malformed gaps, unsafe staged-opening checkpoints, or authority-bearing state.
+
+This still is not wired into the active record pump. The next frontier is a bounded non-blocking shadow feed and handoff publication/restore workflow that can fail independently without slowing the real paper trader.
+
+**LIVE TRADING: DISABLED.**
