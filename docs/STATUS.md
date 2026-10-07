@@ -4909,3 +4909,16 @@ The sidecar receives the same ordered records plus contemporaneous coarse-rank s
 This creates the infrastructure for a genuinely prospective account-level A/B test of whether avoiding the exact frozen bad setup improves compounded paper economics. It still grants no strategy, risk, position, promotion, or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Paired loss-context shadow review gate — 2026-10-07
+
+Cocomelon now records each safe paired-shadow handoff into a hash-chained review ledger and binds the latest ledger receipt into the durable shadow checkpoint. Matching frozen-context blocks are tracked by market; older counts without historical market attribution remain visible but cannot help the new diversity gate.
+
+The future review floor is intentionally hard: 72 hours, nine checkpoints, 30 newly attributed blocked setups, four markets, no market above 50% of blocks, and 30 closed trades in both baseline and candidate lanes. The candidate must be profitable in absolute total account PnL and realized net PnL, must beat baseline on both, and cannot have worse maximum drawdown.
+
+The evidence must also survive three chronological later blocks. Each block needs at least five new matching-context blocks across two markets and positive incremental candidate-minus-baseline total-account and realized-net PnL.
+
+This is a research review gate only. It does not turn the frozen filter on, change LONG/SHORT behavior, alter risk/sizing/stops/cooldowns/positions, or enable live trading.
+
+**LIVE TRADING: DISABLED.**
