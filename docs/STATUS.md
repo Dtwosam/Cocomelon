@@ -4961,3 +4961,14 @@ A separate filename mismatch was also repaired: portfolio composition now consum
 This repair does not make any candidate pass an economic gate. It only allows already-valid research stages to run instead of being silently skipped, so the genuinely prospective paired-account clock can begin once the existing gates really qualify.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Cooldown handoff chain repair — 2026-10-07
+
+The same generated-file sequencing fault found in the loss-context tail also affected cooldown research. Deferred cooldown evidence and context stability could complete, while context selection or later freeze/scoring stages were skipped by fresh `hashFiles(...)` conditions.
+
+The cooldown chain now advances with explicit verified receipts from deferred evidence -> context stability -> context selection -> immutable freeze -> prospective scoring. A candidate freeze is preserved even if a later scorer fails, and downstream stages still validate their own files.
+
+This does not relax the active cooldown. It only lets the existing research gate collect the evidence required to decide whether any exact context deserves future review.
+
+**LIVE TRADING: DISABLED.**

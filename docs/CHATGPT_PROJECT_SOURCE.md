@@ -549,3 +549,10 @@ Do not gate immediately generated post-handoff loss-context files with a new `ha
 The fixed-schedule account file contract is `loss-context-account-readiness-report.json`; deferred portfolio composition must consume that exact filename.
 
 This rule changes only evidence continuity. It cannot make an unstable context stable, relax any profitability/readiness threshold, suppress LONG/SHORT, alter risk/positions, or grant execution authority.
+
+
+### Cooldown handoff readiness rule — D-058
+
+Cooldown post-handoff stages must sequence by explicit verified `ready=true` receipts, not by rediscovering files generated earlier in the same job through `hashFiles(...)`. No stable selected context means no freeze; no freeze means no prospective relaxation evidence.
+
+This is evidence plumbing only. The active cooldown and all risk/promotion/live gates remain unchanged.
