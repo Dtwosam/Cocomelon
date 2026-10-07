@@ -46,7 +46,10 @@ def _candidate(
         "validation_leave_one_trade_min_delta_pnl": "15",
         "validation_leave_one_market_min_delta_pnl": loo_market,
         "validation_block_rows": (6, 6),
-        "validation_block_loss_shares": (\n            "0.6666666666666666666666666667",\n            "0.8333333333333333333333333333",\n        ),
+        "validation_block_loss_shares": (
+            "0.6666666666666666666666666667",
+            "0.8333333333333333333333333333",
+        ),
         "validation_block_filter_delta_pnl": ("8", "14"),
         "validation_blocks_consistent": 2,
         "stable_on_validation": True,
