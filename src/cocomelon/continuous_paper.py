@@ -9224,9 +9224,10 @@ async def run_continuous_paper_session(
                     initial_ranks,
                     observed_at_ms=initial_rank_observed_at_ms,
                 )
-            except Exception as exc:
+            except Exception as shadow_restore_exc:
                 loss_context_paired_shadow_restore_error = (
-                    f"{type(exc).__name__}: {exc}"
+                    f"{type(shadow_restore_exc).__name__}: "
+                    f"{shadow_restore_exc}"
                 )
                 loss_context_paired_shadow_runtime = None
             record_startup_component(
@@ -10485,9 +10486,10 @@ async def run_continuous_paper_session(
                         "execution_authority": False,
                     },
                 )
-            except Exception as exc:
+            except Exception as shadow_checkpoint_exc:
                 loss_context_paired_shadow_checkpoint_error = (
-                    f"{type(exc).__name__}: {exc}"
+                    f"{type(shadow_checkpoint_exc).__name__}: "
+                    f"{shadow_checkpoint_exc}"
                 )
                 _write_json_atomic(
                     shadow_summary_path,
