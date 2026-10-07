@@ -40,6 +40,15 @@ def _evidence_key(
     )
 
 
+def _count(payload: dict[str, object], field: str) -> int:
+    value = payload.get(field)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise LossContextHolderReleaseExecutionError(
+            f"{field} must be a non-negative integer"
+        )
+    return value
+
+
 def _validate_release(
     release: CandidateCausedCapacityRelease,
     freeze: LossContextCandidateFreeze,
@@ -153,13 +162,13 @@ def loss_context_holder_release_execution_summary(
         config_mismatch_records += int(
             replay.get("execution_config_mismatch_records", 0)
         )
-        planned += int(replay.get("planned_release_exits", 0))
+        planned += _count(replay, "planned_release_exits")
         planning_rejected += int(
             replay.get("planning_rejected_release_exits", 0)
         )
-        full_fills += int(replay.get("full_release_fills", 0))
-        partial_fills += int(replay.get("partial_release_fills", 0))
-        no_fills += int(replay.get("no_release_fills", 0))
+        full_fills += _count(replay, "full_release_fills")
+        partial_fills += _count(replay, "partial_release_fills")
+        no_fills += _count(replay, "no_release_fills")
         execution_rejections += int(
             replay.get("execution_rejected_release_exits", 0)
         )
