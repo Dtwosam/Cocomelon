@@ -147,10 +147,14 @@ def test_paired_shadow_review_requires_real_profit_and_three_clean_blocks(
     assert report["ready_for_review"] is True
     assert report["readiness_failures"] == ()
     assert report["eligible_checkpoint_count"] == 9
-    assert report["matching_context_blocks"] == 36
+    assert report["evidence_checkpoint_count"] == 8
+    assert report["review_anchor_end_ms"] == (
+        PROSPECTIVE_MS + NINE_HOURS_MS
+    )
+    assert report["matching_context_blocks"] == 32
     assert report["blocked_market_count"] == 4
-    assert report["candidate_closed_trade_count"] == 36
-    assert report["baseline_closed_trade_count"] == 36
+    assert report["candidate_closed_trade_count"] == 32
+    assert report["baseline_closed_trade_count"] == 32
     assert report["candidate_total_account_pnl"] == "27"
     assert report["candidate_realized_net_pnl"] == "18"
     blocks = report["chronological_blocks"]
