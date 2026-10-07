@@ -675,7 +675,7 @@ The eligible checkpoint history is divided into three chronological later blocks
 
 **Immediate repair:** Continuous Paper Exact Path Export and the Prospective Two-Strike Stop Filter Ledger may consume those narrowly eligible handoff-tail-failed runs when the exact expected artifact for the same run/attempt exists. They may not consume arbitrary failed, cancelled, timed-out, corrupted, or pre-state runs.
 
-**Fallback consequence:** Automatic source discovery scans completed main-branch paper runs in recency order, verifies D-039 eligibility per run, then requires the exact state or compact artifact before selection. A non-success workflow wake is therefore not evidence loss by itself.
+**Fallback consequence:** Automatic source discovery treats workflow completion events only as wake signals. It sorts completed main-branch paper runs newest-first, verifies D-039 eligibility per run, then requires the exact state or compact artifact before selection. This prevents a late-completing older worker from moving an append-only evidence consumer backward. A non-success workflow wake is therefore not evidence loss by itself.
 
 **Manual consequence:** Exact manual dispatch remains strict. If a manually supplied paper run is not D-039 evidence-eligible or lacks its exact artifact, the consumer fails closed instead of silently switching sources.
 
