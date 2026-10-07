@@ -1,18 +1,32 @@
 from __future__ import annotations
 
+import json
+import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Final
 
+from cocomelon.domain.execution import (
+    ExecutionAttempt,
+    PaperFill,
+    PaperOrderPlan,
+    PositionAction,
+    PositionActionType,
+)
 from cocomelon.domain.market import MarketId
-from cocomelon.domain.replay import EvidenceClass, ReplayRecord
+from cocomelon.domain.replay import (
+    EvidenceClass,
+    ReplayRecord,
+    SourceRecordKind,
+)
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.lifecycle import (
     BaselineReplayPipeline,
     DecisionEpochEngine,
+    OpenLifecycleCheckpoint,
 )
 from cocomelon.execution.accounting import PaperAccountState
 from cocomelon.execution.paper import PaperExecutionAdapter
@@ -26,8 +40,265 @@ from cocomelon.research.loss_context_portfolio_shadow_entry import (
 
 ZERO: Final = Decimal("0")
 LOSS_CONTEXT_PAIRED_SHADOW_SCHEMA_VERSION: Final = 1
+LOSS_CONTEXT_PAIRED_SHADOW_STATE_SCHEMA_VERSION: Final = 1
+LOSS_CONTEXT_PAIRED_SHADOW_STATE_FILENAME: Final = (
+    "paired-shadow-state.json"
+)
 
 DecisionEngineFactory = Callable[[], DecisionEpochEngine]
+
+
+def _market_from_canonical(value: str) -> MarketId:
+    if ":" not in value:
+        return MarketId("", value)
+    dex, coin = value.split(":", 1)
+    return MarketId(dex, coin)
+
+
+def _record_payload(record: ReplayRecord) -> dict[str, object]:
+    return {
+        "record_kind": record.record_kind.value,
+        "available_at_ms": record.available_at_ms,
+        "source": record.source,
+        "schema_version": record.schema_version,
+        "market": record.market,
+        "exchange_time_ms": record.exchange_time_ms,
+        "event_key": record.event_key,
+        "payload_json": record.payload_json,
+        "event_kind": record.event_kind,
+    }
+
+
+def _record_from_payload(raw: object) -> ReplayRecord:
+    if not isinstance(raw, dict):
+        raise ValueError("shadow replay record must be an object")
+    return ReplayRecord(
+        record_kind=SourceRecordKind(str(raw["record_kind"])),
+        available_at_ms=int(raw["available_at_ms"]),
+        source=str(raw["source"]),
+        schema_version=int(raw["schema_version"]),
+        market=(
+            None
+            if raw.get("market") is None
+            else str(raw["market"])
+        ),
+        exchange_time_ms=(
+            None
+            if raw.get("exchange_time_ms") is None
+            else int(raw["exchange_time_ms"])
+        ),
+        event_key=(
+            None
+            if raw.get("event_key") is None
+            else str(raw["event_key"])
+        ),
+        payload_json=str(raw["payload_json"]),
+        event_kind=(
+            None
+            if raw.get("event_kind") is None
+            else str(raw["event_kind"])
+        ),
+    )
+
+
+def _position_action_payload(
+    action: PositionAction,
+) -> dict[str, object]:
+    return {
+        "action_type": action.action_type.value,
+        "market": action.market.canonical,
+        "quantity": (
+            None if action.quantity is None else str(action.quantity)
+        ),
+        "new_stop_price": (
+            None
+            if action.new_stop_price is None
+            else str(action.new_stop_price)
+        ),
+        "reason_codes": list(action.reason_codes),
+        "timestamp_ms": action.timestamp_ms,
+    }
+
+
+def _position_action_from_payload(raw: object) -> PositionAction:
+    if not isinstance(raw, dict):
+        raise ValueError("shadow position action must be an object")
+    reason_codes = raw.get("reason_codes")
+    if not isinstance(reason_codes, list) or not all(
+        isinstance(value, str) for value in reason_codes
+    ):
+        raise ValueError("shadow position action reasons are invalid")
+    quantity = raw.get("quantity")
+    stop = raw.get("new_stop_price")
+    return PositionAction(
+        action_type=PositionActionType(str(raw["action_type"])),
+        market=_market_from_canonical(str(raw["market"])),
+        quantity=(
+            None if quantity is None else Decimal(str(quantity))
+        ),
+        new_stop_price=(
+            None if stop is None else Decimal(str(stop))
+        ),
+        reason_codes=tuple(reason_codes),
+        timestamp_ms=int(raw["timestamp_ms"]),
+    )
+
+
+def _lifecycle_payload(
+    checkpoint: OpenLifecycleCheckpoint,
+) -> dict[str, object]:
+    return {
+        "market": checkpoint.market.canonical,
+        "opening_plan_id": checkpoint.opening_plan_id,
+        "feature_snapshot_id": checkpoint.feature_snapshot_id,
+        "equity_before": str(checkpoint.equity_before),
+        "opened_at_ms": checkpoint.opened_at_ms,
+        "exit_plan_ids": list(checkpoint.exit_plan_ids),
+        "position_actions": [
+            _position_action_payload(action)
+            for action in checkpoint.position_actions
+        ],
+        "mark_observations": [
+            _record_payload(record)
+            for record in checkpoint.mark_observations
+        ],
+    }
+
+
+def _lifecycle_from_payload(raw: object) -> OpenLifecycleCheckpoint:
+    if not isinstance(raw, dict):
+        raise ValueError("shadow lifecycle checkpoint must be an object")
+    exit_plan_ids = raw.get("exit_plan_ids")
+    actions = raw.get("position_actions")
+    marks = raw.get("mark_observations")
+    if not isinstance(exit_plan_ids, list) or not all(
+        isinstance(value, str) for value in exit_plan_ids
+    ):
+        raise ValueError("shadow exit plan ids are invalid")
+    if not isinstance(actions, list) or not isinstance(marks, list):
+        raise ValueError("shadow lifecycle arrays are invalid")
+    opened_at = raw.get("opened_at_ms")
+    return OpenLifecycleCheckpoint(
+        market=_market_from_canonical(str(raw["market"])),
+        opening_plan_id=str(raw["opening_plan_id"]),
+        feature_snapshot_id=str(raw["feature_snapshot_id"]),
+        equity_before=Decimal(str(raw["equity_before"])),
+        opened_at_ms=(
+            None if opened_at is None else int(opened_at)
+        ),
+        exit_plan_ids=tuple(exit_plan_ids),
+        position_actions=tuple(
+            _position_action_from_payload(item) for item in actions
+        ),
+        mark_observations=tuple(
+            _record_from_payload(item) for item in marks
+        ),
+    )
+
+
+def _restore_open_lifecycles(
+    pipeline: BaselineReplayPipeline,
+    execution: PaperExecutionAdapter,
+    checkpoints: tuple[OpenLifecycleCheckpoint, ...],
+) -> None:
+    account_markets = {
+        position.market.canonical
+        for position in execution.account.positions
+    }
+    checkpoint_markets = {
+        item.market.canonical for item in checkpoints
+    }
+    if account_markets != checkpoint_markets:
+        raise RuntimeError(
+            "paired shadow account/lifecycle checkpoint mismatch"
+        )
+
+    for checkpoint in checkpoints:
+        opening_plan = execution.store.load_plan(
+            checkpoint.opening_plan_id
+        )
+        if opening_plan is None:
+            raise RuntimeError(
+                "paired shadow opening plan missing during restore"
+            )
+        opening_attempts, opening_fills = (
+            execution.store.load_execution_history(
+                opening_plan.plan_id
+            )
+        )
+        filled = tuple(
+            attempt
+            for attempt in opening_attempts
+            if attempt.filled_quantity > ZERO
+        )
+        if len(filled) != 1:
+            raise RuntimeError(
+                "paired shadow restore requires one filled opening attempt"
+            )
+        opening_attempt: ExecutionAttempt = filled[0]
+        opening_attempt_fills = tuple(
+            fill
+            for fill in opening_fills
+            if fill.attempt_id == opening_attempt.attempt_id
+        )
+
+        exit_plans: list[PaperOrderPlan] = []
+        exit_attempts: list[ExecutionAttempt] = []
+        exit_fills: list[PaperFill] = []
+        for plan_id in checkpoint.exit_plan_ids:
+            plan = execution.store.load_plan(plan_id)
+            if plan is None:
+                raise RuntimeError(
+                    "paired shadow exit plan missing during restore"
+                )
+            exit_plans.append(plan)
+            attempts, fills = execution.store.load_execution_history(
+                plan_id
+            )
+            exit_attempts.extend(attempts)
+            exit_fills.extend(fills)
+
+        position = next(
+            position
+            for position in execution.account.positions
+            if position.market == checkpoint.market
+        )
+        funding = execution.store.load_funding_for_market(
+            checkpoint.market,
+            start_ms=position.opened_at_ms,
+        )
+        pipeline.restore_open_lifecycle(
+            checkpoint,
+            opening_plan=opening_plan,
+            opening_attempt=opening_attempt,
+            opening_fills=opening_attempt_fills,
+            exit_plans=tuple(exit_plans),
+            exit_attempts=tuple(exit_attempts),
+            exit_fills=tuple(exit_fills),
+            funding_accruals=funding,
+        )
+
+
+def _write_json_atomic(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    encoded = (
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with temporary.open("wb") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 @dataclass(frozen=True, slots=True)
