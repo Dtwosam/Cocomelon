@@ -633,3 +633,18 @@ Decision-engine market history is not guessed from the checkpoint. After restore
 Candidate identity changes, unsafe staged-opening checkpoints, account-state mismatches, corrupt lifecycle history, or authority-bearing state are all restart failures. They may never reset or alter the active continuous-paper account.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-053 — Paired shadow runtime must be isolated from active paper latency
+
+The D-050 paired loss-context portfolio shadow may consume the active continuous-paper evidence stream only through a bounded, ordered side channel that cannot block or back-pressure the real paper trader. Active paper processing always completes first. The shadow receives a best-effort non-blocking enqueue afterward; paired replay, SQLite accounting, risk evaluation, execution simulation, checkpointing, and summary work run on a dedicated worker thread rather than the market-data event loop.
+
+Queue overflow, shadow replay failure, corrupt durable state, candidate mismatch, unsafe staged openings, checkpoint timeout, or market-coverage conflict disables/fails the research shadow closed. None of those failures may change or delay active strategy decisions, risk checks, paper positions, exits, account state, or worker handoff.
+
+Rank snapshots, restore-warmup completion, and shortlist reconciliation are serialized through the same ordered actor. A restored shadow uses its persisted selected-market lineage first. It may reconcile to the active shortlist only when doing so does not drop coverage for an open baseline/candidate shadow position; otherwise the shadow fails closed rather than silently stranding a position.
+
+The immutable D-048 portfolio-shadow candidate is restored before the trader starts when trusted evidence is available. The paired checkpoint is written only after the active paper runtime has stopped and its own checkpoint has been persisted. The paired state then rides inside the ordinary authenticated continuous-paper resume/durable state, while a separate research artifact is published only after successor dispatch so research publication cannot delay continuity.
+
+This integration remains research/shadow only. It cannot modify LONG/SHORT preference, active entry admission, risk limits, sizing, stops, positions, cooldowns, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
