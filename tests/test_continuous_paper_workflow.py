@@ -1387,8 +1387,7 @@ def test_upgrade_handoff_builds_cooldown_context_stability() -> None:
 
     upload = source[stability_upload_at:holder_release_at]
     assert (
-        "hashFiles('continuous-paper-state/"
-        "cooldown-context-stability-summary.json') != ''"
+        "steps.deferred_cooldown_context_stability.outputs.ready == 'true'"
         in upload
     )
     assert "if-no-files-found: error" in upload
@@ -1426,8 +1425,7 @@ def test_upgrade_handoff_builds_cooldown_context_selection_record() -> None:
     assert "cooldown-context-stability-summary.json" in upload
     assert "cooldown-context-selection-record.json" in upload
     assert (
-        "hashFiles('continuous-paper-state/"
-        "cooldown-context-selection-record.json') != ''"
+        "steps.deferred_cooldown_context_selection.outputs.ready == 'true'"
         in upload
     )
     assert "if-no-files-found: error" in upload
@@ -1635,6 +1633,54 @@ def test_loss_context_generated_steps_publish_ready_outputs() -> None:
         "loss_context_replacement_entry_fill",
         "loss_context_replacement_exit_pnl",
         "loss_context_portfolio_composition",
+    ):
+        marker = f"id: {step_id}"
+        start = source.index(marker)
+        next_step = source.find("\n      - name:", start)
+        block = source[start:] if next_step < 0 else source[start:next_step]
+        assert 'echo "ready=true" >> "$GITHUB_OUTPUT"' in block
+
+
+
+def test_cooldown_handoff_chain_uses_explicit_readiness_outputs() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    start = source.index(
+        "- name: Rebuild deferred cooldown evidence after handoff"
+    )
+    end = source.index(
+        "- name: Rebuild exact correlation holder release economics after handoff",
+        start,
+    )
+    chain = source[start:end]
+
+    assert "steps.deferred_cooldown_rebuild.outputs.ready == 'true'" in chain
+    assert (
+        "steps.deferred_cooldown_context_stability.outputs.ready == 'true'"
+        in chain
+    )
+    assert (
+        "steps.deferred_cooldown_context_selection.outputs.ready == 'true'"
+        in chain
+    )
+    assert "steps.cooldown_context_freeze.outputs.ready == 'true'" in chain
+    assert (
+        "hashFiles('continuous-paper-state/"
+        "cooldown-context-stability-summary.json')"
+        not in chain
+    )
+    assert (
+        "hashFiles('continuous-paper-state/"
+        "cooldown-context-selection-record.json')"
+        not in chain
+    )
+
+
+def test_cooldown_generated_steps_publish_ready_outputs() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    for step_id in (
+        "deferred_cooldown_context_stability",
+        "deferred_cooldown_context_selection",
+        "cooldown_context_prospective",
     ):
         marker = f"id: {step_id}"
         start = source.index(marker)
