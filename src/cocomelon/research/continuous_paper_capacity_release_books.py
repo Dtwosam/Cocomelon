@@ -22,9 +22,11 @@ from cocomelon.execution.accounting import (
     PaperPosition,
     PositionSide,
 )
+from cocomelon.research.prospective_capacity_reflow_opportunities import (
+    single_position_capacity_release_risk_positions,
+)
 
 SCHEMA_VERSION: Final = 1
-CORRELATION_BUCKET_REASON: Final = "correlation_bucket_exhausted"
 ZERO: Final = Decimal("0")
 
 
@@ -1238,14 +1240,17 @@ class CapacityReleaseBookCapture:
         decision = trace.submission.risk_decision
         if decision.approved:
             return
-        if CORRELATION_BUCKET_REASON not in decision.reason_codes:
-            return
         request = trace.risk_request
-        for position in request.open_positions:
-            if position.correlation_bucket != request.correlation_bucket:
-                continue
-            if position.market == request.market:
-                continue
+        try:
+            positions = single_position_capacity_release_risk_positions(
+                request,
+                decision.reason_codes,
+            )
+        except Exception as exc:
+            if self.error is None:
+                self.error = f"{type(exc).__name__}: {exc}"
+            return
+        for position in positions:
             try:
                 self.store.register(
                     CapacityReleaseBookRegistration(

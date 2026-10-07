@@ -510,3 +510,16 @@ Each opportunity/holder release path is evaluated independently. Repeated hypoth
 This stage records execution feasibility only. It does not place or modify a paper position, does not model the replacement entry, replacement exit, replacement PnL, or recursive reflow, and grants no strategy, risk, promotion, or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-044 — Capacity-release capture must match the causal reflow universe
+
+The decision-time holder-release book capture must use the same exact single-position capacity test as D-042. A holder is registered only when removing that exact open risk position from the captured RiskRequest makes positive capacity available for the rejected opportunity.
+
+This capture applies to both `aggregate_risk_exhausted` and `correlation_bucket_exhausted`. Correlation-bucket membership by itself is not sufficient evidence that a holder caused the rejection, and aggregate-risk releases must not remain invisible merely because the holder is in a different bucket.
+
+The rule is prospective. Existing historical release-book evidence is not guessed or backfilled, and legacy captures remain identifiable by their original timestamps/configuration. Missing exact release books remain missing evidence rather than synthetic fills.
+
+This changes research evidence coverage only. It does not alter active risk limits, release positions, entry priority, strategy direction, sizing, stops, promotion state, or execution authority.
+
+**LIVE TRADING: DISABLED.**

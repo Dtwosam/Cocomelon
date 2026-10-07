@@ -22,6 +22,7 @@ from cocomelon.research.prospective_capacity_reflow_opportunities import (
     candidate_eligible_capacity_release_options,
     prospective_capacity_reflow_opportunity_summary,
     single_position_capacity_release_options,
+    single_position_capacity_release_risk_positions,
 )
 from cocomelon.research.prospective_combined_entry_filter import (
     ProspectiveCombinedEntryFilterState,
@@ -414,3 +415,63 @@ def test_capacity_reflow_minimum_notional_rejects_are_not_release_options() -> N
     )
     assert summary["candidate_eligible_capacity_rejections"] == 0
     assert summary["candidate_eligible_min_notional_rejections"] == 1
+
+
+
+def test_single_position_release_positions_cover_aggregate_risk() -> None:
+    base = _request(
+        market="SOL",
+        direction=Direction.SHORT,
+        lead_strategy="trend",
+        timestamp_ms=30_000,
+    )
+    positions = (
+        replace(
+            base.open_positions[0],
+            correlation_bucket="btc_beta",
+        ),
+        replace(
+            base.open_positions[1],
+            correlation_bucket="eth_beta",
+        ),
+        OpenPositionRisk(
+            market=_market("HYPE"),
+            direction=Direction.LONG,
+            planned_risk=Decimal("25"),
+            notional=Decimal("1000"),
+            correlation_bucket="hype_beta",
+            entry_price=Decimal("100"),
+            stop_price=Decimal("90"),
+        ),
+    )
+    request = replace(base, open_positions=positions)
+    decision = evaluate_risk(request)
+
+    assert decision.approved is False
+    assert decision.reason_codes == ("aggregate_risk_exhausted",)
+
+    releases = single_position_capacity_release_risk_positions(
+        request,
+        decision.reason_codes,
+    )
+
+    assert tuple(
+        position.market.canonical for position in releases
+    ) == ("BTC", "ETH", "HYPE")
+    assert tuple(
+        position.correlation_bucket for position in releases
+    ) == ("btc_beta", "eth_beta", "hype_beta")
+
+
+def test_single_position_release_positions_ignore_non_capacity_rejection() -> None:
+    request = _request(
+        market="SOL",
+        direction=Direction.SHORT,
+        lead_strategy="trend",
+        timestamp_ms=31_000,
+    )
+
+    assert single_position_capacity_release_risk_positions(
+        request,
+        ("daily_loss_lockout",),
+    ) == ()
