@@ -746,3 +746,20 @@ The eligible checkpoint history is divided into three chronological later blocks
 **Authority:** Evidence-schema repair only. No momentum-pullback thresholds, strategy decisions, readiness bars, risk limits, sizing, positions, promotion, paper execution, or live-order behavior changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+## D-060 — Post-handoff research chains gate on raw verified producer outcomes
+
+**Date:** 2026-10-07
+
+**Decision:** Supersede D-057/D-058 for workflow control flow. Loss-context and cooldown post-handoff stages must gate on the upstream step's raw `outcome == 'success'`, where that upstream step already validates its output file before completion. Step-output `ready=true` fields may remain diagnostic, but they are not authoritative sequencing signals.
+
+**Observed live evidence:** The first #1006 upgrade handoff rebuilt the loss-streak context audit successfully, yet every downstream loss-context step still skipped when conditioned on the producer's `outputs.ready`. The same handoff rebuilt cooldown evidence and stability, while cooldown selection skipped under the same pattern. Therefore the output flag is not a reliable same-job control-plane receipt in this workflow.
+
+**Optional-candidate rule:** Stages that legitimately produce no artifact because no candidate qualifies — recurring-loss freeze, portfolio-shadow freeze, and cooldown freeze — return a non-success raw outcome under `continue-on-error`. This is fail-closed and non-blocking: later research stages stop, but the already-dispatched paper successor is unaffected.
+
+**Safety boundary:** A successful raw outcome is authoritative only when the producer itself has already run its deterministic validator or `test -s` check. No missing file, unstable candidate, or failed economic gate is converted into success.
+
+**Authority:** Evidence orchestration only. No strategy, direction preference, cooldown relaxation, risk, sizing, positions, promotion, paper economics, or live-order authority changes.
+
+**LIVE TRADING: DISABLED.**
