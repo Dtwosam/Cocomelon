@@ -367,7 +367,7 @@ class _LaneOffsets:
         }
 
     @classmethod
-    def from_payload(cls, raw: object) -> "_LaneOffsets":
+    def from_payload(cls, raw: object) -> _LaneOffsets:
         if not isinstance(raw, dict):
             raise ValueError("shadow lane offsets must be an object")
         values: dict[str, int] = {}
