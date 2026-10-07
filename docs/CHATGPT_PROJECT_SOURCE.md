@@ -431,3 +431,10 @@ A causal capacity release from D-042 is not credited as usable merely because re
 The replay is per opportunity/holder path and uses the captured execution configuration, reduce-only planner, configured latency, L2 book, fees, instrument metadata, and exact opening-plan lineage. Missing books, unbound configuration, planning failures, partial fills, no fills, or lineage conflicts remain uncredited. Only exact full closes become eligible for the later replacement-entry investigation.
 
 This remains research-only. It does not alter active positions, strategy, LONG/SHORT preference, risk, sizing, stops, promotion state, or execution authority.
+
+
+### Capacity-release capture universe — D-044
+
+Holder-release execution evidence now uses the same exact single-position risk-capacity test as D-042 when deciding which holder paths to capture. The capture is no longer a same-bucket correlation heuristic: it covers both aggregate-risk and correlation-bucket rejections, and only records a holder when removing that exact position makes positive capacity available.
+
+This is prospective evidence capture only. Historical gaps are not backfilled, and missing books cannot be converted into modeled fills. No strategy/risk/position behavior changes.
