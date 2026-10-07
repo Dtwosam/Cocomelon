@@ -173,3 +173,11 @@ def test_pullback_fast_markout_source_skips_empty_successful_handoffs() -> None:
     assert "selected source has no authenticated compact artifact" in source
     assert "candidates" in source
     assert 'EVENT_NAME" != "workflow_dispatch"' in source
+
+
+def test_pullback_status_distinguishes_stale_dispatch() -> None:
+    source = _source()
+
+    assert "dispatched source paper run / attempt" in source
+    assert "ledger latest accepted source" in source
+    assert "stale dispatched source ignored" in source
