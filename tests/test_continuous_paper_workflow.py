@@ -148,6 +148,20 @@ def test_successor_dispatch_requires_visible_exact_receipt() -> None:
     assert 'expected_title="Continuous Paper · $GITHUB_RUN_ID"' in fast
     assert "event=workflow_dispatch&per_page=100" in fast
     assert 'run.get("display_title") == expected' in fast
+    assert (
+        'run.get("path") == ".github/workflows/continuous-paper.yml"'
+        in fast
+    )
+    assert 'run.get("head_branch") == "main"' in fast
+    assert (
+        '(run.get("head_repository") or {}).get("full_name")'
+        in fast
+    )
+    assert '== os.environ["GITHUB_REPOSITORY"]' in fast
+    assert (
+        'run.get("name") == "Continuous Mainnet Paper Trader"'
+        not in fast
+    )
     assert "for poll in $(seq 1 20)" in fast
     assert "exact successor dispatch did not materialize" in fast
     assert 'echo "successor_run_id=$successor_run_id"' in fast
@@ -163,6 +177,20 @@ def test_successor_dispatch_requires_visible_exact_receipt() -> None:
     assert 'expected_title="Continuous Paper · $GITHUB_RUN_ID"' in fallback
     assert "event=workflow_dispatch&per_page=100" in fallback
     assert 'run.get("display_title") == expected' in fallback
+    assert (
+        'run.get("path") == ".github/workflows/continuous-paper.yml"'
+        in fallback
+    )
+    assert 'run.get("head_branch") == "main"' in fallback
+    assert (
+        '(run.get("head_repository") or {}).get("full_name")'
+        in fallback
+    )
+    assert '== os.environ["GITHUB_REPOSITORY"]' in fallback
+    assert (
+        'run.get("name") == "Continuous Mainnet Paper Trader"'
+        not in fallback
+    )
     assert "for poll in $(seq 1 20)" in fallback
     assert "fallback exact successor dispatch did not materialize" in fallback
     assert 'echo "successor_run_id=$successor_run_id"' in fallback
