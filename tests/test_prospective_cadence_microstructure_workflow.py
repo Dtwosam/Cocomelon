@@ -91,7 +91,7 @@ def test_prospective_audit_catches_up_missed_success_events() -> None:
         "branch=main&status=completed&per_page=100"
         in source
     )
-    assert "latest_success_with_cadence_artifacts" in source
+    assert "latest_evidence_eligible_with_cadence_artifacts" in source
     assert (
         'run.get("path") == ".github/workflows/continuous-paper.yml"'
         in source
