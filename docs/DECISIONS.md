@@ -434,3 +434,16 @@ A repeated losing streak is not sufficient evidence to suppress a direction or s
 For a recurring context to become eligible for a later prospective freeze, the counterfactual filter must improve realized net PnL on a chronological holdout, span multiple markets, remain positive after removing any one trade and any one market, and stay positive across later chronological blocks. Counterfactual filter delta is defined as the negative of realized net PnL for matching executed trades: avoiding a loser helps, while avoiding a winner hurts.
 
 This gate is research-only. It cannot change strategy, block entries, alter risk limits, promote a candidate, or grant execution authority. Any stable context still requires a separate immutable prospective freeze and genuinely future paper evidence before strategy use.
+
+
+### D-038 — Stable loss contexts must be frozen and re-proven on future realized trades
+
+A recurring loss-context candidate that survives D-037 is still touched evidence. The first deterministic stable candidate is frozen immutably, keeps its exact lead-strategy plus entry-time market context, and waits through the standard six-hour prospective embargo before any later trade can count.
+
+Prospective scoring uses only realized continuous-paper trades opened after the embargo. For a matching trade, counterfactual filter delta is the negative of actual realized net PnL: avoiding a loser helps the candidate and avoiding a winner hurts it. Future lineage gaps fail review closed because an unresolved future trade could have matched the frozen context.
+
+Review readiness requires at least 30 matching post-embargo trades across at least four markets, at least 60% beneficial avoidances, positive total and mean filter delta, positive leave-one-trade and leave-one-market delta, and three later chronological blocks with at least five matches, at least 55% beneficial avoidances, and positive delta in every block.
+
+The frozen candidate is research-only. Review readiness cannot block an entry, change LONG/SHORT preference, alter risk or sizing, promote a strategy, or grant execution authority. Any actual strategy admission remains a later explicit evidence-gated step.
+
+**LIVE TRADING: DISABLED.**
