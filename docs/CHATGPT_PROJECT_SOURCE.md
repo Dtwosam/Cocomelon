@@ -495,7 +495,7 @@ The active continuous-paper trader must never be delayed by this rule. The next 
 
 ### Durable paired-shadow restart state — D-052
 
-At a D-051 safe boundary, the paired loss-context shadow can persist and restore candidate-bound account/lifecycle state across rolling workers. The lane SQLite stores keep the account truth; the JSON checkpoint authenticates account state IDs plus open lifecycle/mark/exit/funding/gap lineage, counters and max drawdown.
+At a D-051 safe boundary, the paired loss-context shadow can persist and restore candidate-bound account/lifecycle state across rolling workers. The lane SQLite stores keep the account truth; the JSON checkpoint authenticates candidate ID, replay-config digest, selected markets, account state IDs, open lifecycle/mark/exit/funding/gap lineage, counters and max drawdown under a canonical SHA-256 content digest. Empty no-trade lanes are explicitly materialized too.
 
 A restored shadow cannot evaluate new entries until fresh decision-state warmup is explicitly completed. Any candidate/account/lifecycle mismatch fails the research shadow closed and must not affect the active trader.
 
