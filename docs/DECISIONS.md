@@ -538,3 +538,16 @@ A full or partial replacement entry may advance only to later replacement-exit i
 This stage is research-only and cannot alter active positions, strategy direction, risk limits, sizing, stops, promotion state, or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-046 — Replacement PnL stays fixed-horizon and funding-complete
+
+A D-045 replacement entry fill may be evaluated at the already captured fixed exit horizons only. Each horizon remains a separate economic question; this stage may not select the best horizon, average horizons together, or present cross-horizon PnL as one strategy result.
+
+For every filled replacement option, exit execution must use the captured horizon-specific L2 evidence, ordinary reduce-only planner, configured latency, IOC simulator, and fees. Exact realized PnL is available only when the replacement position fully closes and every funding boundary between entry and exit has exact captured funding evidence. A position with no funding boundary has exact zero funding for that horizon.
+
+A horizon is complete only when every replacement option has exact realized PnL at that horizon. Portfolio-counterfactual investigation may begin only when every frozen horizon is complete. Positive PnL at one horizon does not authorize selecting it, changing exits, or claiming strategy improvement.
+
+This stage does not build the portfolio counterfactual, aggregate horizons, choose an exit schedule, mutate strategy/risk/positions, grant promotion authority, or enable execution.
+
+**LIVE TRADING: DISABLED.**
