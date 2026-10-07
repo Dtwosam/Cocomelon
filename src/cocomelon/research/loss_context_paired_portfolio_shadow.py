@@ -917,6 +917,15 @@ class LossContextPairedPortfolioShadow:
             offsets=self._candidate_offsets,
             end_ms=end_ms,
         )
+        # Materialize both current account snapshots even when a lane has
+        # made no trade. Otherwise an intentionally empty candidate lane
+        # cannot be distinguished from a fresh account after restart.
+        self._baseline_execution.store.persist_account(
+            self._baseline_execution.account
+        )
+        self._candidate_execution.store.persist_account(
+            self._candidate_execution.account
+        )
         payload: dict[str, object] = {
             "portfolio_shadow_candidate_id": self._freeze.candidate_id,
             "loss_context_candidate_id": (
@@ -956,21 +965,6 @@ class LossContextPairedPortfolioShadow:
                 LOSS_CONTEXT_PAIRED_SHADOW_STATE_SCHEMA_VERSION
             ),
         }
-        # Materialize both current account snapshots even when a lane has
-        # made no trade. Otherwise an intentionally empty candidate lane
-        # cannot be distinguished from a fresh account after restart.
-        self._baseline_execution.store.persist_account(
-            self._baseline_execution.account
-        )
-        self._candidate_execution.store.persist_account(
-            self._candidate_execution.account
-        )
-        payload["baseline"]["account_state_id"] = (
-            self._baseline_execution.account.state_id
-        )
-        payload["candidate"]["account_state_id"] = (
-            self._candidate_execution.account.state_id
-        )
         payload["state_digest"] = _state_digest(payload)
         _write_json_atomic(self._state_path, payload)
         return payload
