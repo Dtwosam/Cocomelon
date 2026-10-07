@@ -531,3 +531,12 @@ D-039 is a shared evidence contract, not a workflow-specific exception. Any rese
 Continuous Paper Exact Path Export and the Prospective Two-Strike Stop Filter Ledger now follow that contract. They still require the exact run/attempt artifact and reject arbitrary failed/cancelled/timed-out runs. Automated completion events only wake discovery; newest eligible artifact-bearing run wins, preventing late older completions from regressing evidence lineage. Manual exact dispatch remains strict and fails closed.
 
 This is evidence-continuity plumbing only. It changes no trading economics or authority.
+
+
+### Late exact paper dispatches — D-056
+
+Some evidence workflows are dispatched exactly by each continuous-paper worker rather than awakened by `workflow_run`. GitHub can finish those paper workers out of order, so an older authenticated exact dispatch can arrive after a newer source has already extended an append-only ledger.
+
+For range-compression evidence and momentum-pullback fast-markout, a strictly older run/attempt is now a verified no-op once the frozen candidate/state matches the existing ledger. The old source is not appended, newer rows/economics are not replaced, and equal/newer sources still face the normal drift checks. Workflow status reports both dispatched and accepted source identities.
+
+This is evidence-ordering plumbing only; it grants no strategy or execution authority.
