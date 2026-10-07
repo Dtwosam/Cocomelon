@@ -688,10 +688,6 @@ def test_paired_shadow_checkpoint_tracks_reconciled_market_set(
         selected_markets=(MARKET,),
         state_root=tmp_path,
         startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
-        decision_engine_factory=lambda: _ScriptedDecisionEngine(
-            config,
-            lead_strategy="trend",
-        ),
     )
     try:
         shadow.reconcile_markets((MARKET, other))
