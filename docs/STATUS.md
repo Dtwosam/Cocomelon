@@ -4935,3 +4935,16 @@ Observed proof case: paper run `37634738826` failed only in the authenticated ha
 No strategy, risk, sizing, execution economics, readiness threshold, promotion state, or live authority changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Late exact dispatch no-op hardening — 2026-10-07
+
+A second evidence-ordering failure mode was isolated after D-055: some research workflows are launched by exact `workflow_dispatch` calls from each paper worker. When an older paper worker finishes late, its exact dispatch can therefore arrive after a newer run has already extended the append-only ledger.
+
+Range-compression evidence was observed failing with `source run identity regressed`; momentum-pullback fast-markout could likewise try to parse an older source after newer evidence existed. The repair keeps exact dispatch semantics but treats a strictly older authenticated run/attempt as an idempotent stale replay after frozen-state verification. The newer validated ledger is returned byte-for-byte unchanged and the stale source is not appended to history.
+
+Status output now distinguishes the dispatched source from the ledger's latest accepted source and states whether the dispatch was ignored as stale.
+
+No trading economics or authority changes.
+
+**LIVE TRADING: DISABLED.**
