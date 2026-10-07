@@ -1166,11 +1166,14 @@ def test_safe_handoff_rebuilds_loss_streak_context_after_successor() -> None:
         upload_at,
     )]
     assert (
-        "hashFiles('continuous-paper-state/"
-        "loss-streak-context-audit-summary.json') != ''"
+        "steps.deferred_loss_streak_context_audit.outputs.ready == 'true'"
         in upload_block
     )
-    assert "outputs.ready" not in upload_block
+    assert (
+        "hashFiles('continuous-paper-state/"
+        "loss-streak-context-audit-summary.json')"
+        not in upload_block
+    )
     assert "loss-streak-context-audit-summary.json" in source
     assert "continuous-paper-loss-streak-context-" in source
     assert "RESEARCH ONLY / NO EXECUTION / NO STRATEGY CHANGE" in source
