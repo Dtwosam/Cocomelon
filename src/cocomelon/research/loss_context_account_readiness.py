@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from collections.abc import Sequence
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import cast
 
@@ -47,6 +48,22 @@ def _integer(value: object, field: str) -> int:
             f"{field} must be a non-negative integer"
         )
     return value
+
+
+def _decimal(value: object, field: str) -> Decimal:
+    if not isinstance(value, str):
+        raise LossContextAccountReadinessError(
+            f"{field} must be a decimal string"
+        )
+    try:
+        result = Decimal(value)
+    except InvalidOperation as exc:
+        raise LossContextAccountReadinessError(
+            f"{field} must be a decimal string"
+        ) from exc
+    if not result.is_finite():
+        raise LossContextAccountReadinessError(f"{field} must be finite")
+    return result
 
 
 def _context_values(
@@ -143,6 +160,18 @@ def loss_context_account_readiness(
         )
 
     economics = prospective_filter_economic_readiness(values)
+    expected_delta = _decimal(
+        prospective_report.get("total_filter_delta_pnl"),
+        "total_filter_delta_pnl",
+    )
+    observed_delta = _decimal(
+        economics.get("delta_net_pnl"),
+        "fixed_schedule delta_net_pnl",
+    )
+    if observed_delta != expected_delta:
+        raise LossContextAccountReadinessError(
+            "LOSS_CONTEXT_FILTER_DELTA_MISMATCH"
+        )
     prospective_ready = prospective_report.get("ready_for_review") is True
     source_complete = (
         prospective_report.get("source_complete") is True

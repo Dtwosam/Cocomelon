@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
+
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
@@ -134,6 +136,7 @@ def _case(allowed_pnl: str):
         "future_resolved_trade_count": len(items),
         "future_unresolved_trade_count": 0,
         "matching_outcomes": 30,
+        "total_filter_delta_pnl": "30",
         "source_complete": True,
         "ready_for_review": True,
         "prospective_only": True,
@@ -192,3 +195,18 @@ def test_d038_review_failure_keeps_account_gate_closed() -> None:
     assert result["fixed_schedule_economics_ready"] is True
     assert result["prospective_filter_review_ready"] is False
     assert result["ready_for_capacity_reflow_investigation"] is False
+
+
+
+def test_loss_context_account_gate_rejects_delta_source_drift() -> None:
+    freeze, items, prospective = _case("1")
+    prospective["total_filter_delta_pnl"] = "29"
+    with pytest.raises(
+        RuntimeError,
+        match="LOSS_CONTEXT_FILTER_DELTA_MISMATCH",
+    ):
+        loss_context_account_readiness(
+            items,
+            freeze=freeze,
+            prospective_report=prospective,
+        )
