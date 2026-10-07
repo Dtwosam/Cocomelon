@@ -699,3 +699,20 @@ The eligible checkpoint history is divided into three chronological later blocks
 **Authority:** Evidence-ordering reliability only. No strategy, risk, sizing, entry, exit, readiness, promotion, paper execution, or live-order behavior changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+## D-057 — Loss-context post-handoff research must advance by explicit readiness receipts
+
+**Date:** 2026-10-07
+
+**Decision:** Research files produced inside the continuous-paper post-handoff tail must not depend on a fresh `hashFiles(...)` lookup to authorize the immediately following loss-context stage. Each producer that successfully writes and verifies its output now emits an explicit `ready=true` step receipt; downstream loss-context stages consume that receipt and independently fail closed with their own file validation.
+
+**Observed failure:** A real paper handoff successfully rebuilt `loss-streak-context-audit-summary.json`, but the following upload/restore/freeze steps were skipped by their generated-file `hashFiles` conditions. This silently prevented the recurring-loss candidate, account-economics, capacity-reflow, replacement-path, portfolio-composition, and portfolio-shadow freeze chain from advancing.
+
+**Filename contract:** The fixed-schedule account producer writes `loss-context-account-readiness-report.json`. Deferred portfolio composition must consume that exact file. The prior `loss-context-account-readiness-summary.json` expectation was unreachable and is retired.
+
+**Safety boundary:** Explicit readiness receipts only sequence research that has already passed its own `test -s`/validator checks. They do not turn an unready economic gate into a ready one. A loss context with no stable candidate still emits no freeze, and every later stage remains closed.
+
+**Authority:** Evidence-continuity plumbing only. No strategy, LONG/SHORT preference, risk, sizing, stop, cooldown, position, readiness threshold, promotion, paper execution, or live-order behavior changes.
+
+**LIVE TRADING: DISABLED.**
