@@ -654,7 +654,7 @@ This integration remains research/shadow only. It cannot modify LONG/SHORT prefe
 
 The D-050/D-053 paired portfolio shadow may become eligible for research review only from its immutable, genuinely prospective A/B account history. A single latest snapshot, aggregate directional PnL, touched evidence, or a candidate that merely loses less than baseline is insufficient.
 
-Every safe handoff appends a canonical hash-chained review checkpoint and binds the latest ledger row count/digest into the durable paired-shadow checkpoint. Historical rows cannot be rewritten without breaking the chain or restart receipt. Legacy matching-context counts that predate per-market attribution remain visible but are explicitly excluded from market-diversity readiness.
+Every safe handoff appends a canonical hash-chained review checkpoint and binds the latest ledger row count/digest into the durable paired-shadow checkpoint. Historical rows cannot be rewritten without breaking the chain or restart receipt. The first eligible ledger row is an anchor only: duration, trade-count growth, matching-context growth, market diversity, and chronological block deltas must come after that anchor. Legacy matching-context counts that predate per-market attribution remain visible but are explicitly excluded from market-diversity readiness.
 
 The minimum review floor is 72 hours after the D-048 prospective boundary, at least nine authenticated handoff checkpoints, at least 30 newly attributed matching-context blocks across at least four markets, no single blocked market above 50% of attributed matches, and at least 30 closed trades in each paired lane.
 
