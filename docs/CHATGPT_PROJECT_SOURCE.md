@@ -475,3 +475,12 @@ Only evidence after the new prospective boundary may support account-level shado
 The future D-048 portfolio A/B shadow must differ only at new-entry admission. Do not convert matching strategy decisions to NO_TRADE globally because that could also change position-management behavior. Instead, veto the exact frozen context immediately before the normal risk request/opening simulation.
 
 Both shadow lanes block new exposure before the prospective boundary. After it, the baseline lane sends all ordinary directional setups into the normal risk/execution path; the candidate lane blocks only exact context matches. Same-direction setups outside the frozen context remain eligible. The active paper trader does not use this opt-in hook.
+
+
+### Paired prospective portfolio account rule — D-050
+
+The D-048 portfolio candidate must be tested against a paired baseline account on the same future evidence stream. Both accounts use identical strategy/risk/execution/position-management semantics; only the candidate lane applies the exact frozen D-049 opening-admission veto after the prospective boundary.
+
+Keep every account-state consequence separate and recursive: equity, daily PnL, seven-day peak/drawdown, consecutive-loss cooldown, positions, capacity, fills, exits, fees, and funding. Do not approximate the portfolio result by summing independent replacement paths.
+
+The reusable paired engine now exists but remains research-only and disconnected from the active continuous-paper account. The next build frontier is durable paired-shadow state/evidence capture across ordinary rolling paper handoffs, followed by a clean future review gate.
