@@ -522,3 +522,12 @@ Review evidence is an append-only hash-chained handoff ledger whose latest row c
 The minimum research-review floor is 72 future hours, nine checkpoints, 30 newly attributed matching-context blocks across four markets, <=50% concentration in any one blocked market, 30 closed trades per lane, and three chronological later blocks. Every later block needs >=5 new matching blocks across >=2 markets plus positive incremental candidate-minus-baseline total-account and realized-net PnL.
 
 `ready_for_review` has no strategy, risk, sizing, position, stop, cooldown, promotion, execution, or live-order authority. If the gate remains closed, continue gathering future evidence rather than relaxing it. The next strategy-admission stage may only be built if this clean paired-account gate eventually becomes ready.
+
+
+### Durable-paper consumer parity — D-055
+
+D-039 is a shared evidence contract, not a workflow-specific exception. Any research consumer that reads continuous-paper durable artifacts must accept a narrowly authenticated handoff-tail-failed paper run only when the trader, durable-state measurement, and durable-state upload succeeded and the failed steps match the locked D-039 handoff-tail shapes.
+
+Continuous Paper Exact Path Export and the Prospective Two-Strike Stop Filter Ledger now follow that contract. They still require the exact run/attempt artifact and reject arbitrary failed/cancelled/timed-out runs. Manual exact dispatch remains strict and fails closed.
+
+This is evidence-continuity plumbing only. It changes no trading economics or authority.
