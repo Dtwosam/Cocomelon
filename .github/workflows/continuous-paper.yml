@@ -1223,6 +1223,68 @@ jobs:
           retention-days: 90
           compression-level: 6
 
+      - name: Build cooldown context stability after handoff
+        id: deferred_cooldown_context_stability
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-consecutive-loss-cooldown-shadow-summary.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cocomelon-cooldown-context-stability \
+            --input "$STATE_ROOT/prospective-consecutive-loss-cooldown-shadow-summary.json" \
+            --output "$STATE_ROOT/cooldown-context-stability-summary.json" \
+            | tee /tmp/cooldown-context-stability.json
+          test -s "$STATE_ROOT/cooldown-context-stability-summary.json"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/cooldown-context-stability-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          print("## Cooldown context stability")
+          print("- authority: RESEARCH ONLY / NO STRATEGY OR RISK CHANGE")
+          print(
+              "- settled 1h / discovered / stable contexts: "
+              f"{payload['settled_1h_outcomes']} / "
+              f"{payload['candidate_count']} / "
+              f"{payload['stable_candidate_count']}"
+          )
+          print(
+              "- direction-only candidates allowed: "
+              f"{payload['direction_only_candidates_allowed']}"
+          )
+          for item in payload["candidates"][:8]:
+              print(
+                  "- context: "
+                  f"{item['dimensions']}={item['values']}; "
+                  f"discovery={item['discovery_rows']} "
+                  f"validation={item['validation_rows']}; "
+                  f"validation pnl={item['validation_total_pnl']} "
+                  f"positive_share={item['validation_positive_share']} "
+                  f"stable={item['stable_on_validation']}"
+              )
+          print(
+              "- execution / strategy / risk authority: "
+              f"{payload['execution_authority']} / "
+              f"{payload['changes_strategy']} / "
+              f"{payload['changes_risk_limits']}"
+          )
+          PY
+
+      - name: Upload cooldown context stability
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/cooldown-context-stability-summary.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-cooldown-context-stability-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/cooldown-context-stability-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Rebuild exact correlation holder release economics after handoff
         id: deferred_holder_release_execution
         if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/capacity-release-books/protocol.json') != '' }}
