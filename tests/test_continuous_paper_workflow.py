@@ -1277,3 +1277,42 @@ def test_continuous_paper_actions_api_calls_back_off_before_failing() -> None:
     assert "for attempt in $(seq 1 8)" in fallback
     assert "find_successor || true" in fallback
     assert "dispatch command never succeeded" in fallback
+
+
+
+def test_upgrade_handoff_builds_cooldown_context_stability() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "cocomelon-cooldown-context-stability" in source
+    assert "cooldown-context-stability-summary.json" in source
+    assert "continuous-paper-cooldown-context-stability-" in source
+    assert "direction-only candidates allowed" in source
+    assert "RESEARCH ONLY / NO STRATEGY OR RISK CHANGE" in source
+
+    cooldown_upload_at = source.index(
+        "- name: Upload early cooldown evidence"
+    )
+    stability_at = source.index(
+        "- name: Build cooldown context stability after handoff"
+    )
+    stability_upload_at = source.index(
+        "- name: Upload cooldown context stability"
+    )
+    holder_release_at = source.index(
+        "- name: Rebuild exact correlation holder release economics "
+        "after handoff"
+    )
+    assert (
+        cooldown_upload_at
+        < stability_at
+        < stability_upload_at
+        < holder_release_at
+    )
+
+    upload = source[stability_upload_at:holder_release_at]
+    assert (
+        "hashFiles('continuous-paper-state/"
+        "cooldown-context-stability-summary.json') != ''"
+        in upload
+    )
+    assert "if-no-files-found: error" in upload
