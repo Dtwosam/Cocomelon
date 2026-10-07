@@ -284,13 +284,13 @@ class CooldownContextCandidateFreeze:
             raise ValueError("frozen candidate row counts must be positive")
         if self.discovery_markets <= 0 or self.validation_markets <= 0:
             raise ValueError("frozen candidate market counts must be positive")
-        for value, field in (
+        for share_value, share_field in (
             (self.discovery_positive_share, "discovery_positive_share"),
             (self.validation_positive_share, "validation_positive_share"),
         ):
-            if not ZERO < value <= Decimal("1"):
-                raise ValueError(f"{field} must be in (0, 1]")
-        for value, field in (
+            if not ZERO < share_value <= Decimal("1"):
+                raise ValueError(f"{share_field} must be in (0, 1]")
+        for metric_value, metric_field in (
             (self.discovery_total_pnl, "discovery_total_pnl"),
             (self.discovery_mean_return, "discovery_mean_return"),
             (self.validation_total_pnl, "validation_total_pnl"),
@@ -304,8 +304,8 @@ class CooldownContextCandidateFreeze:
                 "validation_leave_one_market_min_pnl",
             ),
         ):
-            if value <= ZERO:
-                raise ValueError(f"{field} must be positive")
+            if metric_value <= ZERO:
+                raise ValueError(f"{metric_field} must be positive")
         if (
             not self.validation_block_rows
             or len(self.validation_block_rows)
