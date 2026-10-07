@@ -45,7 +45,7 @@ def test_long_trend_execution_shadow_binds_exact_paper_source() -> None:
     assert 'run.get("head_branch") != "main"' in source
     assert 'conclusion not in {"success", "failure"}' in source
     assert "source run attempt mismatch" in source
-    assert '"Continuous Paper · "*' in source
+    assert "paper_run_is_evidence_eligible()" in source
     assert "source repository mismatch" in source
     assert (
         'expected_name="continuous-paper-learning-source-'
