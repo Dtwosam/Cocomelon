@@ -682,3 +682,20 @@ The eligible checkpoint history is divided into three chronological later blocks
 **Authority:** This restores evidence continuity only. It does not change strategy, risk, sizing, entries, exits, readiness thresholds, promotion status, paper positions, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+## D-056 — Late exact paper dispatches are idempotent stale replays
+
+**Date:** 2026-10-07
+
+**Decision:** An authenticated exact paper-source dispatch that arrives after an evidence ledger has already accepted a newer paper run must not roll the ledger backward and must not fail the evidence campaign merely because GitHub completed or dispatched workers out of order. After the candidate/state identity is re-verified, a strictly older paper run/attempt is treated as an idempotent stale replay and the already-validated newer ledger is returned unchanged.
+
+**Initial scope:** The Prospective Range-Compression Entry Evidence ledger and Prospective Momentum-Pullback Fast-Markout ledger now apply this rule because both receive exact dispatches from continuous-paper workers and both were observed receiving older workers after newer evidence had already been recorded.
+
+**Integrity boundary:** Stale replay handling does not append the old source to source history, does not replace rows, does not recompute economics from the old source, and does not weaken duplicate-source drift checks or forward append-only checks. A different frozen candidate/state still fails closed. Equal or newer source identities continue through the ordinary validation path.
+
+**Observability:** Workflow status must show both the dispatched source identity and the ledger's latest accepted source identity, and explicitly state when the dispatched source was ignored as stale.
+
+**Authority:** Evidence-ordering reliability only. No strategy, risk, sizing, entry, exit, readiness, promotion, paper execution, or live-order behavior changes.
+
+**LIVE TRADING: DISABLED.**
