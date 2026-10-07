@@ -609,3 +609,20 @@ The paired engine records candidate-minus-baseline equity, total account PnL, re
 This paired shadow is research-only and remains isolated from the active continuous-paper account. It cannot alter the active strategy, LONG/SHORT preference, risk limits, sizing, stops, positions, cooldown, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-051 — Paired portfolio shadow resumes only from matched durable state
+
+The D-050 baseline/candidate portfolio shadow may continue across process or worker handoffs only when its independent paper-account stores and a matching research checkpoint are both present and internally consistent. An execution store without the checkpoint, or a checkpoint without both execution stores, fails research closed instead of silently creating a fresh account.
+
+The checkpoint binds the immutable D-048 portfolio candidate ID, exact baseline replay-config digest, selected market set, cumulative record/activity/admission counters, max drawdown, gap history, and both lanes' open lifecycle checkpoints. It also binds each materialized paper account's exact updated-at timestamp and carries a canonical SHA-256 digest so stale, partial, or edited state is rejected.
+
+Both account snapshots are explicitly materialized at checkpoint time even when a lane has taken no trades. This makes an intentionally empty candidate account durable and distinguishable from an accidental reset. Open positions restore through the ordinary plan/fill/funding lineage and require the restored account's open-market set to exactly match its lifecycle checkpoint set.
+
+A restored paired shadow is not allowed to evaluate new decisions immediately. It must first receive the normal current-market/feature warmup with decision evaluation disabled, after which the caller explicitly confirms warmup completion. This prevents a restart from trading on an empty feature state.
+
+Cumulative account-level evidence survives handoff without backfilling: closed-trade counts, risk/opening activity, exact-context admission counts, record count, account equity/fees/funding/positions, and maximum drawdown continue from the authenticated checkpoint. The active continuous-paper account remains untouched.
+
+This persistence layer is research-only. It cannot change strategy, LONG/SHORT preference, risk limits, sizing, stops, active positions, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
