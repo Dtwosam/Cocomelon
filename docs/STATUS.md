@@ -4718,3 +4718,14 @@ Candidate contexts must include `lead_strategy` and entry-time market state; dir
 This is research-only and descriptive. It does not block trades, change the active strategy, weaken risk, alter sizing, promote a candidate, or enable live orders. A stable loss context still requires a separate prospective freeze before any future strategy use.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Ignore stale queued paper successors across upgrades — 2026-10-07
+
+A live upgrade exposed a handoff deadlock: an older workflow-dispatch successor could remain queued behind its predecessor's concurrency group, then be mistaken by a newer exact successor as an active trader even though it had never reached the trader step. This could leave the newest successor skipping while the stale queued run later resumed from older state.
+
+The continuous-paper guard now ignores only queued/pending runs that are both older than the current run and pinned to an older head SHA. Same-head queued runs, newer queued runs, and any run whose trader step is queued/pending/in-progress still block as before. Once a newest-head successor starts trading, any stale older queued run that later materializes will see that active trader and skip.
+
+Continuity/safety only. No strategy, risk limit, sizing, stop, promotion, or live-order behavior changes.
+
+**LIVE TRADING: DISABLED.**

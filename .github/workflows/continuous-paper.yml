@@ -208,6 +208,7 @@ jobs:
           import json
           import os
           import subprocess
+          import sys
           from pathlib import Path
 
           payload = json.loads(
@@ -216,6 +217,7 @@ jobs:
               )
           )
           current = int(os.environ["GITHUB_RUN_ID"])
+          current_head = os.environ["GITHUB_SHA"]
           repository = os.environ["GITHUB_REPOSITORY"]
 
           for run in payload.get("workflow_runs", []):
@@ -228,6 +230,16 @@ jobs:
                   continue
               status = run.get("status")
               if status in {"queued", "pending"}:
+                  if (
+                      run_id < current
+                      and run.get("head_sha") != current_head
+                  ):
+                      print(
+                          "::notice::ignoring stale queued/pending "
+                          f"continuous-paper run {run_id} from older head",
+                          file=sys.stderr,
+                      )
+                      continue
                   print(run_id)
                   break
               if status != "in_progress":
