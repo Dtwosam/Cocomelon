@@ -100,20 +100,18 @@ def _request_without_position(
     return replace(request, open_positions=tuple(remaining))
 
 
-def _single_position_release_options(
-    evidence: ContinuousPaperOpeningOpportunityEvidence,
-) -> tuple[_ReleaseOption, ...]:
-    if evidence.baseline_risk_approved:
-        return ()
-    if not evidence.baseline_risk_reason_codes:
+def single_position_capacity_release_risk_positions(
+    request: RiskRequest,
+    baseline_risk_reason_codes: tuple[str, ...],
+) -> tuple[OpenPositionRisk, ...]:
+    if not baseline_risk_reason_codes:
         raise ProspectiveCapacityReflowOpportunityError(
             "rejected opportunity is missing risk reason"
         )
-    baseline_reason = evidence.baseline_risk_reason_codes[0]
+    baseline_reason = baseline_risk_reason_codes[0]
     if baseline_reason not in RISK_CAPACITY_REJECTION_REASONS:
         return ()
 
-    request = evidence.risk_request_object
     stop = request.strategy_decision.invalidation_price
     if stop is None:
         return ()
@@ -125,7 +123,7 @@ def _single_position_release_options(
         limits=request.limits,
     )
 
-    options: list[_ReleaseOption] = []
+    positions: list[OpenPositionRisk] = []
     for position in request.open_positions:
         counterfactual = _request_without_position(
             request,
@@ -139,13 +137,26 @@ def _single_position_release_options(
             capacity.rejection_reason is None
             and capacity.approved_risk_amount > 0
         ):
-            options.append(
-                _ReleaseOption(
-                    market=position.market.canonical,
-                    correlation_bucket=position.correlation_bucket,
-                )
-            )
-    return tuple(options)
+            positions.append(position)
+    return tuple(positions)
+
+
+def _single_position_release_options(
+    evidence: ContinuousPaperOpeningOpportunityEvidence,
+) -> tuple[_ReleaseOption, ...]:
+    if evidence.baseline_risk_approved:
+        return ()
+    request = evidence.risk_request_object
+    return tuple(
+        _ReleaseOption(
+            market=position.market.canonical,
+            correlation_bucket=position.correlation_bucket,
+        )
+        for position in single_position_capacity_release_risk_positions(
+            request,
+            evidence.baseline_risk_reason_codes,
+        )
+    )
 
 
 def single_position_capacity_release_options(
