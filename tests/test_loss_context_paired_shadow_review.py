@@ -50,14 +50,7 @@ def _checkpoint(
     if concentrated:
         blocked = {
             "AAA": 3 * index,
-            "BBB": index // 3,
-            "CCC": index // 3,
-            "DDD": matching - (3 * index) - 2 * (index // 3),
-        }
-        blocked = {
-            market: count
-            for market, count in blocked.items()
-            if count > 0
+            "BBB": index,
         }
     else:
         blocked = {
