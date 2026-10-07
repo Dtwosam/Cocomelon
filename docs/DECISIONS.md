@@ -594,3 +594,16 @@ A blocked shadow entry never creates a risk decision, execution attempt, fee, po
 The generic opening-admission hook defaults to absent and therefore does not change the active continuous-paper trader. This stage only prepares the reusable mechanism for the isolated future A/B shadow accounts.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-050 — Prospective portfolio proof must be paired account replay
+
+The D-048/D-049 loss-context experiment must be evaluated as two independent paper accounts consuming the same ordered future evidence stream. The baseline lane and candidate lane use the same strategy, risk limits, execution simulator, fees, funding, position management, cooldown logic, drawdown logic, and market universe. Their only candidate-specific difference is the D-049 opening-admission veto.
+
+Both lanes must maintain independent account state. Candidate performance cannot be inferred by subtracting historical losing trades or by applying a static PnL adjustment to the active paper account, because filtering an entry can change later capacity, daily-loss state, rolling drawdown, consecutive-loss cooldown state, fills, and exits.
+
+A paired shadow is economically comparable only while both lanes consume the identical chronological record stream without a lane error. If either lane fails, time regresses, or stream parity cannot be proven, the economic comparison fails closed and no PnL delta is reviewable.
+
+This stage remains research-only. Paired account replay does not make the portfolio counterfactual complete by itself, does not change the active paper trader, and grants no promotion or execution authority. Runtime isolation, restart continuity, and a later prospective evidence/readiness gate remain required before any strategy-admission decision.
+
+**LIVE TRADING: DISABLED.**
