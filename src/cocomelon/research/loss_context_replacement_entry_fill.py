@@ -167,21 +167,24 @@ def loss_context_replacement_entry_fill_summary(
         tuple[str, str],
         CandidateCausedCapacityRelease,
     ] = {}
-    for release in releases:
-        key = _release_key(release)
+    for causal_release in releases:
+        key = _release_key(causal_release)
         if key in releases_by_key:
             raise LossContextReplacementEntryFillError(
                 "duplicate causal release option"
             )
-        if release.opportunity_timestamp_ms < freeze.prospective_not_before_ms:
+        if (
+            causal_release.opportunity_timestamp_ms
+            < freeze.prospective_not_before_ms
+        ):
             raise LossContextReplacementEntryFillError(
                 "causal release predates prospective boundary"
             )
-        if release.release_block_reason != "frozen_loss_context":
+        if causal_release.release_block_reason != "frozen_loss_context":
             raise LossContextReplacementEntryFillError(
                 "causal release reason is invalid"
             )
-        releases_by_key[key] = release
+        releases_by_key[key] = causal_release
 
     seen_option_ids: set[str] = set()
     option_results: list[dict[str, object]] = []
