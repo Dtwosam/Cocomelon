@@ -594,3 +594,18 @@ A blocked shadow entry never creates a risk decision, execution attempt, fee, po
 The generic opening-admission hook defaults to absent and therefore does not change the active continuous-paper trader. This stage only prepares the reusable mechanism for the isolated future A/B shadow accounts.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-050 — Prospective portfolio proof uses paired isolated accounts
+
+The D-048 loss-context portfolio hypothesis must be evaluated with two independent paper accounts consuming the same chronological mainnet evidence stream. Both lanes use the same frozen replay configuration, strategy logic, risk engine, sizing, execution model, position-management rules, fees, funding, and market data.
+
+Before the D-048 prospective boundary, both lanes refuse new exposure. After the boundary, the baseline lane admits every ordinary directional setup into the normal opening path while the candidate lane applies only the exact D-049 frozen-context opening veto. The candidate must never suppress a whole direction or rewrite strategy decisions.
+
+Each lane owns independent cash, equity, open positions, daily realized PnL, rolling seven-day peak, drawdown, consecutive-loss state, risk capacity, fills, fees, funding, and closed-trade lifecycle. Account-level differences are therefore allowed to compound naturally through later risk/cooldown/capacity decisions instead of being approximated by summing independent trade paths.
+
+The paired engine records candidate-minus-baseline equity, total account PnL, realized net PnL, drawdown, opening/risk activity, and admission counts. Matching-context avoidance is useful only if the isolated candidate account eventually proves superior on genuinely future evidence; the existence of a positive delta on one short run grants no strategy or promotion authority.
+
+This paired shadow is research-only and remains isolated from the active continuous-paper account. It cannot alter the active strategy, LONG/SHORT preference, risk limits, sizing, stops, positions, cooldown, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
