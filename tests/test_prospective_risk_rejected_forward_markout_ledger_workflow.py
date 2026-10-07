@@ -127,7 +127,9 @@ def test_risk_rejected_ledger_accepts_authenticated_fail_closed_handoff() -> Non
     assert '"Measure durable continuous paper state"' in source
     assert '"Upload durable continuous paper state"' in source
     assert '"Upload compact continuous learning source"' in source
-    assert 'failed_steps != {"Fail closed on upgrade handoff source"}' in source
+    assert "allowed_failed_steps" in source
+    assert "Queue fallback exact successor continuous paper worker" in source
+    assert "Queue exact successor from fast resume" in source
     assert 'resolution_mode="durable_upgrade_handoff_event"' in source
     assert "latest_evidence_eligible_with_compact_artifact" in source
     assert "selected source paper run is not evidence-eligible" in source
