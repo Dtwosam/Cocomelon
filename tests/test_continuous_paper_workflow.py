@@ -1019,7 +1019,7 @@ def test_upgrade_handoff_rebuilds_cooldown_evidence_after_successor_dispatch() -
     assert "RESEARCH ONLY / NO EXECUTION / NO RISK CHANGE" in source
     assert "Upload early cooldown evidence" in source
     assert (
-        "steps.deferred_cooldown_rebuild.outputs.ready == 'true'"
+        "steps.deferred_cooldown_rebuild.outcome == 'success'"
         in source
     )
     assert "continuous-paper-cooldown-evidence-" in source
@@ -1166,7 +1166,7 @@ def test_safe_handoff_rebuilds_loss_streak_context_after_successor() -> None:
         upload_at,
     )]
     assert (
-        "steps.deferred_loss_streak_context_audit.outputs.ready == 'true'"
+        "steps.deferred_loss_streak_context_audit.outcome == 'success'"
         in upload_block
     )
     assert (
@@ -1387,7 +1387,7 @@ def test_upgrade_handoff_builds_cooldown_context_stability() -> None:
 
     upload = source[stability_upload_at:holder_release_at]
     assert (
-        "steps.deferred_cooldown_context_stability.outputs.ready == 'true'"
+        "steps.deferred_cooldown_context_stability.outcome == 'success'"
         in upload
     )
     assert "if-no-files-found: error" in upload
@@ -1425,7 +1425,7 @@ def test_upgrade_handoff_builds_cooldown_context_selection_record() -> None:
     assert "cooldown-context-stability-summary.json" in upload
     assert "cooldown-context-selection-record.json" in upload
     assert (
-        "steps.deferred_cooldown_context_selection.outputs.ready == 'true'"
+        "steps.deferred_cooldown_context_selection.outcome == 'success'"
         in upload
     )
     assert "if-no-files-found: error" in upload
@@ -1566,7 +1566,7 @@ def test_loss_context_paired_shadow_runtime_handoff_is_non_blocking() -> None:
 
 
 
-def test_loss_context_handoff_chain_uses_explicit_readiness_outputs() -> None:
+def test_loss_context_handoff_chain_uses_raw_success_outcomes() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     start = source.index(
         "- name: Rebuild loss-streak context audit after handoff"
@@ -1578,37 +1578,37 @@ def test_loss_context_handoff_chain_uses_explicit_readiness_outputs() -> None:
     chain = source[start:end]
 
     assert (
-        "steps.deferred_loss_streak_context_audit.outputs.ready == 'true'"
+        "steps.deferred_loss_streak_context_audit.outcome == 'success'"
         in chain
     )
-    assert "steps.loss_context_freeze.outputs.ready == 'true'" in chain
-    assert "steps.loss_context_prospective.outputs.ready == 'true'" in chain
+    assert "steps.loss_context_freeze.outcome == 'success'" in chain
+    assert "steps.loss_context_prospective.outcome == 'success'" in chain
     assert (
-        "steps.loss_context_account_readiness.outputs.ready == 'true'"
-        in chain
-    )
-    assert (
-        "steps.loss_context_capacity_reflow.outputs.ready == 'true'"
+        "steps.loss_context_account_readiness.outcome == 'success'"
         in chain
     )
     assert (
-        "steps.loss_context_holder_release_execution.outputs.ready == 'true'"
+        "steps.loss_context_capacity_reflow.outcome == 'success'"
         in chain
     )
     assert (
-        "steps.loss_context_replacement_entry_fill.outputs.ready == 'true'"
+        "steps.loss_context_holder_release_execution.outcome == 'success'"
         in chain
     )
     assert (
-        "steps.loss_context_replacement_exit_pnl.outputs.ready == 'true'"
+        "steps.loss_context_replacement_entry_fill.outcome == 'success'"
         in chain
     )
     assert (
-        "steps.loss_context_portfolio_composition.outputs.ready == 'true'"
+        "steps.loss_context_replacement_exit_pnl.outcome == 'success'"
         in chain
     )
     assert (
-        "steps.loss_context_portfolio_shadow_freeze.outputs.ready == 'true'"
+        "steps.loss_context_portfolio_composition.outcome == 'success'"
+        in chain
+    )
+    assert (
+        "steps.loss_context_portfolio_shadow_freeze.outcome == 'success'"
         in chain
     )
     assert (
@@ -1623,7 +1623,7 @@ def test_loss_context_handoff_chain_uses_explicit_readiness_outputs() -> None:
     )
 
 
-def test_loss_context_generated_steps_publish_ready_outputs() -> None:
+def test_loss_context_optional_freezes_fail_closed_without_candidates() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     for step_id in (
         "loss_context_prospective",
@@ -1642,7 +1642,7 @@ def test_loss_context_generated_steps_publish_ready_outputs() -> None:
 
 
 
-def test_cooldown_handoff_chain_uses_explicit_readiness_outputs() -> None:
+def test_cooldown_handoff_chain_uses_raw_success_outcomes() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     start = source.index(
         "- name: Rebuild deferred cooldown evidence after handoff"
@@ -1653,16 +1653,16 @@ def test_cooldown_handoff_chain_uses_explicit_readiness_outputs() -> None:
     )
     chain = source[start:end]
 
-    assert "steps.deferred_cooldown_rebuild.outputs.ready == 'true'" in chain
+    assert "steps.deferred_cooldown_rebuild.outcome == 'success'" in chain
     assert (
-        "steps.deferred_cooldown_context_stability.outputs.ready == 'true'"
+        "steps.deferred_cooldown_context_stability.outcome == 'success'"
         in chain
     )
     assert (
-        "steps.deferred_cooldown_context_selection.outputs.ready == 'true'"
+        "steps.deferred_cooldown_context_selection.outcome == 'success'"
         in chain
     )
-    assert "steps.cooldown_context_freeze.outputs.ready == 'true'" in chain
+    assert "steps.cooldown_context_freeze.outcome == 'success'" in chain
     assert (
         "hashFiles('continuous-paper-state/"
         "cooldown-context-stability-summary.json')"
@@ -1675,7 +1675,7 @@ def test_cooldown_handoff_chain_uses_explicit_readiness_outputs() -> None:
     )
 
 
-def test_cooldown_generated_steps_publish_ready_outputs() -> None:
+def test_cooldown_optional_freezes_fail_closed_without_candidates() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     for step_id in (
         "deferred_cooldown_context_stability",
@@ -1687,3 +1687,40 @@ def test_cooldown_generated_steps_publish_ready_outputs() -> None:
         next_step = source.find("\n      - name:", start)
         block = source[start:] if next_step < 0 else source[start:next_step]
         assert 'echo "ready=true" >> "$GITHUB_OUTPUT"' in block
+
+
+def test_optional_research_freezes_fail_closed_without_qualified_candidate() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    loss_start = source.index(
+        "- name: Freeze stable loss context prospectively"
+    )
+    loss_end = source.index(
+        "- name: Score frozen loss context on future trades",
+        loss_start,
+    )
+    loss_block = source[loss_start:loss_end]
+    assert "no stable loss context selected" in loss_block
+    assert "exit 78" in loss_block
+
+    portfolio_start = source.index(
+        "- name: Freeze loss-context portfolio shadow prospectively"
+    )
+    portfolio_end = source.index(
+        "- name: Upload immutable loss-context portfolio shadow candidate",
+        portfolio_start,
+    )
+    portfolio_block = source[portfolio_start:portfolio_end]
+    assert "portfolio composition is not ready" in portfolio_block
+    assert "exit 78" in portfolio_block
+
+    cooldown_start = source.index(
+        "- name: Freeze selected cooldown context prospectively"
+    )
+    cooldown_end = source.index(
+        "- name: Score frozen cooldown context on future evidence",
+        cooldown_start,
+    )
+    cooldown_block = source[cooldown_start:cooldown_end]
+    assert "no stable cooldown context selected" in cooldown_block
+    assert "exit 78" in cooldown_block
