@@ -497,3 +497,16 @@ This stage proves only causal single-position capacity release. It does not clai
 No active strategy, side preference, risk limit, sizing, stop, promotion state, or execution behavior changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-043 — Freed loss-context capacity must be executable before replacement credit
+
+D-042 proves that removing a frozen bad-context holder would causally free capacity for a later opportunity. That is still not enough to credit the capacity as economically usable. Before any replacement entry can be modeled, the exact holder release must be replayed against captured decision-time execution evidence.
+
+Only causal D-042 release options are eligible. The holder-release replay must use the captured paper execution configuration, reduce-only planner, configured latency, captured L2 book, fees, instrument metadata, and exact opening-plan lineage. A full close is required before the option can advance to replacement-entry investigation; partial fills, no fills, planning rejections, unbound execution configuration, missing captured books, or lineage conflicts cannot be treated as freed capacity.
+
+Each opportunity/holder release path is evaluated independently. Repeated hypothetical releases of the same holder at different opportunity times are not collapsed into one terminal value because their captured books may differ.
+
+This stage records execution feasibility only. It does not place or modify a paper position, does not model the replacement entry, replacement exit, replacement PnL, or recursive reflow, and grants no strategy, risk, promotion, or execution authority.
+
+**LIVE TRADING: DISABLED.**
