@@ -528,6 +528,6 @@ The minimum research-review floor is 72 future hours, nine checkpoints, 30 newly
 
 D-039 is a shared evidence contract, not a workflow-specific exception. Any research consumer that reads continuous-paper durable artifacts must accept a narrowly authenticated handoff-tail-failed paper run only when the trader, durable-state measurement, and durable-state upload succeeded and the failed steps match the locked D-039 handoff-tail shapes.
 
-Continuous Paper Exact Path Export and the Prospective Two-Strike Stop Filter Ledger now follow that contract. They still require the exact run/attempt artifact and reject arbitrary failed/cancelled/timed-out runs. Manual exact dispatch remains strict and fails closed.
+Continuous Paper Exact Path Export and the Prospective Two-Strike Stop Filter Ledger now follow that contract. They still require the exact run/attempt artifact and reject arbitrary failed/cancelled/timed-out runs. Automated completion events only wake discovery; newest eligible artifact-bearing run wins, preventing late older completions from regressing evidence lineage. Manual exact dispatch remains strict and fails closed.
 
 This is evidence-continuity plumbing only. It changes no trading economics or authority.
