@@ -262,10 +262,16 @@ class LossContextPairedShadowBackgroundFeed:
                 return True
             if self._stop_requested.is_set():
                 return True
-            self._stop_requested.set()
-        try:
-            self._queue.put_nowait(_StopItem())
-        except queue.Full:
+            try:
+                self._queue.put_nowait(_StopItem())
+            except queue.Full:
+                self._stop_requested.set()
+                self._queue_overflow_count += 1
+                stop_failed = True
+            else:
+                self._stop_requested.set()
+                stop_failed = False
+        if stop_failed:
             self._fail(
                 "stop_queue_overflow",
                 "paired shadow stop sentinel could not be queued",
