@@ -136,6 +136,12 @@ from cocomelon.research.continuous_paper_opening_rank import (
     LatestCoarseRankTracker,
     opening_rank_attribution,
 )
+from cocomelon.research.loss_context_paired_shadow_runtime import (
+    LossContextPairedShadowRuntime,
+)
+from cocomelon.research.loss_context_portfolio_shadow_candidate import (
+    verify_loss_context_portfolio_shadow_freeze,
+)
 from cocomelon.research.continuous_paper_replacement_funding import (
     ContinuousPaperReplacementFundingStore,
     ReplacementFundingBoundaryRequest,
@@ -498,6 +504,13 @@ DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME = (
 )
 DELAYED_ENTRY_120S_EXECUTION_SHADOW_STATE_FILENAME = (
     "delayed-entry-120s-execution-shadow-state.json"
+)
+LOSS_CONTEXT_PORTFOLIO_SHADOW_FREEZE_FILENAME = (
+    "loss-context-portfolio-shadow-freeze.json"
+)
+LOSS_CONTEXT_PAIRED_SHADOW_ROOT = "loss-context-paired-portfolio-shadow"
+LOSS_CONTEXT_PAIRED_SHADOW_SUMMARY_FILENAME = (
+    "loss-context-paired-portfolio-shadow-summary.json"
 )
 DRAWDOWN_STATE_FILENAME = "drawdown-state.json"
 UPGRADE_DEFERRED_RESEARCH_FILENAMES = (
@@ -4453,9 +4466,16 @@ class _RecordPump:
             Callable[[], Sequence[PaperPosition]] | None
         ) = None,
         decision_epoch_wakeup: asyncio.Event | None = None,
+        loss_context_paired_shadow_runtime: (
+            LossContextPairedShadowRuntime | None
+        ) = None,
     ) -> None:
         self.pipeline = pipeline
         self.journal = journal
+        self.loss_context_paired_shadow_runtime = (
+            loss_context_paired_shadow_runtime
+        )
+        self.loss_context_paired_shadow_restore_error: str | None = None
         self.cadence_shadow = cadence_shadow
         self.cadence_shadow_error: str | None = None
         self.entry_mid_markout_shadow = (
@@ -4714,6 +4734,18 @@ class _RecordPump:
                     )
                     self.cadence_shadow = None
             finish_component("cadence_shadow", component_started)
+
+            component_started = loop.time()
+            if self.loss_context_paired_shadow_runtime is not None:
+                self.loss_context_paired_shadow_runtime.submit_record(
+                    record,
+                    now_ms=available,
+                    evaluate_decisions=evaluate_decisions,
+                )
+            finish_component(
+                "loss_context_paired_shadow_enqueue",
+                component_started,
+            )
             self.last_available_at_ms = available
             self.processed_records += 1
             self.journal_observations += len(observations)
@@ -4762,6 +4794,32 @@ class _RecordPump:
     @property
     def recent_closed_trades(self) -> tuple[TradeJournalEntry, ...]:
         return tuple(self._recent_closed_trades)
+
+    def loss_context_paired_shadow_payload(
+        self,
+    ) -> dict[str, object]:
+        runtime = self.loss_context_paired_shadow_runtime
+        if runtime is None:
+            return {
+                "enabled": False,
+                "research_only": True,
+                "shadow_only": True,
+                "paper_only": True,
+                "non_blocking_active_paper_feed": True,
+                "changes_strategy": False,
+                "changes_risk_limits": False,
+                "changes_positions": False,
+                "promotion_authority": False,
+                "execution_authority": False,
+                "error": self.loss_context_paired_shadow_restore_error,
+            }
+        payload = runtime.status_payload()
+        if self.loss_context_paired_shadow_restore_error is not None:
+            payload = dict(payload)
+            payload["restore_error"] = (
+                self.loss_context_paired_shadow_restore_error
+            )
+        return payload
 
     def cadence_shadow_payload(self) -> dict[str, object]:
         if self.cadence_shadow_error is not None:
@@ -7950,6 +8008,9 @@ def _operational_live_status_payload(
         "paper_only": True,
         "live_orders": False,
         "research_telemetry_deferred": True,
+        "loss_context_paired_portfolio_shadow": (
+            pump.loss_context_paired_shadow_payload()
+        ),
         "prospective_breakeven_preview": (
             None
             if (
@@ -9092,6 +9153,11 @@ async def run_continuous_paper_session(
     )
 
     event_loop_lag_task: asyncio.Task[None] | None = None
+    loss_context_paired_shadow_runtime: (
+        LossContextPairedShadowRuntime | None
+    ) = None
+    loss_context_paired_shadow_restore_error: str | None = None
+    loss_context_paired_shadow_checkpoint_error: str | None = None
     try:
         if not execution.health.healthy_for_new_exposure:
             raise RuntimeError(
@@ -9131,6 +9197,42 @@ async def run_continuous_paper_session(
             "initial_market_context",
             component_started,
         )
+
+        loss_context_freeze_path = (
+            root / LOSS_CONTEXT_PORTFOLIO_SHADOW_FREEZE_FILENAME
+        )
+        if loss_context_freeze_path.exists():
+            component_started = time.perf_counter()
+            try:
+                loss_context_freeze = (
+                    verify_loss_context_portfolio_shadow_freeze(
+                        loss_context_freeze_path
+                    )
+                )
+                loss_context_paired_shadow_runtime = (
+                    LossContextPairedShadowRuntime(
+                        freeze=loss_context_freeze,
+                        replay_config=replay_config,
+                        selected_markets=selected,
+                        state_root=(
+                            root / LOSS_CONTEXT_PAIRED_SHADOW_ROOT
+                        ),
+                        startup_timestamp_ms=started_at_ms,
+                    )
+                )
+                loss_context_paired_shadow_runtime.submit_rank_snapshot(
+                    initial_ranks,
+                    observed_at_ms=initial_rank_observed_at_ms,
+                )
+            except Exception as exc:
+                loss_context_paired_shadow_restore_error = (
+                    f"{type(exc).__name__}: {exc}"
+                )
+                loss_context_paired_shadow_runtime = None
+            record_startup_component(
+                "loss_context_paired_shadow_restore",
+                component_started,
+            )
 
         pipeline_restore_started = time.perf_counter()
         opening_lineage_sink = (
@@ -9212,6 +9314,12 @@ async def run_continuous_paper_session(
             entry_mid_markout_shadow=entry_mid_markout_shadow,
             position_provider=lambda: execution.account.positions,
             decision_epoch_wakeup=decision_epoch_wakeup,
+            loss_context_paired_shadow_runtime=(
+                loss_context_paired_shadow_runtime
+            ),
+        )
+        pump.loss_context_paired_shadow_restore_error = (
+            loss_context_paired_shadow_restore_error
         )
         record_startup_component("record_pump_init", component_started)
         startup_component_ms["pre_monitor_total"] = max(
@@ -9277,6 +9385,15 @@ async def run_continuous_paper_session(
                 startup_ranks,
                 observed_at_ms=startup_rank_observed_at_ms,
             )
+            if loss_context_paired_shadow_runtime is not None:
+                loss_context_paired_shadow_runtime.submit_rank_snapshot(
+                    startup_ranks,
+                    observed_at_ms=startup_rank_observed_at_ms,
+                )
+                loss_context_paired_shadow_runtime.submit_restore_warmup_complete()
+                loss_context_paired_shadow_runtime.submit_reconcile(
+                    selected
+                )
             for market in selected:
                 snapshot = snapshots.get(market.canonical)
                 if snapshot is not None:
@@ -10186,6 +10303,11 @@ async def run_continuous_paper_session(
                     refreshed_ranks,
                     observed_at_ms=rank_observed_at_ms,
                 )
+                if loss_context_paired_shadow_runtime is not None:
+                    loss_context_paired_shadow_runtime.submit_rank_snapshot(
+                        refreshed_ranks,
+                        observed_at_ms=rank_observed_at_ms,
+                    )
                 _mark_event_loop_phase(pump, "funding_refresh")
                 await refresh_funding()
                 await capture_due_replacement_funding(
@@ -10259,6 +10381,10 @@ async def run_continuous_paper_session(
                             selected_keys = desired_keys
                             pipeline.reconcile_markets(selected)
                             pump.reconcile_cadence_shadow(selected)
+                            if loss_context_paired_shadow_runtime is not None:
+                                loss_context_paired_shadow_runtime.submit_reconcile(
+                                    selected
+                                )
                             previous_group = supervisor_group
                             supervisor_group = replacement_group
                             pump.shortlist_rotation_promotions += 1
@@ -10329,6 +10455,61 @@ async def run_continuous_paper_session(
         await flush_background_checkpoint()
         persist_checkpoint_sync()
         ended_at_ms = utc_now_ms()
+        if loss_context_paired_shadow_runtime is not None:
+            shadow_summary_path = (
+                root / LOSS_CONTEXT_PAIRED_SHADOW_SUMMARY_FILENAME
+            )
+            shadow_status = (
+                loss_context_paired_shadow_runtime.status_payload()
+            )
+            try:
+                shadow_checkpoint = (
+                    await loss_context_paired_shadow_runtime.checkpoint(
+                        end_ms=ended_at_ms
+                    )
+                )
+                _write_json_atomic(
+                    shadow_summary_path,
+                    {
+                        "runtime": shadow_status,
+                        "checkpoint": shadow_checkpoint,
+                        "checkpoint_published": True,
+                        "checkpoint_error": None,
+                        "research_only": True,
+                        "shadow_only": True,
+                        "paper_only": True,
+                        "changes_strategy": False,
+                        "changes_risk_limits": False,
+                        "changes_positions": False,
+                        "promotion_authority": False,
+                        "execution_authority": False,
+                    },
+                )
+            except Exception as exc:
+                loss_context_paired_shadow_checkpoint_error = (
+                    f"{type(exc).__name__}: {exc}"
+                )
+                _write_json_atomic(
+                    shadow_summary_path,
+                    {
+                        "runtime": (
+                            loss_context_paired_shadow_runtime.status_payload()
+                        ),
+                        "checkpoint": None,
+                        "checkpoint_published": False,
+                        "checkpoint_error": (
+                            loss_context_paired_shadow_checkpoint_error
+                        ),
+                        "research_only": True,
+                        "shadow_only": True,
+                        "paper_only": True,
+                        "changes_strategy": False,
+                        "changes_risk_limits": False,
+                        "changes_positions": False,
+                        "promotion_authority": False,
+                        "execution_authority": False,
+                    },
+                )
         if exit_reason == "upgrade_requested":
             _clear_upgrade_deferred_research(root)
         else:
@@ -10740,6 +10921,11 @@ async def run_continuous_paper_session(
         _write_json_atomic(root / SUMMARY_FILENAME, summary.payload())
         return summary
     finally:
+        if loss_context_paired_shadow_runtime is not None:
+            try:
+                await loss_context_paired_shadow_runtime.close()
+            except Exception:
+                pass
         if event_loop_lag_task is not None:
             event_loop_lag_task.cancel()
             await asyncio.gather(
