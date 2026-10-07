@@ -700,3 +700,39 @@ def test_paired_shadow_checkpoint_tracks_reconciled_market_set(
         shadow.close()
 
     assert payload["selected_markets"] == ["OTHER", "TEST"]
+
+
+
+def test_paired_shadow_reconcile_refuses_to_drop_open_shadow_market(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    shadow = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=tmp_path,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="trend",
+        ),
+    )
+    try:
+        shadow.on_record(
+            _snapshot_record(),
+            EVALUATED_AT_MS - 1_000,
+        )
+        shadow.on_record(_trigger_record(), EVALUATED_AT_MS)
+        shadow.on_record(
+            _book(OPEN_BOOK_MS, bid="99.9", ask="100.1"),
+            OPEN_BOOK_MS,
+        )
+
+        with pytest.raises(
+            RuntimeError,
+            match="drop open shadow position coverage",
+        ):
+            shadow.reconcile_markets((MarketId("", "OTHER"),))
+    finally:
+        shadow.close()
