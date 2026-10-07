@@ -30,7 +30,7 @@ def test_decision_learning_catchup_finds_authenticated_decision_source() -> None
         in source
     )
     assert 'run.get("path") != ".github/workflows/continuous-paper.yml"' in source
-    assert 'run.get("name") != "Continuous Mainnet Paper Trader"' in source
+    assert 'run["name"].startswith("Continuous Paper · ")' in source
     assert 'run.get("conclusion") not in {"success", "failure"}' in source
     assert '"Run continuous paper trader"' in source
     assert '"Export compact continuous decision facts"' in source
