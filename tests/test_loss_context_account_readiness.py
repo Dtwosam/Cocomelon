@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -11,7 +12,9 @@ from cocomelon.domain.strategy import Direction
 from cocomelon.research.loss_context_account_readiness import (
     loss_context_account_readiness,
 )
-from cocomelon.research.loss_context_candidate import build_loss_context_candidate_freeze
+from cocomelon.research.loss_context_candidate import (
+    build_loss_context_candidate_freeze,
+)
 from cocomelon.research.loss_streak_context_audit import LOSS_STREAK_CONTEXT_SCHEMA_VERSION
 
 
@@ -210,3 +213,24 @@ def test_loss_context_account_gate_rejects_delta_source_drift() -> None:
             freeze=freeze,
             prospective_report=prospective,
         )
+
+
+
+def test_account_readiness_workflow_is_downstream_of_d038() -> None:
+    source = Path(
+        ".github/workflows/continuous-paper.yml"
+    ).read_text(encoding="utf-8")
+    prospective_at = source.index(
+        "- name: Score frozen loss context on future trades"
+    )
+    readiness_at = source.index(
+        "- name: Evaluate loss-context fixed-schedule account economics"
+    )
+    readiness_upload_at = source.index(
+        "- name: Upload loss-context account readiness"
+    )
+    cooldown_at = source.index(
+        "- name: Rebuild deferred cooldown evidence after handoff"
+    )
+    assert prospective_at < readiness_at < readiness_upload_at < cooldown_at
+    assert "cocomelon-loss-context-account-readiness" in source
