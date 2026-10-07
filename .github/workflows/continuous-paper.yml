@@ -119,6 +119,9 @@ on:
       - "src/cocomelon/research/loss_context_replacement_entry_fill.py"
       - "src/cocomelon/research/deferred_loss_context_replacement_entry_fill.py"
       - "scripts/rebuild_deferred_loss_context_replacement_entry_fill.py"
+      - "src/cocomelon/research/loss_context_replacement_exit_pnl.py"
+      - "src/cocomelon/research/deferred_loss_context_replacement_exit_pnl.py"
+      - "scripts/rebuild_deferred_loss_context_replacement_exit_pnl.py"
       - "src/cocomelon/loss_context_candidate_cli.py"
       - "src/cocomelon/loss_context_prospective_cli.py"
       - "src/cocomelon/loss_context_account_readiness_cli.py"
@@ -1548,6 +1551,77 @@ jobs:
         with:
           name: continuous-paper-loss-context-replacement-entry-${{ github.run_id }}-${{ github.run_attempt }}
           path: continuous-paper-state/loss-context-replacement-entry-fill-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Rebuild loss-context replacement exit pnl
+        id: loss_context_replacement_exit_pnl
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-candidate-freeze.json') != '' && hashFiles('continuous-paper-state/loss-context-replacement-entry-fill-summary.json') != '' && hashFiles('continuous-paper-state/session-summary.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/rebuild_deferred_loss_context_replacement_exit_pnl.py \
+            "$STATE_ROOT" \
+            | tee /tmp/loss-context-replacement-exit-pnl.json
+          test -s "$STATE_ROOT/loss-context-replacement-exit-pnl-summary.json"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/"
+                  "loss-context-replacement-exit-pnl-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          print("## Loss-context replacement exit PnL")
+          print("- authority: RESEARCH ONLY / NO POSITION OR RISK CHANGE")
+          print(
+              "- enabled / exact pnl available / horizons complete: "
+              f"{payload.get('enabled', False)} / "
+              f"{payload.get('exact_realized_pnl_available', False)} / "
+              f"{payload.get('all_horizons_complete', False)}"
+          )
+          print(
+              "- all horizons positive / next portfolio investigation: "
+              f"{payload.get('all_horizons_positive', False)} / "
+              f"{payload.get('ready_for_portfolio_counterfactual_investigation', False)}"
+          )
+          for key, item in sorted(
+              payload.get("horizon_reviews", {}).items(),
+              key=lambda entry: int(entry[0]),
+          ):
+              print(
+                  "- horizon "
+                  f"{key}ms: exact={item.get('exact_realized_pnl_options')} / "
+                  f"{item.get('options')}; "
+                  f"pnl={item.get('exact_realized_pnl')}; "
+                  f"complete={item.get('complete')}; "
+                  f"positive={item.get('positive')}"
+              )
+          print(
+              "- selected horizon / strategy pnl claimed: "
+              f"{payload.get('selected_horizon_ms')} / "
+              f"{payload.get('strategy_level_realized_pnl_claimed', False)}"
+          )
+          print(
+              "- strategy / risk / position / execution authority: "
+              f"{payload.get('changes_strategy', False)} / "
+              f"{payload.get('changes_risk_limits', False)} / "
+              f"{payload.get('changes_positions', False)} / "
+              f"{payload.get('execution_authority', False)}"
+          )
+          PY
+
+      - name: Upload loss-context replacement exit pnl
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-replacement-exit-pnl-summary.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-loss-context-replacement-exit-pnl-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/loss-context-replacement-exit-pnl-summary.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
