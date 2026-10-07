@@ -253,6 +253,7 @@ def loss_context_portfolio_composition_summary(
 
     horizon_summaries: dict[str, object] = {}
     all_structurally_composable = gate_reason is None
+    source_max_timestamp_ms = 0
     for horizon_ms in horizons:
         key = str(horizon_ms)
         rows: list[dict[str, object]] = []
@@ -295,6 +296,10 @@ def loss_context_portfolio_composition_summary(
                 raise LossContextPortfolioCompositionError(
                     "replacement close precedes entry"
                 )
+            source_max_timestamp_ms = max(
+                source_max_timestamp_ms,
+                closed_at_ms,
+            )
             opportunity_counts[opportunity_id] += 1
             release_counts[release_plan_id] += 1
             replacement_pnl += pnl
@@ -365,6 +370,7 @@ def loss_context_portfolio_composition_summary(
         "claim_scope": (
             "loss_context_replacement_portfolio_composition_safety"
         ),
+        "source_max_timestamp_ms": source_max_timestamp_ms,
         "actual_fixed_schedule_pnl": str(actual_pnl),
         "filtered_fixed_schedule_pnl": str(filtered_pnl),
         "filtered_fixed_schedule_delta_pnl": str(filtered_delta),

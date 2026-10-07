@@ -4841,3 +4841,14 @@ The report keeps horizons separate and may show a first-order filtered-account-p
 Only a complete, conflict-free horizon becomes eligible for the next chronological portfolio replay stage. No active trading behavior changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Loss-context portfolio shadow freeze — 2026-10-07
+
+Cocomelon now has the admission boundary for the next account-level experiment. A D-047-composable replacement portfolio is frozen as a new research-only shadow candidate before it can observe future account performance.
+
+The freeze preserves all fixed replacement horizons, binds the exact loss-context and source composition digest, and imposes a fresh six-hour embargo. It never chooses the best historical horizon and cannot reuse the touched D-046/D-047 evidence as prospective proof.
+
+No active paper behavior changes. The next frontier is a separate future shadow account whose equity, risk vetoes, cooldowns, drawdown state, capacity, entries, exits, fees, funding, and realized PnL evolve independently alongside the unchanged baseline paper account.
+
+**LIVE TRADING: DISABLED.**

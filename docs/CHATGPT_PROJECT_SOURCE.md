@@ -461,3 +461,10 @@ Exact replacement PnL from D-046 is still independent-path evidence. Before any 
 A first-order filtered-account-plus-replacement PnL is diagnostic only. It does not include chronological account-state effects on later risk decisions and is never called portfolio or strategy PnL. No horizon is selected or averaged.
 
 The next build frontier after D-047 is exact chronological portfolio replay for structurally composable horizons, still research-only and with no strategy/risk/execution authority.
+
+
+### Portfolio shadow prospective-freeze rule — D-048
+
+D-047 composition is touched evidence and cannot itself justify a portfolio strategy. Once all fixed horizons are structurally composable, freeze the complete loss-context portfolio shadow specification immutably, preserve every horizon without selecting a winner, and wait through a fresh six-hour embargo.
+
+Only evidence after the new prospective boundary may support account-level shadow claims. The active paper trader remains unchanged. The next build frontier is an isolated prospective shadow account that carries its own equity, daily PnL, rolling drawdown peak, loss streak/cooldown state, capacity, fills, exits, fees, and funding while consuming the same future mainnet stream.
