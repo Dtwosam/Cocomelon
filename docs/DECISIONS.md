@@ -579,3 +579,18 @@ The portfolio shadow receives the standard six-hour prospective embargo after th
 This freeze grants no strategy, risk, sizing, position, stop, promotion, or execution authority. The active continuous-paper strategy is unchanged. The next stage may build a separate prospective shadow account that evolves its own equity, cooldown, drawdown, capacity, entries, and exits from the future stream.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-049 — Portfolio shadow changes admission only at the opening boundary
+
+The prospective loss-context portfolio shadow must not rewrite strategy decisions, disable a direction, or alter position-management signals. Its only candidate-specific difference from the paired baseline shadow is an opening-admission veto applied immediately before the normal risk request and paper execution path.
+
+The veto matches every frozen D-048 context dimension exactly using information available by the opening attempt. Supported dimensions are lead strategy, trend regime, volatility regime, 15m/1h return sign, direction when it is part of the frozen context, and coarse rank band. Rank-band matching uses the latest coarse rank known no later than the opening attempt, preserving the same entry-time semantics used by historical opening-rank evidence.
+
+Before the D-048 prospective boundary, both shadow lanes refuse new exposure while still being allowed to warm market/feature state. After the boundary, the baseline shadow admits every ordinary directional setup to the unchanged risk/execution path; the candidate shadow blocks only the exact frozen context. Same-side setups with different strategy/regime context remain eligible.
+
+A blocked shadow entry never creates a risk decision, execution attempt, fee, position, or capacity claim. Existing/open shadow positions continue to receive the ordinary unmodified strategy decisions for position management, so the filter cannot silently alter exits.
+
+The generic opening-admission hook defaults to absent and therefore does not change the active continuous-paper trader. This stage only prepares the reusable mechanism for the isolated future A/B shadow accounts.
+
+**LIVE TRADING: DISABLED.**
