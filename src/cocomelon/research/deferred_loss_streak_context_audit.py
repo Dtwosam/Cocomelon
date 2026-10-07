@@ -18,6 +18,9 @@ from cocomelon.research.loss_streak_context_audit import (
 )
 
 OUTPUT_FILENAME = "loss-streak-context-audit-summary.json"
+ALLOWED_HANDOFF_EXIT_REASONS = frozenset(
+    {"duration_elapsed", "upgrade_requested"}
+)
 
 
 class DeferredLossStreakContextAuditError(RuntimeError):
@@ -53,9 +56,13 @@ def rebuild_deferred_loss_streak_context_audit(
 ) -> dict[str, object]:
     root = Path(state_root)
     session = _load_object(root / "session-summary.json", "session summary")
-    if session.get("exit_reason") != "upgrade_requested":
+    exit_reason = session.get("exit_reason")
+    if (
+        not isinstance(exit_reason, str)
+        or exit_reason not in ALLOWED_HANDOFF_EXIT_REASONS
+    ):
         raise DeferredLossStreakContextAuditError(
-            "deferred rebuild requires an upgrade-requested handoff"
+            "deferred rebuild requires a completed paper handoff"
         )
 
     journal_path = root / "journal.sqlite3"
@@ -96,7 +103,7 @@ def rebuild_deferred_loss_streak_context_audit(
                 f"loss-streak audit gained authority: {field}"
             )
     output["deferred_post_handoff_rebuild"] = True
-    output["source_exit_reason"] = "upgrade_requested"
+    output["source_exit_reason"] = exit_reason
     output["error"] = None
     return output
 

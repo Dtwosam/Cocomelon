@@ -1125,7 +1125,7 @@ def test_upgrade_handoff_builds_correlation_priority_after_markouts() -> None:
 
 
 
-def test_upgrade_handoff_rebuilds_loss_streak_context_after_successor() -> None:
+def test_safe_handoff_rebuilds_loss_streak_context_after_successor() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
     assert '"src/cocomelon/research/loss_streak_context_audit.py"' in source
@@ -1149,6 +1149,16 @@ def test_upgrade_handoff_rebuilds_loss_streak_context_after_successor() -> None:
     )
     assert "Rebuild loss-streak context audit after handoff" in source
     assert "id: deferred_loss_streak_context_audit" in source
+    audit_at = source.index(
+        "- name: Rebuild loss-streak context audit after handoff"
+    )
+    audit_end = source.index(
+        "- name: Upload loss-streak context audit",
+        audit_at,
+    )
+    audit_block = source[audit_at:audit_end]
+    assert 'if [ "$exit_reason" != "upgrade_requested" ]; then' not in audit_block
+    assert "python scripts/rebuild_deferred_loss_streak_context_audit.py" in audit_block
     assert 'echo "ready=true" >> "$GITHUB_OUTPUT"' in source
     upload_at = source.index("- name: Upload loss-streak context audit")
     upload_block = source[upload_at:source.index(

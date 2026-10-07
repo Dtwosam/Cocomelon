@@ -1070,23 +1070,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          exit_reason="$(
-            python - <<'PY'
-          import json
-          from pathlib import Path
-
-          payload = json.loads(
-              Path(
-                  "continuous-paper-state/session-summary.json"
-              ).read_text(encoding="utf-8")
-          )
-          print(payload.get("exit_reason", ""))
-          PY
-          )"
-          if [ "$exit_reason" != "upgrade_requested" ]; then
-            echo "loss-streak audit not needed for exit reason: $exit_reason"
-            exit 0
-          fi
           python scripts/rebuild_deferred_loss_streak_context_audit.py \
             "$STATE_ROOT" \
             | tee /tmp/deferred-loss-streak-context-audit.json
