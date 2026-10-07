@@ -35,7 +35,7 @@ def test_weekly_drawdown_5m_workflow_uses_authenticated_paper_source() -> None:
 
     assert '      - "Continuous Mainnet Paper Trader"' in source
     assert "continuous-paper-learning-source-" in source
-    assert "latest_successful_with_compact_artifact" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert "manual source has no authenticated compact artifact" in source
     assert 'run.get("head_branch") != "main"' in source
     assert 'run.get("conclusion") != "success"' in source
