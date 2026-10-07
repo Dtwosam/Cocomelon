@@ -424,11 +424,13 @@ def _block_payload(
 
 def _chronological_blocks(
     rows: tuple[dict[str, object], ...],
+    *,
+    anchor: dict[str, object],
 ) -> tuple[dict[str, object], ...]:
     if not rows:
         return ()
     blocks: list[dict[str, object]] = []
-    prior: dict[str, object] | None = None
+    prior: dict[str, object] = anchor
     for index in range(REVIEW_BLOCK_COUNT):
         start = (len(rows) * index) // REVIEW_BLOCK_COUNT
         end = (len(rows) * (index + 1)) // REVIEW_BLOCK_COUNT
@@ -459,17 +461,26 @@ def build_paired_shadow_review(
         if _integer(row.get("end_ms"), "end_ms")
         >= freeze.prospective_not_before_ms
     )
+    anchor = None if not eligible else eligible[0]
     latest = None if not eligible else eligible[-1]
+    evidence_rows = () if len(eligible) < 2 else eligible[1:]
     duration_ms = (
         0
-        if latest is None
+        if anchor is None or latest is None
         else max(
             0,
             _integer(latest.get("end_ms"), "end_ms")
-            - freeze.prospective_not_before_ms,
+            - _integer(anchor.get("end_ms"), "end_ms"),
         )
     )
-    blocks = _chronological_blocks(eligible)
+    blocks = (
+        ()
+        if anchor is None
+        else _chronological_blocks(
+            evidence_rows,
+            anchor=anchor,
+        )
+    )
 
     reasons: list[str] = []
     if duration_ms < MIN_REVIEW_DURATION_MS:
@@ -489,15 +500,31 @@ def build_paired_shadow_review(
     drawdown_delta = ZERO
     dominant_market_share: Decimal | None = None
 
-    if latest is None:
+    if latest is None or anchor is None:
         reasons.append("no_eligible_checkpoints")
     else:
-        admission = _candidate_admission(latest)
-        matching = _matching_block_count(latest)
-        unattributed_matching = _unattributed_block_count(latest)
-        blocked_markets = _blocked_by_market(admission)
-        baseline_closed = _lane_closed_trades(latest, "baseline")
-        candidate_closed = _lane_closed_trades(latest, "candidate")
+        latest_admission = _candidate_admission(latest)
+        anchor_admission = _candidate_admission(anchor)
+        matching = (
+            _matching_block_count(latest)
+            - _matching_block_count(anchor)
+        )
+        unattributed_matching = (
+            _unattributed_block_count(latest)
+            - _unattributed_block_count(anchor)
+        )
+        blocked_markets = _subtract_market_counts(
+            _blocked_by_market(latest_admission),
+            _blocked_by_market(anchor_admission),
+        )
+        baseline_closed = (
+            _lane_closed_trades(latest, "baseline")
+            - _lane_closed_trades(anchor, "baseline")
+        )
+        candidate_closed = (
+            _lane_closed_trades(latest, "candidate")
+            - _lane_closed_trades(anchor, "candidate")
+        )
         candidate_lane = _mapping(latest.get("candidate"), "candidate")
         candidate_total_pnl = _decimal(
             candidate_lane.get("total_account_pnl"),
@@ -560,6 +587,12 @@ def build_paired_shadow_review(
         "values": freeze.values,
         "prospective_not_before_ms": freeze.prospective_not_before_ms,
         "eligible_checkpoint_count": len(eligible),
+        "evidence_checkpoint_count": len(evidence_rows),
+        "review_anchor_end_ms": (
+            None
+            if anchor is None
+            else _integer(anchor.get("end_ms"), "end_ms")
+        ),
         "future_duration_ms": duration_ms,
         "matching_context_blocks": matching,
         "unattributed_legacy_matching_context_blocks": (
