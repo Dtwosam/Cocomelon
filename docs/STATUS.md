@@ -4863,3 +4863,14 @@ The baseline shadow will only enforce the fresh prospective start boundary. The 
 The hook is opt-in and is not wired into the active paper trader. No current strategy, exits, risk limits, sizing, cooldowns, positions, or execution authority change.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Paired loss-context portfolio shadow core — 2026-10-07
+
+Cocomelon now has the core coordinator for the D-048/D-049 account-level A/B shadow. It feeds the same ordered record into two independent baseline-replay/account paths: an unchanged baseline admission lane and an exact-context-blocking candidate lane.
+
+The report exposes each lane's equity, realized net PnL, unrealized PnL, open notional, margin state, daily realized PnL, rolling seven-day peak, consecutive-loss state, open positions, closed-trade totals, and candidate-minus-baseline account deltas.
+
+The coordinator fails the economic comparison closed if either lane errors or chronology regresses. It is not yet wired into the active continuous-paper record pump; runtime isolation and restart-safe persistence are the next frontier. No active strategy, direction preference, risk limit, sizing, stop, position, promotion, or live-order behavior changes.
+
+**LIVE TRADING: DISABLED.**
