@@ -609,3 +609,14 @@ The paired engine records candidate-minus-baseline equity, total account PnL, re
 This paired shadow is research-only and remains isolated from the active continuous-paper account. It cannot alter the active strategy, LONG/SHORT preference, risk limits, sizing, stops, positions, cooldown, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-051 — Paired shadow handoffs may not discard staged openings
+
+The prospective paired portfolio shadow may not publish or restore a handoff checkpoint while either lane has a directional opening already staged but not yet resolved against its post-latency book.
+
+A staged opening is economically material: dropping it at a worker boundary could change fills, risk capacity, cooldown state, drawdown, later entries, and account PnL. Until pending-opening state itself is durably serializable, the safe rule is to expose both lanes' pending markets and declare the shadow handoff safe only when both sets are empty.
+
+This constraint applies only to the research shadow and may never delay, block, or alter the active continuous-paper trader. If a worker must hand off while the shadow is unsafe, shadow continuity fails closed rather than inventing a clean A/B continuation.
+
+**LIVE TRADING: DISABLED.**
