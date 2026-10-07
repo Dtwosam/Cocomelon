@@ -183,9 +183,21 @@ jobs:
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$SOURCE_RUN_ID" ]; then
             exit 0
           fi
-          gh api \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?per_page=100" \
-            > /tmp/continuous-paper-guard-runs.json
+          guard_runs_loaded=false
+          for attempt in $(seq 1 8); do
+            if gh api \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?per_page=100" \
+              > /tmp/continuous-paper-guard-runs.json; then
+              guard_runs_loaded=true
+              break
+            fi
+            echo "::warning::continuous-paper guard API unavailable ($attempt/8)"
+            sleep 15
+          done
+          if [ "$guard_runs_loaded" != "true" ]; then
+            echo "::error::continuous-paper guard could not read workflow state"
+            exit 1
+          fi
           ACTIVE="$(
             python - <<'PY'
           import json
@@ -216,16 +228,32 @@ jobs:
               if status != "in_progress":
                   continue
 
-              jobs_raw = subprocess.run(
-                  [
-                      "gh",
-                      "api",
-                      f"repos/{repository}/actions/runs/{run_id}/jobs?per_page=100",
-                  ],
-                  check=True,
-                  capture_output=True,
-                  text=True,
-              )
+              jobs_raw = None
+              for attempt in range(1, 7):
+                  candidate = subprocess.run(
+                      [
+                          "gh",
+                          "api",
+                          f"repos/{repository}/actions/runs/{run_id}/jobs?per_page=100",
+                      ],
+                      check=False,
+                      capture_output=True,
+                      text=True,
+                  )
+                  if candidate.returncode == 0:
+                      jobs_raw = candidate
+                      break
+                  print(
+                      "::warning::continuous-paper guard job API unavailable "
+                      f"for {run_id} ({attempt}/6)",
+                      file=sys.stderr,
+                  )
+                  import time
+                  time.sleep(10)
+              if jobs_raw is None:
+                  raise SystemExit(
+                      "continuous-paper guard could not inspect active run jobs"
+                  )
               jobs = json.loads(jobs_raw.stdout).get("jobs", [])
               paper_jobs = [
                   job for job in jobs if job.get("name") == "paper"
@@ -685,9 +713,14 @@ jobs:
           set -euo pipefail
           expected_title="Continuous Paper · $GITHUB_RUN_ID"
           find_successor() {
-            gh api \
-              "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" |
-              EXPECTED_TITLE="$expected_title" python -c '
+            local payload
+            for attempt in $(seq 1 6); do
+              if payload="$(
+                gh api \
+                  "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100"
+              )"; then
+                printf '%s' "$payload" |
+                  EXPECTED_TITLE="$expected_title" python -c '
           import json, os, sys
           payload = json.load(sys.stdin)
           expected = os.environ["EXPECTED_TITLE"]
@@ -701,17 +734,35 @@ jobs:
           ]
           print(matches[0]["id"] if matches else "")
           '
+                return 0
+              fi
+              echo "::warning::successor receipt API unavailable ($attempt/6)" >&2
+              sleep 10
+            done
+            return 1
           }
-          successor_run_id="$(find_successor)"
+          successor_run_id="$(find_successor || true)"
           if [ -z "$successor_run_id" ]; then
-            gh workflow run continuous-paper.yml \
-              --repo "$GITHUB_REPOSITORY" \
-              --ref main \
-              -f "source_run_id=$GITHUB_RUN_ID" \
-              -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
+            dispatched=false
+            for attempt in $(seq 1 8); do
+              if gh workflow run continuous-paper.yml \
+                --repo "$GITHUB_REPOSITORY" \
+                --ref main \
+                -f "source_run_id=$GITHUB_RUN_ID" \
+                -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"; then
+                dispatched=true
+                break
+              fi
+              echo "::warning::exact successor dispatch API unavailable ($attempt/8)"
+              sleep 15
+            done
+            if [ "$dispatched" != "true" ]; then
+              echo "::error::exact successor dispatch command never succeeded"
+              exit 1
+            fi
             for poll in $(seq 1 20); do
               sleep 3
-              successor_run_id="$(find_successor)"
+              successor_run_id="$(find_successor || true)"
               if [ -n "$successor_run_id" ]; then
                 break
               fi
@@ -820,9 +871,14 @@ jobs:
           set -euo pipefail
           expected_title="Continuous Paper · $GITHUB_RUN_ID"
           find_successor() {
-            gh api \
-              "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" |
-              EXPECTED_TITLE="$expected_title" python -c '
+            local payload
+            for attempt in $(seq 1 6); do
+              if payload="$(
+                gh api \
+                  "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100"
+              )"; then
+                printf '%s' "$payload" |
+                  EXPECTED_TITLE="$expected_title" python -c '
           import json, os, sys
           payload = json.load(sys.stdin)
           expected = os.environ["EXPECTED_TITLE"]
@@ -836,17 +892,35 @@ jobs:
           ]
           print(matches[0]["id"] if matches else "")
           '
+                return 0
+              fi
+              echo "::warning::successor receipt API unavailable ($attempt/6)" >&2
+              sleep 10
+            done
+            return 1
           }
-          successor_run_id="$(find_successor)"
+          successor_run_id="$(find_successor || true)"
           if [ -z "$successor_run_id" ]; then
-            gh workflow run continuous-paper.yml \
-              --repo "$GITHUB_REPOSITORY" \
-              --ref main \
-              -f "source_run_id=$GITHUB_RUN_ID" \
-              -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
+            dispatched=false
+            for attempt in $(seq 1 8); do
+              if gh workflow run continuous-paper.yml \
+                --repo "$GITHUB_REPOSITORY" \
+                --ref main \
+                -f "source_run_id=$GITHUB_RUN_ID" \
+                -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"; then
+                dispatched=true
+                break
+              fi
+              echo "::warning::fallback successor dispatch API unavailable ($attempt/8)"
+              sleep 15
+            done
+            if [ "$dispatched" != "true" ]; then
+              echo "::error::fallback successor dispatch command never succeeded"
+              exit 1
+            fi
             for poll in $(seq 1 20); do
               sleep 3
-              successor_run_id="$(find_successor)"
+              successor_run_id="$(find_successor || true)"
               if [ -n "$successor_run_id" ]; then
                 break
               fi
