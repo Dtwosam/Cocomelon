@@ -394,6 +394,10 @@ class BaselineReplayPipeline:
         )
 
     @property
+    def pending_opening_markets(self) -> tuple[MarketId, ...]:
+        return self._opening.pending_markets
+
+    @property
     def runtime_max_ms_by_component(self) -> dict[str, int]:
         return dict(self._runtime_max_ms_by_component)
 
