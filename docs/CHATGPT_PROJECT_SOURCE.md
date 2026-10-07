@@ -394,3 +394,10 @@ The first stable context is frozen immutably and cannot count future trades unti
 The future review floor is 30 matching trades across at least four markets, >=60% beneficial avoidances, positive total/mean delta, positive leave-one-trade and leave-one-market delta, plus three later blocks with >=5 rows, >=55% beneficial avoidances, and positive delta in every block.
 
 This path is research-only. It does not block entries, modify strategy/risk/sizing, promote a candidate, or enable live trading.
+
+
+### Durable paper evidence eligibility — D-039
+
+Research consumers must not discard authenticated paper evidence merely because a later non-economic handoff-tail step makes the overall Actions run red. A failed continuous-paper run is usable only when the trader and durable-state publication succeeded, the exact consumer-required artifact was published, lineage is authenticated, and any redundant fallback-successor failure occurred only after the fast exact successor was already queued successfully.
+
+Arbitrary failed runs remain ineligible. This rule preserves research continuity without weakening strategy, risk, promotion, or live-order gates.
