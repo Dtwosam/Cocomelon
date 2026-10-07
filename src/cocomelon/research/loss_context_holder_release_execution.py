@@ -153,24 +153,29 @@ def loss_context_holder_release_execution_summary(
         enriched["candidate_id"] = freeze.candidate_id
         release_results.append(enriched)
 
-        exact_config_records += int(
-            replay.get("exact_execution_config_records", 0)
+        exact_config_records += _count(
+            replay,
+            "exact_execution_config_records",
         )
-        unbound_config_records += int(
-            replay.get("unbound_execution_config_records", 0)
+        unbound_config_records += _count(
+            replay,
+            "unbound_execution_config_records",
         )
-        config_mismatch_records += int(
-            replay.get("execution_config_mismatch_records", 0)
+        config_mismatch_records += _count(
+            replay,
+            "execution_config_mismatch_records",
         )
         planned += _count(replay, "planned_release_exits")
-        planning_rejected += int(
-            replay.get("planning_rejected_release_exits", 0)
+        planning_rejected += _count(
+            replay,
+            "planning_rejected_release_exits",
         )
         full_fills += _count(replay, "full_release_fills")
         partial_fills += _count(replay, "partial_release_fills")
         no_fills += _count(replay, "no_release_fills")
-        execution_rejections += int(
-            replay.get("execution_rejected_release_exits", 0)
+        execution_rejections += _count(
+            replay,
+            "execution_rejected_release_exits",
         )
         gross_realized_pnl += Decimal(
             str(replay.get("gross_realized_pnl", "0"))
