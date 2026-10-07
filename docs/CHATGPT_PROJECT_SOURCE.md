@@ -475,3 +475,12 @@ Only evidence after the new prospective boundary may support account-level shado
 The future D-048 portfolio A/B shadow must differ only at new-entry admission. Do not convert matching strategy decisions to NO_TRADE globally because that could also change position-management behavior. Instead, veto the exact frozen context immediately before the normal risk request/opening simulation.
 
 Both shadow lanes block new exposure before the prospective boundary. After it, the baseline lane sends all ordinary directional setups into the normal risk/execution path; the candidate lane blocks only exact context matches. Same-direction setups outside the frozen context remain eligible. The active paper trader does not use this opt-in hook.
+
+
+### Paired portfolio shadow account rule — D-050
+
+The D-048/D-049 experiment must be judged with two independent chronological paper accounts consuming the exact same future stream. Baseline admits ordinary directional setups after the prospective boundary; candidate differs only by blocking the exact frozen context before risk/execution.
+
+Do not estimate this result by simply removing losing trades from historical PnL. Each lane must evolve its own equity, margin, daily-loss state, rolling drawdown, consecutive-loss cooldown state, capacity, fills, fees, funding, positions, and exits. Any lane failure invalidates the paired economic comparison.
+
+The reusable paired coordinator exists, but it is not yet connected to the active paper record pump. The next build frontier is non-blocking runtime integration plus authenticated restart continuity for both shadow lanes, still with zero active-strategy or execution authority.
