@@ -1344,4 +1344,9 @@ def test_upgrade_handoff_builds_cooldown_context_selection_record() -> None:
     upload = source[upload_at:holder_release_at]
     assert "cooldown-context-stability-summary.json" in upload
     assert "cooldown-context-selection-record.json" in upload
+    assert (
+        "hashFiles('continuous-paper-state/"
+        "cooldown-context-selection-record.json') != ''"
+        in upload
+    )
     assert "if-no-files-found: error" in upload
