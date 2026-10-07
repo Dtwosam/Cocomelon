@@ -432,6 +432,9 @@ def test_paired_shadow_restores_open_lifecycle_across_safe_checkpoint(
         assert candidate_before["open_position_count"] == 0
         checkpoint = first.checkpoint(end_ms=OPEN_BOOK_MS)
         assert checkpoint["handoff_safe"] is True
+        assert checkpoint["replay_config_digest"] == config.config_digest
+        assert checkpoint["selected_markets"] == ["TEST"]
+        assert isinstance(checkpoint["state_digest"], str)
     finally:
         first.close()
 
@@ -547,6 +550,127 @@ def test_paired_shadow_rejects_checkpoint_candidate_mismatch(
             startup_timestamp_ms=EVALUATED_AT_MS,
             decision_engine_factory=lambda: _ScriptedDecisionEngine(
                 config,
+                lead_strategy="trend",
+            ),
+        )
+
+
+
+def test_paired_shadow_rejects_execution_stores_without_checkpoint(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    state_root = tmp_path / "paired"
+    shadow = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="trend",
+        ),
+    )
+    shadow.close()
+
+    with pytest.raises(
+        RuntimeError,
+        match="execution store exists without checkpoint",
+    ):
+        LossContextPairedPortfolioShadow(
+            freeze=_freeze(),
+            replay_config=config,
+            selected_markets=(MARKET,),
+            state_root=state_root,
+            startup_timestamp_ms=EVALUATED_AT_MS,
+            decision_engine_factory=lambda: _ScriptedDecisionEngine(
+                config,
+                lead_strategy="trend",
+            ),
+        )
+
+
+def test_paired_shadow_rejects_tampered_checkpoint_digest(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    state_root = tmp_path / "paired"
+    shadow = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="trend",
+        ),
+    )
+    try:
+        shadow.checkpoint(end_ms=EVALUATED_AT_MS)
+    finally:
+        shadow.close()
+
+    state_path = state_root / "paired-shadow-state.json"
+    payload = json.loads(state_path.read_text(encoding="utf-8"))
+    payload["record_count"] = 999
+    state_path.write_text(
+        json.dumps(payload, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="state digest mismatch",
+    ):
+        LossContextPairedPortfolioShadow(
+            freeze=_freeze(),
+            replay_config=config,
+            selected_markets=(MARKET,),
+            state_root=state_root,
+            startup_timestamp_ms=EVALUATED_AT_MS,
+            decision_engine_factory=lambda: _ScriptedDecisionEngine(
+                config,
+                lead_strategy="trend",
+            ),
+        )
+
+
+def test_paired_shadow_rejects_replay_config_mismatch(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    state_root = tmp_path / "paired"
+    shadow = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="trend",
+        ),
+    )
+    try:
+        shadow.checkpoint(end_ms=EVALUATED_AT_MS)
+    finally:
+        shadow.close()
+
+    changed = BaselineReplayConfig(correlation_bucket="other")
+    with pytest.raises(
+        RuntimeError,
+        match="replay configuration mismatch",
+    ):
+        LossContextPairedPortfolioShadow(
+            freeze=_freeze(),
+            replay_config=changed,
+            selected_markets=(MARKET,),
+            state_root=state_root,
+            startup_timestamp_ms=EVALUATED_AT_MS,
+            decision_engine_factory=lambda: _ScriptedDecisionEngine(
+                changed,
                 lead_strategy="trend",
             ),
         )
