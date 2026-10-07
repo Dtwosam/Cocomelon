@@ -521,9 +521,20 @@ def test_paired_shadow_rejects_checkpoint_candidate_mismatch(
     finally:
         first.close()
 
-    other = _freeze().to_dict()
-    other["source_composition_digest"] = "d" * 64
-    other_freeze = LossContextPortfolioShadowFreeze.from_dict(other)
+    original = _freeze()
+    other_freeze = LossContextPortfolioShadowFreeze(
+        loss_context_candidate_id=original.loss_context_candidate_id,
+        source_composition_digest="d" * 64,
+        source_max_timestamp_ms=original.source_max_timestamp_ms,
+        source_paper_run_id=original.source_paper_run_id,
+        source_paper_run_attempt=original.source_paper_run_attempt,
+        source_paper_head_sha=original.source_paper_head_sha,
+        dimensions=original.dimensions,
+        values=original.values,
+        horizons_ms=original.horizons_ms,
+        frozen_at_ms=original.frozen_at_ms,
+        prospective_not_before_ms=original.prospective_not_before_ms,
+    )
     with pytest.raises(
         RuntimeError,
         match="candidate identity mismatch",
