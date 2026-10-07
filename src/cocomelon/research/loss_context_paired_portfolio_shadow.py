@@ -846,8 +846,24 @@ class LossContextPairedPortfolioShadow:
         )
         if not markets:
             raise ValueError("selected_markets must not be empty")
+        selected_keys = {market.canonical for market in markets}
+        protected_keys = {
+            position.market.canonical
+            for position in (
+                *self._baseline_execution.account.positions,
+                *self._candidate_execution.account.positions,
+            )
+        }
+        missing = tuple(sorted(protected_keys - selected_keys))
+        if missing:
+            raise RuntimeError(
+                "paired shadow market reconciliation would drop open "
+                "shadow position coverage: "
+                + ",".join(missing)
+            )
         self._baseline.reconcile_markets(markets)
         self._candidate.reconcile_markets(markets)
+        self._markets = markets
 
     def _lane_state_payload(
         self,

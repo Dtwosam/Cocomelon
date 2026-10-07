@@ -4896,3 +4896,16 @@ A restored shadow refuses new evaluated decisions until decision-state warmup is
 This still is not wired into the active record pump. The next frontier is a bounded non-blocking shadow feed and handoff publication/restore workflow that can fail independently without slowing the real paper trader.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Non-blocking paired loss-context runtime feed — 2026-10-07
+
+The durable D-050/D-052 A/B portfolio shadow is now being attached to ordinary continuous paper as an isolated sidecar rather than another synchronous research observer.
+
+Active paper handles each market record first, then performs only a bounded non-blocking enqueue. The paired baseline/candidate replay and both SQLite accounts live on their own worker thread. If the shadow queue fills, the candidate/state is corrupt, replay fails, or a shortlist rotation would remove market coverage for an open shadow-only position, the research shadow fails closed while the real paper trader continues unchanged.
+
+The sidecar receives the same ordered records plus contemporaneous coarse-rank snapshots, restore-warmup completion, and shortlist changes. At worker exit, active paper persists first; the paired shadow then attempts a D-051-safe checkpoint. Its state is included in the authenticated paper handoff, and the dedicated shadow artifact is intentionally uploaded only after successor dispatch.
+
+This creates the infrastructure for a genuinely prospective account-level A/B test of whether avoiding the exact frozen bad setup improves compounded paper economics. It still grants no strategy, risk, position, promotion, or execution authority.
+
+**LIVE TRADING: DISABLED.**
