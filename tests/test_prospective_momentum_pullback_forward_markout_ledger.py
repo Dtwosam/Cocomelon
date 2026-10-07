@@ -297,6 +297,33 @@ def test_fast_markout_ledger_is_idempotent_for_same_source() -> None:
     assert repeated == validate_momentum_pullback_forward_markout_ledger(first)
 
 
+def test_fast_markout_ledger_ignores_stale_source_before_parsing() -> None:
+    state = ProspectiveMomentumPullbackEntryState(frozen_at_ms=5_500_000)
+    row = _row(state, 1)
+    first = update_momentum_pullback_forward_markout_ledger(
+        _summary(state, [row]),
+        state,
+        previous=None,
+        source_paper_run_id=200,
+        source_paper_run_attempt=1,
+        source_artifact_name="learning-200-1",
+        source_artifact_digest=_digest("7"),
+    )
+
+    stale = update_momentum_pullback_forward_markout_ledger(
+        {"enabled": False, "error": "stale source"},
+        state,
+        previous=first,
+        source_paper_run_id=199,
+        source_paper_run_attempt=1,
+        source_artifact_name="learning-199-1",
+        source_artifact_digest=_digest("8"),
+    )
+
+    assert stale == validate_momentum_pullback_forward_markout_ledger(first)
+    assert len(stale["source_history"]) == 1
+
+
 def test_fast_markout_ledger_integrity_miss_blocks_early_review() -> None:
     state = ProspectiveMomentumPullbackEntryState(frozen_at_ms=6_000_000)
     markets = ("BTC", "ETH", "SOL", "ENA")
