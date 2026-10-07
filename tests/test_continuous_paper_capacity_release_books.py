@@ -289,11 +289,17 @@ def test_release_plan_rejects_pre_opportunity_exchange_timestamp(
     assert store.iter_records() == ()
 
 
-def test_release_book_capture_registers_only_same_bucket_correlation_holders(
+def test_release_book_capture_registers_exact_causal_release_positions(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     store = _store(tmp_path / "capacity-release-books")
     capture = CapacityReleaseBookCapture(store)
+    monkeypatch.setattr(
+        "cocomelon.research.continuous_paper_capacity_release_books."
+        "single_position_capacity_release_risk_positions",
+        lambda request, _reasons: (request.open_positions[0],),
+    )
     risk_decision = SimpleNamespace(
         approved=False,
         reason_codes=("correlation_bucket_exhausted",),
@@ -342,7 +348,55 @@ def test_release_book_capture_registers_only_same_bucket_correlation_holders(
     assert registration.release_direction == "long"
 
 
-def test_release_book_capture_ignores_non_correlation_rejections(
+def test_release_book_capture_accepts_exact_aggregate_release(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    store = _store(tmp_path / "capacity-release-books")
+    capture = CapacityReleaseBookCapture(store)
+    monkeypatch.setattr(
+        "cocomelon.research.continuous_paper_capacity_release_books."
+        "single_position_capacity_release_risk_positions",
+        lambda request, _reasons: (request.open_positions[0],),
+    )
+    trace = SimpleNamespace(
+        submission=SimpleNamespace(
+            risk_decision=SimpleNamespace(
+                approved=False,
+                reason_codes=("aggregate_risk_exhausted",),
+                risk_decision_id="risk-sol",
+            )
+        ),
+        risk_request=SimpleNamespace(
+            timestamp_ms=1_000,
+            market=SOL,
+            direction=Direction.SHORT,
+            correlation_bucket="majors",
+            strategy_decision_id="strategy-sol",
+            open_positions=(
+                SimpleNamespace(
+                    market=BTC,
+                    direction=Direction.LONG,
+                    correlation_bucket="btc_beta",
+                ),
+            ),
+        ),
+    )
+
+    capture.register_from_trace(  # type: ignore[arg-type]
+        trace,
+        opportunity_id="aggregate-opportunity-id",
+    )
+
+    assert capture.error is None
+    registrations = store.iter_registrations()
+    assert len(registrations) == 1
+    assert registrations[0].opportunity_id == "aggregate-opportunity-id"
+    assert registrations[0].release_market == "BTC"
+    assert registrations[0].release_correlation_bucket == "btc_beta"
+
+
+def test_release_book_capture_ignores_non_capacity_rejections(
     tmp_path: Path,
 ) -> None:
     store = _store(tmp_path / "capacity-release-books")
