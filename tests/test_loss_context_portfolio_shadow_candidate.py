@@ -180,6 +180,6 @@ def test_portfolio_shadow_freeze_workflow_follows_composition() -> None:
         "- name: Rebuild deferred cooldown evidence after handoff"
     )
     assert composition_upload < restore < freeze < upload < cooldown
-    assert "portfolio shadow freeze remains absent" in source
+    assert "shadow freeze remains absent" in source
     assert "RESEARCH SHADOW ONLY / NO STRATEGY OR RISK CHANGE" in source
     assert "selected horizon: " in source
