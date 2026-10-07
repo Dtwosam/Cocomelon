@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 from cocomelon.research.deferred_loss_context_holder_release_execution import (
-    rebuild_deferred_loss_context_holder_release_execution,
     write_deferred_loss_context_holder_release_execution,
 )
 
@@ -16,9 +15,6 @@ def main() -> int:
     parser.add_argument("--output")
     args = parser.parse_args()
 
-    payload = rebuild_deferred_loss_context_holder_release_execution(
-        args.state_root
-    )
     output = (
         Path(args.output)
         if args.output
@@ -29,6 +25,7 @@ def main() -> int:
         args.state_root,
         output_path=output,
     )
+    payload = json.loads(output.read_text(encoding="utf-8"))
     print(
         json.dumps(
             payload,
