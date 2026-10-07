@@ -4876,3 +4876,16 @@ The engine reports candidate-minus-baseline equity, account PnL, realized net Pn
 No active paper behavior changes and no promotion or execution authority is granted.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Durable paired loss-context shadow resume — 2026-10-07
+
+The paired portfolio-shadow engine now has fail-closed restart state. Its baseline and exact-context candidate accounts can preserve account equity, fees/funding, open positions, lifecycle marks/actions, gap history, cumulative risk/opening activity, admission counts, record continuity, and max drawdown across worker handoffs.
+
+Checkpoint state is tied to the frozen candidate, replay configuration, exact selected markets, both account timestamps, and a canonical digest. A missing, mismatched, or tampered checkpoint refuses continuation. Even a no-trade candidate account is explicitly persisted so a restart cannot mistake it for a fresh account.
+
+After restore, decision evaluation stays locked until the caller completes ordinary market/feature warmup. No active paper behavior changes.
+
+The next frontier is an authenticated, low-overhead future event feed and rolling research runner for this paired shadow. It should stay off the active trader's latency-critical path rather than tripling live paper processing.
+
+**LIVE TRADING: DISABLED.**
