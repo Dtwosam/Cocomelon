@@ -3,6 +3,9 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
+from cocomelon.research.deferred_loss_context_portfolio_composition import (
+    ACCOUNT_FILENAME,
+)
 from cocomelon.research.historical_discovery_freeze import (
     MIN_PROSPECTIVE_EMBARGO_MS,
 )
@@ -241,3 +244,8 @@ def test_portfolio_composition_workflow_follows_exact_exit_pnl() -> None:
         in source
     )
     assert "NO PORTFOLIO PNL CLAIM" in source
+
+
+
+def test_deferred_portfolio_composition_consumes_emitted_account_report() -> None:
+    assert ACCOUNT_FILENAME == "loss-context-account-readiness-report.json"
