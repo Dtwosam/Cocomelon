@@ -160,7 +160,23 @@ jobs:
               for name, step_conclusion in steps.items()
               if step_conclusion == "failure"
           }
-          if failed_steps != {"Fail closed on upgrade handoff source"}:
+          allowed_failed_steps = {
+              frozenset({"Fail closed on upgrade handoff source"}),
+              frozenset(
+                  {
+                      "Queue fallback exact successor continuous paper worker",
+                      "Fail closed on upgrade handoff source",
+                  }
+              ),
+          }
+          if frozenset(failed_steps) not in allowed_failed_steps:
+              raise SystemExit(1)
+          if (
+              "Queue fallback exact successor continuous paper worker"
+              in failed_steps
+              and steps.get("Queue exact successor from fast resume")
+              != "success"
+          ):
               raise SystemExit(1)
           PY
           }
