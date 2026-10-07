@@ -1166,11 +1166,14 @@ def test_safe_handoff_rebuilds_loss_streak_context_after_successor() -> None:
         upload_at,
     )]
     assert (
-        "hashFiles('continuous-paper-state/"
-        "loss-streak-context-audit-summary.json') != ''"
+        "steps.deferred_loss_streak_context_audit.outputs.ready == 'true'"
         in upload_block
     )
-    assert "outputs.ready" not in upload_block
+    assert (
+        "hashFiles('continuous-paper-state/"
+        "loss-streak-context-audit-summary.json')"
+        not in upload_block
+    )
     assert "loss-streak-context-audit-summary.json" in source
     assert "continuous-paper-loss-streak-context-" in source
     assert "RESEARCH ONLY / NO EXECUTION / NO STRATEGY CHANGE" in source
@@ -1562,3 +1565,79 @@ def test_loss_context_paired_shadow_runtime_handoff_is_non_blocking() -> None:
     assert "candidate-minus-baseline total / realized / max-DD delta" in review
     assert "ready for review / failures" in review
     assert "RESEARCH REVIEW ONLY / NO STRATEGY CHANGE" in review
+
+
+
+def test_loss_context_handoff_chain_uses_explicit_readiness_outputs() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    start = source.index(
+        "- name: Rebuild loss-streak context audit after handoff"
+    )
+    end = source.index(
+        "- name: Rebuild deferred cooldown evidence after handoff",
+        start,
+    )
+    chain = source[start:end]
+
+    assert (
+        "steps.deferred_loss_streak_context_audit.outputs.ready == 'true'"
+        in chain
+    )
+    assert "steps.loss_context_freeze.outputs.ready == 'true'" in chain
+    assert "steps.loss_context_prospective.outputs.ready == 'true'" in chain
+    assert (
+        "steps.loss_context_account_readiness.outputs.ready == 'true'"
+        in chain
+    )
+    assert (
+        "steps.loss_context_capacity_reflow.outputs.ready == 'true'"
+        in chain
+    )
+    assert (
+        "steps.loss_context_holder_release_execution.outputs.ready == 'true'"
+        in chain
+    )
+    assert (
+        "steps.loss_context_replacement_entry_fill.outputs.ready == 'true'"
+        in chain
+    )
+    assert (
+        "steps.loss_context_replacement_exit_pnl.outputs.ready == 'true'"
+        in chain
+    )
+    assert (
+        "steps.loss_context_portfolio_composition.outputs.ready == 'true'"
+        in chain
+    )
+    assert (
+        "steps.loss_context_portfolio_shadow_freeze.outputs.ready == 'true'"
+        in chain
+    )
+    assert (
+        "hashFiles('continuous-paper-state/"
+        "loss-streak-context-audit-summary.json')"
+        not in chain
+    )
+    assert (
+        "hashFiles('continuous-paper-state/"
+        "loss-context-account-readiness-summary.json')"
+        not in chain
+    )
+
+
+def test_loss_context_generated_steps_publish_ready_outputs() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    for step_id in (
+        "loss_context_prospective",
+        "loss_context_account_readiness",
+        "loss_context_capacity_reflow",
+        "loss_context_holder_release_execution",
+        "loss_context_replacement_entry_fill",
+        "loss_context_replacement_exit_pnl",
+        "loss_context_portfolio_composition",
+    ):
+        marker = f"id: {step_id}"
+        start = source.index(marker)
+        next_step = source.find("\n      - name:", start)
+        block = source[start:] if next_step < 0 else source[start:next_step]
+        assert 'echo "ready=true" >> "$GITHUB_OUTPUT"' in block

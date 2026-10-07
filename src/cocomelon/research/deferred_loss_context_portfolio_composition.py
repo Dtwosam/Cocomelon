@@ -15,7 +15,7 @@ from cocomelon.research.loss_context_portfolio_composition import (
 
 OUTPUT_FILENAME = "loss-context-portfolio-composition-summary.json"
 FREEZE_FILENAME = "loss-context-candidate-freeze.json"
-ACCOUNT_FILENAME = "loss-context-account-readiness-summary.json"
+ACCOUNT_FILENAME = "loss-context-account-readiness-report.json"
 ENTRY_FILENAME = "loss-context-replacement-entry-fill-summary.json"
 EXIT_FILENAME = "loss-context-replacement-exit-pnl-summary.json"
 ALLOWED_SESSION_EXITS = frozenset({"duration_elapsed", "upgrade_requested"})

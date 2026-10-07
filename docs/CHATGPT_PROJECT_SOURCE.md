@@ -540,3 +540,12 @@ Some evidence workflows are dispatched exactly by each continuous-paper worker r
 For range-compression evidence and momentum-pullback fast-markout, a strictly older run/attempt is now a verified no-op once the frozen candidate/state matches the existing ledger. The old source is not appended, newer rows/economics are not replaced, and equal/newer sources still face the normal drift checks. Workflow status reports both dispatched and accepted source identities.
 
 This is evidence-ordering plumbing only; it grants no strategy or execution authority.
+
+
+### Loss-context handoff readiness rule — D-057
+
+Do not gate immediately generated post-handoff loss-context files with a new `hashFiles(...)` lookup. A producer must verify its output and emit an explicit `ready=true` receipt; the next stage consumes that receipt and still validates its own inputs. This prevents successful audits from being silently stranded before candidate freeze.
+
+The fixed-schedule account file contract is `loss-context-account-readiness-report.json`; deferred portfolio composition must consume that exact filename.
+
+This rule changes only evidence continuity. It cannot make an unstable context stable, relax any profitability/readiness threshold, suppress LONG/SHORT, alter risk/positions, or grant execution authority.
