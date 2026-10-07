@@ -122,9 +122,28 @@ def _candidate_admission(row: dict[str, object]) -> dict[str, object]:
 
 
 def _matching_block_count(row: dict[str, object]) -> int:
+    return sum(
+        _blocked_by_market(_candidate_admission(row)).values()
+    )
+
+
+def _unattributed_block_count(row: dict[str, object]) -> int:
+    admission = _candidate_admission(row)
+    raw = admission.get("matching_context_blocked_unattributed")
+    if raw is None:
+        total = _integer(
+            admission.get("matching_context_blocked"),
+            "matching_context_blocked",
+        )
+        attributed = _matching_block_count(row)
+        if attributed > total:
+            raise LossContextPairedShadowReviewError(
+                "attributed matching-context count exceeds total"
+            )
+        return total - attributed
     return _integer(
-        _candidate_admission(row).get("matching_context_blocked"),
-        "matching_context_blocked",
+        raw,
+        "matching_context_blocked_unattributed",
     )
 
 
@@ -160,6 +179,7 @@ def verify_review_ledger(
     previous_digest: str | None = None
     previous_end_ms: int | None = None
     previous_matching = 0
+    previous_unattributed = 0
     previous_markets: dict[str, int] = {}
     previous_baseline_closed = 0
     previous_candidate_closed = 0
@@ -218,12 +238,17 @@ def verify_review_ledger(
             )
 
         matching = _matching_block_count(unsigned)
+        unattributed = _unattributed_block_count(unsigned)
         markets = _blocked_by_market(_candidate_admission(unsigned))
         baseline_closed = _lane_closed_trades(unsigned, "baseline")
         candidate_closed = _lane_closed_trades(unsigned, "candidate")
         if matching < previous_matching:
             raise LossContextPairedShadowReviewError(
-                "matching-context count moved backward"
+                "matching-context attributed count moved backward"
+            )
+        if unattributed < previous_unattributed:
+            raise LossContextPairedShadowReviewError(
+                "matching-context unattributed count moved backward"
             )
         if baseline_closed < previous_baseline_closed:
             raise LossContextPairedShadowReviewError(
@@ -243,6 +268,7 @@ def verify_review_ledger(
         previous_digest = recorded_digest
         previous_end_ms = end_ms
         previous_matching = matching
+        previous_unattributed = unattributed
         previous_markets = markets
         previous_baseline_closed = baseline_closed
         previous_candidate_closed = candidate_closed
@@ -452,6 +478,7 @@ def build_paired_shadow_review(
         reasons.append("insufficient_checkpoints")
 
     matching = 0
+    unattributed_matching = 0
     blocked_markets: dict[str, int] = {}
     baseline_closed = 0
     candidate_closed = 0
@@ -467,6 +494,7 @@ def build_paired_shadow_review(
     else:
         admission = _candidate_admission(latest)
         matching = _matching_block_count(latest)
+        unattributed_matching = _unattributed_block_count(latest)
         blocked_markets = _blocked_by_market(admission)
         baseline_closed = _lane_closed_trades(latest, "baseline")
         candidate_closed = _lane_closed_trades(latest, "candidate")
@@ -534,6 +562,9 @@ def build_paired_shadow_review(
         "eligible_checkpoint_count": len(eligible),
         "future_duration_ms": duration_ms,
         "matching_context_blocks": matching,
+        "unattributed_legacy_matching_context_blocks": (
+            unattributed_matching
+        ),
         "blocked_market_count": len(blocked_markets),
         "blocked_by_market": blocked_markets,
         "dominant_blocked_market_share": (
