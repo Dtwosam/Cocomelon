@@ -363,6 +363,19 @@ def loss_context_replacement_entry_fill_summary(
         "execution_rejected_options": execution_rejections,
         "gross_fill_notional": str(gross_fill_notional),
         "taker_fees": str(taker_fees),
+        "execution_config": {
+            "config_version": config.config_version,
+            "latency_ms": config.latency_ms,
+            "max_book_age_ms": config.max_book_age_ms,
+            "max_ioc_slippage_bps": str(
+                config.max_ioc_slippage_bps
+            ),
+            "taker_fee_rate": str(config.taker_fee_rate),
+            "fee_schedule_id": config.fee_schedule_id,
+        },
+        "fillable_option_ids": sorted(
+            fillable_release_option_ids
+        ),
         "fillable_release_option_ids": sorted(
             fillable_release_option_ids
         ),
