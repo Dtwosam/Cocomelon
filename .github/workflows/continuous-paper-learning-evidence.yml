@@ -119,9 +119,24 @@ jobs:
                   for name, step_conclusion in steps.items()
                   if step_conclusion == "failure"
               }
+              allowed_failed_steps = {
+                  frozenset({"Fail closed on upgrade handoff source"}),
+                  frozenset(
+                      {
+                          "Queue fallback exact successor continuous paper worker",
+                          "Fail closed on upgrade handoff source",
+                      }
+                  ),
+              }
               if (
                   any(steps.get(name) != "success" for name in required_successes)
-                  or failed_steps != {"Fail closed on upgrade handoff source"}
+                  or frozenset(failed_steps) not in allowed_failed_steps
+                  or (
+                      "Queue fallback exact successor continuous paper worker"
+                      in failed_steps
+                      and steps.get("Queue exact successor from fast resume")
+                      != "success"
+                  )
               ):
                   raise SystemExit(
                       "paper source failure is not a durable upgrade handoff"
