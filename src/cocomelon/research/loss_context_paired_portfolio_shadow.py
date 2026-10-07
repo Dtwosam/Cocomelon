@@ -31,17 +31,17 @@ from cocomelon.evidence.lifecycle import (
 )
 from cocomelon.execution.accounting import PaperAccountState
 from cocomelon.execution.paper import PaperExecutionAdapter
+from cocomelon.research.loss_context_paired_shadow_review import (
+    LOSS_CONTEXT_PAIRED_SHADOW_REVIEW_LEDGER_FILENAME,
+    append_review_checkpoint,
+    review_ledger_receipt,
+)
 from cocomelon.research.loss_context_portfolio_shadow_candidate import (
     LossContextPortfolioShadowFreeze,
 )
 from cocomelon.research.loss_context_portfolio_shadow_entry import (
     LossContextPortfolioShadowEntryFilter,
     RankOrdinalProvider,
-)
-from cocomelon.research.loss_context_paired_shadow_review import (
-    LOSS_CONTEXT_PAIRED_SHADOW_REVIEW_LEDGER_FILENAME,
-    append_review_checkpoint,
-    review_ledger_receipt,
 )
 
 ZERO: Final = Decimal("0")
