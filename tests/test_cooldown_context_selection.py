@@ -125,7 +125,7 @@ def test_selection_prefers_simpler_strategy_context_over_side_condition() -> Non
     assert len(payload["source_record_id"]) == 64
 
 
-def test_selection_is_deterministic_when_candidate_input_order_changes() -> None:
+def test_selection_is_stable_but_record_binds_exact_source_order() -> None:
     first = build_cooldown_context_selection_record(
         _cooldown(),
         _stability(),
@@ -141,7 +141,8 @@ def test_selection_is_deterministic_when_candidate_input_order_changes() -> None
 
     assert first["selected_candidate"] == second["selected_candidate"]
     assert first["stable_candidates"] == second["stable_candidates"]
-    assert first["source_record_id"] == second["source_record_id"]
+    assert first["stability_source_digest"] != second["stability_source_digest"]
+    assert first["source_record_id"] != second["source_record_id"]
 
 
 def test_direction_only_stable_candidate_is_rejected() -> None:
