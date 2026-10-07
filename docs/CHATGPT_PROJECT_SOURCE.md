@@ -401,3 +401,10 @@ This path is research-only. It does not block entries, modify strategy/risk/sizi
 Research consumers must not discard authenticated paper evidence merely because a later non-economic handoff-tail step makes the overall Actions run red. A failed continuous-paper run is usable only when the trader and durable-state publication succeeded, the exact consumer-required artifact was published, lineage is authenticated, and any redundant fallback-successor failure occurred only after the fast exact successor was already queued successfully.
 
 Arbitrary failed runs remain ineligible. This rule preserves research continuity without weakening strategy, risk, promotion, or live-order gates.
+
+
+### Loss-context handoff cadence — D-040
+
+D-037/D-038 loss-context learning now refreshes after every clean continuous-paper handoff, not only after runtime upgrades. The accepted source exits are exactly `duration_elapsed` and `upgrade_requested`; unknown exits fail closed. The rebuild still occurs only after a successor has been dispatched, so research cannot hold up paper trading.
+
+This does not activate any loss-context filter. Stable contexts remain frozen research hypotheses and must satisfy the six-hour embargo plus the full prospective realized-PnL review gate before any later strategy-admission discussion.
