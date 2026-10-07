@@ -29,7 +29,10 @@ def _freeze():
         "validation_leave_one_trade_min_delta_pnl": "12",
         "validation_leave_one_market_min_delta_pnl": "6",
         "validation_block_rows": (6, 6),
-        "validation_block_loss_shares": (\n            "0.6666666666666666666666666667",\n            "0.8333333333333333333333333333",\n        ),
+        "validation_block_loss_shares": (
+            "0.6666666666666666666666666667",
+            "0.8333333333333333333333333333",
+        ),
         "validation_block_filter_delta_pnl": ("8", "12"),
         "validation_blocks_consistent": 2,
         "stable_on_validation": True,
