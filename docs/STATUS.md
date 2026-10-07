@@ -4876,3 +4876,12 @@ The engine reports candidate-minus-baseline equity, account PnL, realized net Pn
 No active paper behavior changes and no promotion or execution authority is granted.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Loss-context shadow handoff safety — 2026-10-07
+
+The paired loss-context portfolio shadow now exposes staged opening markets for both baseline and candidate lanes and refuses a research handoff while either lane still has a pending opening.
+
+This closes a subtle continuity hole where a worker restart between strategy decision and execution-book resolution could silently drop a trade from the A/B path. Pending opening serialization is still absent, so the current safe boundary is explicit: only checkpoint/restart the shadow when both pending sets are empty. The active paper trader remains independent and must never wait on this research guard.
+
+**LIVE TRADING: DISABLED.**
