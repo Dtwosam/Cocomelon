@@ -932,20 +932,6 @@ jobs:
         shell: bash
         run: rm -f continuous-paper-resume.tar.zst
 
-      - name: Upload paired loss-context portfolio shadow state
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-paired-portfolio-shadow-summary.json') != '' }}
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-loss-context-paired-shadow-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            continuous-paper-state/loss-context-portfolio-shadow-freeze.json
-            continuous-paper-state/loss-context-paired-portfolio-shadow-summary.json
-            continuous-paper-state/loss-context-paired-portfolio-shadow
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 6
-
       - name: Export compact continuous decision facts
         id: decision_fact_export
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
@@ -1100,6 +1086,20 @@ jobs:
           fi
           echo "successor_run_id=$successor_run_id" >> "$GITHUB_OUTPUT"
           echo "fallback exact successor dispatch receipt: $successor_run_id"
+
+      - name: Upload paired loss-context portfolio shadow state
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-paired-portfolio-shadow-summary.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-loss-context-paired-shadow-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            continuous-paper-state/loss-context-portfolio-shadow-freeze.json
+            continuous-paper-state/loss-context-paired-portfolio-shadow-summary.json
+            continuous-paper-state/loss-context-paired-portfolio-shadow
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
 
       - name: Rebuild deferred full-stack markouts after handoff
         id: deferred_full_stack_markout_rebuild
