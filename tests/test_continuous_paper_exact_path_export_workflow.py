@@ -15,7 +15,7 @@ def test_exact_path_export_is_separate_research_workflow() -> None:
     assert '"Continuous Mainnet Paper Trader"' in source
     assert "github.event.workflow_run.conclusion == 'success'" not in source
     assert "EVENT_CONCLUSION:" in source
-    assert 'echo "eligible=false"' in source
+    assert "paper_run_is_evidence_eligible()" in source
     assert "steps.source.outputs.eligible == 'true'" in source
     assert "workflow_dispatch:" in source
     assert "contents: read" in source
@@ -30,7 +30,7 @@ def test_exact_path_export_binds_exact_source_artifact() -> None:
     assert 'run.get("path") != ".github/workflows/continuous-paper.yml"' in source
     assert 'run.get("head_branch") != "main"' in source
     assert 'run.get("status") != "completed"' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert 'run.get("conclusion") not in {"success", "failure"}' in source
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
     assert (
@@ -38,7 +38,7 @@ def test_exact_path_export_binds_exact_source_artifact() -> None:
         '$candidate_run_id-$candidate_attempt"'
         in source
     )
-    assert "latest_successful_with_state_artifact" in source
+    assert "latest_evidence_eligible_with_state_artifact" in source
     assert "expected at most one non-expired source artifact" in source
 
 
