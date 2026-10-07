@@ -347,6 +347,51 @@ class _LaneSnapshot:
         }
 
 
+@dataclass(slots=True)
+class _LaneOffsets:
+    closed_trade_count: int = 0
+    risk_evaluations: int = 0
+    risk_approvals: int = 0
+    risk_rejections: int = 0
+    opening_execution_attempts: int = 0
+    opening_fills: int = 0
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "closed_trade_count": self.closed_trade_count,
+            "risk_evaluations": self.risk_evaluations,
+            "risk_approvals": self.risk_approvals,
+            "risk_rejections": self.risk_rejections,
+            "opening_execution_attempts": self.opening_execution_attempts,
+            "opening_fills": self.opening_fills,
+        }
+
+    @classmethod
+    def from_payload(cls, raw: object) -> "_LaneOffsets":
+        if not isinstance(raw, dict):
+            raise ValueError("shadow lane offsets must be an object")
+        values: dict[str, int] = {}
+        for field in (
+            "closed_trade_count",
+            "risk_evaluations",
+            "risk_approvals",
+            "risk_rejections",
+            "opening_execution_attempts",
+            "opening_fills",
+        ):
+            value = raw.get(field)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(
+                    f"shadow lane offset {field} must be an integer"
+                )
+            if value < 0:
+                raise ValueError(
+                    f"shadow lane offset {field} must be non-negative"
+                )
+            values[field] = value
+        return cls(**values)
+
+
 class LossContextPairedPortfolioShadow:
     """Run paired baseline/candidate paper accounts on the same evidence stream.
 
