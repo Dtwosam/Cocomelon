@@ -21,8 +21,8 @@ def test_two_strike_ledger_workflow_is_research_only() -> None:
     assert "github.event.workflow_run.conclusion == 'success'" not in source
     assert "EVENT_CONCLUSION:" in source
     assert 'echo "source_eligible=false"' not in source
-    assert '"$EVENT_CONCLUSION" = "success"' in source
-    assert "latest_successful_after_non_success_wake" in source
+    assert "paper_run_is_evidence_eligible()" in source
+    assert 'resolution_mode="durable_handoff_event"' in source
     assert "steps.source.outputs.source_eligible == 'true'" in source
     assert "actions: read" in source
     assert "contents: read" in source
@@ -39,17 +39,17 @@ def test_two_strike_ledger_binds_exact_compact_source() -> None:
     assert 'run.get("path") != ".github/workflows/continuous-paper.yml"' in source
     assert 'run.get("head_branch") != "main"' in source
     assert 'run.get("status") != "completed"' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert 'run.get("conclusion") not in {"success", "failure"}' in source
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
-    assert "latest_successful_push" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert "actions/workflows/continuous-paper.yml/runs?branch=main&status=completed" in source
     assert (
         'local expected_name="continuous-paper-learning-source-'
         '$candidate_run_id-$candidate_attempt"'
         in source
     )
-    assert "latest_successful_with_compact_artifact" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert "source artifact digest is missing or invalid" in source
     assert "journal.sqlite3" in source
     assert "prospective-two-strike-stop-filter-state.json" in source
