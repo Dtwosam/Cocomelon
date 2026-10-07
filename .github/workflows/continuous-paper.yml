@@ -1437,7 +1437,7 @@ jobs:
 
       - name: Freeze selected cooldown context prospectively
         id: cooldown_context_freeze
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_cooldown_context_selection.outcome == 'success' && hashFiles('continuous-paper-state/cooldown-context-selection-record.json') != '' }}
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.cooldown_context_restore.outcome == 'success' && steps.deferred_cooldown_context_selection.outcome == 'success' && hashFiles('continuous-paper-state/cooldown-context-selection-record.json') != '' }}
         continue-on-error: true
         shell: bash
         run: |
