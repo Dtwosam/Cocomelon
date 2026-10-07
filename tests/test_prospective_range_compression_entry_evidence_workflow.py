@@ -82,3 +82,11 @@ def test_continuous_paper_dispatches_exact_range_evidence() -> None:
     assert '-f "source_run_id=$GITHUB_RUN_ID"' in source
     assert '-f "source_run_attempt=$GITHUB_RUN_ATTEMPT"' in source
     assert "steps.compact_learning_upload.outcome == 'success'" in source
+
+
+def test_range_compression_status_distinguishes_stale_dispatch() -> None:
+    source = _source()
+
+    assert "dispatched source paper run / attempt" in source
+    assert "ledger latest accepted source" in source
+    assert "stale dispatched source ignored" in source
