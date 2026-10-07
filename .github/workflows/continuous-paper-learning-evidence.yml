@@ -128,7 +128,14 @@ jobs:
                   )
           if run.get("path") != ".github/workflows/continuous-paper.yml":
               raise SystemExit("upstream continuous-paper workflow path is invalid")
-          if run.get("name") != "Continuous Mainnet Paper Trader":
+          run_name = run.get("name")
+          if not (
+              run_name == "Continuous Mainnet Paper Trader"
+              or (
+                  isinstance(run_name, str)
+                  and run_name.startswith("Continuous Paper · ")
+              )
+          ):
               raise SystemExit("upstream continuous-paper workflow name is invalid")
           if run.get("event") not in {"push", "workflow_dispatch", "schedule"}:
               raise SystemExit("upstream continuous-paper event is invalid")
