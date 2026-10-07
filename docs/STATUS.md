@@ -4797,3 +4797,14 @@ The output explicitly separates causal release options, captured books, missing 
 Research only; no strategy, risk, sizing, stop, position, promotion, or live-order change.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Exact capacity-release capture universe — 2026-10-07
+
+The runtime capacity-release book watcher now derives release holders from the same exact counterfactual capacity calculation used by causal reflow research.
+
+This removes the old correlation-only heuristic and prospectively captures exact single-position release paths for both aggregate-risk and correlation-bucket exhaustion. A holder is watched only when removing that position from the captured request genuinely restores positive risk capacity.
+
+Existing evidence is not backfilled. The change improves future execution evidence coverage only and does not alter active trading, risk limits, sizing, positions, or execution authority.
+
+**LIVE TRADING: DISABLED.**
