@@ -321,6 +321,23 @@ def _baseline_rows(
     return tuple(rows), unresolved
 
 
+def try_resolve_entry_context_row(
+    trade: TradeJournalEntry,
+    facts: EvaluationFactStore,
+    features: LearningFeatureSnapshotStore,
+    ranks: ContinuousPaperOpeningRankStore,
+) -> tuple[dict[str, object] | None, str | None]:
+    resolved, reason = _try_resolve(
+        trade,
+        facts,
+        features,
+        ranks,
+    )
+    if resolved is None:
+        return None, reason
+    return _row(resolved), None
+
+
 def resolved_entry_context_rows(
     trades: tuple[TradeJournalEntry, ...],
     facts: EvaluationFactStore,
