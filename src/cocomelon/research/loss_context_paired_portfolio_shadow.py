@@ -423,12 +423,20 @@ class LossContextPairedPortfolioShadow:
 
         root = Path(state_root)
         root.mkdir(parents=True, exist_ok=True)
+        self._root = root
+        self._state_path = (
+            root / LOSS_CONTEXT_PAIRED_SHADOW_STATE_FILENAME
+        )
         self._freeze = freeze
         self._config = replay_config
         self._record_count = 0
         self._last_record_available_at_ms: int | None = None
         self._baseline_max_drawdown = ZERO
         self._candidate_max_drawdown = ZERO
+        self._baseline_offsets = _LaneOffsets()
+        self._candidate_offsets = _LaneOffsets()
+        self._restored_from_checkpoint = False
+        self._restore_warmup_required = False
 
         self._baseline_filter = LossContextPortfolioShadowEntryFilter(
             freeze,
@@ -490,6 +498,7 @@ class LossContextPairedPortfolioShadow:
             decision_engine=candidate_engine,
             opening_candidate_filter=self._candidate_filter,
         )
+        self._restore_state_if_present()
 
     @staticmethod
     def _drawdown(account: PaperAccountState) -> Decimal:
