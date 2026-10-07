@@ -108,6 +108,12 @@ When continuing development in a new chat, preserve this objective: make Cocomel
 
 The frozen MON + normal-volatility + SHORT 1h/50bps candidate is prospective research only. Its future scorer must not become review-ready until it has at least 30 material post-cutover outcomes, at least 60% alignment with the frozen SHORT direction overall, and three chronological future blocks with at least five material outcomes and at least 55% SHORT alignment in every block. Review-ready still means research review only; it has no promotion, strategy, risk-bypass, or execution authority.
 
+### Cooldown context prospective-freeze rule — D-036
+
+A consecutive-loss cooldown relaxation cannot be justified by aggregate SHORT/LONG performance or by touched counterfactual evidence alone. A stable context must retain the selected relaxation window plus lead-strategy context, be frozen once, wait through the standard six-hour embargo, and then prove itself again on later paper evidence.
+
+The prospective review floor is 30 settled 1h outcomes across at least four markets, >=60% profitable after entry fees, positive total/mean economics, positive leave-one-option and leave-one-market PnL, and three later time blocks with >=5 rows, >=55% profitable, and positive PnL in every block. Review-ready is not a risk change or promotion. The active cooldown remains unchanged until a later explicit admission path satisfies the normal safety and promotion gates.
+
 ## 2. Locked safety boundaries
 
 - Hyperliquid testnet is forbidden.
