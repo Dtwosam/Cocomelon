@@ -1274,13 +1274,69 @@ jobs:
           )
           PY
 
+      - name: Build cooldown context selection record
+        id: deferred_cooldown_context_selection
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_cooldown_context_stability.outcome == 'success' && hashFiles('continuous-paper-state/cooldown-context-stability-summary.json') != '' && hashFiles('continuous-paper-state/prospective-consecutive-loss-cooldown-shadow-summary.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cocomelon-cooldown-context-selection \
+            --cooldown "$STATE_ROOT/prospective-consecutive-loss-cooldown-shadow-summary.json" \
+            --stability "$STATE_ROOT/cooldown-context-stability-summary.json" \
+            --output "$STATE_ROOT/cooldown-context-selection-record.json" \
+            | tee /tmp/cooldown-context-selection.json
+          test -s "$STATE_ROOT/cooldown-context-selection-record.json"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/cooldown-context-selection-record.json"
+              ).read_text(encoding="utf-8")
+          )
+          selected = payload["selected_candidate"]
+          print("## Cooldown context selection record")
+          print("- authority: RESEARCH ONLY / NO STRATEGY OR RISK CHANGE")
+          print(
+              "- stable candidates / selection policy: "
+              f"{payload['stable_candidate_count']} / "
+              f"{payload['selection_policy']}"
+          )
+          if selected is None:
+              print("- selected context: none")
+          else:
+              print(
+                  "- selected context: "
+                  f"{selected['dimensions']}={selected['values']}; "
+                  f"validation rows={selected['validation_rows']}; "
+                  f"markets={selected['validation_markets']}; "
+                  f"positive_share={selected['validation_positive_share']}; "
+                  f"LOO market pnl="
+                  f"{selected['validation_leave_one_market_min_pnl']}"
+              )
+          print(
+              "- prospective freeze required before strategy use: "
+              f"{payload['prospective_freeze_required_before_strategy_use']}"
+          )
+          print(
+              "- execution / strategy / risk authority: "
+              f"{payload['execution_authority']} / "
+              f"{payload['changes_strategy']} / "
+              f"{payload['changes_risk_limits']}"
+          )
+          PY
+
       - name: Upload cooldown context stability
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/cooldown-context-stability-summary.json') != '' }}
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/cooldown-context-stability-summary.json') != '' && hashFiles('continuous-paper-state/cooldown-context-selection-record.json') != '' }}
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: continuous-paper-cooldown-context-stability-${{ github.run_id }}-${{ github.run_attempt }}
-          path: continuous-paper-state/cooldown-context-stability-summary.json
+          path: |
+            continuous-paper-state/cooldown-context-stability-summary.json
+            continuous-paper-state/cooldown-context-selection-record.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 6

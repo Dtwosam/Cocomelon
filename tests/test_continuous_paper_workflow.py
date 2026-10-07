@@ -1316,3 +1316,37 @@ def test_upgrade_handoff_builds_cooldown_context_stability() -> None:
         in upload
     )
     assert "if-no-files-found: error" in upload
+
+
+
+def test_upgrade_handoff_builds_cooldown_context_selection_record() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "cocomelon-cooldown-context-selection" in source
+    assert "cooldown-context-selection-record.json" in source
+    assert "prospective freeze required before strategy use" in source
+
+    stability_at = source.index(
+        "- name: Build cooldown context stability after handoff"
+    )
+    selection_at = source.index(
+        "- name: Build cooldown context selection record"
+    )
+    upload_at = source.index(
+        "- name: Upload cooldown context stability"
+    )
+    holder_release_at = source.index(
+        "- name: Rebuild exact correlation holder release economics "
+        "after handoff"
+    )
+    assert stability_at < selection_at < upload_at < holder_release_at
+
+    upload = source[upload_at:holder_release_at]
+    assert "cooldown-context-stability-summary.json" in upload
+    assert "cooldown-context-selection-record.json" in upload
+    assert (
+        "hashFiles('continuous-paper-state/"
+        "cooldown-context-selection-record.json') != ''"
+        in upload
+    )
+    assert "if-no-files-found: error" in upload
