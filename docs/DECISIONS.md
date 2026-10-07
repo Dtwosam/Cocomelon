@@ -482,3 +482,18 @@ Passing this gate permits only later capacity-reflow research. It does not assum
 Direction-level counts are diagnostic only and direction-only filtering remains forbidden. This gate cannot alter paper entries, side preference, risk, sizing, stops, promotion state, or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-042 — Loss-context capacity reflow must be causally attributable
+
+D-041 fixed-schedule profitability is a prerequisite for studying portfolio reflow; it is not permission to assume that a skipped bad-context trade turns directly into account profit.
+
+Once D-041 is ready, reflow research may inspect later paper opportunities that the baseline rejected specifically for aggregate-risk or correlation-bucket capacity. A release is attributable to the frozen loss-context candidate only when removing one position from the captured decision-time risk request makes capacity available, that exact position was opened after the D-038 prospective boundary, its immutable entry context matches the frozen candidate, and the later replacement opportunity does not itself match the same frozen bad context.
+
+Missing holder lineage, unresolved holder trades, or missing entry-context evidence fails the reflow evidence closed. Positions opened before the prospective boundary cannot be credited to the candidate.
+
+This stage proves only causal single-position capacity release. It does not claim a replacement entry filled, does not model replacement exits or PnL, and does not model recursive replacements. Those are separate later evidence stages.
+
+No active strategy, side preference, risk limit, sizing, stop, promotion state, or execution behavior changes.
+
+**LIVE TRADING: DISABLED.**

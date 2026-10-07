@@ -415,3 +415,10 @@ This does not activate any loss-context filter. Stable contexts remain frozen re
 A D-038 loss-context candidate cannot advance merely because blocking matching future trades produces a positive delta. The same post-embargo resolved cohort must also show that the fixed-schedule portfolio left after those matches are removed is itself positive in realized net PnL and net-R, with leave-one-trade and leave-one-market robustness for both the filtered portfolio and its improvement. The improvement must exactly reconcile to D-038's avoided-loss PnL.
 
 Passing this stage permits only capacity-reflow investigation. It does not assume freed slots remain idle, does not model replacement or recursive trades, does not activate the filter, and grants no strategy, risk, promotion, or execution authority. Direction-only filtering remains forbidden.
+
+
+### Loss-context capacity reflow causality — D-042
+
+After D-041 passes, Cocomelon may study whether skipping the frozen bad context frees real risk or correlation capacity for later opportunities. Credit is allowed only when the captured baseline opportunity was rejected for capacity, removing one active holder makes it capacity-feasible, that holder was opened after the prospective boundary and matches the frozen context, and the newcomer itself does not match the same bad context.
+
+This stage does not assume the newcomer fills or makes money. Replacement execution, exits, realized economics, and recursive reflow remain separate later tests. Missing lineage fails closed and direction-only filtering remains forbidden.
