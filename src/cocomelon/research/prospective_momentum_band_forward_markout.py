@@ -698,6 +698,8 @@ def prospective_momentum_pullback_forward_markout_summary(
         }
 
     return {
+        "enabled": True,
+        "error": None,
         "research_only": True,
         "execution_authority": False,
         "promotion_authority": False,
