@@ -425,3 +425,12 @@ This file records decisions that should not be casually re-litigated in later ch
 **Authority:** `ready_for_review` is research review only. It does not change the one-hour cooldown, strategy logic, position sizing, risk limits, promotion state, or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-037 — Recurring loss contexts require economic holdout validation
+
+A repeated losing streak is not sufficient evidence to suppress a direction or strategy globally. Loss-streak research must translate any proposed avoidance rule into an entry-time context that includes `lead_strategy` plus market-state context; direction-only candidates are forbidden.
+
+For a recurring context to become eligible for a later prospective freeze, the counterfactual filter must improve realized net PnL on a chronological holdout, span multiple markets, remain positive after removing any one trade and any one market, and stay positive across later chronological blocks. Counterfactual filter delta is defined as the negative of realized net PnL for matching executed trades: avoiding a loser helps, while avoiding a winner hurts.
+
+This gate is research-only. It cannot change strategy, block entries, alter risk limits, promote a candidate, or grant execution authority. Any stable context still requires a separate immutable prospective freeze and genuinely future paper evidence before strategy use.
