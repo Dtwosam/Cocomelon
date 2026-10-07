@@ -485,6 +485,15 @@ class LossContextPairedPortfolioShadow:
         )
 
     def write_checkpoint(self) -> None:
+        # Persist both account snapshots even when a lane has made no trade.
+        # Otherwise an all-blocked candidate lane is indistinguishable from
+        # a brand-new account after a restart.
+        self._baseline_execution.store.persist_account(
+            self._baseline_execution.account
+        )
+        self._candidate_execution.store.persist_account(
+            self._candidate_execution.account
+        )
         write_paired_shadow_state(
             self._state_path,
             self.checkpoint_payload(),
