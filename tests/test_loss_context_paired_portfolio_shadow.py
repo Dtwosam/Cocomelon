@@ -4,6 +4,8 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.domain.features import (
     EligibilityDecision,
@@ -22,6 +24,9 @@ from cocomelon.research.historical_discovery_freeze import (
 )
 from cocomelon.research.loss_context_paired_portfolio_shadow import (
     LossContextPairedPortfolioShadow,
+)
+from cocomelon.research.loss_context_paired_portfolio_shadow_state import (
+    LossContextPairedShadowStateError,
 )
 from cocomelon.research.loss_context_portfolio_shadow_candidate import (
     LossContextPortfolioShadowFreeze,
@@ -79,10 +84,10 @@ def _record(
     )
 
 
-def _snapshot_record() -> ReplayRecord:
+def _snapshot_record_at(available_at_ms: int) -> ReplayRecord:
     return _record(
         kind="market_snapshot",
-        available_at_ms=EVALUATED_AT_MS - 1_000,
+        available_at_ms=available_at_ms,
         payload={
             "meta": {
                 "wire_name": MARKET.wire_name,
@@ -105,6 +110,10 @@ def _snapshot_record() -> ReplayRecord:
             },
         },
     )
+
+
+def _snapshot_record() -> ReplayRecord:
+    return _snapshot_record_at(EVALUATED_AT_MS - 1_000)
 
 
 def _trigger_record() -> ReplayRecord:
@@ -337,3 +346,177 @@ def test_paired_shadow_does_not_block_same_direction_outside_context(
     assert isinstance(candidate_admission, dict)
     assert candidate_admission["matching_context_blocked"] == 0
     assert candidate_admission["admitted_after_boundary"] == 1
+
+
+
+def test_paired_shadow_checkpoint_restores_open_lifecycle_and_counters(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    factory = lambda: _ScriptedDecisionEngine(  # noqa: E731
+        config,
+        lead_strategy="mean_reversion",
+    )
+    first = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=tmp_path,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=factory,
+    )
+    try:
+        for record in (
+            _snapshot_record(),
+            _trigger_record(),
+            _book(OPEN_BOOK_MS, bid="99.9", ask="100.1"),
+        ):
+            first.on_record(record, record.available_at_ms)
+        before = first.summary_payload(end_ms=OPEN_BOOK_MS)
+        baseline_before = before["baseline"]
+        candidate_before = before["candidate"]
+        assert isinstance(baseline_before, dict)
+        assert isinstance(candidate_before, dict)
+        assert baseline_before["open_position_count"] == 1
+        assert candidate_before["open_position_count"] == 0
+        candidate_admission = before["candidate_admission"]
+        assert isinstance(candidate_admission, dict)
+        assert candidate_admission["matching_context_blocked"] == 1
+        first.write_checkpoint()
+    finally:
+        first.close()
+
+    resumed = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=tmp_path,
+        startup_timestamp_ms=OPEN_BOOK_MS + 1,
+        decision_engine_factory=factory,
+    )
+    try:
+        assert resumed.state_restored is True
+        assert resumed.resume_warmup_required is True
+        with pytest.raises(
+            LossContextPairedShadowStateError,
+            match="requires warmup",
+        ):
+            resumed.on_record(
+                _mark(STOP_MARK_MS, mark="94"),
+                STOP_MARK_MS,
+            )
+
+        warm_snapshot = _snapshot_record_at(OPEN_BOOK_MS + 50)
+        resumed.on_record(
+            warm_snapshot,
+            warm_snapshot.available_at_ms,
+            evaluate_decisions=False,
+        )
+        resumed.confirm_restore_warmup_complete()
+        assert resumed.resume_warmup_required is False
+
+        resumed.on_record(
+            _mark(STOP_MARK_MS, mark="94"),
+            STOP_MARK_MS,
+        )
+        resumed.on_record(
+            _book(CLOSE_BOOK_MS, bid="93.9", ask="94.0"),
+            CLOSE_BOOK_MS,
+        )
+        result = resumed.summary_payload(end_ms=CLOSE_BOOK_MS)
+    finally:
+        resumed.close()
+
+    baseline = result["baseline"]
+    candidate = result["candidate"]
+    assert isinstance(baseline, dict)
+    assert isinstance(candidate, dict)
+    assert baseline["closed_trade_count"] == 1
+    assert candidate["closed_trade_count"] == 0
+    assert baseline["open_position_count"] == 0
+    assert candidate["open_position_count"] == 0
+    assert Decimal(str(baseline["total_account_pnl"])) < 0
+    assert Decimal(str(candidate["total_account_pnl"])) == 0
+    assert result["record_count"] == 6
+    candidate_admission = result["candidate_admission"]
+    assert isinstance(candidate_admission, dict)
+    assert candidate_admission["matching_context_blocked"] == 1
+
+
+def test_paired_shadow_refuses_execution_state_without_checkpoint(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    shadow = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=tmp_path,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="mean_reversion",
+        ),
+    )
+    shadow.close()
+
+    with pytest.raises(
+        LossContextPairedShadowStateError,
+        match="execution store exists without checkpoint",
+    ):
+        LossContextPairedPortfolioShadow(
+            freeze=_freeze(),
+            replay_config=config,
+            selected_markets=(MARKET,),
+            state_root=tmp_path,
+            startup_timestamp_ms=EVALUATED_AT_MS,
+            decision_engine_factory=lambda: _ScriptedDecisionEngine(
+                config,
+                lead_strategy="mean_reversion",
+            ),
+        )
+
+
+def test_paired_shadow_refuses_tampered_checkpoint(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    shadow = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=tmp_path,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="mean_reversion",
+        ),
+    )
+    try:
+        shadow.write_checkpoint()
+    finally:
+        shadow.close()
+
+    state_path = tmp_path / "paired-shadow-state.json"
+    payload = json.loads(state_path.read_text(encoding="utf-8"))
+    payload["record_count"] = 999
+    state_path.write_text(
+        json.dumps(payload, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        LossContextPairedShadowStateError,
+        match="digest mismatch",
+    ):
+        LossContextPairedPortfolioShadow(
+            freeze=_freeze(),
+            replay_config=config,
+            selected_markets=(MARKET,),
+            state_root=tmp_path,
+            startup_timestamp_ms=EVALUATED_AT_MS,
+            decision_engine_factory=lambda: _ScriptedDecisionEngine(
+                config,
+                lead_strategy="mean_reversion",
+            ),
+        )
