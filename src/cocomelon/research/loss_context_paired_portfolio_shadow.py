@@ -848,6 +848,7 @@ class LossContextPairedPortfolioShadow:
             raise ValueError("selected_markets must not be empty")
         self._baseline.reconcile_markets(markets)
         self._candidate.reconcile_markets(markets)
+        self._markets = markets
 
     def _lane_state_payload(
         self,
