@@ -95,6 +95,21 @@ def test_exact_successor_dispatch_still_checks_for_other_active_traders() -> Non
     assert 'echo "skip=true" >> "$GITHUB_OUTPUT"' in guard
 
 
+def test_guard_ignores_older_queued_run_from_stale_head() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    guard_at = source.index(
+        "- name: Skip bootstrap/watchdog when a continuous paper run is already active"
+    )
+    checkout_at = source.index("- uses: actions/checkout@v7", guard_at)
+    guard = source[guard_at:checkout_at]
+
+    assert 'current_head = os.environ["GITHUB_SHA"]' in guard
+    assert "run_id < current" in guard
+    assert 'run.get("head_sha") != current_head' in guard
+    assert "ignoring stale queued/pending" in guard
+    assert "continue" in guard
+
+
 def test_guard_ignores_post_handoff_research_tails() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     guard_at = source.index(
