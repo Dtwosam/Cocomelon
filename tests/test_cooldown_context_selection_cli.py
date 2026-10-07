@@ -26,6 +26,7 @@ def test_cooldown_selection_cli_writes_authority_negative_record(
                 "changes_risk_limits": False,
                 "forward_markout_only": True,
                 "realized_pnl_modeled": False,
+                "relaxed_cooldown_windows_ms": [900000, 1800000, 2700000],
                 "option_results": [],
             }
         ),
@@ -38,6 +39,8 @@ def test_cooldown_selection_cli_writes_authority_negative_record(
                 "candidates": [],
                 "direction_only_candidates_allowed": False,
                 "lead_strategy_context_required": True,
+                "relaxation_window_context_required": True,
+                "window_eligible_outcomes_only": True,
                 "one_hour_fee_adjusted_execution_economics_required": True,
                 "chronological_holdout_required": True,
                 "leave_one_option_robustness_required": True,
@@ -49,7 +52,7 @@ def test_cooldown_selection_cli_writes_authority_negative_record(
                 "changes_risk_limits": False,
                 "promotion_authority": False,
                 "execution_authority": False,
-                "schema_version": 1,
+                "schema_version": 2,
             }
         ),
         encoding="utf-8",
@@ -74,5 +77,7 @@ def test_cooldown_selection_cli_writes_authority_negative_record(
     assert status["stable_candidate_count"] == 0
     assert payload["selected_candidate"] is None
     assert payload["prospective_freeze_required_before_strategy_use"] is True
+    assert payload["relaxation_window_context_required"] is True
+    assert payload["window_eligible_outcomes_only"] is True
     assert payload["changes_risk_limits"] is False
     assert payload["execution_authority"] is False

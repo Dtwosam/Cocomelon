@@ -6,7 +6,7 @@ from itertools import product
 from typing import Final, cast
 
 ZERO: Final = Decimal("0")
-COOLDOWN_CONTEXT_STABILITY_SCHEMA_VERSION = 1
+COOLDOWN_CONTEXT_STABILITY_SCHEMA_VERSION = 2
 EXPECTED_COOLDOWN_CANDIDATE_ID: Final = (
     "prospective-consecutive-loss-cooldown-relaxation-v1"
 )
@@ -21,11 +21,16 @@ DEFAULT_VALIDATION_BLOCK_COUNT = 2
 DEFAULT_MIN_VALIDATION_BLOCK_ROWS = 2
 DEFAULT_MIN_VALIDATION_BLOCK_POSITIVE_SHARE = Decimal("0.50")
 CANDIDATE_DIMENSION_SETS: Final = (
-    ("lead_strategy",),
-    ("lead_strategy", "direction"),
-    ("lead_strategy", "elapsed_bucket"),
-    ("lead_strategy", "rank_band"),
-    ("lead_strategy", "direction", "elapsed_bucket"),
+    ("relaxation_window_ms", "lead_strategy"),
+    ("relaxation_window_ms", "lead_strategy", "direction"),
+    ("relaxation_window_ms", "lead_strategy", "elapsed_bucket"),
+    ("relaxation_window_ms", "lead_strategy", "rank_band"),
+    (
+        "relaxation_window_ms",
+        "lead_strategy",
+        "direction",
+        "elapsed_bucket",
+    ),
 )
 
 
@@ -37,6 +42,7 @@ class CooldownContextStabilityError(RuntimeError):
 class _Outcome:
     timestamp_ms: int
     market: str
+    relaxation_window_ms: str
     direction: str
     lead_strategy: str
     elapsed_bucket: str
@@ -154,6 +160,8 @@ class CooldownContextStabilityReport:
             "candidate_dimension_sets": CANDIDATE_DIMENSION_SETS,
             "direction_only_candidates_allowed": False,
             "lead_strategy_context_required": True,
+            "relaxation_window_context_required": True,
+            "window_eligible_outcomes_only": True,
             "one_hour_fee_adjusted_execution_economics_required": True,
             "chronological_holdout_required": True,
             "leave_one_option_robustness_required": True,
@@ -221,6 +229,24 @@ def _outcomes(summary: dict[str, object]) -> tuple[_Outcome, ...]:
         raise CooldownContextStabilityError(
             "cooldown option_results must be a list"
         )
+    raw_windows = summary.get("relaxed_cooldown_windows_ms")
+    if not isinstance(raw_windows, list) or not raw_windows:
+        raise CooldownContextStabilityError(
+            "relaxed_cooldown_windows_ms must be a non-empty list"
+        )
+    configured_windows: set[int] = set()
+    for raw_window in raw_windows:
+        window_ms = _integer(raw_window, "relaxed_cooldown_window_ms")
+        if window_ms <= 0:
+            raise CooldownContextStabilityError(
+                "relaxed cooldown windows must be positive"
+            )
+        if window_ms in configured_windows:
+            raise CooldownContextStabilityError(
+                "relaxed cooldown windows must be unique"
+            )
+        configured_windows.add(window_ms)
+
     outcomes: list[_Outcome] = []
     for raw_value in raw_options:
         raw = _mapping(raw_value, "cooldown option")
@@ -228,6 +254,29 @@ def _outcomes(summary: dict[str, object]) -> tuple[_Outcome, ...]:
         markout = _mapping(markouts.get(str(ONE_HOUR_MS)), "1h markout")
         if markout.get("status") != "settled":
             continue
+        raw_applicable = raw.get("applicable_relaxed_windows_ms")
+        if not isinstance(raw_applicable, list):
+            raise CooldownContextStabilityError(
+                "applicable_relaxed_windows_ms must be a list"
+            )
+        applicable: list[int] = []
+        for raw_window in raw_applicable:
+            window_ms = _integer(
+                raw_window,
+                "applicable_relaxed_window_ms",
+            )
+            if window_ms not in configured_windows:
+                raise CooldownContextStabilityError(
+                    "applicable relaxation window is not configured"
+                )
+            if window_ms in applicable:
+                raise CooldownContextStabilityError(
+                    "applicable relaxation windows must be unique"
+                )
+            applicable.append(window_ms)
+        if not applicable:
+            continue
+
         pnl = _decimal(
             markout.get("entry_fee_adjusted_mark_to_market_pnl"),
             "entry_fee_adjusted_mark_to_market_pnl",
@@ -236,32 +285,38 @@ def _outcomes(summary: dict[str, object]) -> tuple[_Outcome, ...]:
             markout.get("directional_return_fraction"),
             "directional_return_fraction",
         )
-        outcomes.append(
-            _Outcome(
-                timestamp_ms=_integer(raw.get("timestamp_ms"), "timestamp_ms"),
-                market=_string(raw.get("market"), "market"),
-                direction=_string(raw.get("direction"), "direction"),
-                lead_strategy=_string(
-                    raw.get("lead_strategy"),
-                    "lead_strategy",
-                ),
-                elapsed_bucket=_string(
-                    raw.get("elapsed_bucket"),
-                    "elapsed_bucket",
-                ),
-                rank_band=_rank_band(
-                    _integer(raw.get("rank_ordinal"), "rank_ordinal")
-                ),
-                fee_adjusted_pnl_1h=pnl,
-                directional_return_1h=directional_return,
+        for window_ms in applicable:
+            outcomes.append(
+                _Outcome(
+                    timestamp_ms=_integer(
+                        raw.get("timestamp_ms"),
+                        "timestamp_ms",
+                    ),
+                    market=_string(raw.get("market"), "market"),
+                    relaxation_window_ms=str(window_ms),
+                    direction=_string(raw.get("direction"), "direction"),
+                    lead_strategy=_string(
+                        raw.get("lead_strategy"),
+                        "lead_strategy",
+                    ),
+                    elapsed_bucket=_string(
+                        raw.get("elapsed_bucket"),
+                        "elapsed_bucket",
+                    ),
+                    rank_band=_rank_band(
+                        _integer(raw.get("rank_ordinal"), "rank_ordinal")
+                    ),
+                    fee_adjusted_pnl_1h=pnl,
+                    directional_return_1h=directional_return,
+                )
             )
-        )
     return tuple(
         sorted(
             outcomes,
             key=lambda item: (
                 item.timestamp_ms,
                 item.market,
+                int(item.relaxation_window_ms),
                 item.lead_strategy,
                 item.direction,
             ),

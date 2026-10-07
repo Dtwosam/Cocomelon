@@ -24,6 +24,7 @@ def test_cooldown_context_stability_cli_writes_authority_negative_report(
                 "changes_risk_limits": False,
                 "forward_markout_only": True,
                 "realized_pnl_modeled": False,
+                "relaxed_cooldown_windows_ms": [900000, 1800000, 2700000],
                 "option_results": [],
             }
         ),
@@ -46,6 +47,8 @@ def test_cooldown_context_stability_cli_writes_authority_negative_report(
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert status["stable_candidate_count"] == 0
     assert payload["direction_only_candidates_allowed"] is False
+    assert payload["relaxation_window_context_required"] is True
+    assert payload["window_eligible_outcomes_only"] is True
     assert payload["changes_strategy"] is False
     assert payload["changes_risk_limits"] is False
     assert payload["execution_authority"] is False

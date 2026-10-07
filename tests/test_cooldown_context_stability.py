@@ -17,6 +17,7 @@ def _option(
     rank: int = 5,
     pnl_1h: str = "10",
     return_1h: str = "0.01",
+    applicable_windows_ms: tuple[int, ...] = (900_000,),
 ) -> dict[str, object]:
     return {
         "opportunity_id": f"{market}-{timestamp_ms}-{strategy}-{direction}",
@@ -26,6 +27,7 @@ def _option(
         "lead_strategy": strategy,
         "rank_ordinal": rank,
         "elapsed_bucket": bucket,
+        "applicable_relaxed_windows_ms": list(applicable_windows_ms),
         "markouts": {
             "3600000": {
                 "status": "settled",
@@ -47,6 +49,7 @@ def _summary(options: list[dict[str, object]]) -> dict[str, object]:
         "changes_risk_limits": False,
         "forward_markout_only": True,
         "realized_pnl_modeled": False,
+        "relaxed_cooldown_windows_ms": [900_000, 1_800_000, 2_700_000],
         "option_results": options,
     }
 
@@ -67,9 +70,12 @@ def test_direction_alone_can_never_become_a_candidate() -> None:
 
     assert payload["direction_only_candidates_allowed"] is False
     assert payload["lead_strategy_context_required"] is True
+    assert payload["relaxation_window_context_required"] is True
+    assert payload["window_eligible_outcomes_only"] is True
     assert ("direction",) not in payload["candidate_dimension_sets"]
     assert all(
         "lead_strategy" in item["dimensions"]
+        and "relaxation_window_ms" in item["dimensions"]
         for item in payload["candidates"]
     )
 
@@ -100,8 +106,8 @@ def test_context_can_survive_holdout_and_robustness_gates() -> None:
     trend = next(
         item
         for item in stable
-        if item.dimensions == ("lead_strategy",)
-        and item.values == ("trend",)
+        if item.dimensions == ("relaxation_window_ms", "lead_strategy")
+        and item.values == ("900000", "trend")
     )
     assert trend.discovery_rows == 12
     assert trend.validation_rows == 8
@@ -149,8 +155,8 @@ def test_one_market_carrying_validation_fails_robustness() -> None:
     trend = next(
         item
         for item in report.candidates
-        if item.dimensions == ("lead_strategy",)
-        and item.values == ("trend",)
+        if item.dimensions == ("relaxation_window_ms", "lead_strategy")
+        and item.values == ("900000", "trend")
     )
 
     assert trend.validation_total_pnl == Decimal("120")
@@ -192,8 +198,8 @@ def test_late_block_flip_fails_even_when_total_is_positive() -> None:
     trend = next(
         item
         for item in report.candidates
-        if item.dimensions == ("lead_strategy",)
-        and item.values == ("trend",)
+        if item.dimensions == ("relaxation_window_ms", "lead_strategy")
+        and item.values == ("900000", "trend")
     )
 
     assert trend.validation_total_pnl == Decimal("60")
@@ -215,3 +221,50 @@ def test_authority_drift_is_rejected() -> None:
         assert "authority or claim scope drift" in str(exc)
     else:
         raise AssertionError("authority drift must be rejected")
+
+
+
+def test_non_applicable_rows_cannot_support_a_relaxation_context() -> None:
+    options = [
+        _option(
+            timestamp_ms=1_000 + index,
+            market=f"M{index % 4}",
+            applicable_windows_ms=(),
+        )
+        for index in range(20)
+    ]
+
+    report = build_cooldown_context_stability_report(_summary(options))
+    payload = report.to_dict()
+
+    assert payload["source_option_count"] == 20
+    assert payload["settled_1h_outcomes"] == 0
+    assert payload["candidate_count"] == 0
+    assert payload["stable_candidate_count"] == 0
+
+
+def test_each_applicable_relaxation_window_is_evaluated_separately() -> None:
+    options = [
+        _option(
+            timestamp_ms=1_000 + index,
+            market=f"M{index % 4}",
+            applicable_windows_ms=(900_000, 1_800_000),
+        )
+        for index in range(20)
+    ]
+
+    report = build_cooldown_context_stability_report(_summary(options))
+    payload = report.to_dict()
+
+    assert payload["settled_1h_outcomes"] == 40
+    stable = tuple(
+        item for item in report.candidates if item.stable_on_validation
+    )
+    assert {
+        item.values
+        for item in stable
+        if item.dimensions == ("relaxation_window_ms", "lead_strategy")
+    } == {
+        ("900000", "trend"),
+        ("1800000", "trend"),
+    }

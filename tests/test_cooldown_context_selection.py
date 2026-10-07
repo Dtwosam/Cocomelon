@@ -22,6 +22,7 @@ def _cooldown() -> dict[str, object]:
         "changes_risk_limits": False,
         "forward_markout_only": True,
         "realized_pnl_modeled": False,
+        "relaxed_cooldown_windows_ms": [900_000, 1_800_000, 2_700_000],
         "option_results": [
             {"timestamp_ms": 1_000},
             {"timestamp_ms": 2_000},
@@ -77,17 +78,22 @@ def _stability() -> dict[str, object]:
         "stable_candidate_count": 2,
         "candidates": [
             _candidate(
-                ("lead_strategy", "direction"),
-                ("trend", "short"),
+                ("relaxation_window_ms", "lead_strategy", "direction"),
+                ("900000", "trend", "short"),
             ),
-            _candidate(("lead_strategy",), ("trend",)),
+            _candidate(
+                ("relaxation_window_ms", "lead_strategy"),
+                ("900000", "trend"),
+            ),
         ],
         "candidate_dimension_sets": (
-            ("lead_strategy",),
-            ("lead_strategy", "direction"),
+            ("relaxation_window_ms", "lead_strategy"),
+            ("relaxation_window_ms", "lead_strategy", "direction"),
         ),
         "direction_only_candidates_allowed": False,
         "lead_strategy_context_required": True,
+        "relaxation_window_context_required": True,
+        "window_eligible_outcomes_only": True,
         "one_hour_fee_adjusted_execution_economics_required": True,
         "chronological_holdout_required": True,
         "leave_one_option_robustness_required": True,
@@ -99,7 +105,7 @@ def _stability() -> dict[str, object]:
         "changes_risk_limits": False,
         "promotion_authority": False,
         "execution_authority": False,
-        "schema_version": 1,
+        "schema_version": 2,
     }
 
 
@@ -113,11 +119,16 @@ def test_selection_prefers_simpler_strategy_context_over_side_condition() -> Non
     assert payload["stable_candidate_count"] == 2
     selected = payload["selected_candidate"]
     assert isinstance(selected, dict)
-    assert selected["dimensions"] == ("lead_strategy",)
-    assert selected["values"] == ("trend",)
+    assert selected["dimensions"] == (
+        "relaxation_window_ms",
+        "lead_strategy",
+    )
+    assert selected["values"] == ("900000", "trend")
     assert payload["source_max_timestamp_ms"] == 3_000
     assert payload["direction_only_candidates_allowed"] is False
     assert payload["lead_strategy_context_required"] is True
+    assert payload["relaxation_window_context_required"] is True
+    assert payload["window_eligible_outcomes_only"] is True
     assert payload["prospective_freeze_required_before_strategy_use"] is True
     assert payload["changes_strategy"] is False
     assert payload["changes_risk_limits"] is False
@@ -191,3 +202,20 @@ def test_no_stable_candidate_produces_no_selection() -> None:
     assert payload["stable_candidate_count"] == 0
     assert payload["selected_candidate"] is None
     assert payload["stable_candidates"] == ()
+
+
+
+def test_stable_candidate_without_relaxation_window_is_rejected() -> None:
+    stability = _stability()
+    stability["candidates"] = [
+        _candidate(("lead_strategy",), ("trend",)),
+    ]
+
+    with pytest.raises(
+        CooldownContextSelectionError,
+        match="relaxation-window context",
+    ):
+        build_cooldown_context_selection_record(
+            _cooldown(),
+            stability,
+        )
