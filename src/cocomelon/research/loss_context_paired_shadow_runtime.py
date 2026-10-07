@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import queue
 import threading
 from concurrent.futures import Future
@@ -16,6 +17,7 @@ from cocomelon.research.continuous_paper_opening_rank import (
     LatestCoarseRankTracker,
 )
 from cocomelon.research.loss_context_paired_portfolio_shadow import (
+    LOSS_CONTEXT_PAIRED_SHADOW_STATE_FILENAME,
     LossContextPairedPortfolioShadow,
 )
 from cocomelon.research.loss_context_portfolio_shadow_candidate import (
@@ -138,6 +140,10 @@ class LossContextPairedShadowRuntime:
         self._replay_config = replay_config
         self._markets = markets
         self._state_root = Path(state_root)
+        self._restore_markets = self._checkpoint_markets_or_default(
+            self._state_root,
+            markets,
+        )
         self._startup_timestamp_ms = startup_timestamp_ms
         self._shadow_factory = shadow_factory
         self._queue: queue.Queue[_Command] = queue.Queue(
@@ -166,6 +172,42 @@ class LossContextPairedShadowRuntime:
             daemon=True,
         )
         self._thread.start()
+
+    @staticmethod
+    def _checkpoint_markets_or_default(
+        state_root: Path,
+        default: tuple[MarketId, ...],
+    ) -> tuple[MarketId, ...]:
+        path = state_root / LOSS_CONTEXT_PAIRED_SHADOW_STATE_FILENAME
+        if not path.exists():
+            return default
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise LossContextPairedShadowRuntimeError(
+                "paired shadow checkpoint is unreadable"
+            ) from exc
+        if not isinstance(raw, dict):
+            raise LossContextPairedShadowRuntimeError(
+                "paired shadow checkpoint must be an object"
+            )
+        selected = raw.get("selected_markets")
+        if not isinstance(selected, list) or not selected:
+            raise LossContextPairedShadowRuntimeError(
+                "paired shadow checkpoint selected markets are invalid"
+            )
+        markets: list[MarketId] = []
+        for item in selected:
+            if not isinstance(item, str) or not item:
+                raise LossContextPairedShadowRuntimeError(
+                    "paired shadow checkpoint market is invalid"
+                )
+            if ":" in item:
+                dex, coin = item.split(":", 1)
+                markets.append(MarketId(dex, coin))
+            else:
+                markets.append(MarketId("", item))
+        return tuple(markets)
 
     @property
     def candidate_id(self) -> str:
@@ -284,7 +326,7 @@ class LossContextPairedShadowRuntime:
             shadow = self._shadow_factory(
                 freeze=self._freeze,
                 replay_config=self._replay_config,
-                selected_markets=self._markets,
+                selected_markets=self._restore_markets,
                 state_root=self._state_root,
                 startup_timestamp_ms=self._startup_timestamp_ms,
                 rank_ordinal_provider=lambda market, at_ms: (
@@ -480,6 +522,12 @@ class LossContextPairedShadowRuntime:
                 "error": self._error,
                 "portfolio_shadow_candidate_id": (
                     self._freeze.candidate_id
+                ),
+                "desired_markets": tuple(
+                    market.canonical for market in self._markets
+                ),
+                "restore_markets": tuple(
+                    market.canonical for market in self._restore_markets
                 ),
                 "queue_capacity": self._queue.maxsize,
                 "queue_depth": self._queue.qsize(),
