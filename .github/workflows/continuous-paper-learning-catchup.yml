@@ -106,9 +106,24 @@ jobs:
                   for name, step_conclusion in steps.items()
                   if step_conclusion == "failure"
               }
+              allowed_failed_steps = {
+                  frozenset({"Fail closed on upgrade handoff source"}),
+                  frozenset(
+                      {
+                          "Queue fallback exact successor continuous paper worker",
+                          "Fail closed on upgrade handoff source",
+                      }
+                  ),
+              }
               return (
                   all(steps.get(name) == "success" for name in required_successes)
-                  and failed_steps == {"Fail closed on upgrade handoff source"}
+                  and frozenset(failed_steps) in allowed_failed_steps
+                  and (
+                      "Queue fallback exact successor continuous paper worker"
+                      not in failed_steps
+                      or steps.get("Queue exact successor from fast resume")
+                      == "success"
+                  )
               )
 
           for run in runs:
