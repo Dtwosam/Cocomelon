@@ -4863,3 +4863,16 @@ The baseline shadow will only enforce the fresh prospective start boundary. The 
 The hook is opt-in and is not wired into the active paper trader. No current strategy, exits, risk limits, sizing, cooldowns, positions, or execution authority change.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Paired loss-context portfolio shadow engine — 2026-10-07
+
+Cocomelon now has the isolated account engine required by D-048/D-050. It can run a baseline paper lane and a candidate paper lane over the exact same chronological evidence while keeping their accounting, risk state, positions, cooldown state, fees, funding, drawdown, and capacity independent.
+
+The baseline lane differs from the candidate only at D-049 opening admission: the candidate may block the exact frozen bad-entry context, while same-direction setups outside that context remain eligible. All position management and exits continue through the ordinary unchanged paper lifecycle.
+
+The engine reports candidate-minus-baseline equity, account PnL, realized net PnL, drawdown, closed trades, risk activity, and admission counts. It is not yet attached to the active trader; the next frontier is durable prospective evidence capture/restoration for this paired shadow across rolling paper handoffs.
+
+No active paper behavior changes and no promotion or execution authority is granted.
+
+**LIVE TRADING: DISABLED.**
