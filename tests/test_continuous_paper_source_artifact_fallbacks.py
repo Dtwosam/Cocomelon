@@ -5,7 +5,7 @@ from pathlib import Path
 LEARNING_SOURCE_WORKFLOWS = (
     (
         ".github/workflows/prospective-two-strike-stop-filter-ledger.yml",
-        "latest_successful_with_compact_artifact",
+        "latest_evidence_eligible_with_compact_artifact",
     ),
     (
         ".github/workflows/prospective-full-stack-reflow-exact-ledger.yml",
@@ -121,7 +121,7 @@ def test_learning_source_consumers_skip_artifactless_runs() -> None:
             assert "Queue exact successor from fast resume" in resolver
 
 
-def test_exact_path_export_skips_artifactless_success_runs() -> None:
+def test_exact_path_export_skips_artifactless_evidence_eligible_runs() -> None:
     source = _source(
         ".github/workflows/continuous-paper-exact-path-export.yml"
     )
@@ -132,7 +132,7 @@ def test_exact_path_export_skips_artifactless_success_runs() -> None:
 
     assert "artifact_for_run()" in resolver
     assert "continuous-paper-state-" in resolver
-    assert "latest_successful_with_state_artifact" in resolver
+    assert "latest_evidence_eligible_with_state_artifact" in resolver
     assert (
         "selected source has no authenticated paper-state artifact"
         in resolver
@@ -258,3 +258,19 @@ def test_exact_state_consumers_accept_only_authenticated_durable_failures() -> N
         assert "Queue fallback exact successor continuous paper worker" in resolver
         assert "Queue exact successor from fast resume" in resolver
         assert 'conclusion not in {"success", "failure"}' in resolver
+
+
+def test_repaired_consumers_choose_newest_eligible_run_not_late_event() -> None:
+    for path in (
+        ".github/workflows/continuous-paper-exact-path-export.yml",
+        ".github/workflows/prospective-two-strike-stop-filter-ledger.yml",
+    ):
+        source = _source(path)
+        resolver = source.split(
+            "      - name: Resolve exact source paper run",
+            1,
+        )[1].split("\n      - name:", 1)[0]
+
+        assert 'sorted(runs, key=lambda item: item["id"], reverse=True)' in resolver
+        assert 'if [ "$candidate_run_id" = "$EVENT_RUN_ID" ]; then' in resolver
+        assert "per_page=100" in resolver

@@ -4922,3 +4922,16 @@ The evidence must also survive three chronological later blocks. Each block need
 This is a research review gate only. It does not turn the frozen filter on, change LONG/SHORT behavior, alter risk/sizing/stops/cooldowns/positions, or enable live trading.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-039 consumer parity — 2026-10-07
+
+Continuous Paper Exact Path Export and the Prospective Two-Strike Stop Filter Ledger were found to still require `conclusion=success`, which discarded valid durable evidence from narrow handoff-tail failures already permitted by D-039.
+
+The repair makes both consumers authenticate the paper job and require successful trader execution, durable-state measurement, and durable-state upload before accepting a failed run. Only the already-allowed handoff-tail failure shapes are accepted, and the exact run/attempt artifact must still exist. Automated completion events are wake signals only: discovery sorts completed paper runs newest-first so a late-finishing older worker cannot regress an append-only evidence source. Manual exact dispatch remains fail-closed.
+
+Observed proof case: paper run `37634738826` failed only in the authenticated handoff tail while successfully publishing both its durable state and compact learning-source artifacts. Under the repaired contract those artifacts remain usable research evidence instead of being silently skipped.
+
+No strategy, risk, sizing, execution economics, readiness threshold, promotion state, or live authority changes.
+
+**LIVE TRADING: DISABLED.**

@@ -665,3 +665,20 @@ The eligible checkpoint history is divided into three chronological later blocks
 `ready_for_review` remains research review only. It does not activate the filter, suppress LONG or SHORT globally, alter strategy/risk/sizing/stops/cooldowns/positions, grant promotion authority, or enable live orders. If the gate is not ready, Cocomelon keeps collecting future evidence without relaxing thresholds.
 
 **LIVE TRADING: DISABLED.**
+
+
+## D-055 — D-039 evidence eligibility applies to all durable paper consumers
+
+**Date:** 2026-10-07
+
+**Decision:** Research consumers that depend on authenticated continuous-paper artifacts must apply the D-039 evidence-eligibility contract consistently. A paper run is eligible when it completed successfully, or when the trader, durable-state measurement, and durable-state upload all succeeded and the run failed only in the narrowly authenticated post-trader handoff tail already allowed by D-039.
+
+**Immediate repair:** Continuous Paper Exact Path Export and the Prospective Two-Strike Stop Filter Ledger may consume those narrowly eligible handoff-tail-failed runs when the exact expected artifact for the same run/attempt exists. They may not consume arbitrary failed, cancelled, timed-out, corrupted, or pre-state runs.
+
+**Fallback consequence:** Automatic source discovery treats workflow completion events only as wake signals. It sorts completed main-branch paper runs newest-first, verifies D-039 eligibility per run, then requires the exact state or compact artifact before selection. This prevents a late-completing older worker from moving an append-only evidence consumer backward. A non-success workflow wake is therefore not evidence loss by itself.
+
+**Manual consequence:** Exact manual dispatch remains strict. If a manually supplied paper run is not D-039 evidence-eligible or lacks its exact artifact, the consumer fails closed instead of silently switching sources.
+
+**Authority:** This restores evidence continuity only. It does not change strategy, risk, sizing, entries, exits, readiness thresholds, promotion status, paper positions, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
