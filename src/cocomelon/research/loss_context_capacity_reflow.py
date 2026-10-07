@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import cast
 
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.evaluation.store import EvaluationFactStore
