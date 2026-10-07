@@ -329,8 +329,7 @@ def test_paired_shadow_does_not_block_same_direction_outside_context(
     assert candidate["closed_trade_count"] == 1
     assert baseline["total_account_pnl"] == candidate["total_account_pnl"]
     assert baseline["realized_net_pnl"] == candidate["realized_net_pnl"]
-    assert result["candidate_minus_baseline_total_account_pnl"] == "0"
-
+    assert Decimal(\n        str(result["candidate_minus_baseline_total_account_pnl"])\n    ) == 0\n
     candidate_admission = result["candidate_admission"]
     assert isinstance(candidate_admission, dict)
     assert candidate_admission["matching_context_blocked"] == 0
