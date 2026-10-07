@@ -1390,3 +1390,69 @@ def test_upgrade_handoff_builds_cooldown_context_selection_record() -> None:
         in upload
     )
     assert "if-no-files-found: error" in upload
+
+
+
+def test_upgrade_handoff_freezes_and_scores_loss_context_prospectively() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Restore immutable loss-context candidate freeze" in source
+    assert "Freeze stable loss context prospectively" in source
+    assert "Score frozen loss context on future trades" in source
+    assert "Upload immutable loss-context candidate" in source
+    assert "cocomelon-loss-context-freeze" in source
+    assert "cocomelon-loss-context-prospective" in source
+    assert "loss-context-candidate-freeze.json" in source
+    assert "loss-context-prospective-report.json" in source
+    assert "continuous-paper-loss-context-candidate" in source
+    assert "RESEARCH ONLY / NO STRATEGY OR RISK CHANGE" in source
+
+    audit_at = source.index(
+        "- name: Rebuild loss-streak context audit after handoff"
+    )
+    restore_at = source.index(
+        "- name: Restore immutable loss-context candidate freeze"
+    )
+    freeze_at = source.index(
+        "- name: Freeze stable loss context prospectively"
+    )
+    score_at = source.index(
+        "- name: Score frozen loss context on future trades"
+    )
+    upload_at = source.index(
+        "- name: Upload immutable loss-context candidate"
+    )
+    cooldown_at = source.index(
+        "- name: Rebuild deferred cooldown evidence after handoff"
+    )
+    assert audit_at < restore_at < freeze_at < score_at < upload_at < cooldown_at
+
+    restore = source[restore_at:freeze_at]
+    assert "head_branch" in restore
+    assert ".github/workflows/continuous-paper.yml" in restore
+    assert "verify_loss_context_candidate_freeze" in restore
+
+    freeze = source[freeze_at:score_at]
+    assert "--source-paper-run-id" in freeze
+    assert "--source-paper-run-attempt" in freeze
+    assert "--source-paper-head-sha" in freeze
+
+    score = source[score_at:upload_at]
+    assert "--state-root" in score
+    assert "ready for review / changes strategy / execution" in score
+
+
+def test_loss_context_summary_never_frames_direction_as_authority() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    audit_at = source.index(
+        "- name: Rebuild loss-streak context audit after handoff"
+    )
+    upload_at = source.index(
+        "- name: Upload loss-streak context audit",
+        audit_at,
+    )
+    audit = source[audit_at:upload_at]
+    assert "direction-only candidates allowed" in audit
+    assert "context-filter candidates / stable" in audit
+    assert "execution / strategy / risk authority" in audit

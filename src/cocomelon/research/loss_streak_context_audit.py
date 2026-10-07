@@ -18,7 +18,7 @@ from cocomelon.research.learning_feature_snapshots import (
 )
 
 ZERO: Final = Decimal("0")
-LOSS_STREAK_CONTEXT_SCHEMA_VERSION = 3
+LOSS_STREAK_CONTEXT_SCHEMA_VERSION = 4
 DEFAULT_MIN_STREAK_LENGTH = 3
 DOMINANT_SHARE_MIN = Decimal("0.75")
 RECURRING_STREAK_MIN = 2
@@ -319,6 +319,38 @@ def _baseline_rows(
             continue
         rows.append(_row(resolved))
     return tuple(rows), unresolved
+
+
+def try_resolve_entry_context_row(
+    trade: TradeJournalEntry,
+    facts: EvaluationFactStore,
+    features: LearningFeatureSnapshotStore,
+    ranks: ContinuousPaperOpeningRankStore,
+) -> tuple[dict[str, object] | None, str | None]:
+    resolved, reason = _try_resolve(
+        trade,
+        facts,
+        features,
+        ranks,
+    )
+    if resolved is None:
+        return None, reason
+    return _row(resolved), None
+
+
+def resolved_entry_context_rows(
+    trades: tuple[TradeJournalEntry, ...],
+    facts: EvaluationFactStore,
+    features: LearningFeatureSnapshotStore,
+    ranks: ContinuousPaperOpeningRankStore,
+) -> tuple[tuple[dict[str, object], ...], dict[str, int]]:
+    rows, unresolved = _baseline_rows(
+        trades,
+        facts,
+        features,
+        ranks,
+    )
+    return rows, dict(sorted(unresolved.items()))
 
 
 def _recurring_patterns(
@@ -824,6 +856,11 @@ def loss_streak_context_audit(
         "dominant_share_min": str(DOMINANT_SHARE_MIN),
         "recurring_streak_min": RECURRING_STREAK_MIN,
         "trade_count": len(trades),
+        "max_trade_closed_at_ms": (
+            None
+            if not trades
+            else max(trade.closed_at_ms for trade in trades)
+        ),
         "baseline_resolved_trade_count": len(baseline_rows),
         "baseline_unresolved_trade_count": sum(
             baseline_unresolved.values()
