@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -319,3 +320,29 @@ def test_pre_boundary_release_is_rejected() -> None:
             (),
             freeze=freeze,
         )
+
+
+
+def test_holder_release_workflow_runs_after_causal_reflow() -> None:
+    source = Path(
+        ".github/workflows/continuous-paper.yml"
+    ).read_text(encoding="utf-8")
+    reflow_at = source.index(
+        "- name: Rebuild loss-context capacity reflow sensitivity"
+    )
+    holder_at = source.index(
+        "- name: Rebuild loss-context holder release execution"
+    )
+    upload_at = source.index(
+        "- name: Upload loss-context holder release execution"
+    )
+    cooldown_at = source.index(
+        "- name: Rebuild deferred cooldown evidence after handoff"
+    )
+    assert reflow_at < holder_at < upload_at < cooldown_at
+    assert (
+        "rebuild_deferred_loss_context_holder_release_execution.py"
+        in source
+    )
+    assert "loss-context-holder-release-execution-summary.json" in source
+    assert "RESEARCH ONLY / NO POSITION OR RISK CHANGE" in source
