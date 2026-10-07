@@ -674,3 +674,29 @@ def test_paired_shadow_rejects_replay_config_mismatch(
                 lead_strategy="trend",
             ),
         )
+
+
+
+def test_paired_shadow_checkpoint_tracks_reconciled_market_set(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    other = MarketId("", "OTHER")
+    shadow = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=tmp_path,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+        decision_engine_factory=lambda: _ScriptedDecisionEngine(
+            config,
+            lead_strategy="trend",
+        ),
+    )
+    try:
+        shadow.reconcile_markets((MARKET, other))
+        payload = shadow.checkpoint(end_ms=EVALUATED_AT_MS)
+    finally:
+        shadow.close()
+
+    assert payload["selected_markets"] == ["OTHER", "TEST"]
