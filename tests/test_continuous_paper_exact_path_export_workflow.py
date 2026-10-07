@@ -73,3 +73,11 @@ def test_exact_path_export_accepts_only_durable_handoff_tail_failures() -> None:
     assert 'resolution_mode="durable_handoff_event"' in source
     assert "latest_evidence_eligible_with_state_artifact" in source
     assert "selected source paper run is not evidence-eligible" in source
+
+
+def test_automated_source_resolution_prefers_newest_completed_run() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert 'sorted(runs, key=lambda item: item["id"], reverse=True)' in source
+    assert 'branch=main&status=completed&per_page=100' in source
+    assert 'if [ "$candidate_run_id" = "$EVENT_RUN_ID" ]; then' in source
