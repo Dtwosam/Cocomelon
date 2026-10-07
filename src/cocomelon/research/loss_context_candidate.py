@@ -190,13 +190,13 @@ def _candidate_context(
         raise LossContextCandidateError(
             "LOSS_CONTEXT_CANDIDATE_CONTEXT_INVALID"
         )
-    if "lead_strategy" not in dimensions:
-        raise LossContextCandidateError(
-            "LOSS_CONTEXT_LEAD_STRATEGY_REQUIRED"
-        )
     if dimensions == ("direction",):
         raise LossContextCandidateError(
             "LOSS_CONTEXT_DIRECTION_ONLY_FORBIDDEN"
+        )
+    if "lead_strategy" not in dimensions:
+        raise LossContextCandidateError(
+            "LOSS_CONTEXT_LEAD_STRATEGY_REQUIRED"
         )
     return dimensions, values
 
