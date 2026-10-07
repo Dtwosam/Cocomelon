@@ -617,6 +617,10 @@ class LossContextPairedPortfolioShadow:
         )
         if raw_unattributed is None:
             unattributed = filter_.matching_context_blocked - attributed
+            if unattributed < 0:
+                raise ValueError(
+                    "shadow admission attributed blocks exceed total"
+                )
         elif (
             isinstance(raw_unattributed, bool)
             or not isinstance(raw_unattributed, int)
