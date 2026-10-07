@@ -228,11 +228,6 @@ def test_freeze_requires_relaxation_window_and_strategy_context() -> None:
     candidate["dimensions"] = ("direction",)
     candidate["values"] = ("short",)
     selection["selected_candidate"] = candidate
-    identity = {
-        key: value
-        for key, value in selection.items()
-        if key != "source_record_id"
-    }
     # Deliberately retain the old record id: any post-selection mutation fails
     # before a weaker context can be frozen.
     with pytest.raises(CooldownContextCandidateError):
