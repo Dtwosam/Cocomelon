@@ -1322,6 +1322,11 @@ def test_upgrade_handoff_builds_cooldown_context_stability() -> None:
 def test_upgrade_handoff_builds_cooldown_context_selection_record() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
+    assert '"src/cocomelon/research/cooldown_context_stability.py"' in source
+    assert '"src/cocomelon/research/cooldown_context_selection.py"' in source
+    assert '"src/cocomelon/cooldown_context_stability_cli.py"' in source
+    assert '"src/cocomelon/cooldown_context_selection_cli.py"' in source
+
     assert "cocomelon-cooldown-context-selection" in source
     assert "cooldown-context-selection-record.json" in source
     assert "prospective freeze required before strategy use" in source
