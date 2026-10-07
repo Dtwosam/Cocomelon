@@ -4729,3 +4729,14 @@ The continuous-paper guard now ignores only queued/pending runs that are both ol
 Continuity/safety only. No strategy, risk limit, sizing, stop, promotion, or live-order behavior changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Frozen recurring loss-context prospective shadow — 2026-10-07
+
+The D-037 loss-context stability gate now has its missing clean-future stage. When the audit finds a stable context, Cocomelon deterministically chooses the simplest robust context, freezes it once, preserves the exact source run/head lineage, waits six hours, and then scores only later realized paper trades that match the frozen entry-time context.
+
+The future score is economically symmetric: blocking a later loser improves filter delta, while blocking a later winner reduces it. A candidate cannot become review-ready unless the future sample is complete, diversified across markets, leave-one-trade and leave-one-market robust, and positive across three later time blocks.
+
+This still does not change the active paper strategy. It creates a clean prospective answer to a narrower question: whether one exact repeated bad setup remains worth avoiding after we stop looking at the evidence that discovered it.
+
+**LIVE TRADING: DISABLED.**
