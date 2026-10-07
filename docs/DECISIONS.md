@@ -620,3 +620,16 @@ A staged opening is economically material: dropping it at a worker boundary coul
 This constraint applies only to the research shadow and may never delay, block, or alter the active continuous-paper trader. If a worker must hand off while the shadow is unsafe, shadow continuity fails closed rather than inventing a clean A/B continuation.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-052 — Paired shadow restart state must bind both account and lifecycle lineage
+
+A D-050 paired portfolio shadow may continue across rolling paper workers only from a D-051 handoff-safe checkpoint that binds the immutable portfolio-shadow candidate, each lane's exact persisted paper-account state ID, open lifecycle lineage, recorded mark path, exit-plan history, funding history, known data gaps, cumulative admission/activity counters, and maximum observed drawdown.
+
+The independent baseline/candidate SQLite stores remain the economic source of truth. The JSON shadow checkpoint is a lineage/restoration receipt, not a replacement account ledger. On restore, the account market set must exactly match the lifecycle checkpoint market set and every opening/exit plan referenced by an open lifecycle must exist in that lane's own execution store. Any mismatch fails the research shadow closed.
+
+Decision-engine market history is not guessed from the checkpoint. After restore, new directional decisions remain disabled until the caller has supplied fresh startup/warmup evidence and explicitly marks restore warmup complete. Existing restored positions may then continue through the ordinary lifecycle engine.
+
+Candidate identity changes, unsafe staged-opening checkpoints, account-state mismatches, corrupt lifecycle history, or authority-bearing state are all restart failures. They may never reset or alter the active continuous-paper account.
+
+**LIVE TRADING: DISABLED.**
