@@ -43,9 +43,9 @@ def test_long_trend_execution_shadow_binds_exact_paper_source() -> None:
         in source
     )
     assert 'run.get("head_branch") != "main"' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert 'conclusion not in {"success", "failure"}' in source
     assert "source run attempt mismatch" in source
-    assert '"Continuous Paper · "*' in source
+    assert "paper_run_is_evidence_eligible()" in source
     assert "source repository mismatch" in source
     assert (
         'expected_name="continuous-paper-learning-source-'
@@ -109,7 +109,6 @@ def test_long_trend_execution_shadow_requires_durable_gate() -> None:
         in source
     )
     assert "EVENT_WORKFLOW_NAME" in source
-    assert "latest_successful_after_gate_ledger_wake" in source
 
     gate = source.split(
         "      - name: Resolve durable execution-shadow gate",
@@ -122,6 +121,7 @@ def test_long_trend_execution_shadow_requires_durable_gate() -> None:
         "prospective-long-trend-carveout-fast-markout-ledger.yml/runs"
         in gate
     )
+    assert 'run.get("conclusion") == "success"' in gate
     assert (
         "prospective-long-trend-carveout-fast-markout-ledger.json"
         in gate

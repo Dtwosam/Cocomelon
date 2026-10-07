@@ -36,7 +36,7 @@ def test_fast_markout_ledger_binds_exact_compact_source() -> None:
         in source
     )
     assert 'run.get("head_branch") != "main"' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert 'conclusion not in {"success", "failure"}' in source
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
     assert (
@@ -78,19 +78,17 @@ def test_fast_markout_ledger_keeps_pending_rows_unfrozen() -> None:
 def test_fast_markout_ledger_non_success_wake_falls_back() -> None:
     source = _source()
 
-    assert (
-        'if [ "$EVENT_NAME" = "workflow_run" ] && '
-        '[ "$EVENT_CONCLUSION" = "success" ]; then'
-        in source
-    )
+    assert "paper_run_is_evidence_eligible()" in source
+    assert 'if [ "$EVENT_CONCLUSION" = "success" ]; then' in source
     assert 'resolution_mode="successful_event"' in source
+    assert 'resolution_mode="durable_handoff_event"' in source
     assert (
-        'resolution_mode="latest_successful_after_non_success_wake"'
+        'resolution_mode="latest_evidence_eligible_with_compact_artifact"'
         in source
     )
     assert (
         "actions/workflows/continuous-paper.yml/runs?"
-        "branch=main&status=completed&per_page=50"
+        "branch=main&status=completed&per_page=100"
         in source
     )
 
@@ -131,7 +129,7 @@ def test_fast_markout_source_skips_empty_successful_handoffs() -> None:
     source = _source()
 
     assert "artifact_for_run()" in source
-    assert "latest_successful_with_compact_artifact" in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert "selected source has no authenticated compact artifact" in source
     assert "artifact_candidates" in source
     assert 'EVENT_NAME" != "workflow_dispatch"' in source

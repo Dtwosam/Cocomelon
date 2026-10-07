@@ -447,3 +447,12 @@ Review readiness requires at least 30 matching post-embargo trades across at lea
 The frozen candidate is research-only. Review readiness cannot block an entry, change LONG/SHORT preference, alter risk or sizing, promote a strategy, or grant execution authority. Any actual strategy admission remains a later explicit evidence-gated step.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-039 — Durable paper evidence survives non-economic handoff-tail failures
+
+A continuous-paper workflow's final GitHub conclusion is not, by itself, the economic validity boundary for research evidence. A completed run may remain evidence-eligible after a narrowly defined control-plane tail failure only when the paper trader completed successfully, durable state was measured and published successfully, the exact source artifact required by the consumer was published successfully, and source run/repository/attempt/artifact lineage all authenticate.
+
+For the observed redundant fallback-successor failure, eligibility additionally requires that the fast exact successor was already queued successfully. The only permitted failed-step sets are the existing fail-closed handoff-tail step alone, or that step together with the redundant fallback-successor step under the successful-fast-successor condition. Any other failed step, missing required publication, missing artifact, incomplete trader, invalid lineage, or missing successor continuity fails closed.
+
+This is an evidence-continuity rule only. It does not reinterpret failed trading/execution as success, does not modify strategy/risk/sizing/stops, and grants no promotion or live-order authority.

@@ -31,7 +31,8 @@ def test_timing_audit_cannot_override_candidate_boundary() -> None:
     assert "--started-at" not in source
     assert "--start-ms" not in source
     assert "prospective-side-conditioned-delay-state.json" in source
-    assert "latest_success_catchup" in source
+    assert "latest_evidence_eligible_with_timing_artifact" in source
+    assert 'resolution_mode="durable_handoff_event"' in source
     assert "ready_for_review" in source
     assert "Robustness is descriptive only" in source
 

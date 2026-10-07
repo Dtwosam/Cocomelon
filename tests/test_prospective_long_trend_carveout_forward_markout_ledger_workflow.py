@@ -37,7 +37,7 @@ def test_long_trend_carveout_workflow_binds_exact_paper_source() -> None:
         in source
     )
     assert 'run.get("head_branch") != "main"' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert 'conclusion not in {"success", "failure"}' in source
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
     assert (
@@ -178,22 +178,19 @@ def test_long_trend_carveout_status_surfaces_stop_path_survival() -> None:
 def test_long_trend_carveout_non_success_wake_falls_back() -> None:
     source = _source()
 
-    assert (
-        'if [ "$EVENT_NAME" = "workflow_run" ] && '
-        '[ "$EVENT_CONCLUSION" = "success" ]; then'
-        in source
-    )
+    assert "paper_run_is_evidence_eligible()" in source
+    assert 'if [ "$EVENT_CONCLUSION" = "success" ]; then' in source
     assert 'resolution_mode="successful_event"' in source
+    assert 'resolution_mode="durable_handoff_event"' in source
     assert (
-        'resolution_mode="latest_successful_after_non_success_wake"'
+        'resolution_mode="latest_evidence_eligible_with_compact_artifact"'
         in source
     )
     assert (
         "actions/workflows/continuous-paper.yml/runs?"
-        "branch=main&status=completed&per_page=50"
+        "branch=main&status=completed&per_page=100"
         in source
     )
-    assert "latest_successful_with_compact_artifact" in source
 
 
 def test_long_trend_carveout_status_uses_quoted_python_builders() -> None:

@@ -38,7 +38,7 @@ def test_long_trend_15m_workflow_has_periodic_artifact_catchup() -> None:
 
     assert "  schedule:" in source
     assert '    - cron: "27 * * * *"' in source
-    assert "latest_successful_with_state_artifact" in source
+    assert "latest_evidence_eligible_with_state_artifact" in source
 
 
 def test_long_trend_15m_workflow_uses_authenticated_durable_state() -> None:
@@ -46,13 +46,13 @@ def test_long_trend_15m_workflow_uses_authenticated_durable_state() -> None:
 
     assert '      - "Continuous Mainnet Paper Trader"' in source
     assert "continuous-paper-state-" in source
-    assert "latest_successful_with_state_artifact" in source
+    assert "latest_evidence_eligible_with_state_artifact" in source
     assert (
-        "manual source has no authenticated durable state artifact"
+        "no authenticated durable paper state is available"
         in source
     )
     assert 'run.get("head_branch") != "main"' in source
-    assert 'run.get("conclusion") != "success"' in source
+    assert 'conclusion not in {"success", "failure"}' in source
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
     assert "state artifact digest is missing or invalid" in source

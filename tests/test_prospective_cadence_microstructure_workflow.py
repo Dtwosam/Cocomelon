@@ -83,14 +83,15 @@ def test_prospective_audit_catches_up_missed_success_events() -> None:
     assert 'cron: "23 * * * *"' in source
     assert "Resolve source paper run" in source
     assert "EVENT_SOURCE_CONCLUSION" in source
-    assert 'EVENT_SOURCE_CONCLUSION" == "success"' in source
-    assert "latest_success_catchup" in source
+    assert "paper_run_is_evidence_eligible()" in source
+    assert 'resolution_mode="durable_handoff_event"' in source
+    assert "latest_evidence_eligible_with_cadence_artifacts" in source
     assert (
         "actions/workflows/continuous-paper.yml/runs?"
         "branch=main&status=completed&per_page=100"
         in source
     )
-    assert "latest_success_with_cadence_artifacts" in source
+    assert "latest_evidence_eligible_with_cadence_artifacts" in source
     assert (
         'run.get("path") == ".github/workflows/continuous-paper.yml"'
         in source
