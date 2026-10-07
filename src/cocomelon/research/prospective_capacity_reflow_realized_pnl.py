@@ -365,6 +365,7 @@ def prospective_capacity_reflow_realized_pnl_summary(
                 "funding_evidence_count": funding_evidence_count,
                 "missing_funding_boundaries_ms": missing_boundaries,
                 "funding_cash_pnl": funding_pnl,
+                "closed_at_ms": close_ms,
                 "exact_realized_pnl": exact_realized_pnl,
                 "exact_realized_return_fraction": (
                     exact_realized_return_fraction
