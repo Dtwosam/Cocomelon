@@ -85,18 +85,21 @@ def test_two_strike_ledger_restores_and_extends_append_only_evidence() -> None:
     assert "**LIVE TRADING: DISABLED.**" in source
 
 
-def test_two_strike_ledger_non_success_wake_falls_back_to_success() -> None:
+def test_two_strike_ledger_accepts_only_durable_handoff_tail_failures() -> None:
     source = _source()
 
-    assert (
-        'if [ "$EVENT_NAME" = "workflow_run" ] && '
-        '[ "$EVENT_CONCLUSION" = "success" ]; then'
-        in source
-    )
+    assert "paper_run_is_evidence_eligible()" in source
+    assert '"Run continuous paper trader"' in source
+    assert '"Measure durable continuous paper state"' in source
+    assert '"Upload durable continuous paper state"' in source
+    assert 'frozenset({"Fail closed on upgrade handoff source"})' in source
+    assert '"Queue fallback exact successor continuous paper worker"' in source
+    assert '"Queue exact successor from fast resume"' in source
     assert 'resolution_mode="successful_event"' in source
-    assert 'resolution_mode="latest_successful_after_non_success_wake"' in source
+    assert 'resolution_mode="durable_handoff_event"' in source
+    assert "latest_evidence_eligible_with_compact_artifact" in source
     assert (
         'actions/workflows/continuous-paper.yml/runs?'
-        'branch=main&status=completed&per_page=50'
+        'branch=main&status=completed&per_page=100'
         in source
     )
