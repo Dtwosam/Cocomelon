@@ -9,7 +9,7 @@ from typing import Final, cast
 EXPECTED_COOLDOWN_CANDIDATE_ID: Final = (
     "prospective-consecutive-loss-cooldown-relaxation-v1"
 )
-COOLDOWN_CONTEXT_SELECTION_SCHEMA_VERSION = 1
+COOLDOWN_CONTEXT_SELECTION_SCHEMA_VERSION = 2
 COOLDOWN_CONTEXT_SELECTION_POLICY: Final = (
     "fewest_dimensions_then_validation_support_then_robustness_v1"
 )
@@ -113,12 +113,14 @@ def _validate_cooldown_source(summary: dict[str, object]) -> int:
 def _validate_stability(
     stability: dict[str, object],
 ) -> tuple[dict[str, object], ...]:
-    if _integer(stability.get("schema_version"), "schema_version") != 1:
+    if _integer(stability.get("schema_version"), "schema_version") != 2:
         raise CooldownContextSelectionError(
             "cooldown context stability schema is unsupported"
         )
     required_true = (
         "lead_strategy_context_required",
+        "relaxation_window_context_required",
+        "window_eligible_outcomes_only",
         "one_hour_fee_adjusted_execution_economics_required",
         "chronological_holdout_required",
         "leave_one_option_robustness_required",
@@ -169,6 +171,10 @@ def _validate_stability(
         if "lead_strategy" not in dimensions:
             raise CooldownContextSelectionError(
                 "stable candidate must retain lead_strategy context"
+            )
+        if "relaxation_window_ms" not in dimensions:
+            raise CooldownContextSelectionError(
+                "stable candidate must retain relaxation-window context"
             )
         if dimensions == ("direction",):
             raise CooldownContextSelectionError(
@@ -295,6 +301,8 @@ class CooldownContextSelectionRecord:
             "selection_policy": self.selection_policy,
             "direction_only_candidates_allowed": False,
             "lead_strategy_context_required": True,
+            "relaxation_window_context_required": True,
+            "window_eligible_outcomes_only": True,
             "prospective_freeze_required_before_strategy_use": True,
             "research_only": True,
             "descriptive_only": True,
