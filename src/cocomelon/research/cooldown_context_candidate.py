@@ -279,6 +279,50 @@ class CooldownContextCandidateFreeze:
             raise ValueError("frozen relaxation window does not match context")
         if context["lead_strategy"] != self.lead_strategy:
             raise ValueError("frozen lead strategy does not match context")
+        if self.discovery_rows <= 0 or self.validation_rows <= 0:
+            raise ValueError("frozen candidate row counts must be positive")
+        if self.discovery_markets <= 0 or self.validation_markets <= 0:
+            raise ValueError("frozen candidate market counts must be positive")
+        for value, field in (
+            (self.discovery_positive_share, "discovery_positive_share"),
+            (self.validation_positive_share, "validation_positive_share"),
+        ):
+            if not ZERO < value <= Decimal("1"):
+                raise ValueError(f"{field} must be in (0, 1]")
+        for value, field in (
+            (self.discovery_total_pnl, "discovery_total_pnl"),
+            (self.discovery_mean_return, "discovery_mean_return"),
+            (self.validation_total_pnl, "validation_total_pnl"),
+            (self.validation_mean_return, "validation_mean_return"),
+            (
+                self.validation_leave_one_option_min_pnl,
+                "validation_leave_one_option_min_pnl",
+            ),
+            (
+                self.validation_leave_one_market_min_pnl,
+                "validation_leave_one_market_min_pnl",
+            ),
+        ):
+            if value <= ZERO:
+                raise ValueError(f"{field} must be positive")
+        if (
+            not self.validation_block_rows
+            or len(self.validation_block_rows)
+            != len(self.validation_block_positive_shares)
+            or len(self.validation_block_rows) != len(self.validation_block_pnl)
+        ):
+            raise ValueError("frozen validation block evidence is invalid")
+        if any(value <= 0 for value in self.validation_block_rows):
+            raise ValueError("frozen validation block rows must be positive")
+        if any(
+            not ZERO < value <= Decimal("1")
+            for value in self.validation_block_positive_shares
+        ):
+            raise ValueError(
+                "frozen validation block positive shares must be in (0, 1]"
+            )
+        if any(value <= ZERO for value in self.validation_block_pnl):
+            raise ValueError("frozen validation block pnl must be positive")
         if self.frozen_at_ms < self.source_max_timestamp_ms:
             raise ValueError("freeze must not precede source evidence")
         if self.prospective_not_before_ms != (
@@ -670,7 +714,7 @@ def verify_cooldown_context_candidate_freeze(
         raise CooldownContextCandidateError(
             "COOLDOWN_CONTEXT_CANDIDATE_ID_MISMATCH"
         )
-    if payload != freeze.identity_payload():
+    if _canonical_json(payload) != _canonical_json(freeze.identity_payload()):
         raise CooldownContextCandidateError(
             "COOLDOWN_CONTEXT_CANDIDATE_NON_CANONICAL"
         )
