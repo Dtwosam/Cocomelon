@@ -32,7 +32,9 @@ def test_continuous_paper_learning_catchup_requires_compact_lineage_source() -> 
     assert '"Measure durable continuous paper state"' in source
     assert '"Upload durable continuous paper state"' in source
     assert '"Upload compact continuous learning source"' in source
-    assert 'failed_steps == {"Fail closed on upgrade handoff source"}' in source
+    assert "allowed_failed_steps" in source
+    assert "Queue fallback exact successor continuous paper worker" in source
+    assert "Queue exact successor from fast resume" in source
     assert 'continuous-paper-state-{run_id}-{attempt}' not in source
 
 
