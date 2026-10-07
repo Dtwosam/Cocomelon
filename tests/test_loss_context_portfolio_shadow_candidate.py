@@ -157,3 +157,29 @@ def test_portfolio_shadow_freeze_detects_tampering(tmp_path: Path) -> None:
     ):
         verify_loss_context_portfolio_shadow_freeze(path)
     assert freeze.candidate_id != ""
+
+
+
+def test_portfolio_shadow_freeze_workflow_follows_composition() -> None:
+    source = Path(
+        ".github/workflows/continuous-paper.yml"
+    ).read_text(encoding="utf-8")
+    composition_upload = source.index(
+        "- name: Upload loss-context portfolio composition"
+    )
+    restore = source.index(
+        "- name: Restore immutable loss-context portfolio shadow freeze"
+    )
+    freeze = source.index(
+        "- name: Freeze loss-context portfolio shadow prospectively"
+    )
+    upload = source.index(
+        "- name: Upload immutable loss-context portfolio shadow candidate"
+    )
+    cooldown = source.index(
+        "- name: Rebuild deferred cooldown evidence after handoff"
+    )
+    assert composition_upload < restore < freeze < upload < cooldown
+    assert "portfolio shadow freeze remains absent" in source
+    assert "RESEARCH SHADOW ONLY / NO STRATEGY OR RISK CHANGE" in source
+    assert "selected horizon: " in source
