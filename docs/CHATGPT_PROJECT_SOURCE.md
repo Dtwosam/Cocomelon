@@ -468,3 +468,10 @@ The next build frontier after D-047 is exact chronological portfolio replay for 
 D-047 composition is touched evidence and cannot itself justify a portfolio strategy. Once all fixed horizons are structurally composable, freeze the complete loss-context portfolio shadow specification immutably, preserve every horizon without selecting a winner, and wait through a fresh six-hour embargo.
 
 Only evidence after the new prospective boundary may support account-level shadow claims. The active paper trader remains unchanged. The next build frontier is an isolated prospective shadow account that carries its own equity, daily PnL, rolling drawdown peak, loss streak/cooldown state, capacity, fills, exits, fees, and funding while consuming the same future mainnet stream.
+
+
+### Portfolio shadow entry-admission rule — D-049
+
+The future D-048 portfolio A/B shadow must differ only at new-entry admission. Do not convert matching strategy decisions to NO_TRADE globally because that could also change position-management behavior. Instead, veto the exact frozen context immediately before the normal risk request/opening simulation.
+
+Both shadow lanes block new exposure before the prospective boundary. After it, the baseline lane sends all ordinary directional setups into the normal risk/execution path; the candidate lane blocks only exact context matches. Same-direction setups outside the frozen context remain eligible. The active paper trader does not use this opt-in hook.
