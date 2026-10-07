@@ -517,7 +517,7 @@ No active entry, direction, risk, sizing, stop, position, cooldown, promotion, o
 
 Do not call the frozen loss-context portfolio filter successful merely because its candidate shadow loses less than baseline. The candidate account must itself be profitable on both total account PnL and realized net PnL, beat the paired baseline on both measures, and have maximum drawdown no worse than baseline.
 
-Review evidence is an append-only hash-chained handoff ledger whose latest row count/digest is bound into the durable paired-shadow checkpoint. Legacy matching-context blocks without per-market attribution are not eligible for the diversity proof.
+Review evidence is an append-only hash-chained handoff ledger whose latest row count/digest is bound into the durable paired-shadow checkpoint. Treat the first eligible ledger row as an anchor only; duration, trade-count growth, attributed blocks, market diversity, and block-level economic deltas must accrue after that anchor. Legacy matching-context blocks without per-market attribution are not eligible for the diversity proof.
 
 The minimum research-review floor is 72 future hours, nine checkpoints, 30 newly attributed matching-context blocks across four markets, <=50% concentration in any one blocked market, 30 closed trades per lane, and three chronological later blocks. Every later block needs >=5 new matching blocks across >=2 markets plus positive incremental candidate-minus-baseline total-account and realized-net PnL.
 
