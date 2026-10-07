@@ -32,6 +32,7 @@ MARKET = MarketId("", "HYPE")
 def _feature(
     *,
     as_of_ms: int,
+    market: MarketId = MARKET,
     trend: TrendRegime = TrendRegime.DOWN,
     volatility: VolatilityRegime = VolatilityRegime.HIGH,
     return_15m: str = "-0.01",
@@ -40,7 +41,7 @@ def _feature(
     imbalance: str = "-0.2",
 ) -> FeatureSnapshot:
     return FeatureSnapshot(
-        market=MARKET,
+        market=market,
         as_of_ms=as_of_ms,
         source_received_at_ms=as_of_ms,
         schema_version=1,
@@ -80,7 +81,7 @@ def _trade(
 ) -> TradeJournalEntry:
     value = Decimal(pnl)
     return TradeJournalEntry(
-        market=MARKET,
+        market=feature.market,
         direction=direction,
         opened_at_ms=opened_at_ms,
         closed_at_ms=opened_at_ms + 60_000,
@@ -559,3 +560,259 @@ def test_loss_streak_baseline_tracks_unresolved_legacy_control_rows(
     recurring = result["recurring_dominant_patterns"]
     assert isinstance(recurring, tuple)
     assert all(item["baseline_complete"] is False for item in recurring)
+
+
+
+def test_loss_context_filter_requires_context_not_direction_only(
+    tmp_path: Path,
+) -> None:
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    features = LearningFeatureSnapshotStore(tmp_path / "features")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    trades: list[TradeJournalEntry] = []
+    markets = (
+        MarketId("", "AAA"),
+        MarketId("", "BBB"),
+        MarketId("", "CCC"),
+    )
+    try:
+        timestamp = 4_000_000
+
+        def add_trade(
+            *,
+            suffix: str,
+            market: MarketId,
+            pnl: str,
+            strategy: str,
+            trend: TrendRegime,
+            volatility: VolatilityRegime,
+        ) -> None:
+            nonlocal timestamp
+            feature = _feature(
+                as_of_ms=timestamp - 1_000,
+                market=market,
+                trend=trend,
+                volatility=volatility,
+                return_15m=(
+                    "-0.01"
+                    if trend is TrendRegime.DOWN
+                    else "0.01"
+                ),
+                return_1h=(
+                    "-0.02"
+                    if trend is TrendRegime.DOWN
+                    else "0.02"
+                ),
+                imbalance=(
+                    "-0.2"
+                    if trend is TrendRegime.DOWN
+                    else "0.2"
+                ),
+            )
+            trade = _trade(
+                suffix=suffix,
+                feature=feature,
+                opened_at_ms=timestamp,
+                pnl=pnl,
+                direction=Direction.SHORT,
+                exit_reason=(
+                    "MARK_STOP_TRIGGERED"
+                    if Decimal(pnl) < 0
+                    else "OPPOSITE_FRESH_THESIS"
+                ),
+            )
+            _record(
+                trade,
+                feature,
+                facts,
+                features,
+                ranks,
+                strategy=strategy,
+                ordinal=2,
+            )
+            trades.append(trade)
+            timestamp += 120_000
+
+        # First 60%: repeated losing mean-reversion/down/high context,
+        # separated by unrelated trend winners so the context recurs across
+        # multiple qualifying loss streaks.
+        for streak in range(3):
+            for index in range(3):
+                add_trade(
+                    suffix=f"discovery-loss-{streak}-{index}",
+                    market=markets[index % len(markets)],
+                    pnl="-5",
+                    strategy="mean_reversion",
+                    trend=TrendRegime.DOWN,
+                    volatility=VolatilityRegime.HIGH,
+                )
+            add_trade(
+                suffix=f"discovery-separator-{streak}",
+                market=markets[streak % len(markets)],
+                pnl="4",
+                strategy="trend",
+                trend=TrendRegime.UP,
+                volatility=VolatilityRegime.NORMAL,
+            )
+        add_trade(
+            suffix="discovery-context-win",
+            market=markets[0],
+            pnl="2",
+            strategy="mean_reversion",
+            trend=TrendRegime.DOWN,
+            volatility=VolatilityRegime.HIGH,
+        )
+        add_trade(
+            suffix="discovery-tail-loss",
+            market=markets[1],
+            pnl="-5",
+            strategy="mean_reversion",
+            trend=TrendRegime.DOWN,
+            volatility=VolatilityRegime.HIGH,
+        )
+
+        # Later holdout: the same exact context remains harmful in two
+        # chronological blocks and across three markets.
+        for block in range(2):
+            for index in range(3):
+                add_trade(
+                    suffix=f"validation-loss-{block}-{index}",
+                    market=markets[index],
+                    pnl="-5",
+                    strategy="mean_reversion",
+                    trend=TrendRegime.DOWN,
+                    volatility=VolatilityRegime.HIGH,
+                )
+            add_trade(
+                suffix=f"validation-context-win-{block}",
+                market=markets[block],
+                pnl="2",
+                strategy="mean_reversion",
+                trend=TrendRegime.DOWN,
+                volatility=VolatilityRegime.HIGH,
+            )
+            add_trade(
+                suffix=f"validation-separator-{block}",
+                market=markets[block],
+                pnl="4",
+                strategy="trend",
+                trend=TrendRegime.UP,
+                volatility=VolatilityRegime.NORMAL,
+            )
+
+        result = loss_streak_context_audit(
+            tuple(trades),
+            facts,
+            features,
+            ranks,
+        )
+    finally:
+        facts.close()
+
+    stability = result["context_filter_stability"]
+    assert isinstance(stability, dict)
+    assert stability["direction_only_candidates_allowed"] is False
+    assert stability["lead_strategy_context_required"] is True
+    assert ("direction",) not in stability["candidate_dimension_sets"]
+    assert stability["stable_candidate_count"] > 0
+
+    candidates = stability["candidates"]
+    assert isinstance(candidates, tuple)
+    candidate = next(
+        item
+        for item in candidates
+        if item["dimensions"] == ("lead_strategy", "trend_regime")
+        and item["values"] == ("mean_reversion", "down")
+    )
+    assert candidate["recurring_loss_streaks"] >= 2
+    assert candidate["validation_rows"] >= 6
+    assert candidate["validation_markets"] == 3
+    assert Decimal(candidate["validation_filter_delta_pnl"]) > 0
+    assert Decimal(
+        candidate["validation_leave_one_trade_min_delta_pnl"]
+    ) > 0
+    assert Decimal(
+        candidate["validation_leave_one_market_min_delta_pnl"]
+    ) > 0
+    assert candidate["validation_blocks_consistent"] == 2
+    assert candidate["stable_on_validation"] is True
+    assert candidate["strategy_authority"] is False
+    assert candidate["execution_authority"] is False
+
+
+def test_loss_context_filter_rejects_one_market_carry(
+    tmp_path: Path,
+) -> None:
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    features = LearningFeatureSnapshotStore(tmp_path / "features")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    trades: list[TradeJournalEntry] = []
+    try:
+        timestamp = 6_000_000
+        for streak in range(4):
+            for index in range(3):
+                feature = _feature(as_of_ms=timestamp - 1_000)
+                trade = _trade(
+                    suffix=f"loss-{streak}-{index}",
+                    feature=feature,
+                    opened_at_ms=timestamp,
+                    pnl="-5",
+                )
+                _record(
+                    trade,
+                    feature,
+                    facts,
+                    features,
+                    ranks,
+                    strategy="mean_reversion",
+                    ordinal=2,
+                )
+                trades.append(trade)
+                timestamp += 120_000
+            feature = _feature(
+                as_of_ms=timestamp - 1_000,
+                trend=TrendRegime.UP,
+                volatility=VolatilityRegime.NORMAL,
+                return_15m="0.01",
+                return_1h="0.02",
+                imbalance="0.2",
+            )
+            winner = _trade(
+                suffix=f"separator-{streak}",
+                feature=feature,
+                opened_at_ms=timestamp,
+                pnl="2",
+            )
+            _record(
+                winner,
+                feature,
+                facts,
+                features,
+                ranks,
+                strategy="trend",
+                ordinal=8,
+            )
+            trades.append(winner)
+            timestamp += 120_000
+
+        result = loss_streak_context_audit(
+            tuple(trades),
+            facts,
+            features,
+            ranks,
+        )
+    finally:
+        facts.close()
+
+    stability = result["context_filter_stability"]
+    assert isinstance(stability, dict)
+    candidates = stability["candidates"]
+    assert isinstance(candidates, tuple)
+    candidate = next(
+        item
+        for item in candidates
+        if item["dimensions"] == ("lead_strategy", "trend_regime")
+        and item["values"] == ("mean_reversion", "down")
+    )
+    assert candidate["validation_markets"] == 1
+    assert candidate["stable_on_validation"] is False
