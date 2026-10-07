@@ -68,7 +68,8 @@ jobs:
           set -euo pipefail
           echo "source_eligible=true" >> "$GITHUB_OUTPUT"
           if [ "$EVENT_NAME" = "workflow_run" ] \
-            && [ "$EVENT_WORKFLOW_NAME" = "Continuous Mainnet Paper Trader" ] \
+            && [[ "$EVENT_WORKFLOW_NAME" == "Continuous Mainnet Paper Trader" \
+              || "$EVENT_WORKFLOW_NAME" == "Continuous Paper · "* ]] \
             && [ "$EVENT_CONCLUSION" = "success" ]; then
             run_id="$EVENT_RUN_ID"
             run_attempt="$EVENT_RUN_ATTEMPT"

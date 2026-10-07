@@ -119,7 +119,13 @@ jobs:
                   or isinstance(attempt, bool)
                   or not isinstance(attempt, int)
                   or attempt <= 0
-                  or run.get("name") != "Continuous Mainnet Paper Trader"
+                  or not (
+                      run.get("name") == "Continuous Mainnet Paper Trader"
+                      or (
+                          isinstance(run.get("name"), str)
+                          and run["name"].startswith("Continuous Paper · ")
+                      )
+                  )
                   or run.get("path") != ".github/workflows/continuous-paper.yml"
                   or run.get("head_branch") != "main"
                   or run.get("status") != "completed"

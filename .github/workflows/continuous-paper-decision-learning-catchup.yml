@@ -142,7 +142,13 @@ jobs:
 
           for run in runs:
               if (
-                  run.get("name") != "Continuous Mainnet Paper Trader"
+                  not (
+                      run.get("name") == "Continuous Mainnet Paper Trader"
+                      or (
+                          isinstance(run.get("name"), str)
+                          and run["name"].startswith("Continuous Paper · ")
+                      )
+                  )
                   or run.get("path") != ".github/workflows/continuous-paper.yml"
                   or run.get("head_branch") != "main"
                   or run.get("status") != "completed"

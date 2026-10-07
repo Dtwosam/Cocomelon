@@ -66,7 +66,8 @@ def test_decision_learning_workflow_authenticates_exact_worker_source() -> None:
     assert 'workflows: ["Continuous Mainnet Paper Trader"]' in source
     assert "group: continuous-paper-decision-learning-evidence" in source
     assert 'run.get("path") != ".github/workflows/continuous-paper.yml"' in source
-    assert 'run.get("name") != "Continuous Mainnet Paper Trader"' in source
+    assert 'run_name = run.get("name")' in source
+    assert 'run_name.startswith("Continuous Paper · ")' in source
     assert 'run.get("conclusion") not in {"success", "failure"}' in source
     assert '"Run continuous paper trader"' in source
     assert '"Export compact continuous decision facts"' in source

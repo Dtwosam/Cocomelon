@@ -8,7 +8,8 @@ def test_continuous_paper_learning_workflow_authenticates_exact_worker_artifact(
     assert 'workflows: ["Continuous Mainnet Paper Trader"]' in source
     assert "group: continuous-paper-learning-evidence-sync" in source
     assert 'run.get("path") != ".github/workflows/continuous-paper.yml"' in source
-    assert 'run.get("name") != "Continuous Mainnet Paper Trader"' in source
+    assert 'run_name = run.get("name")' in source
+    assert 'run_name.startswith("Continuous Paper · ")' in source
     assert 'continuous-paper-learning-source-${RUN_ID}-${RUN_ATTEMPT}' in source
     assert 'digest.startswith("sha256:")' in source
     assert "learning-features/records" in source
