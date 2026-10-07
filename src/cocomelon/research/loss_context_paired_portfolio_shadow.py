@@ -590,13 +590,13 @@ class LossContextPairedPortfolioShadow:
             setattr(filter_, field, value)
         blocked_by_market = raw.get("matching_context_blocked_by_market")
         if blocked_by_market is None:
-            filter_.matching_context_blocked_by_market = {}
+            restored: dict[str, int] = {}
         elif not isinstance(blocked_by_market, dict):
             raise ValueError(
                 "shadow admission blocked-by-market must be an object"
             )
         else:
-            restored: dict[str, int] = {}
+            restored = {}
             for market, value in blocked_by_market.items():
                 if not isinstance(market, str) or not market:
                     raise ValueError(
@@ -611,13 +611,33 @@ class LossContextPairedPortfolioShadow:
                         "shadow admission blocked market count is invalid"
                     )
                 restored[market] = value
-            if sum(restored.values()) != filter_.matching_context_blocked:
-                raise ValueError(
-                    "shadow admission blocked market counts do not reconcile"
-                )
-            filter_.matching_context_blocked_by_market = dict(
-                sorted(restored.items())
+        attributed = sum(restored.values())
+        raw_unattributed = raw.get(
+            "matching_context_blocked_unattributed"
+        )
+        if raw_unattributed is None:
+            unattributed = filter_.matching_context_blocked - attributed
+        elif (
+            isinstance(raw_unattributed, bool)
+            or not isinstance(raw_unattributed, int)
+            or raw_unattributed < 0
+        ):
+            raise ValueError(
+                "shadow admission unattributed blocked count is invalid"
             )
+        else:
+            unattributed = raw_unattributed
+        if (
+            attributed + unattributed
+            != filter_.matching_context_blocked
+        ):
+            raise ValueError(
+                "shadow admission blocked market counts do not reconcile"
+            )
+        filter_.matching_context_blocked_by_market = dict(
+            sorted(restored.items())
+        )
+        filter_.matching_context_blocked_unattributed = unattributed
 
     def _restore_lane(
         self,
@@ -972,6 +992,9 @@ class LossContextPairedPortfolioShadow:
                     sorted(
                         filter_.matching_context_blocked_by_market.items()
                     )
+                ),
+                "matching_context_blocked_unattributed": (
+                    filter_.matching_context_blocked_unattributed
                 ),
                 "admitted_after_boundary": (
                     filter_.admitted_after_boundary
