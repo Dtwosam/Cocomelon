@@ -16,6 +16,7 @@ from cocomelon.research.historical_discovery_freeze import (
     MIN_PROSPECTIVE_EMBARGO_MS,
 )
 
+ZERO: Final = Decimal("0")
 COOLDOWN_CONTEXT_CANDIDATE_SCHEMA_VERSION = 1
 COOLDOWN_CONTEXT_CANDIDATE_KIND: Final = (
     "prospective_consecutive_loss_cooldown_context_shadow"
