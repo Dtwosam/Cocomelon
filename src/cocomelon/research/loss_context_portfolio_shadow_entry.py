@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
-from cocomelon.domain.features import FeatureSnapshot
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction, StrategyDecision
 from cocomelon.evidence.epochs import EpochMarketEvaluation
