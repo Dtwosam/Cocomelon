@@ -749,7 +749,7 @@ def test_loss_context_filter_rejects_one_market_carry(
     trades: list[TradeJournalEntry] = []
     try:
         timestamp = 6_000_000
-        for streak in range(4):
+        for streak in range(5):
             for index in range(3):
                 feature = _feature(as_of_ms=timestamp - 1_000)
                 trade = _trade(
