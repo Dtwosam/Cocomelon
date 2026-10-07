@@ -45,7 +45,7 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert '".github/workflows/continuous-paper.yml"' in source
     assert 'EVENT_NAME: ${{ github.event_name }}' in source
     assert "SOURCE_RUN_ID" in source
-    assert 'if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$SOURCE_RUN_ID" ]' in source
+    assert 'if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$SOURCE_RUN_ID" ]' not in source
     assert 'status in {"queued", "pending"}' in source
     assert 'status != "in_progress"' in source
     assert '"Run continuous paper trader"' in source
@@ -74,6 +74,26 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert fast_upload_at < fast_dispatch_at < fast_cleanup_at
     assert fast_cleanup_at < durable_upload_at < fallback_dispatch_at
     assert fallback_dispatch_at < deferred_markout_at
+
+def test_exact_successor_dispatch_still_checks_for_other_active_traders() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    guard_at = source.index(
+        "- name: Skip bootstrap/watchdog when a continuous paper run is already active"
+    )
+    checkout_at = source.index("- uses: actions/checkout@v7", guard_at)
+    guard = source[guard_at:checkout_at]
+
+    assert 'EVENT_NAME: ${{ github.event_name }}' in guard
+    assert 'SOURCE_RUN_ID: ${{ inputs.source_run_id || \'\' }}' in guard
+    assert (
+        'if [ "$EVENT_NAME" = "workflow_dispatch" ] && '
+        '[ -n "$SOURCE_RUN_ID" ]'
+        not in guard
+    )
+    assert "continuous-paper.yml/runs?per_page=100" in guard
+    assert 'trader_status in {"queued", "pending", "in_progress"}' in guard
+    assert 'echo "skip=true" >> "$GITHUB_OUTPUT"' in guard
+
 
 def test_guard_ignores_post_handoff_research_tails() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
