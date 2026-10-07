@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
-from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
