@@ -180,9 +180,6 @@ jobs:
         run: |
           set -euo pipefail
           echo "skip=false" >> "$GITHUB_OUTPUT"
-          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$SOURCE_RUN_ID" ]; then
-            exit 0
-          fi
           guard_runs_loaded=false
           for attempt in $(seq 1 8); do
             if gh api \
