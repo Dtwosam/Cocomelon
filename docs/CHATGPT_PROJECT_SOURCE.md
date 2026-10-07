@@ -452,3 +452,12 @@ Per-opportunity exit economics are never collapsed by holder plan. Risk/planning
 Filled D-045 replacement entries are now evaluated with the existing captured fixed-horizon exit books and funding-boundary evidence. Each horizon remains separate; Cocomelon does not choose whichever horizon looks best.
 
 Exact PnL requires a full simulated exit plus complete funding evidence (or exact zero funding when no boundary occurs). Only when every replacement option is exact at every frozen horizon may this path advance to portfolio-counterfactual research. No strategy/exit rule is changed here.
+
+
+### Loss-context portfolio composition rule — D-047
+
+Exact replacement PnL from D-046 is still independent-path evidence. Before any full account counterfactual, every frozen horizon must be complete and free of three structural conflicts: multiple fillable holder paths for one opportunity, one holder reused across multiple opportunities, or overlapping replacement lifetimes.
+
+A first-order filtered-account-plus-replacement PnL is diagnostic only. It does not include chronological account-state effects on later risk decisions and is never called portfolio or strategy PnL. No horizon is selected or averaged.
+
+The next build frontier after D-047 is exact chronological portfolio replay for structurally composable horizons, still research-only and with no strategy/risk/execution authority.

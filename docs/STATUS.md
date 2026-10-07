@@ -4830,3 +4830,14 @@ For each frozen exit horizon, the report exposes option count, exact realized-Pn
 The next portfolio-counterfactual investigation is gated on complete evidence across every frozen horizon, not merely one attractive aggregate result. This remains research-only with no strategy, risk, position, stop, promotion, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Loss-context portfolio composition gate — 2026-10-07
+
+After exact fixed-horizon replacement PnL, Cocomelon now checks whether independently replayed replacement paths can even be composed into one account path. It rejects duplicate credit for the same opportunity, repeated use of one holder to free capacity more than once, and overlapping replacement lifetimes at each frozen horizon.
+
+The report keeps horizons separate and may show a first-order filtered-account-plus-replacement PnL diagnostic, but it does not call that strategy or portfolio PnL. Chronological account state, daily-loss effects, drawdown state, later risk decisions, and recursive reflow remain unmodeled here.
+
+Only a complete, conflict-free horizon becomes eligible for the next chronological portfolio replay stage. No active trading behavior changes.
+
+**LIVE TRADING: DISABLED.**

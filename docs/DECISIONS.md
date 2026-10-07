@@ -551,3 +551,18 @@ A horizon is complete only when every replacement option has exact realized PnL 
 This stage does not build the portfolio counterfactual, aggregate horizons, choose an exit schedule, mutate strategy/risk/positions, grant promotion authority, or enable execution.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-047 — Independent replacement paths must compose before portfolio replay
+
+D-046 evaluates each replacement option independently at every frozen horizon. Those independent paths may not be summed and presented as portfolio profit. Before a chronological portfolio counterfactual can begin, every frozen horizon must have complete exact replacement-exit PnL and the option set must be structurally composable.
+
+Structural composition fails closed when one opening opportunity has multiple independently fillable holder-release paths, the same released holder is reused to justify multiple replacement opportunities, or replacement lifetimes overlap at the same fixed horizon. These cases require an explicit chronological account-state decision rather than favorable path selection or double counting.
+
+The composition audit may report a first-order diagnostic equal to the D-041 filtered fixed-schedule PnL plus exact D-046 replacement PnL. That number is not a portfolio counterfactual because prior replacement PnL, account equity, daily loss, rolling drawdown, open positions, and later risk decisions have not yet been replayed chronologically.
+
+A horizon may advance only to chronological portfolio replay when it is complete and structurally composable. Horizons remain economically separate; no best horizon is selected or averaged.
+
+This stage is research-only and cannot change strategy, LONG/SHORT preference, risk limits, sizing, positions, stops, promotion state, or execution authority.
+
+**LIVE TRADING: DISABLED.**

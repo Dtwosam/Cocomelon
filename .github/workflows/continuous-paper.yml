@@ -122,6 +122,9 @@ on:
       - "src/cocomelon/research/loss_context_replacement_exit_pnl.py"
       - "src/cocomelon/research/deferred_loss_context_replacement_exit_pnl.py"
       - "scripts/rebuild_deferred_loss_context_replacement_exit_pnl.py"
+      - "src/cocomelon/research/loss_context_portfolio_composition.py"
+      - "src/cocomelon/research/deferred_loss_context_portfolio_composition.py"
+      - "scripts/rebuild_deferred_loss_context_portfolio_composition.py"
       - "src/cocomelon/loss_context_candidate_cli.py"
       - "src/cocomelon/loss_context_prospective_cli.py"
       - "src/cocomelon/loss_context_account_readiness_cli.py"
@@ -1622,6 +1625,74 @@ jobs:
         with:
           name: continuous-paper-loss-context-replacement-exit-pnl-${{ github.run_id }}-${{ github.run_attempt }}
           path: continuous-paper-state/loss-context-replacement-exit-pnl-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Rebuild loss-context portfolio composition
+        id: loss_context_portfolio_composition
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-candidate-freeze.json') != '' && hashFiles('continuous-paper-state/loss-context-account-readiness-summary.json') != '' && hashFiles('continuous-paper-state/loss-context-replacement-entry-fill-summary.json') != '' && hashFiles('continuous-paper-state/loss-context-replacement-exit-pnl-summary.json') != '' && hashFiles('continuous-paper-state/session-summary.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/rebuild_deferred_loss_context_portfolio_composition.py \
+            "$STATE_ROOT" \
+            | tee /tmp/loss-context-portfolio-composition.json
+          test -s "$STATE_ROOT/loss-context-portfolio-composition-summary.json"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/"
+                  "loss-context-portfolio-composition-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          print("## Loss-context portfolio composition")
+          print("- authority: RESEARCH ONLY / NO PORTFOLIO PNL CLAIM")
+          print(
+              "- enabled / structurally composable / replay-ready: "
+              f"{payload.get('enabled', False)} / "
+              f"{payload.get('all_horizons_structurally_composable', False)} / "
+              f"{payload.get('ready_for_chronological_portfolio_replay', False)}"
+          )
+          for key, item in sorted(
+              payload.get("horizon_summaries", {}).items(),
+              key=lambda entry: int(entry[0]),
+          ):
+              print(
+                  "- horizon "
+                  f"{key}ms: options={item.get('exact_replacement_options')}; "
+                  f"ambiguous={item.get('ambiguous_opportunity_count')}; "
+                  f"reused holders={item.get('reused_release_holder_count')}; "
+                  f"overlaps={item.get('overlapping_replacement_pairs')}; "
+                  f"first-order pnl={item.get('first_order_combined_pnl')}; "
+                  f"composable={item.get('structurally_composable')}"
+              )
+          print(
+              "- horizon selected / chronological replay / portfolio complete: "
+              f"{payload.get('horizon_selection_performed', False)} / "
+              f"{payload.get('chronological_account_state_replayed', False)} / "
+              f"{payload.get('portfolio_counterfactual_complete', False)}"
+          )
+          print(
+              "- strategy / risk / position / execution authority: "
+              f"{payload.get('changes_strategy', False)} / "
+              f"{payload.get('changes_risk_limits', False)} / "
+              f"{payload.get('changes_positions', False)} / "
+              f"{payload.get('execution_authority', False)}"
+          )
+          PY
+
+      - name: Upload loss-context portfolio composition
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-portfolio-composition-summary.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-loss-context-portfolio-composition-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/loss-context-portfolio-composition-summary.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
