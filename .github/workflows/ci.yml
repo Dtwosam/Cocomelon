@@ -215,6 +215,9 @@ jobs:
           tests/test_cooldown_context_stability_cli.py
           tests/test_cooldown_context_selection.py
           tests/test_cooldown_context_selection_cli.py
+          tests/test_cooldown_context_candidate.py
+          tests/test_cooldown_context_prospective.py
+          tests/test_cooldown_context_prospective_cli.py
           tests/test_deferred_consecutive_loss_cooldown.py
           tests/test_prospective_consecutive_loss_cooldown_ledger.py
           tests/test_prospective_consecutive_loss_cooldown_ledger_workflow.py
