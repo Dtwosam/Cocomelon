@@ -4819,3 +4819,14 @@ The report separates risk approval, planning approval, full/partial/no fills, ex
 Replacement exits and replacement PnL remain unmodeled at this stage. No active strategy, risk, sizing, position, stop, promotion, or live-order behavior changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Loss-context exact replacement exit economics — 2026-10-07
+
+The loss-context path now extends filled replacement entries through fixed-horizon exit execution and funding-complete realized PnL.
+
+For each frozen exit horizon, the report exposes option count, exact realized-PnL count, total exact realized PnL, missing/incomplete exits, missing funding evidence, completeness, and sign. Horizons remain economically separate and no best horizon is selected.
+
+The next portfolio-counterfactual investigation is gated on complete evidence across every frozen horizon, not merely one attractive aggregate result. This remains research-only with no strategy, risk, position, stop, promotion, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
