@@ -4707,3 +4707,14 @@ This changes restart performance only. Evaluation fact identity, strategy, risk,
 
 **LIVE TRADING: DISABLED.**
 
+
+
+### Recurring loss-context economic stability gate — 2026-10-07
+
+The loss-streak audit now converts recurring bad-entry patterns into context-specific counterfactual filter candidates instead of treating aggregate LONG/SHORT performance as a strategy rule.
+
+Candidate contexts must include `lead_strategy` and entry-time market state; direction-only candidates are explicitly forbidden. Discovery uses the earlier chronological cohort, while validation uses later trades. A candidate is stable only when blocking matching trades would improve realized net PnL after costs on the holdout, across at least three markets, with positive leave-one-trade and leave-one-market robustness and positive economics in both later chronological blocks.
+
+This is research-only and descriptive. It does not block trades, change the active strategy, weaken risk, alter sizing, promote a candidate, or enable live orders. A stable loss context still requires a separate prospective freeze before any future strategy use.
+
+**LIVE TRADING: DISABLED.**
