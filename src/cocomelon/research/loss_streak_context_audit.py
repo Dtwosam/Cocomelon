@@ -439,13 +439,13 @@ def _chronological_context_split(
         sorted(
             rows,
             key=lambda row: (
-                int(row["closed_at_ms"]),
+                cast(int, row["closed_at_ms"]),
                 str(row["trade_id"]),
             ),
         )
     )
     timestamps = tuple(
-        sorted({int(row["closed_at_ms"]) for row in ordered})
+        sorted({cast(int, row["closed_at_ms"]) for row in ordered})
     )
     if len(timestamps) < 2:
         return timestamps[0], ordered, ()
@@ -457,12 +457,12 @@ def _chronological_context_split(
     discovery = tuple(
         row
         for row in ordered
-        if int(row["closed_at_ms"]) < split_timestamp_ms
+        if cast(int, row["closed_at_ms"]) < split_timestamp_ms
     )
     validation = tuple(
         row
         for row in ordered
-        if int(row["closed_at_ms"]) >= split_timestamp_ms
+        if cast(int, row["closed_at_ms"]) >= split_timestamp_ms
     )
     return split_timestamp_ms, discovery, validation
 
@@ -519,7 +519,7 @@ def _context_blocks(
     if not rows:
         return ()
     timestamps = tuple(
-        sorted({int(row["closed_at_ms"]) for row in rows})
+        sorted({cast(int, row["closed_at_ms"]) for row in rows})
     )
     resolved = min(CONTEXT_FILTER_BLOCK_COUNT, len(timestamps))
     blocks: list[tuple[dict[str, object], ...]] = []
@@ -532,7 +532,7 @@ def _context_blocks(
                 tuple(
                     row
                     for row in rows
-                    if int(row["closed_at_ms"]) in selected
+                    if cast(int, row["closed_at_ms"]) in selected
                 )
             )
     return tuple(blocks)
