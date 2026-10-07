@@ -4972,3 +4972,12 @@ The cooldown chain now advances with explicit verified receipts from deferred ev
 This does not relax the active cooldown. It only lets the existing research gate collect the evidence required to decide whether any exact context deserves future review.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Momentum-pullback ledger contract repair — 2026-10-07
+
+The repeatedly failing momentum-pullback fast-markout workflow was not failing because the candidate had bad economics. Its producer omitted the `enabled` / `error` fields required by the append-only ledger, so every otherwise valid summary was rejected before evidence evaluation.
+
+The producer now emits `enabled=true` and `error=null` on successful reconstruction, and regression coverage passes a real producer summary directly into the ledger. Integrity-clean and post-integrity-miss rules remain unchanged.
+
+**LIVE TRADING: DISABLED.**

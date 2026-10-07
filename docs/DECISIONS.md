@@ -731,3 +731,18 @@ The eligible checkpoint history is divided into three chronological later blocks
 **Authority:** No risk-limit, cooldown-duration, strategy, direction preference, sizing, position, promotion, paper execution, or live-order change.
 
 **LIVE TRADING: DISABLED.**
+
+
+## D-059 — Momentum-pullback forward-markout producer and ledger share one enabled-source contract
+
+**Date:** 2026-10-07
+
+**Decision:** A successfully reconstructed prospective momentum-pullback forward-markout summary explicitly declares `enabled=true` and `error=null`, matching the append-only ledger's existing clean-source contract.
+
+**Observed failure:** The forward-markout producer returned valid research metadata, rows, candidate identity, integrity counters, and fixed horizons, but omitted `enabled` and `error`. The append-only ledger therefore rejected every current producer summary as "not cleanly enabled" before it could evaluate actual evidence.
+
+**Integrity boundary:** This fix does not convert integrity misses into clean evidence. `integrity_clean` and the post-integrity-miss boundary remain separate and are still enforced by the ledger. It only makes a structurally valid producer summary recognizable as an enabled source.
+
+**Authority:** Evidence-schema repair only. No momentum-pullback thresholds, strategy decisions, readiness bars, risk limits, sizing, positions, promotion, paper execution, or live-order behavior changes.
+
+**LIVE TRADING: DISABLED.**

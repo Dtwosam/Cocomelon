@@ -556,3 +556,8 @@ This rule changes only evidence continuity. It cannot make an unstable context s
 Cooldown post-handoff stages must sequence by explicit verified `ready=true` receipts, not by rediscovering files generated earlier in the same job through `hashFiles(...)`. No stable selected context means no freeze; no freeze means no prospective relaxation evidence.
 
 This is evidence plumbing only. The active cooldown and all risk/promotion/live gates remain unchanged.
+
+
+### Momentum-pullback markout source contract — D-059
+
+A successful momentum-pullback forward-markout summary must emit `enabled=true` and `error=null` because the append-only ledger treats those fields as the source-availability contract. This does not imply `integrity_clean=true`; integrity remains an independent evidence-quality gate.

@@ -50,6 +50,9 @@ from cocomelon.research.prospective_momentum_band_forward_markout import (
 from cocomelon.research.prospective_momentum_pullback_entry import (
     ProspectiveMomentumPullbackEntryState,
 )
+from cocomelon.research.prospective_momentum_pullback_forward_markout_ledger import (
+    update_momentum_pullback_forward_markout_ledger,
+)
 from cocomelon.research.prospective_two_strike_stop_filter import (
     ProspectiveTwoStrikeStopFilterState,
 )
@@ -485,6 +488,8 @@ def test_pullback_forward_markout_separates_pullback_from_chase(
         pullback,
     )
 
+    assert result["enabled"] is True
+    assert result["error"] is None
     assert result["risk_approved_evaluated"] == 2
     assert result["pullback_admitted"] == 1
     assert result["pullback_blocked"] == 1
@@ -503,6 +508,18 @@ def test_pullback_forward_markout_separates_pullback_from_chase(
     assert block_summary["mean_directional_return"] == "-0.03"
     assert robust["admit_minus_block_mean_return"] == "0.06"
     assert result["changes_readiness_gate"] is False
+
+    ledger = update_momentum_pullback_forward_markout_ledger(
+        result,
+        pullback,
+        previous=None,
+        source_paper_run_id=123,
+        source_paper_run_attempt=1,
+        source_artifact_name="continuous-paper-learning-source-123-1",
+        source_artifact_digest="sha256:" + "a" * 64,
+    )
+    assert ledger["row_count"] == 2
+    assert ledger["pending_opportunity_count"] == 0
 
 
 def test_pullback_forward_markout_exposes_feature_integrity_miss(
