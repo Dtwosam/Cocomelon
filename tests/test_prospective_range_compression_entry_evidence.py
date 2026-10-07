@@ -348,7 +348,7 @@ def test_range_evidence_rejects_disappearing_prior_trade(
         )
 
 
-def test_range_evidence_rejects_source_rollback(
+def test_range_evidence_ignores_stale_source_dispatch(
     tmp_path: Path,
 ) -> None:
     store = LearningFeatureSnapshotStore(tmp_path / "features")
@@ -363,18 +363,17 @@ def test_range_evidence_rejects_source_rollback(
         digest_char="c",
     )
 
-    with pytest.raises(
-        ProspectiveRangeCompressionEvidenceError,
-        match="source run identity regressed",
-    ):
-        _update(
-            (),
-            store,
-            state,
-            previous=first,
-            run_id=199,
-            digest_char="d",
-        )
+    stale = _update(
+        (),
+        store,
+        state,
+        previous=first,
+        run_id=199,
+        digest_char="d",
+    )
+
+    assert stale == validate_range_compression_evidence(first)
+    assert len(stale["source_history"]) == 1
 
 
 def test_range_evidence_rejects_row_tamper(

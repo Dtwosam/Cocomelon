@@ -967,6 +967,51 @@ def update_momentum_pullback_forward_markout_ledger(
     if not source_artifact_digest.startswith("sha256:"):
         raise ValueError("source artifact digest must be sha256")
 
+    validated_previous: dict[str, object] | None = None
+    if previous is not None:
+        validated_previous = (
+            validate_momentum_pullback_forward_markout_ledger(previous)
+        )
+        for key, expected in (
+            ("candidate_id", state.candidate_id),
+            ("frozen_at_ms", state.frozen_at_ms),
+            ("started_at_ms", state.started_at_ms),
+            ("embargo_ms", EMBARGO_MS),
+            ("rule", state.payload()["rule"]),
+            ("forward_horizons_ms", list(FORWARD_HORIZONS_MS)),
+            ("max_mark_lag_ms", MAX_MARK_LAG_MS),
+        ):
+            if validated_previous.get(key) != expected:
+                raise ProspectiveMomentumPullbackForwardMarkoutLedgerError(
+                    f"momentum pullback markout metadata drift: {key}"
+                )
+        raw_history = validated_previous.get("source_history")
+        if not isinstance(raw_history, list) or not raw_history:
+            raise ProspectiveMomentumPullbackForwardMarkoutLedgerError(
+                "momentum pullback markout source history is invalid"
+            )
+        latest = raw_history[-1]
+        if not isinstance(latest, dict):
+            raise ProspectiveMomentumPullbackForwardMarkoutLedgerError(
+                "latest momentum pullback markout source history is invalid"
+            )
+        latest_run_id = latest.get("paper_run_id")
+        latest_attempt = latest.get("paper_run_attempt")
+        if (
+            isinstance(latest_run_id, bool)
+            or not isinstance(latest_run_id, int)
+            or isinstance(latest_attempt, bool)
+            or not isinstance(latest_attempt, int)
+        ):
+            raise ProspectiveMomentumPullbackForwardMarkoutLedgerError(
+                "latest momentum pullback source identity is invalid"
+            )
+        if (
+            source_paper_run_id,
+            source_paper_run_attempt,
+        ) < (latest_run_id, latest_attempt):
+            return validated_previous
+
     (
         source_rows,
         pending_count,
@@ -979,22 +1024,13 @@ def update_momentum_pullback_forward_markout_ledger(
     history: list[object] = []
     prior_ledger_sha256: str | None = None
 
-    if previous is not None:
-        validated = validate_momentum_pullback_forward_markout_ledger(previous)
-        for key, expected in (
-            ("candidate_id", state.candidate_id),
-            ("frozen_at_ms", state.frozen_at_ms),
-            ("started_at_ms", state.started_at_ms),
-            ("embargo_ms", EMBARGO_MS),
-            ("rule", state.payload()["rule"]),
-            ("evidence_started_at_ms", evidence_started_at_ms),
-            ("forward_horizons_ms", list(FORWARD_HORIZONS_MS)),
-            ("max_mark_lag_ms", MAX_MARK_LAG_MS),
-        ):
-            if validated.get(key) != expected:
-                raise ProspectiveMomentumPullbackForwardMarkoutLedgerError(
-                    f"momentum pullback markout metadata drift: {key}"
-                )
+    if validated_previous is not None:
+        validated = validated_previous
+        if validated.get("evidence_started_at_ms") != evidence_started_at_ms:
+            raise ProspectiveMomentumPullbackForwardMarkoutLedgerError(
+                "momentum pullback markout metadata drift: "
+                "evidence_started_at_ms"
+            )
         raw_history = validated.get("source_history")
         if not isinstance(raw_history, list):
             raise ProspectiveMomentumPullbackForwardMarkoutLedgerError(

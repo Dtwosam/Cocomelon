@@ -739,12 +739,6 @@ def update_range_compression_evidence(
     source_artifact_name: str,
     source_artifact_digest: str,
 ) -> dict[str, object]:
-    rows, full_summary = _candidate_rows(
-        trades,
-        feature_store,
-        state,
-    )
-    summary = _summary_snapshot(full_summary)
     source = _source_entry(
         source_paper_run_id=source_paper_run_id,
         source_paper_run_attempt=source_paper_run_attempt,
@@ -753,9 +747,7 @@ def update_range_compression_evidence(
         source_artifact_digest=source_artifact_digest,
     )
 
-    prior_sha: str | None = None
-    previous_rows: tuple[dict[str, object], ...] = ()
-    source_history: list[dict[str, object]] = []
+    canonical_previous: dict[str, object] | None = None
     if previous is not None:
         canonical_previous = validate_range_compression_evidence(
             previous
@@ -764,6 +756,33 @@ def update_range_compression_evidence(
             raise ProspectiveRangeCompressionEvidenceError(
                 "frozen candidate state drift"
             )
+        previous_history = cast(
+            list[dict[str, object]],
+            canonical_previous["source_history"],
+        )
+        latest_source = previous_history[-1]
+        latest_identity = (
+            cast(int, latest_source["source_paper_run_id"]),
+            cast(int, latest_source["source_paper_run_attempt"]),
+        )
+        next_identity = (
+            cast(int, source["source_paper_run_id"]),
+            cast(int, source["source_paper_run_attempt"]),
+        )
+        if next_identity < latest_identity:
+            return canonical_previous
+
+    rows, full_summary = _candidate_rows(
+        trades,
+        feature_store,
+        state,
+    )
+    summary = _summary_snapshot(full_summary)
+
+    prior_sha: str | None = None
+    previous_rows: tuple[dict[str, object], ...] = ()
+    source_history: list[dict[str, object]] = []
+    if canonical_previous is not None:
         previous_rows = _canonical_rows(
             canonical_previous["rows"]
         )

@@ -535,6 +535,17 @@ jobs:
           readiness = summary["readiness"]
           robustness = summary["robustness"]
           state = evidence["state"]
+          latest_source = evidence["source_history"][-1]
+          dispatched_run_id = int(os.environ["SOURCE_RUN_ID"])
+          dispatched_attempt = int(os.environ["SOURCE_RUN_ATTEMPT"])
+          accepted_run_id = int(latest_source["source_paper_run_id"])
+          accepted_attempt = int(
+              latest_source["source_paper_run_attempt"]
+          )
+          stale_dispatch_ignored = (
+              (dispatched_run_id, dispatched_attempt)
+              < (accepted_run_id, accepted_attempt)
+          )
 
           def stamp(value):
               if value is None:
@@ -554,7 +565,9 @@ jobs:
               f"- frozen at: \`{stamp(state['frozen_at_ms'])}\`",
               f"- clean scoring start: \`{stamp(state['started_at_ms'])}\`",
               f"- frozen max range expansion 15m: \`{state['rule']['max_range_expansion_15m']}\`",
-              f"- source paper run / attempt: \`{os.environ['SOURCE_RUN_ID']} / {os.environ['SOURCE_RUN_ATTEMPT']}\`",
+              f"- dispatched source paper run / attempt: \`{dispatched_run_id} / {dispatched_attempt}\`",
+              f"- ledger latest accepted source: \`{accepted_run_id} / {accepted_attempt}\`",
+              f"- stale dispatched source ignored: \`{stale_dispatch_ignored}\`",
               f"- source resolution: \`{os.environ['RESOLUTION_MODE']}\`",
               f"- previous evidence workflow run: \`{previous}\`",
               f"- rows / previous / newly appended: \`{evidence['row_count']} / {evidence['previous_row_count']} / {evidence['new_row_count']}\`",
