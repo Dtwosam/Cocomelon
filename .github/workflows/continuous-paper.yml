@@ -116,6 +116,9 @@ on:
       - "src/cocomelon/research/loss_context_holder_release_execution.py"
       - "src/cocomelon/research/deferred_loss_context_holder_release_execution.py"
       - "scripts/rebuild_deferred_loss_context_holder_release_execution.py"
+      - "src/cocomelon/research/loss_context_replacement_entry_fill.py"
+      - "src/cocomelon/research/deferred_loss_context_replacement_entry_fill.py"
+      - "scripts/rebuild_deferred_loss_context_replacement_entry_fill.py"
       - "src/cocomelon/loss_context_candidate_cli.py"
       - "src/cocomelon/loss_context_prospective_cli.py"
       - "src/cocomelon/loss_context_account_readiness_cli.py"
@@ -1482,6 +1485,69 @@ jobs:
         with:
           name: continuous-paper-loss-context-holder-release-${{ github.run_id }}-${{ github.run_attempt }}
           path: continuous-paper-state/loss-context-holder-release-execution-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Rebuild loss-context replacement entry fill
+        id: loss_context_replacement_entry_fill
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-candidate-freeze.json') != '' && hashFiles('continuous-paper-state/loss-context-capacity-reflow-summary.json') != '' && hashFiles('continuous-paper-state/loss-context-holder-release-execution-summary.json') != '' && hashFiles('continuous-paper-state/session-summary.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/rebuild_deferred_loss_context_replacement_entry_fill.py \
+            "$STATE_ROOT" \
+            | tee /tmp/loss-context-replacement-entry-fill.json
+          test -s "$STATE_ROOT/loss-context-replacement-entry-fill-summary.json"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/"
+                  "loss-context-replacement-entry-fill-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          print("## Loss-context replacement entry fill")
+          print("- authority: RESEARCH ONLY / NO POSITION OR RISK CHANGE")
+          print(
+              "- holder full closes / replayed / fillable entries: "
+              f"{payload.get('holder_full_close_release_options', 0)} / "
+              f"{payload.get('entry_replayed_options', 0)} / "
+              f"{payload.get('fillable_options', 0)}"
+          )
+          print(
+              "- risk/planning/full/partial/no-fill: "
+              f"{payload.get('conservative_risk_approvals', 0)} / "
+              f"{payload.get('planning_approvals', 0)} / "
+              f"{payload.get('full_fill_options', 0)} / "
+              f"{payload.get('partial_fill_options', 0)} / "
+              f"{payload.get('no_fill_options', 0)}"
+          )
+          print(
+              "- fill notional / fees / next exit investigation: "
+              f"{payload.get('gross_fill_notional', '0')} / "
+              f"{payload.get('taker_fees', '0')} / "
+              f"{payload.get('ready_for_replacement_exit_investigation', False)}"
+          )
+          print(
+              "- strategy / risk / position / execution authority: "
+              f"{payload.get('changes_strategy', False)} / "
+              f"{payload.get('changes_risk_limits', False)} / "
+              f"{payload.get('changes_positions', False)} / "
+              f"{payload.get('execution_authority', False)}"
+          )
+          PY
+
+      - name: Upload loss-context replacement entry fill
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-replacement-entry-fill-summary.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-loss-context-replacement-entry-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/loss-context-replacement-entry-fill-summary.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
