@@ -103,3 +103,11 @@ def test_two_strike_ledger_accepts_only_durable_handoff_tail_failures() -> None:
         'branch=main&status=completed&per_page=100'
         in source
     )
+
+
+def test_automated_source_resolution_prefers_newest_completed_run() -> None:
+    source = _source()
+
+    assert 'sorted(runs, key=lambda item: item["id"], reverse=True)' in source
+    assert 'branch=main&status=completed&per_page=100' in source
+    assert 'if [ "$candidate_run_id" = "$EVENT_RUN_ID" ]; then' in source
