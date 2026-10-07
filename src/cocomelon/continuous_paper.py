@@ -136,12 +136,6 @@ from cocomelon.research.continuous_paper_opening_rank import (
     LatestCoarseRankTracker,
     opening_rank_attribution,
 )
-from cocomelon.research.loss_context_paired_shadow_runtime import (
-    LossContextPairedShadowRuntime,
-)
-from cocomelon.research.loss_context_portfolio_shadow_candidate import (
-    verify_loss_context_portfolio_shadow_freeze,
-)
 from cocomelon.research.continuous_paper_replacement_funding import (
     ContinuousPaperReplacementFundingStore,
     ReplacementFundingBoundaryRequest,
@@ -230,6 +224,12 @@ from cocomelon.research.fill_aware_delay_selector import (
     fill_aware_delay_selector_summary,
 )
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
+from cocomelon.research.loss_context_paired_shadow_runtime import (
+    LossContextPairedShadowRuntime,
+)
+from cocomelon.research.loss_context_portfolio_shadow_candidate import (
+    verify_loss_context_portfolio_shadow_freeze,
+)
 from cocomelon.research.opening_fill_liquidity import (
     OpeningFillLiquidityStore,
     evidence_from_opening_trace,
