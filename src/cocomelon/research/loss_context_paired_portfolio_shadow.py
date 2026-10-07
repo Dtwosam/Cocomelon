@@ -23,9 +23,18 @@ from cocomelon.research.loss_context_portfolio_shadow_entry import (
     LossContextPortfolioShadowEntryFilter,
     RankOrdinalProvider,
 )
+from cocomelon.research.loss_context_paired_portfolio_shadow_state import (
+    LaneTotals,
+    LossContextPairedShadowStateError,
+    build_paired_shadow_state_payload,
+    load_paired_shadow_state,
+    restore_lane_from_state,
+    write_paired_shadow_state,
+)
 
 ZERO: Final = Decimal("0")
 LOSS_CONTEXT_PAIRED_SHADOW_SCHEMA_VERSION: Final = 1
+PAIRED_SHADOW_STATE_FILENAME: Final = "paired-shadow-state.json"
 
 DecisionEngineFactory = Callable[[], DecisionEpochEngine]
 
@@ -109,10 +118,44 @@ class LossContextPairedPortfolioShadow:
         root.mkdir(parents=True, exist_ok=True)
         self._freeze = freeze
         self._config = replay_config
+        self._markets = markets
+        self._state_path = root / PAIRED_SHADOW_STATE_FILENAME
+        baseline_execution_path = root / "baseline-execution.sqlite3"
+        candidate_execution_path = root / "candidate-execution.sqlite3"
+        state_exists = self._state_path.exists()
+        baseline_execution_exists = baseline_execution_path.exists()
+        candidate_execution_exists = candidate_execution_path.exists()
+        if state_exists and not (
+            baseline_execution_exists and candidate_execution_exists
+        ):
+            raise LossContextPairedShadowStateError(
+                "paired shadow state exists without both execution stores"
+            )
+        if not state_exists and (
+            baseline_execution_exists or candidate_execution_exists
+        ):
+            raise LossContextPairedShadowStateError(
+                "paired shadow execution store exists without checkpoint"
+            )
+
+        restored_state = (
+            load_paired_shadow_state(
+                self._state_path,
+                expected_candidate_id=freeze.candidate_id,
+                expected_replay_config_digest=replay_config.config_digest,
+                expected_selected_markets=markets,
+            )
+            if state_exists
+            else None
+        )
         self._record_count = 0
         self._last_record_available_at_ms: int | None = None
         self._baseline_max_drawdown = ZERO
         self._candidate_max_drawdown = ZERO
+        self._baseline_prior_totals = LaneTotals()
+        self._candidate_prior_totals = LaneTotals()
+        self._resume_warmup_required = restored_state is not None
+        self._state_restored = restored_state is not None
 
         self._baseline_filter = LossContextPortfolioShadowEntryFilter(
             freeze,
@@ -126,13 +169,13 @@ class LossContextPairedPortfolioShadow:
         )
 
         self._baseline_execution = PaperExecutionAdapter(
-            root / "baseline-execution.sqlite3",
+            baseline_execution_path,
             replay_config.execution,
             starting_cash=replay_config.starting_cash,
             startup_timestamp_ms=startup_timestamp_ms,
         )
         self._candidate_execution = PaperExecutionAdapter(
-            root / "candidate-execution.sqlite3",
+            candidate_execution_path,
             replay_config.execution,
             starting_cash=replay_config.starting_cash,
             startup_timestamp_ms=startup_timestamp_ms,
@@ -174,6 +217,54 @@ class LossContextPairedPortfolioShadow:
             decision_engine=candidate_engine,
             opening_candidate_filter=self._candidate_filter,
         )
+        if restored_state is not None:
+            if (
+                not self._baseline_execution.health.healthy_for_new_exposure
+                or not self._candidate_execution.health.healthy_for_new_exposure
+            ):
+                raise LossContextPairedShadowStateError(
+                    "paired shadow execution restore is unhealthy"
+                )
+            restore_lane_from_state(
+                self._baseline,
+                self._baseline_execution,
+                checkpoints=restored_state.baseline_checkpoints,
+                gap_intervals=restored_state.baseline_gap_intervals,
+                expected_account_updated_at_ms=(
+                    restored_state.baseline_account_updated_at_ms
+                ),
+            )
+            restore_lane_from_state(
+                self._candidate,
+                self._candidate_execution,
+                checkpoints=restored_state.candidate_checkpoints,
+                gap_intervals=restored_state.candidate_gap_intervals,
+                expected_account_updated_at_ms=(
+                    restored_state.candidate_account_updated_at_ms
+                ),
+            )
+            self._baseline_filter.restore_summary_payload(
+                restored_state.baseline_admission
+            )
+            self._candidate_filter.restore_summary_payload(
+                restored_state.candidate_admission
+            )
+            self._record_count = restored_state.record_count
+            self._last_record_available_at_ms = (
+                restored_state.last_record_available_at_ms
+            )
+            self._baseline_max_drawdown = (
+                restored_state.baseline_max_drawdown
+            )
+            self._candidate_max_drawdown = (
+                restored_state.candidate_max_drawdown
+            )
+            self._baseline_prior_totals = (
+                restored_state.baseline_totals
+            )
+            self._candidate_prior_totals = (
+                restored_state.candidate_totals
+            )
 
     @staticmethod
     def _drawdown(account: PaperAccountState) -> Decimal:
@@ -192,6 +283,19 @@ class LossContextPairedPortfolioShadow:
             self._drawdown(self._candidate_execution.account),
         )
 
+    @property
+    def resume_warmup_required(self) -> bool:
+        return self._resume_warmup_required
+
+    @property
+    def state_restored(self) -> bool:
+        return self._state_restored
+
+    def confirm_restore_warmup_complete(self) -> None:
+        if not self._state_restored:
+            return
+        self._resume_warmup_required = False
+
     def on_record(
         self,
         record: ReplayRecord,
@@ -199,6 +303,10 @@ class LossContextPairedPortfolioShadow:
         *,
         evaluate_decisions: bool = True,
     ) -> None:
+        if self._resume_warmup_required and evaluate_decisions:
+            raise LossContextPairedShadowStateError(
+                "paired shadow restore requires warmup before decisions"
+            )
         if self._last_record_available_at_ms is not None and (
             record.available_at_ms < self._last_record_available_at_ms
         ):
@@ -225,11 +333,16 @@ class LossContextPairedPortfolioShadow:
         execution: PaperExecutionAdapter,
         *,
         max_drawdown: Decimal,
+        prior_totals: LaneTotals,
         end_ms: int,
     ) -> _LaneSnapshot:
         account = execution.account
         activity = pipeline.session_decision_activity
         closed = pipeline.finalize(end_ms)
+        totals = prior_totals.plus_activity(
+            activity,
+            closed_trade_count=len(closed),
+        )
         realized_net = (
             account.realized_gross_pnl
             - account.cumulative_fees
@@ -247,14 +360,14 @@ class LossContextPairedPortfolioShadow:
             open_position_count=len(account.positions),
             gross_open_notional=account.gross_open_notional,
             available_margin=account.available_margin,
-            closed_trade_count=len(closed),
-            risk_evaluations=activity.risk_evaluations,
-            risk_approvals=activity.risk_approvals,
-            risk_rejections=activity.risk_rejections,
+            closed_trade_count=totals.closed_trade_count,
+            risk_evaluations=totals.risk_evaluations,
+            risk_approvals=totals.risk_approvals,
+            risk_rejections=totals.risk_rejections,
             opening_execution_attempts=(
-                activity.opening_execution_attempts
+                totals.opening_execution_attempts
             ),
-            opening_fills=activity.opening_fills,
+            opening_fills=totals.opening_fills,
         )
 
     def summary_payload(self, *, end_ms: int) -> dict[str, object]:
@@ -265,12 +378,14 @@ class LossContextPairedPortfolioShadow:
             self._baseline,
             self._baseline_execution,
             max_drawdown=self._baseline_max_drawdown,
+            prior_totals=self._baseline_prior_totals,
             end_ms=end_ms,
         )
         candidate = self._lane_snapshot(
             self._candidate,
             self._candidate_execution,
             max_drawdown=self._candidate_max_drawdown,
+            prior_totals=self._candidate_prior_totals,
             end_ms=end_ms,
         )
         return {
@@ -287,6 +402,8 @@ class LossContextPairedPortfolioShadow:
             "last_record_available_at_ms": (
                 self._last_record_available_at_ms
             ),
+            "state_restored": self._state_restored,
+            "resume_warmup_required": self._resume_warmup_required,
             "baseline": baseline.to_dict(),
             "candidate": candidate.to_dict(),
             "candidate_minus_baseline_equity": str(
@@ -320,6 +437,58 @@ class LossContextPairedPortfolioShadow:
             "execution_authority": False,
             "schema_version": LOSS_CONTEXT_PAIRED_SHADOW_SCHEMA_VERSION,
         }
+
+    def _current_totals(
+        self,
+        pipeline: BaselineReplayPipeline,
+        prior: LaneTotals,
+        *,
+        end_ms: int,
+    ) -> LaneTotals:
+        return prior.plus_activity(
+            pipeline.session_decision_activity,
+            closed_trade_count=len(pipeline.finalize(end_ms)),
+        )
+
+    def checkpoint_payload(self) -> dict[str, object]:
+        end_ms = (
+            0
+            if self._last_record_available_at_ms is None
+            else self._last_record_available_at_ms
+        )
+        return build_paired_shadow_state_payload(
+            candidate_id=self._freeze.candidate_id,
+            replay_config_digest=self._config.config_digest,
+            selected_markets=self._markets,
+            record_count=self._record_count,
+            last_record_available_at_ms=(
+                self._last_record_available_at_ms
+            ),
+            baseline_max_drawdown=self._baseline_max_drawdown,
+            candidate_max_drawdown=self._candidate_max_drawdown,
+            baseline_totals=self._current_totals(
+                self._baseline,
+                self._baseline_prior_totals,
+                end_ms=end_ms,
+            ),
+            candidate_totals=self._current_totals(
+                self._candidate,
+                self._candidate_prior_totals,
+                end_ms=end_ms,
+            ),
+            baseline_admission=self._baseline_filter.summary_payload(),
+            candidate_admission=self._candidate_filter.summary_payload(),
+            baseline_pipeline=self._baseline,
+            candidate_pipeline=self._candidate,
+            baseline_execution=self._baseline_execution,
+            candidate_execution=self._candidate_execution,
+        )
+
+    def write_checkpoint(self) -> None:
+        write_paired_shadow_state(
+            self._state_path,
+            self.checkpoint_payload(),
+        )
 
     def close(self) -> None:
         self._baseline_facts.close()
