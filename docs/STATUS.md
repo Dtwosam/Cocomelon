@@ -4740,3 +4740,14 @@ The future score is economically symmetric: blocking a later loser improves filt
 This still does not change the active paper strategy. It creates a clean prospective answer to a narrower question: whether one exact repeated bad setup remains worth avoiding after we stop looking at the evidence that discovered it.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Durable paper evidence continuity — 2026-10-07
+
+The evidence graph now distinguishes a failed paper trader from a valid paper session whose GitHub workflow turned red later in the handoff/research tail. Consumers accept the latter only under a strict authenticated contract: successful trader, successful durable-state measurement/publication, successful required source-artifact publication, exact run/attempt/repository lineage, and successful fast-successor dispatch whenever the redundant fallback successor failed.
+
+This fixes the observed case where valid compact, timing, cadence, feature, and durable-state artifacts were being ignored because the redundant fallback receipt failed after the real successor had already been queued. Arbitrary failures remain fail-closed.
+
+Control-plane/evidence continuity only. No strategy, risk, sizing, stop, promotion, or live-order behavior changes.
+
+**LIVE TRADING: DISABLED.**
