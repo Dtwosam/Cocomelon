@@ -445,3 +445,10 @@ This is prospective evidence capture only. Historical gaps are not backfilled, a
 Only D-043 exact full-close holder paths may enter replacement-entry research. Each path is replayed independently through the normal risk engine, opening planner, and IOC simulator after applying that specific holder exit's terminal account contribution.
 
 Per-opportunity exit economics are never collapsed by holder plan. Risk/planning rejection, no fill, partial fill, and full fill remain separate. A filled replacement can only advance to exit research; no replacement PnL or strategy authority is claimed here.
+
+
+### Loss-context replacement exit economics — D-046
+
+Filled D-045 replacement entries are now evaluated with the existing captured fixed-horizon exit books and funding-boundary evidence. Each horizon remains separate; Cocomelon does not choose whichever horizon looks best.
+
+Exact PnL requires a full simulated exit plus complete funding evidence (or exact zero funding when no boundary occurs). Only when every replacement option is exact at every frozen horizon may this path advance to portfolio-counterfactual research. No strategy/exit rule is changed here.
