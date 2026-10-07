@@ -422,3 +422,12 @@ Passing this stage permits only capacity-reflow investigation. It does not assum
 After D-041 passes, Cocomelon may study whether skipping the frozen bad context frees real risk or correlation capacity for later opportunities. Credit is allowed only when the captured baseline opportunity was rejected for capacity, removing one active holder makes it capacity-feasible, that holder was opened after the prospective boundary and matches the frozen context, and the newcomer itself does not match the same bad context.
 
 This stage does not assume the newcomer fills or makes money. Replacement execution, exits, realized economics, and recursive reflow remain separate later tests. Missing lineage fails closed and direction-only filtering remains forbidden.
+
+
+### Loss-context holder release execution — D-043
+
+A causal capacity release from D-042 is not credited as usable merely because removing the position clears the risk math. Cocomelon now requires the exact bad-context holder to be fully closeable under captured decision-time paper execution evidence before that path can advance.
+
+The replay is per opportunity/holder path and uses the captured execution configuration, reduce-only planner, configured latency, L2 book, fees, instrument metadata, and exact opening-plan lineage. Missing books, unbound configuration, planning failures, partial fills, no fills, or lineage conflicts remain uncredited. Only exact full closes become eligible for the later replacement-entry investigation.
+
+This remains research-only. It does not alter active positions, strategy, LONG/SHORT preference, risk, sizing, stops, promotion state, or execution authority.
