@@ -5,7 +5,7 @@ from pathlib import Path
 LEARNING_SOURCE_WORKFLOWS = (
     (
         ".github/workflows/prospective-two-strike-stop-filter-ledger.yml",
-        "latest_successful_with_compact_artifact",
+        "latest_evidence_eligible_with_compact_artifact",
     ),
     (
         ".github/workflows/prospective-full-stack-reflow-exact-ledger.yml",
@@ -146,9 +146,12 @@ def test_cadence_producers_require_compact_artifacts_at_resolution() -> None:
         )[1].split("\n      - ", 1)[0]
 
         assert "required_artifacts_for_run()" in resolver
+        assert "paper_run_is_evidence_eligible()" in resolver
         assert "continuous-paper-cadence-shadow-" in resolver
         assert "continuous-paper-learning-features-" in resolver
-        assert "latest_success_with_cadence_artifacts" in resolver
+        assert "latest_evidence_eligible_with_cadence_artifacts" in resolver
+        assert "Queue fallback exact successor continuous paper worker" in resolver
+        assert "Queue exact successor from fast resume" in resolver
 
 
 def test_cadence_ledgers_skip_artifactless_producer_runs() -> None:
