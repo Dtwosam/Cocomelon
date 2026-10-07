@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Final, cast
 
 from cocomelon.research.cooldown_context_candidate import (
-    CooldownContextCandidateFreeze,
     EXPECTED_COOLDOWN_CANDIDATE_ID,
+    CooldownContextCandidateFreeze,
     verify_cooldown_context_candidate_freeze,
 )
 
