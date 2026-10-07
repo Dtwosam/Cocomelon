@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections.abc import Callable, Sequence
@@ -279,6 +280,22 @@ def _restore_open_lifecycles(
         )
 
 
+def _canonical_json(value: object) -> str:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+
+
+def _state_digest(payload: dict[str, object]) -> str:
+    return hashlib.sha256(
+        _canonical_json(payload).encode("utf-8")
+    ).hexdigest()
+
+
 def _write_json_atomic(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     encoded = (
@@ -427,6 +444,24 @@ class LossContextPairedPortfolioShadow:
         self._state_path = (
             root / LOSS_CONTEXT_PAIRED_SHADOW_STATE_FILENAME
         )
+        self._markets = markets
+        baseline_execution_path = root / "baseline-execution.sqlite3"
+        candidate_execution_path = root / "candidate-execution.sqlite3"
+        state_exists = self._state_path.exists()
+        baseline_execution_exists = baseline_execution_path.exists()
+        candidate_execution_exists = candidate_execution_path.exists()
+        if state_exists and not (
+            baseline_execution_exists and candidate_execution_exists
+        ):
+            raise RuntimeError(
+                "paired shadow checkpoint exists without both execution stores"
+            )
+        if not state_exists and (
+            baseline_execution_exists or candidate_execution_exists
+        ):
+            raise RuntimeError(
+                "paired shadow execution store exists without checkpoint"
+            )
         self._freeze = freeze
         self._config = replay_config
         self._record_count = 0
@@ -450,13 +485,13 @@ class LossContextPairedPortfolioShadow:
         )
 
         self._baseline_execution = PaperExecutionAdapter(
-            root / "baseline-execution.sqlite3",
+            baseline_execution_path,
             replay_config.execution,
             starting_cash=replay_config.starting_cash,
             startup_timestamp_ms=startup_timestamp_ms,
         )
         self._candidate_execution = PaperExecutionAdapter(
-            root / "candidate-execution.sqlite3",
+            candidate_execution_path,
             replay_config.execution,
             starting_cash=replay_config.starting_cash,
             startup_timestamp_ms=startup_timestamp_ms,
@@ -608,6 +643,16 @@ class LossContextPairedPortfolioShadow:
             ) from exc
         if not isinstance(raw, dict):
             raise ValueError("paired shadow durable state must be an object")
+        unsigned = dict(raw)
+        state_digest = unsigned.pop("state_digest", None)
+        if (
+            not isinstance(state_digest, str)
+            or state_digest != _state_digest(unsigned)
+        ):
+            raise RuntimeError(
+                "paired shadow durable state digest mismatch"
+            )
+        raw = unsigned
         if (
             raw.get("schema_version")
             != LOSS_CONTEXT_PAIRED_SHADOW_STATE_SCHEMA_VERSION
@@ -616,6 +661,19 @@ class LossContextPairedPortfolioShadow:
         if raw.get("portfolio_shadow_candidate_id") != self._freeze.candidate_id:
             raise RuntimeError(
                 "paired shadow durable candidate identity mismatch"
+            )
+        if raw.get("replay_config_digest") != self._config.config_digest:
+            raise RuntimeError(
+                "paired shadow durable replay configuration mismatch"
+            )
+        selected_markets = raw.get("selected_markets")
+        if (
+            not isinstance(selected_markets, list)
+            or tuple(str(item) for item in selected_markets)
+            != tuple(market.canonical for market in self._markets)
+        ):
+            raise RuntimeError(
+                "paired shadow durable selected markets mismatch"
             )
         if raw.get("handoff_safe") is not True:
             raise RuntimeError(
@@ -864,6 +922,10 @@ class LossContextPairedPortfolioShadow:
             "loss_context_candidate_id": (
                 self._freeze.loss_context_candidate_id
             ),
+            "replay_config_digest": self._config.config_digest,
+            "selected_markets": [
+                market.canonical for market in self._markets
+            ],
             "record_count": self._record_count,
             "last_record_available_at_ms": (
                 self._last_record_available_at_ms
@@ -894,6 +956,22 @@ class LossContextPairedPortfolioShadow:
                 LOSS_CONTEXT_PAIRED_SHADOW_STATE_SCHEMA_VERSION
             ),
         }
+        # Materialize both current account snapshots even when a lane has
+        # made no trade. Otherwise an intentionally empty candidate lane
+        # cannot be distinguished from a fresh account after restart.
+        self._baseline_execution.store.persist_account(
+            self._baseline_execution.account
+        )
+        self._candidate_execution.store.persist_account(
+            self._candidate_execution.account
+        )
+        payload["baseline"]["account_state_id"] = (
+            self._baseline_execution.account.state_id
+        )
+        payload["candidate"]["account_state_id"] = (
+            self._candidate_execution.account.state_id
+        )
+        payload["state_digest"] = _state_digest(payload)
         _write_json_atomic(self._state_path, payload)
         return payload
 
