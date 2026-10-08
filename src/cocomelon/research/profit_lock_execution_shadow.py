@@ -1045,6 +1045,14 @@ class ProfitLockExecutionShadow:
             ),
         }
 
+    def operational_metadata_payload(self) -> dict[str, object]:
+        """O(1) metadata for live previews; never scan closed outcomes."""
+        return {
+            "started_at_ms": self._started_at_ms,
+            "state_restored": self._state_restored,
+            "state_restore_error": self._state_restore_error,
+        }
+
     def summary_payload(self) -> dict[str, object]:
         eligible_open = sum(
             1
