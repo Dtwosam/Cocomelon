@@ -353,13 +353,13 @@ from cocomelon.research.prospective_momentum_pullback_entry import (
     ProspectiveMomentumPullbackEntryState,
     evaluate_prospective_momentum_pullback_entry,
 )
-from cocomelon.research.prospective_profit_trailing_grid import (
-    prospective_profit_trailing_grid_comparison,
-)
 from cocomelon.research.prospective_profit_target_one_r_comparison import (
     prospective_profit_target_one_r_comparison,
     prospective_profit_target_threshold_comparison,
     prospective_profit_trailing_comparison,
+)
+from cocomelon.research.prospective_profit_trailing_grid import (
+    prospective_profit_trailing_grid_comparison,
 )
 from cocomelon.research.prospective_range_compression_entry import (
     ProspectiveRangeCompressionEntryState,
