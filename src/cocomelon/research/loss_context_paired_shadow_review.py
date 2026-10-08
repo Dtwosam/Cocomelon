@@ -381,6 +381,25 @@ def append_review_checkpoint(
         ),
     }
     _validate_row_authority(unsigned)
+    _validate_row_account_parity(unsigned)
+    _unattributed_block_count(unsigned)
+    if rows:
+        previous = rows[-1]
+        if (
+            unsigned.get("loss_context_candidate_id")
+            != previous.get("loss_context_candidate_id")
+            or unsigned.get("prospective_not_before_ms")
+            != previous.get("prospective_not_before_ms")
+        ):
+            raise LossContextPairedShadowReviewError(
+                "review ledger frozen candidate lineage changed"
+            )
+        if _integer(unsigned.get("record_count"), "record_count") < _integer(
+            previous.get("record_count"), "record_count"
+        ):
+            raise LossContextPairedShadowReviewError(
+                "review ledger record count moved backward"
+            )
     row = {**unsigned, "row_digest": _digest(unsigned)}
     encoded = (_canonical_json(row) + "\n").encode("utf-8")
     ledger_path = Path(path)
