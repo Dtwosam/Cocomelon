@@ -636,6 +636,21 @@ jobs:
           PY
           echo "restored=artifact" >> "$GITHUB_OUTPUT"
 
+      - name: Anchor immutable forward-only loss-context cohort
+        id: forward_loss_context_anchor
+        if: ${{ steps.guard.outputs.skip != 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m cocomelon.research.loss_context_prospective_cohort anchor \
+            --state-root "$STATE_ROOT" \
+            --source-run-id "$GITHUB_RUN_ID" \
+            --source-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --source-head-sha "$GITHUB_SHA"
+          test -s "$STATE_ROOT/loss-context-forward-cohort-anchor.json"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
       - name: Run continuous paper trader
         if: ${{ steps.guard.outputs.skip != 'true' }}
         run: |
@@ -1174,6 +1189,49 @@ jobs:
         with:
           name: continuous-paper-loss-context-paired-shadow-review-${{ github.run_id }}-${{ github.run_attempt }}
           path: continuous-paper-state/loss-context-paired-shadow-review-report.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Review immutable forward-only loss-context coverage after handoff
+        id: forward_loss_context_review
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.forward_loss_context_anchor.outcome == 'success' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/session-summary.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m cocomelon.research.loss_context_prospective_cohort report \
+            --state-root "$STATE_ROOT" \
+            | tee /tmp/forward-loss-context-coverage.json
+          test -s "$STATE_ROOT/loss-context-forward-cohort-report.json"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path(
+              "continuous-paper-state/loss-context-forward-cohort-report.json"
+          ).read_text(encoding="utf-8"))
+          print("## Immutable forward loss-context cohort")
+          print("- scope: PAPER RESEARCH ONLY / NO EXECUTION / NO PROMOTION")
+          print(f"- anchor ID: {payload['anchor_id']}")
+          print(f"- forward trades / markets: {payload['forward_closed_trades']} / {payload['forward_market_count']}")
+          print(f"- LONG / SHORT: {payload['forward_long_closed_trades']} / {payload['forward_short_closed_trades']}")
+          print(f"- forward closed-trade net PnL: {payload['forward_net_closed_trade_pnl']}")
+          print(f"- missing forward contexts: {payload['forward_unresolved_trade_count']} / {payload['forward_unresolved_reason_counts']}")
+          print(f"- old in-flight positions excluded: {payload['carryover_excluded_closed_trades']}")
+          print(f"- research discovery ready: {payload['ready_for_research_discovery']}")
+          PY
+
+      - name: Upload forward-only loss-context coverage
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.forward_loss_context_review.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-forward-loss-context-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            continuous-paper-state/loss-context-forward-cohort-anchor.json
+            continuous-paper-state/loss-context-forward-cohort-report.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 6

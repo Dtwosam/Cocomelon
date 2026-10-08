@@ -1767,3 +1767,40 @@ def test_exact_research_ledgers_require_eligible_paper_source() -> None:
     ]
     assert '[ "$exit_reason" = "upgrade_requested" ]' in gate_block
     assert "exit 75" in gate_block
+
+
+def test_forward_loss_context_cohort_is_frozen_before_runtime_and_reported_after_handoff() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    anchor_at = source.index(
+        "- name: Anchor immutable forward-only loss-context cohort"
+    )
+    runtime_at = source.index("- name: Run continuous paper trader")
+    pack_at = source.index("- name: Pack fast continuous paper resume state")
+    review_at = source.index(
+        "- name: Review immutable forward-only loss-context coverage after handoff"
+    )
+    upload_at = source.index("- name: Upload forward-only loss-context coverage")
+    assert anchor_at < runtime_at < pack_at < review_at < upload_at
+
+    anchor = source[anchor_at:runtime_at]
+    review = source[review_at:upload_at]
+    next_step = source.index(
+        "- name: Rebuild deferred full-stack markouts after handoff", upload_at
+    )
+    upload = source[upload_at:next_step]
+    assert "python -m cocomelon.research.loss_context_prospective_cohort anchor" in anchor
+    assert "--source-run-id" in anchor
+    assert "--source-run-attempt" in anchor
+    assert "--source-head-sha" in anchor
+    assert "loss-context-forward-cohort-anchor.json" in anchor
+    assert "python -m cocomelon.research.loss_context_prospective_cohort report" in review
+    assert "steps.forward_loss_context_anchor.outcome == 'success'" in review
+    assert "steps.fast_resume_dispatch.outcome == 'success'" in review
+    assert "steps.fallback_resume_dispatch.outcome == 'success'" in review
+    assert "loss-context-forward-cohort-report.json" in review
+    assert "forward closed-trade net PnL" in review
+    assert "LONG / SHORT" in review
+    assert "research discovery ready" in review
+    assert "steps.forward_loss_context_review.outcome == 'success'" in upload
+    assert "loss-context-forward-cohort-anchor.json" in upload
+    assert "loss-context-forward-cohort-report.json" in upload
