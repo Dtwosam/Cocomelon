@@ -199,7 +199,9 @@ def all_paper_trade_chart_audit(
             "chart_coverage_complete": complete,
             "chart_known_gap_duration_ms": gap_ms,
             "chart_mark_count": (
-                0 if candidate is None else len(candidate["marks"])
+                0 if candidate is None
+                else len(candidate["marks"]) if isinstance(candidate["marks"], list)
+                else 0
             ),
             "chart_mark_samples": compact,
         })
