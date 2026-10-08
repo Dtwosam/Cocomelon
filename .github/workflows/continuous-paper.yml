@@ -2867,6 +2867,7 @@ jobs:
             continuous-paper-state/session-summary.json
             continuous-paper-state/journal.sqlite3
             continuous-paper-state/profit-lock-execution-shadow-state.json
+            continuous-paper-state/profit-target-one-r-execution-shadow-state.json
             continuous-paper-state/prospective-breakeven-profit-lock-state.json
             continuous-paper-state/prospective-momentum-band-entry-state.json
             continuous-paper-state/prospective-momentum-pullback-entry-state.json
