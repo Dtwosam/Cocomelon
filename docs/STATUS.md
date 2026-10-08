@@ -4992,3 +4992,12 @@ The post-handoff research chain now keys off each validated producer step's raw 
 This makes the pipeline fail closed for real evidence reasons instead of silently stopping because a same-job output flag was not propagated.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Exact research-dispatch evidence gate — 2026-10-08
+
+Three exact-source research workflows were repeatedly launched against upgrade-only paper handoffs whose compact source had uploaded but whose research-source gate correctly failed. All three subsequently stopped at `manual source paper run is not evidence-eligible`, generating errors without adding usable future evidence.
+
+The continuous-paper producer now dispatches profit-lock execution, momentum-pullback markout, and range-compression evidence only after its durable-state upload, research-source eligibility gate, and compact artifact upload have each succeeded. This is an upstream control-plane fix: consumer validation remains fail-closed, ordinary paper operation remains independent, and no trading behavior or promotion gate changes.
+
+**LIVE TRADING: DISABLED.**
