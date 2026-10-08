@@ -86,6 +86,18 @@ def _economics(
     }
 
 
+def _verified_net_cashflow(
+    outcome: ProfitLockExecutionOutcome,
+) -> tuple[Decimal, Decimal]:
+    pnl = outcome.candidate_net_pnl_estimate
+    net_r = outcome.candidate_net_r_estimate
+    if pnl is None or net_r is None:
+        raise ProspectiveProfitTargetComparisonError(
+            "complete five-way exit grid has missing cashflow"
+        )
+    return pnl, net_r
+
+
 def _robust_pair(
     cohort: Sequence[
         tuple[TradeJournalEntry, ProfitLockExecutionOutcome, Decimal, Decimal]
@@ -262,40 +274,27 @@ def prospective_profit_trailing_grid_comparison(
                     "1.5R target triggered before 1R on same trade"
                 )
         raw_controls: Mapping[
-            str, Sequence[tuple[Decimal, Decimal]]
+            str, tuple[tuple[Decimal, Decimal], ...]
         ] = {
             "actual": tuple(
                 (trade.net_pnl, trade.net_r)
                 for trade, _, _, _, _ in paired
             ),
             "breakeven": tuple(
-                (
-                    base.candidate_net_pnl_estimate,
-                    base.candidate_net_r_estimate,
-                )
+                _verified_net_cashflow(base)
                 for _, _, _, _, base in paired
             ),
             "one_r": tuple(
-                (
-                    fixed.candidate_net_pnl_estimate,
-                    fixed.candidate_net_r_estimate,
-                )
+                _verified_net_cashflow(fixed)
                 for _, fixed, _, _, _ in paired
             ),
             "one_half_r": tuple(
-                (
-                    fixed.candidate_net_pnl_estimate,
-                    fixed.candidate_net_r_estimate,
-                )
+                _verified_net_cashflow(fixed)
                 for _, _, fixed, _, _ in paired
             ),
         }
         benchmarks = {}
         for name, values in raw_controls.items():
-            if any(pnl is None or net_r is None for pnl, net_r in values):
-                raise ProspectiveProfitTargetComparisonError(
-                    "complete five-way exit grid has missing cashflow"
-                )
             rows = tuple(
                 (trade, trailing, pnl, net_r)
                 for (trade, _, _, trailing, _), (pnl, net_r)
@@ -347,7 +346,7 @@ def prospective_profit_trailing_grid_comparison(
         "common_matched_trade_count": len(intersection),
         "five_way_cohort_aligned": aligned,
         "unmatched_trade_ids_by_policy": {
-            name: sorted(set(original_ids) - set(value))
+            name: sorted(set.union(*cohorts) - set(value))
             for name, value in ids.items()
         },
         "per_policy": comparison,
