@@ -710,7 +710,9 @@ def _paired_threshold_delta_review(
         )
     )
     side_robust = all(
-        economics["trades"] >= MIN_DIRECTION_TRADES
+        sum(
+            pair[0].direction.value == side for pair in observed
+        ) >= MIN_DIRECTION_TRADES
         and economics["waiting_beats_one_r_net"] is True
         and economics["one_half_r_absolute_net_profitable"] is True
         for economics in direction.values()
@@ -718,8 +720,10 @@ def _paired_threshold_delta_review(
     sample_complete = (
         len(observed) >= MIN_PAIRED_TRADES
         and len(markets) >= MIN_MARKETS
-        and overall["later_full_ioc_closes"]
-        >= MIN_PROFIT_TARGET_FULL_CLOSES
+        and sum(
+            later.triggered and later.simulated_close_complete
+            for _, _, later in observed
+        ) >= MIN_PROFIT_TARGET_FULL_CLOSES
         and all(
             sum(
                 pair[0].direction.value == side
