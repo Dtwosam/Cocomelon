@@ -27,6 +27,9 @@ from cocomelon.research.prospective_breakeven_profit_lock import (
     prospective_breakeven_from_execution_ledger,
     prospective_breakeven_profit_lock_summary,
 )
+from cocomelon.research.prospective_net_reserved_trailing import (
+    prospective_net_reserved_trailing_comparison,
+)
 from cocomelon.research.prospective_profit_target_one_r_comparison import (
     ProspectiveProfitTargetComparisonError,
     prospective_profit_target_one_half_r_comparison,
@@ -1329,4 +1332,139 @@ def test_five_way_exit_grid_rejects_forged_one_half_r_cashflow() -> None:
     ):
         prospective_profit_trailing_grid_comparison(
             trades, one_r, one_half, trailing, baseline
+        )
+
+
+def _net_reserved_exit_state(
+    trades: tuple[TradeJournalEntry, ...],
+    *,
+    candidates: tuple[str, ...] | None = None,
+    incomplete: int | None = None,
+) -> dict[str, object]:
+    state = _trailing_profit_state(tuple(
+        replace(
+            _outcome(
+                trade,
+                candidate_pnl=(
+                    "4" if candidates is None else candidates[index]
+                ),
+                complete=index != incomplete,
+            ),
+            rule_id="trail_peak_after_1r_by_0_5r_net_reserved_0_25r",
+        )
+        for index, trade in enumerate(trades)
+    ))
+    state["started_at_ms"] = 1_100_000
+    state["rules"] = [{
+        "rule_id": "trail_peak_after_1r_by_0_5r_net_reserved_0_25r",
+        "activate_at_r": "1",
+        "lock_at_r": "0.5",
+        "trail_by_r": "0.5",
+        "minimum_estimated_net_lock_r": "0.25",
+    }]
+    return state
+
+
+def test_net_reserved_trailing_requires_true_positive_same_future_ioc_edge() -> None:
+    trades, _one_r, baseline = _profit_target_fixture()
+    older = _trailing_profit_state(tuple(
+        replace(
+            _outcome(trade, candidate_pnl="3"),
+            rule_id="trail_peak_after_1r_by_0_5r",
+        )
+        for trade in trades
+    ))
+    new = _net_reserved_exit_state(trades)
+    report = prospective_net_reserved_trailing_comparison(
+        trades, new, older, baseline
+    )
+    assert report["same_complete_cohort"] is True
+    assert report["common_matched_trade_count"] == 40
+    assert report["strict_incremental_screen_passes"] is True
+    robust = report["incremental_robustness"]
+    assert robust is not None
+    assert robust["overall"]["trailing_minus_benchmark_net_pnl"] == "40"
+    assert robust["by_direction"]["long"][
+        "trailing_minus_benchmark_net_pnl"
+    ] == "20"
+    assert robust["by_direction"]["short"][
+        "trailing_minus_benchmark_net_pnl"
+    ] == "20"
+    assert report["execution_authority"] is False
+    assert report["promotion_authority"] is False
+    assert report["ready_for_review"] is False
+    assert report["selected_winner"] is None
+
+
+def test_net_reserved_trailing_rejects_losing_short_increment() -> None:
+    trades, _one_r, baseline = _profit_target_fixture()
+    older = _trailing_profit_state(tuple(
+        replace(
+            _outcome(trade, candidate_pnl="3"),
+            rule_id="trail_peak_after_1r_by_0_5r",
+        )
+        for trade in trades
+    ))
+    new = _net_reserved_exit_state(
+        trades,
+        candidates=tuple(
+            "6" if i % 2 == 0 else "2" for i in range(40)
+        ),
+    )
+    report = prospective_net_reserved_trailing_comparison(
+        trades, new, older, baseline
+    )
+    review = report["incremental_robustness"]
+    assert review is not None
+    assert review["by_direction"]["short"][
+        "trailing_minus_benchmark_net_pnl"
+    ] == "-20"
+    assert report["strict_incremental_screen_passes"] is False
+
+
+def test_net_reserved_trailing_incomplete_book_disables_pairing() -> None:
+    trades, _one_r, baseline = _profit_target_fixture()
+    older = _trailing_profit_state(tuple(
+        replace(
+            _outcome(trade, candidate_pnl="3"),
+            rule_id="trail_peak_after_1r_by_0_5r",
+        )
+        for trade in trades
+    ))
+    new = _net_reserved_exit_state(trades, incomplete=39)
+    report = prospective_net_reserved_trailing_comparison(
+        trades, new, older, baseline
+    )
+    assert report["same_complete_cohort"] is False
+    assert report["common_matched_trade_count"] == 39
+    assert report["incremental_robustness"] is None
+    assert report["strict_incremental_screen_passes"] is False
+
+
+def test_net_reserved_trailing_rejects_mutated_rule_and_costs() -> None:
+    trades, _one_r, baseline = _profit_target_fixture()
+    older = _trailing_profit_state(tuple(
+        replace(
+            _outcome(trade, candidate_pnl="3"),
+            rule_id="trail_peak_after_1r_by_0_5r",
+        )
+        for trade in trades
+    ))
+    new = _net_reserved_exit_state(trades)
+    new["rules"][0]["minimum_estimated_net_lock_r"] = "0.35"
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="frozen exit rule identity drift",
+    ):
+        prospective_net_reserved_trailing_comparison(
+            trades, new, older, baseline
+        )
+    new["rules"][0]["minimum_estimated_net_lock_r"] = "0.25"
+    new["execution_config"] = {"config_version": "drift"}
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="different execution cost models",
+    ):
+        prospective_net_reserved_trailing_comparison(
+            trades, new, older, baseline
         )
