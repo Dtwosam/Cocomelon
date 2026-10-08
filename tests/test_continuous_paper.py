@@ -5744,3 +5744,33 @@ def test_frozen_entry_cost_r_screen_is_observational_and_deployed_on_changes() -
     assert '"execution_authority": False' in research
     assert '"promotion_authority": False' in research
     assert '"account_level_profitability_proven": False' in research
+
+
+def test_frozen_outside_top10_trend_hypothesis_persists_and_stays_nontrading() -> None:
+    source = Path(
+        "src/cocomelon/continuous_paper.py"
+    ).read_text(encoding="utf-8")
+    workflow = Path(
+        ".github/workflows/continuous-paper.yml"
+    ).read_text(encoding="utf-8")
+    model = Path(
+        "src/cocomelon/research/prospective_trend_outside_top10.py"
+    ).read_text(encoding="utf-8")
+    assert "PROSPECTIVE_TREND_OUTSIDE_TOP10_STATE_FILENAME" in source
+    assert "PROSPECTIVE_TREND_OUTSIDE_TOP10_COMPARISON_FILENAME" in source
+    assert "_restore_prospective_trend_outside_top10(" in source
+    assert "prospective_trend_outside_top10_state.payload()" in source
+    assert "prospective_trend_outside_top10_comparison(" in source
+    assert '      - "src/cocomelon/research/prospective_trend_outside_top10.py"\n' in workflow
+    assert workflow.count(
+        "src/cocomelon/research/prospective_trend_outside_top10.py"
+    ) >= 2
+    assert "prospective-trend-outside-top10-state.json" in workflow
+    assert "prospective-trend-outside-top10-comparison.json" in workflow
+    assert "Upload frozen prospective trend outside-top10 validation" in workflow
+    assert "Report targeted trend/rank net-PnL hypothesis" in workflow
+    assert '"execution_authority": False' in model
+    assert '"promotion_authority": False' in model
+    assert '"ready_for_review": False' in model
+    assert '"account_level_profitability_proven": False' in model
+    assert '"selected_winner": None' in model

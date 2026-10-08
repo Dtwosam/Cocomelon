@@ -393,6 +393,10 @@ from cocomelon.research.prospective_trade_quality import (
     ProspectiveTradeQualityState,
     prospective_trade_quality_summary,
 )
+from cocomelon.research.prospective_trend_outside_top10 import (
+    ProspectiveTrendOutsideTop10State,
+    prospective_trend_outside_top10_comparison,
+)
 from cocomelon.research.prospective_two_strike_stop_filter import (
     ProspectiveTwoStrikeStopFilterState,
     evaluate_prospective_two_strike_stop_filter,
@@ -477,6 +481,12 @@ PROSPECTIVE_ENTRY_COST_R_STATE_FILENAME = (
 )
 PROSPECTIVE_ENTRY_COST_R_COMPARISON_FILENAME = (
     "prospective-entry-cost-r-comparison.json"
+)
+PROSPECTIVE_TREND_OUTSIDE_TOP10_STATE_FILENAME = (
+    "prospective-trend-outside-top10-state.json"
+)
+PROSPECTIVE_TREND_OUTSIDE_TOP10_COMPARISON_FILENAME = (
+    "prospective-trend-outside-top10-comparison.json"
 )
 PROSPECTIVE_DELAYED_PRICE_CONFIRM_STATE_FILENAME = (
     "prospective-delayed-price-confirm-state.json"
@@ -2703,6 +2713,30 @@ def _restore_entry_mid_markout_shadow(
             f"{type(exc).__name__}: {exc}"
         )
     return shadow
+
+
+def _restore_prospective_trend_outside_top10(
+    path: Path,
+    *,
+    frozen_at_ms: int,
+) -> tuple[ProspectiveTrendOutsideTop10State, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveTrendOutsideTop10State(
+                frozen_at_ms=frozen_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return ProspectiveTrendOutsideTop10State.from_payload(raw), None
+    except Exception as exc:
+        return (
+            ProspectiveTrendOutsideTop10State(
+                frozen_at_ms=frozen_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
 
 
 def _restore_prospective_entry_cost_r(
@@ -9362,6 +9396,13 @@ async def run_continuous_paper_session(
         execution.account.positions
     )
     (
+        prospective_trend_outside_top10_state,
+        prospective_trend_outside_top10_restore_error,
+    ) = _restore_prospective_trend_outside_top10(
+        root / PROSPECTIVE_TREND_OUTSIDE_TOP10_STATE_FILENAME,
+        frozen_at_ms=started_at_ms,
+    )
+    (
         prospective_entry_cost_r_state,
         prospective_entry_cost_r_restore_error,
     ) = _restore_prospective_entry_cost_r(
@@ -9823,6 +9864,10 @@ async def run_continuous_paper_session(
                 ),
             )
             payloads: list[tuple[Path, object]] = [
+                (
+                    root / PROSPECTIVE_TREND_OUTSIDE_TOP10_STATE_FILENAME,
+                    prospective_trend_outside_top10_state.payload(),
+                ),
                 (
                     root / PROSPECTIVE_ENTRY_COST_R_STATE_FILENAME,
                     prospective_entry_cost_r_state.payload(),
@@ -10971,6 +11016,52 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / PROSPECTIVE_ENTRY_COST_R_COMPARISON_FILENAME,
                 entry_cost_r_report,
+            )
+            if prospective_trend_outside_top10_restore_error is not None:
+                trend_outside_top10_report: dict[str, object] = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "candidate_id": (
+                        prospective_trend_outside_top10_state.candidate_id
+                    ),
+                    "error": "original trend/rank freeze unavailable",
+                    "state_restore_error": (
+                        prospective_trend_outside_top10_restore_error
+                    ),
+                }
+            else:
+                try:
+                    trend_outside_top10_report = (
+                        prospective_trend_outside_top10_comparison(
+                            tuple(journal.iter_trades()),
+                            facts,
+                            opening_rank_store,
+                            prospective_trend_outside_top10_state,
+                        )
+                    )
+                except Exception as exc:
+                    trend_outside_top10_report = {
+                        "enabled": False,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                        "candidate_id": (
+                            prospective_trend_outside_top10_state.candidate_id
+                        ),
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "state_restore_error": None,
+                    }
+                else:
+                    trend_outside_top10_report = dict(
+                        trend_outside_top10_report
+                    )
+                    trend_outside_top10_report["enabled"] = True
+                    trend_outside_top10_report["error"] = None
+            _write_json_atomic(
+                root / PROSPECTIVE_TREND_OUTSIDE_TOP10_COMPARISON_FILENAME,
+                trend_outside_top10_report,
             )
             full_stack_combined = _prospective_combined_entry_filter_payload(
                 journal,

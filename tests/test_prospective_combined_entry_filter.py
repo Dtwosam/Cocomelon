@@ -35,6 +35,11 @@ from cocomelon.research.prospective_entry_filter import (
 from cocomelon.research.prospective_top10_rank_filter import (
     ProspectiveTop10RankFilterState,
 )
+from cocomelon.research.prospective_trend_outside_top10 import (
+    ProspectiveTrendOutsideTop10Error,
+    ProspectiveTrendOutsideTop10State,
+    prospective_trend_outside_top10_comparison,
+)
 
 MARKET = MarketId("", "SOL")
 RUN_ID = "continuous-paper-mainnet-v1"
@@ -731,3 +736,178 @@ def test_combined_filter_rejects_less_bad_losing_candidate(
     assert readiness["ready_for_review"] is False
     assert result["candidate_trade_contribution_pnl"] == "-20"
     assert result["delta_trade_contribution_pnl"] == "20"
+
+
+def _targeted_trend_rank_fixture(
+    tmp_path: Path,
+    *,
+    blocked_pnl: str = "-4",
+    nontrend_outside_pnl: str = "5",
+    missing_rank_index: int | None = None,
+) -> tuple[
+    tuple[TradeJournalEntry, ...],
+    EvaluationFactStore,
+    ContinuousPaperOpeningRankStore,
+    ProspectiveTrendOutsideTop10State,
+]:
+    facts = EvaluationFactStore(tmp_path / "trend-facts.sqlite3")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "trend-ranks")
+    state = ProspectiveTrendOutsideTop10State(
+        frozen_at_ms=1_000_000
+    )
+    trades: list[TradeJournalEntry] = []
+    for i in range(80):
+        kind = i % 4
+        blocked = kind == 0
+        rank_outside = kind in (0, 1)
+        strategy = "trend" if kind in (0, 2) else "breakout"
+        value = (
+            blocked_pnl if blocked
+            else (
+                nontrend_outside_pnl
+                if kind == 1 else "3"
+            )
+        )
+        trade = _trade(
+            suffix=f"trend-rank-{i}",
+            direction=(
+                Direction.LONG if (i // 4) % 2 == 0
+                else Direction.SHORT
+            ),
+            opened_at_ms=(
+                state.started_at_ms + 60_000 + i * 120_000
+            ),
+            pnl=value,
+            market=("SOL", "BTC", "ETH", "ADA", "JUP")[i % 5],
+        )
+        trades.append(trade)
+        facts.record_decision_fact(
+            _fact(trade, lead_strategy=strategy)
+        )
+        if i != missing_rank_index:
+            ranks.record(_rank(
+                trade,
+                ordinal=15 if rank_outside else 3,
+            ))
+    return tuple(trades), facts, ranks, state
+
+
+def test_frozen_trend_outside_top10_keeps_both_sides_and_nontrend_winners(
+    tmp_path: Path,
+) -> None:
+    trades, facts, ranks, state = _targeted_trend_rank_fixture(tmp_path)
+    try:
+        report = prospective_trend_outside_top10_comparison(
+            trades, facts, ranks, state
+        )
+        assert report["prospective_closed_trades"] == 80
+        assert report["fully_attributed_future_trades"] == 80
+        assert report["integrity_clean"] is True
+        assert report["blocked_targeted_trades"] == 20
+        assert report["blocked_targeted_losers"] == 20
+        assert report["blocked_targeted_winners"] == 0
+        assert report["retained_outside_top10_nontrend_trades"] == 20
+        assert report["retained_outside_top10_nontrend_winners"] == 20
+        assert report["overall"]["targeted_net_pnl"] == "220"
+        assert report["overall"]["actual_net_pnl"] == "140"
+        assert report["overall"]["broad_top10_net_pnl"] == "120"
+        assert report["overall"]["targeted_minus_actual_net_pnl"] == "80"
+        assert report["overall"]["targeted_minus_broad_net_pnl"] == "100"
+        assert report["strict_descriptive_screen_passes"] is True
+        assert report["by_direction"]["long"][
+            "targeted_absolutely_profitable"
+        ] is True
+        assert report["by_direction"]["short"][
+            "targeted_absolutely_profitable"
+        ] is True
+        assert all(
+            b["passes"] is True
+            for b in report["chronological_blocks"]
+        )
+        assert report["execution_authority"] is False
+        assert report["promotion_authority"] is False
+        assert report["selected_winner"] is None
+    finally:
+        facts.close()
+
+
+def test_frozen_trend_outside_top10_rejects_stolen_winner_advantage(
+    tmp_path: Path,
+) -> None:
+    trades, facts, ranks, state = _targeted_trend_rank_fixture(
+        tmp_path, blocked_pnl="9"
+    )
+    try:
+        report = prospective_trend_outside_top10_comparison(
+            trades, facts, ranks, state
+        )
+        assert report["blocked_targeted_winners"] == 20
+        assert report["overall"]["targeted_beats_actual"] is False
+        assert report["strict_descriptive_screen_passes"] is False
+    finally:
+        facts.close()
+
+
+def test_frozen_trend_outside_top10_fails_closed_on_missing_rank(
+    tmp_path: Path,
+) -> None:
+    trades, facts, ranks, state = _targeted_trend_rank_fixture(
+        tmp_path, missing_rank_index=4
+    )
+    try:
+        report = prospective_trend_outside_top10_comparison(
+            trades, facts, ranks, state
+        )
+        assert report["missing_rank"] == 1
+        assert report["integrity_clean"] is False
+        assert report["strict_descriptive_screen_passes"] is False
+    finally:
+        facts.close()
+
+
+def test_frozen_trend_outside_top10_detects_duplicate_and_future_trade(
+    tmp_path: Path,
+) -> None:
+    trades, facts, ranks, state = _targeted_trend_rank_fixture(tmp_path)
+    try:
+        with pytest.raises(
+            ProspectiveTrendOutsideTop10Error,
+            match="duplicate trade IDs",
+        ):
+            prospective_trend_outside_top10_comparison(
+                (*trades, trades[0]), facts, ranks, state
+            )
+        # A pre-embargo close can never vote in the frozen future cohort.
+        historical = _trade(
+            suffix="old-trend",
+            direction=Direction.SHORT,
+            opened_at_ms=state.frozen_at_ms,
+            pnl="-900",
+        )
+        future = prospective_trend_outside_top10_comparison(
+            (*trades, historical), facts, ranks, state
+        )
+        assert future["prospective_closed_trades"] == 80
+    finally:
+        facts.close()
+
+
+def test_frozen_trend_outside_top10_state_refuses_retrospective_drift() -> None:
+    state = ProspectiveTrendOutsideTop10State(frozen_at_ms=100_000)
+    assert state.started_at_ms == 100_000 + 6 * 3_600_000
+    assert ProspectiveTrendOutsideTop10State.from_payload(
+        state.payload()
+    ) == state
+    tampered = state.payload()
+    tampered["rule"]["direction_policy"] = "short_only"
+    with pytest.raises(
+        ProspectiveTrendOutsideTop10Error,
+        match="rule or retrospective provenance drift",
+    ):
+        ProspectiveTrendOutsideTop10State.from_payload(tampered)
+    old = state.payload()
+    old["historical_hypothesis_only"][
+        "retrospective_skip_only_delta_usd"
+    ] = "1000"
+    with pytest.raises(ProspectiveTrendOutsideTop10Error):
+        ProspectiveTrendOutsideTop10State.from_payload(old)
