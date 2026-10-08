@@ -155,7 +155,11 @@ def _gap_counters(
         raise LossContextPairedShadowReviewError(
             "partial market-data gap evidence"
         )
-    return tuple(_integer(row[field], field) for field in fields)
+    return (
+        _integer(row[fields[0]], fields[0]),
+        _integer(row[fields[1]], fields[1]),
+        _integer(row[fields[2]], fields[2]),
+    )
 
 
 def _candidate_admission(row: dict[str, object]) -> dict[str, object]:
