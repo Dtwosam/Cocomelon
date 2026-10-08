@@ -34,7 +34,7 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert "path: continuous-paper-state/learning-features" in source
     assert "gh workflow run continuous-paper.yml" in source
     assert 'source_run_id' in source
-    assert '7,37 * * * *' in source
+    assert '7,17,27,37,47,57 * * * *' in source
     assert "push:" in source
     assert "issues: write" in source
     assert 'LIVE_STATUS_ISSUE: "469"' in source
@@ -74,6 +74,24 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert fast_upload_at < fast_dispatch_at < fast_cleanup_at
     assert fast_cleanup_at < durable_upload_at < fallback_dispatch_at
     assert fallback_dispatch_at < deferred_markout_at
+
+def test_frequent_scheduled_recovery_still_fails_closed_on_active_trader() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    schedule = source[source.index("  schedule:"):source.index("\npermissions:")]
+    assert '- cron: "7,17,27,37,47,57 * * * *"' in schedule
+    assert schedule.count("- cron:") == 1
+    assert "cancel-in-progress: false" in source
+    guard_at = source.index(
+        "- name: Skip bootstrap/watchdog when a continuous paper run is already active"
+    )
+    checkout_at = source.index("- uses: actions/checkout@v7", guard_at)
+    guard = source[guard_at:checkout_at]
+    assert 'echo "skip=true" >> "$GITHUB_OUTPUT"' in guard
+    assert 'trader_status in {"queued", "pending", "in_progress"}' in guard
+    assert 'step.get("conclusion") == "skipped"' in guard
+    assert "if skipped_checkout:" in guard
+    assert "sleep 75" not in guard
+
 
 def test_exact_successor_dispatch_still_checks_for_other_active_traders() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
