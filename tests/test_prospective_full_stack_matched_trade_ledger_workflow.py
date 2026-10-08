@@ -98,3 +98,17 @@ def test_full_stack_matched_status_is_authority_negative() -> None:
     assert "**Promotion authority:**" in source
     assert "**Changes readiness gates:**" in source
     assert "**LIVE TRADING: DISABLED.**" in source
+
+
+def test_durable_matched_ledger_publishes_separate_strict_economics() -> None:
+    source = _source()
+
+    assert "review_durable_full_stack_economics(ledger)" in source
+    assert "prospective-full-stack-economic-review.json" in source
+    assert "Upload separate strict economic review" in source
+    assert "strict_review['economic_screen_passes']" in source
+    assert "strict_review['both_sides_profitable']" in source
+    assert "all_temporal_blocks_profitable_and_improved" in source
+    assert "admitted_winners_lost_after_exit" in source
+    assert "blocked_winners_forgone" in source
+    assert "legacy review readiness alone is insufficient" in source
