@@ -837,3 +837,15 @@ The scheduled run **never overrides the active-trader guard**. A queued/running 
 This improves operational continuity, not trade selection or evidence of an edge. Do not change LONG/SHORT/NO_TRADE logic, market-data freshness gates, risk limits, sizing, stops, account state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+### D-068 — Queued speculative push jobs do not veto exact paper state handoffs
+
+A paper upgrade can leave an older push workflow executing deferred research after its real trader step and fast-state archive have completed. The new main-branch push is often still `pending` behind the old push workflow's guarded concurrency group: it has **no job or trader step** and cannot carry forward the outgoing account. An exact successor spawned from the predecessor fast-state archive must not treat that pending push/scheduled watchdog as an already active trader.
+
+In the startup guard, when and only when `SOURCE_RUN_ID` is present, ignore `queued`/`pending` **push or schedule** runs as speculative; continue to block a truly queued/running separate **exact** successor, and inspect all `in_progress` jobs for genuinely active trader steps. The guarded push run must independently defer to the exact successor once it eventually starts. Never run two active paper-trader steps, never restore a new account over the old one, and never accept a skipped guard step as evidence of trading.
+
+Observed: after PR #1017 merged, push run 37770349229 for commit `4ec2525` remained `pending` while worker 37768727228 had finished its trader step and was uploading the exact fast resume. Without priority for exact state transfer, the pending nontrading push could trigger another green-but-skipped successor even under D-066.
+
+This fixes handoff arbitration only. It does not prove a strategy edge, relax book freshness or hard risk limits, change LONG/SHORT/NO_TRADE selection or trade execution, or enable live trading.
+
+**LIVE TRADING: DISABLED.**
