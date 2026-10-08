@@ -34,6 +34,9 @@ from cocomelon.research.prospective_profit_target_one_r_comparison import (
     prospective_profit_target_threshold_comparison,
     prospective_profit_trailing_comparison,
 )
+from cocomelon.research.prospective_profit_trailing_grid import (
+    prospective_profit_trailing_grid_comparison,
+)
 
 
 def _trade(
@@ -1129,4 +1132,201 @@ def test_prospective_trailing_exit_fails_frozen_gap_or_cost_drift() -> None:
     ):
         prospective_profit_trailing_comparison(
             trades, trailing, baseline
+        )
+
+
+def _five_way_exit_fixture(
+    *,
+    trailing_pnl: tuple[str, ...] | None = None,
+    trailing_unfilled: int | None = None,
+) -> tuple[
+    tuple[TradeJournalEntry, ...],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+]:
+    trades, one_r, baseline = _profit_target_fixture()
+    one_half = _one_half_target_state(tuple(
+        replace(
+            _outcome(trade, candidate_pnl="2"),
+            rule_id="profit_target_at_1_5r",
+        )
+        for trade in trades
+    ))
+    trailing = _trailing_profit_state(tuple(
+        replace(
+            _outcome(
+                trade,
+                candidate_pnl=(
+                    "3" if trailing_pnl is None else trailing_pnl[index]
+                ),
+                complete=index != trailing_unfilled,
+            ),
+            rule_id="trail_peak_after_1r_by_0_5r",
+        )
+        for index, trade in enumerate(trades)
+    ))
+    return trades, one_r, one_half, trailing, baseline
+
+
+def test_five_way_exit_grid_needs_identical_costed_trades_and_positive_controls() -> None:
+    trades, one_r, one_half, trailing, baseline = (
+        _five_way_exit_fixture()
+    )
+    report = prospective_profit_trailing_grid_comparison(
+        trades, one_r, one_half, trailing, baseline
+    )
+    assert report["candidate_winner_selected"] is None
+    assert report["threshold_selected_by_hindsight"] is False
+    assert report["five_way_cohort_aligned"] is True
+    assert report["common_matched_trade_count"] == 40
+    assert report["prospective_closed_trades"] == 40
+    assert report["frozen_common_start_ms"] == 1_050_000
+    assert report["trailing_strict_cross_policy_screen_passes"] is True
+    controls = report["trailing_vs_controls"]
+    assert controls is not None
+    assert controls["actual"]["overall"][
+        "trailing_minus_benchmark_net_pnl"
+    ] == "200"
+    assert controls["breakeven"]["overall"][
+        "trailing_minus_benchmark_net_pnl"
+    ] == "120"
+    assert controls["one_r"]["overall"][
+        "trailing_minus_benchmark_net_pnl"
+    ] == "80"
+    assert controls["one_half_r"]["overall"][
+        "trailing_minus_benchmark_net_pnl"
+    ] == "40"
+    assert controls["one_half_r"]["by_direction"]["long"][
+        "trailing_minus_benchmark_net_pnl"
+    ] == "20"
+    assert controls["one_half_r"]["by_direction"]["short"][
+        "trailing_minus_benchmark_net_pnl"
+    ] == "20"
+    assert len(controls["one_half_r"]["chronological_blocks"]) == 4
+    assert controls["one_half_r"]["concentration_resilience_passes"] is True
+    assert report["execution_authority"] is False
+    assert report["promotion_authority"] is False
+    assert report["ready_for_review"] is False
+    assert report["account_level_profitability_proven"] is False
+
+
+def test_five_way_exit_grid_must_beat_both_fixed_targets() -> None:
+    trades, one_r, one_half, trailing, baseline = (
+        _five_way_exit_fixture(trailing_pnl=("1.5",) * 40)
+    )
+    report = prospective_profit_trailing_grid_comparison(
+        trades, one_r, one_half, trailing, baseline
+    )
+    assert report["five_way_cohort_aligned"] is True
+    assert report["trailing_strict_cross_policy_screen_passes"] is False
+    controls = report["trailing_vs_controls"]
+    assert controls is not None
+    assert controls["one_r"]["overall"]["trailing_beats_benchmark"] is True
+    assert controls["one_half_r"]["overall"]["trailing_beats_benchmark"] is False
+    assert report["candidate_winner_selected"] is None
+
+
+def test_five_way_exit_grid_positive_total_cannot_hide_late_failed_period() -> None:
+    trades, one_r, one_half, trailing, baseline = _five_way_exit_fixture(
+        trailing_pnl=("3",) * 30 + ("1",) * 10
+    )
+    report = prospective_profit_trailing_grid_comparison(
+        trades, one_r, one_half, trailing, baseline
+    )
+    controls = report["trailing_vs_controls"]
+    assert controls is not None
+    alternative = controls["one_half_r"]
+    assert alternative["overall"]["trailing_minus_benchmark_net_pnl"] == "20"
+    assert alternative["chronological_blocks"][-1]["passes"] is False
+    assert alternative["chronological_blocks"][-1][
+        "trailing_minus_benchmark_net_pnl"
+    ] == "-10"
+    assert alternative["time_consistency_passes"] is False
+    assert report["trailing_strict_cross_policy_screen_passes"] is False
+
+
+def test_five_way_exit_grid_positive_total_cannot_hide_losing_short_edge() -> None:
+    trades, one_r, one_half, trailing, baseline = _five_way_exit_fixture(
+        trailing_pnl=tuple(
+            "4" if index % 2 == 0 else "1" for index in range(40)
+        )
+    )
+    report = prospective_profit_trailing_grid_comparison(
+        trades, one_r, one_half, trailing, baseline
+    )
+    controls = report["trailing_vs_controls"]
+    assert controls is not None
+    alternative = controls["one_half_r"]
+    assert alternative["overall"]["trailing_minus_benchmark_net_pnl"] == "20"
+    assert alternative["by_direction"]["short"][
+        "trailing_minus_benchmark_net_pnl"
+    ] == "-20"
+    assert alternative["side_consistency_passes"] is False
+    assert report["trailing_strict_cross_policy_screen_passes"] is False
+
+
+def test_five_way_exit_grid_single_winner_cannot_mask_bad_broader_policy() -> None:
+    trades, one_r, one_half, trailing, baseline = _five_way_exit_fixture(
+        trailing_pnl=("50",) + ("2",) * 39
+    )
+    report = prospective_profit_trailing_grid_comparison(
+        trades, one_r, one_half, trailing, baseline
+    )
+    controls = report["trailing_vs_controls"]
+    assert controls is not None
+    check = controls["one_half_r"]
+    assert check["overall"]["trailing_minus_benchmark_net_pnl"] == "48"
+    assert check["leave_largest_incremental_winner_out"][
+        "trailing_minus_benchmark_net_pnl"
+    ] == "0"
+    assert check["concentration_resilience_passes"] is False
+    assert report["trailing_strict_cross_policy_screen_passes"] is False
+
+
+def test_five_way_exit_grid_missing_ioc_never_scores_smaller_lucky_cohort() -> None:
+    trades, one_r, one_half, trailing, baseline = _five_way_exit_fixture(
+        trailing_unfilled=39
+    )
+    report = prospective_profit_trailing_grid_comparison(
+        trades, one_r, one_half, trailing, baseline
+    )
+    assert report["common_matched_trade_count"] == 39
+    assert report["five_way_cohort_aligned"] is False
+    assert report["trailing_vs_controls"] is None
+    assert report["trailing_strict_cross_policy_screen_passes"] is False
+    assert report["per_policy"]["trail_peak_after_1r_by_0_5r"][
+        "integrity_clean"
+    ] is False
+    assert report["unmatched_trade_ids_by_policy"][
+        "trail_peak_after_1r_by_0_5r"
+    ] == [trades[39].trade_id]
+
+
+def test_five_way_exit_grid_rejects_different_execution_cost_models() -> None:
+    trades, one_r, one_half, trailing, baseline = (
+        _five_way_exit_fixture()
+    )
+    trailing["execution_config"] = {"config_version": "different"}
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="five-way exit grid has different execution cost models",
+    ):
+        prospective_profit_trailing_grid_comparison(
+            trades, one_r, one_half, trailing, baseline
+        )
+
+
+def test_five_way_exit_grid_rejects_forged_one_half_r_cashflow() -> None:
+    trades, one_r, one_half, trailing, baseline = (
+        _five_way_exit_fixture()
+    )
+    one_half["outcomes"][0]["candidate_net_pnl_estimate"] = "999"
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="candidate delta|IOC cashflow|net R",
+    ):
+        prospective_profit_trailing_grid_comparison(
+            trades, one_r, one_half, trailing, baseline
         )
