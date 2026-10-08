@@ -198,6 +198,7 @@ def _prospective_profit_target_comparison(
     breakeven_shadow_state: object,
     *,
     target_rule_id: str,
+    scoring_started_at_ms: int | None = None,
 ) -> dict[str, object]:
     target_start, target_outcomes, target_integrity = _verified_outcomes(
         target_shadow_state, rule_id=target_rule_id
@@ -212,7 +213,11 @@ def _prospective_profit_target_comparison(
         raise ProspectiveProfitTargetComparisonError(
             "paired shadow execution cost/config drift"
         )
-    overlap_start = max(target_start, breakeven_start)
+    overlap_start = max(
+        target_start,
+        breakeven_start,
+        0 if scoring_started_at_ms is None else scoring_started_at_ms,
+    )
     journal = tuple(trades)
     trade_by_id = {trade.trade_id: trade for trade in journal}
     if len(trade_by_id) != len(journal):
@@ -454,5 +459,145 @@ def _prospective_profit_target_comparison(
             "fills, overlapping positions or account-level drawdown. "
             "Partial fills and missing exits are never counted as winners; "
             "all execution authority and policy promotion remain disabled."
+        ),
+    }
+
+
+def prospective_profit_target_threshold_comparison(
+    trades: Sequence[TradeJournalEntry],
+    one_r_shadow_state: object,
+    one_half_r_shadow_state: object,
+    breakeven_shadow_state: object,
+) -> dict[str, object]:
+    """Freeze both profit targets on exactly the same future trade IDs.
+
+    The two thresholds are precommitted independent hypotheses, not
+    alternative fills to cherry-pick on each position.
+    """
+    first_start, _first_outcomes, first_integrity = _verified_outcomes(
+        one_r_shadow_state, rule_id=TAKE_PROFIT_RULE_ID
+    )
+    later_start, _later_outcomes, later_integrity = _verified_outcomes(
+        one_half_r_shadow_state, rule_id=TAKE_PROFIT_ONE_HALF_RULE_ID
+    )
+    breakeven_start, _baseline_outcomes, baseline_integrity = (
+        _verified_outcomes(
+            breakeven_shadow_state, rule_id=BREAKEVEN_RULE_ID
+        )
+    )
+    if not (
+        first_integrity["execution_config"]
+        == later_integrity["execution_config"]
+        == baseline_integrity["execution_config"]
+    ):
+        raise ProspectiveProfitTargetComparisonError(
+            "profit target grid uses different execution cost models"
+        )
+    frozen_start = max(
+        first_start, later_start, breakeven_start
+    )
+    one_r = _prospective_profit_target_comparison(
+        trades,
+        one_r_shadow_state,
+        breakeven_shadow_state,
+        target_rule_id=TAKE_PROFIT_RULE_ID,
+        scoring_started_at_ms=frozen_start,
+    )
+    one_half = _prospective_profit_target_comparison(
+        trades,
+        one_half_r_shadow_state,
+        breakeven_shadow_state,
+        target_rule_id=TAKE_PROFIT_ONE_HALF_RULE_ID,
+        scoring_started_at_ms=frozen_start,
+    )
+    one_r_ids = one_r["paired_trade_ids"]
+    later_ids = one_half["paired_trade_ids"]
+    if not isinstance(one_r_ids, list) or not isinstance(later_ids, list):
+        raise ProspectiveProfitTargetComparisonError(
+            "paired exit source trade identities unavailable"
+        )
+    common_pair_ids = set(one_r_ids).intersection(later_ids)
+    pair_alignment_clean = (
+        one_r_ids == later_ids
+        and one_r["integrity_clean"] is True
+        and one_half["integrity_clean"] is True
+        and len(one_r_ids) == one_r["prospective_closed_trades"]
+        and len(later_ids) == one_half["prospective_closed_trades"]
+    )
+    # Do not subtract results from mismatched fill-complete subsets.
+    one_r_pnl: Decimal | None = None
+    one_half_pnl: Decimal | None = None
+    net_increment: Decimal | None = None
+    one_r_net_r: Decimal | None = None
+    one_half_net_r: Decimal | None = None
+    r_increment: Decimal | None = None
+    if pair_alignment_clean:
+        original = one_r["overall"]
+        alternative = one_half["overall"]
+        if not isinstance(original, dict) or not isinstance(alternative, dict):
+            raise ProspectiveProfitTargetComparisonError(
+                "paired exit economics must be objects"
+            )
+        if (
+            original["actual_net_pnl"] != alternative["actual_net_pnl"]
+            or original["actual_net_r"] != alternative["actual_net_r"]
+            or original["breakeven_net_pnl"] != alternative["breakeven_net_pnl"]
+            or original["breakeven_net_r"] != alternative["breakeven_net_r"]
+        ):
+            raise ProspectiveProfitTargetComparisonError(
+                "frozen baseline differs across the two target horizons"
+            )
+        one_r_pnl = Decimal(str(original["target_net_pnl"]))
+        one_half_pnl = Decimal(str(alternative["target_net_pnl"]))
+        one_r_net_r = Decimal(str(original["target_net_r"]))
+        one_half_net_r = Decimal(str(alternative["target_net_r"]))
+        net_increment = one_half_pnl - one_r_pnl
+        r_increment = one_half_net_r - one_r_net_r
+
+    return {
+        "schema_version": 1,
+        "candidate_grid": [TAKE_PROFIT_RULE_ID, TAKE_PROFIT_ONE_HALF_RULE_ID],
+        "selected_winning_threshold": None,
+        "threshold_selected_by_hindsight": False,
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "ready_for_review": False,
+        "account_level_profitability_proven": False,
+        "frozen_common_start_ms": frozen_start,
+        "common_matched_trade_count": len(common_pair_ids),
+        "same_complete_future_trade_cohort": pair_alignment_clean,
+        "one_r": one_r,
+        "one_half_r": one_half,
+        "one_r_net_pnl_on_identical_trades": (
+            None if one_r_pnl is None else str(one_r_pnl)
+        ),
+        "one_half_r_net_pnl_on_identical_trades": (
+            None if one_half_pnl is None else str(one_half_pnl)
+        ),
+        "one_half_minus_one_r_net_pnl": (
+            None if net_increment is None else str(net_increment)
+        ),
+        "one_r_net_r_on_identical_trades": (
+            None if one_r_net_r is None else str(one_r_net_r)
+        ),
+        "one_half_r_net_r_on_identical_trades": (
+            None if one_half_net_r is None else str(one_half_net_r)
+        ),
+        "one_half_minus_one_r_net_r": (
+            None if r_increment is None else str(r_increment)
+        ),
+        "both_precommitted_economic_screens_pass": (
+            pair_alignment_clean
+            and one_r["economic_screen_passes"] is True
+            and one_half["economic_screen_passes"] is True
+        ),
+        "warning": (
+            "Do not choose whichever take-profit threshold wins this "
+            "historical or prospective sample for active trading. Each "
+            "exit remains an unpromoted hypothesis until a separately "
+            "frozen post-selection account-level paper portfolio trial "
+            "proves positive profit after realistic fees, funding, "
+            "slippage, and risk-capital capacity effects."
         ),
     }
