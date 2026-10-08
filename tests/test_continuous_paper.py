@@ -5552,3 +5552,27 @@ def test_paired_one_r_exit_research_is_durable_not_execution() -> None:
     assert "Upload matched 1R profit-target versus breakeven economic review" in workflow
     assert "Render matched 1R exit economic review" in workflow
     assert '"execution_authority": False' in source
+
+
+def test_precommitted_one_half_target_isolated_and_reviewed() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    workflow = Path(".github/workflows/continuous-paper.yml").read_text(
+        encoding="utf-8"
+    )
+    assert 'rule_id="profit_target_at_1_5r"' in source
+    assert 'activate_at_r=Decimal("1.5")' in source
+    assert 'exit_on_activation=True' in source
+    assert "PROFIT_TARGET_1_5R_SHADOW_STATE_FILENAME" in source
+    assert "rules=(PROFIT_TARGET_1_5R_RULE,)" in source
+    assert "profit_target_one_half_shadow.reconcile_open_positions(" in source
+    assert "profit_target_one_half_shadow.shadow.state_payload" in source
+    assert "prospective_profit_target_threshold_comparison(" in source
+    assert "PROSPECTIVE_PROFIT_TARGET_THRESHOLD_COMPARISON_FILENAME" in source
+    assert "profit-target-one-half-r-execution-shadow-state.json" in workflow
+    assert "prospective-profit-target-threshold-comparison.json" in workflow
+    assert "Upload same-cohort 1R and 1.5R take-profit economic review" in workflow
+    assert "Render fixed two-threshold profit-taking economic review" in workflow
+    assert "profit_target_execution_shadow," in source
+    assert "profit_target_one_half_shadow," in source
