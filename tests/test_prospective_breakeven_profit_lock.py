@@ -703,7 +703,7 @@ def test_precommitted_one_half_profit_target_is_positive_on_identical_trades() -
     assert report["one_r_net_pnl_on_identical_trades"] == "40"
     assert report["one_half_r_net_pnl_on_identical_trades"] == "80"
     assert report["one_half_minus_one_r_net_pnl"] == "40"
-    assert report["one_half_minus_one_r_net_r"] == "4"
+    assert Decimal(report["one_half_minus_one_r_net_r"]) == Decimal("4")
     assert report["one_r"]["economic_screen_passes"] is True
     assert report["one_half_r"]["economic_screen_passes"] is True
     assert report["both_precommitted_economic_screens_pass"] is True
