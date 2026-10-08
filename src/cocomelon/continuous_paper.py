@@ -91,6 +91,9 @@ from cocomelon.research.closed_trade_concentration import (
 from cocomelon.research.closed_trade_friction import (
     closed_trade_friction_summary,
 )
+from cocomelon.research.closed_trade_lifecycle_economics import (
+    closed_trade_lifecycle_economics as summarize_trade_lifecycle_economics,
+)
 from cocomelon.research.closed_trade_robustness import (
     closed_trade_robustness,
 )
@@ -5760,6 +5763,28 @@ def _closed_trade_friction_payload(
     return payload
 
 
+def _closed_trade_lifecycle_economics_payload(
+    journal: JournalStore,
+    fact_store: EvaluationFactStore,
+) -> dict[str, object]:
+    try:
+        payload = summarize_trade_lifecycle_economics(
+            tuple(journal.iter_trades()), fact_store,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _profit_lock_counterfactual_study_payload(
     study: ProfitLockStudy,
 ) -> dict[str, object]:
@@ -6953,6 +6978,12 @@ def _live_status_payload(
         pump.journal,
         fact_store,
     )
+    closed_trade_lifecycle_economics_payload = (
+        _closed_trade_lifecycle_economics_payload(
+            pump.journal,
+            fact_store,
+        )
+    )
     closed_trade_robustness_payload = (
         _closed_trade_robustness_payload(
             pump.journal,
@@ -7519,6 +7550,9 @@ def _live_status_payload(
         "clean_evidence_runway": clean_evidence_runway,
         "closed_trade_utc_hour": closed_trade_utc_hour,
         "closed_trade_friction": closed_trade_friction,
+        "closed_trade_lifecycle_economics": (
+            closed_trade_lifecycle_economics_payload
+        ),
         "closed_trade_robustness": (
             closed_trade_robustness_payload
         ),
