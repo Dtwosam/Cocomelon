@@ -10,8 +10,8 @@ import json
 import os
 import re
 import subprocess
-from datetime import UTC, datetime
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 WORKFLOW_PATH = ".github/workflows/continuous-paper.yml"
