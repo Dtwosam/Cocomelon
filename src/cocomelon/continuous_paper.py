@@ -405,6 +405,9 @@ from cocomelon.research.prospective_weekly_drawdown_5m_exit_source import (
     ProspectiveWeeklyDrawdown5mExitState,
     prospective_weekly_drawdown_5m_exit_source,
 )
+from cocomelon.research.targeted_trend_paired_freeze import (
+    activate_targeted_trend_paired_freeze,
+)
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
