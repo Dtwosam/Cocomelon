@@ -247,6 +247,8 @@ from cocomelon.research.post_freshness_paper_cohort import (
     post_freshness_paper_cohort_summary,
 )
 from cocomelon.research.profit_lock_counterfactual import (
+    DEFAULT_PROFIT_LOCK_RULES,
+    ProfitLockRule,
     ProfitLockStudy,
     ProfitLockTradeOutcome,
     evaluate_profit_lock_state,
@@ -414,6 +416,15 @@ CADENCE_SHADOW_FILENAME = "cadence-shadow-summary.json"
 CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"
 PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME = (
     "profit-lock-execution-shadow-state.json"
+)
+PROFIT_TARGET_EXECUTION_SHADOW_STATE_FILENAME = (
+    "profit-target-one-r-execution-shadow-state.json"
+)
+PROFIT_TARGET_1R_RULE = ProfitLockRule(
+    rule_id="profit_target_at_1r",
+    activate_at_r=Decimal("1"),
+    lock_at_r=Decimal("1"),
+    exit_on_activation=True,
 )
 PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-entry-filter-state.json"
@@ -2531,10 +2542,12 @@ def _restore_profit_lock_execution_shadow(
     execution_config: PaperExecutionConfig,
     *,
     started_at_ms: int,
+    rules: Sequence[ProfitLockRule] = DEFAULT_PROFIT_LOCK_RULES,
 ) -> ProfitLockExecutionShadow:
     shadow = ProfitLockExecutionShadow(
         execution_config,
         started_at_ms=started_at_ms,
+        rules=rules,
     )
     if not path.exists():
         return shadow
@@ -2545,6 +2558,7 @@ def _restore_profit_lock_execution_shadow(
         shadow = ProfitLockExecutionShadow(
             execution_config,
             started_at_ms=started_at_ms,
+            rules=rules,
         )
         shadow.mark_state_restore_error(
             f"{type(exc).__name__}: {exc}"
@@ -6823,6 +6837,7 @@ def _live_status_payload(
     original_stop_book_store: OriginalStopBookEvidenceStore,
     original_stop_book_capture: OriginalStopBookCapture,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
+    profit_target_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     delayed_entry_120s_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
@@ -7645,6 +7660,9 @@ def _live_status_payload(
         "profit_lock_execution_shadow": (
             profit_lock_execution_shadow.summary_payload()
         ),
+        "profit_target_one_r_execution_shadow": (
+            profit_target_execution_shadow.summary_payload()
+        ),
         "delayed_entry_execution_shadow": (
             delayed_entry_execution_shadow.summary_payload()
         ),
@@ -8351,6 +8369,7 @@ def _emit_live_status(
     original_stop_book_store: OriginalStopBookEvidenceStore,
     original_stop_book_capture: OriginalStopBookCapture,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
+    profit_target_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     delayed_entry_120s_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
@@ -8417,6 +8436,7 @@ def _emit_live_status(
         original_stop_book_store,
         original_stop_book_capture,
         profit_lock_execution_shadow,
+        profit_target_execution_shadow,
         delayed_entry_execution_shadow,
         delayed_entry_120s_execution_shadow,
         entry_mid_markout_shadow,
@@ -9022,6 +9042,19 @@ async def run_continuous_paper_session(
             opening_plan_loader=execution.store.load_plan,
         )
     )
+    # Freeze a fresh future-only exit experiment separately from the
+    # existing breakeven observer and its persisted historical evidence.
+    profit_target_execution_shadow = (
+        _ContinuousProfitLockExecutionShadowSink(
+            _restore_profit_lock_execution_shadow(
+                root / PROFIT_TARGET_EXECUTION_SHADOW_STATE_FILENAME,
+                replay_config.execution,
+                started_at_ms=started_at_ms,
+                rules=(PROFIT_TARGET_1R_RULE,),
+            ),
+            opening_plan_loader=execution.store.load_plan,
+        )
+    )
     delayed_entry_execution_shadow = (
         _ContinuousDelayedEntryExecutionShadowSink(
             _restore_delayed_entry_execution_shadow(
@@ -9056,6 +9089,9 @@ async def run_continuous_paper_session(
         started_at_ms=started_at_ms,
     )
     profit_lock_execution_shadow.reconcile_open_positions(
+        execution.account.positions
+    )
+    profit_target_execution_shadow.reconcile_open_positions(
         execution.account.positions
     )
     delayed_entry_execution_shadow.reconcile_open_positions(
@@ -9307,6 +9343,7 @@ async def run_continuous_paper_session(
             position_research_observer=(
                 _CompositePositionResearchObserver(
                     profit_lock_execution_shadow,
+                    profit_target_execution_shadow,
                     delayed_entry_execution_shadow,
                     delayed_entry_120s_execution_shadow,
                     original_stop_book_capture,
@@ -9560,6 +9597,16 @@ async def run_continuous_paper_session(
                         timed_component(
                             "profit_lock_shadow_state",
                             profit_lock_execution_shadow.shadow.state_payload,
+                        ),
+                    )
+                )
+            if profit_target_execution_shadow.shadow is not None:
+                payloads.append(
+                    (
+                        root / PROFIT_TARGET_EXECUTION_SHADOW_STATE_FILENAME,
+                        timed_component(
+                            "profit_target_shadow_state",
+                            profit_target_execution_shadow.shadow.state_payload,
                         ),
                     )
                 )
