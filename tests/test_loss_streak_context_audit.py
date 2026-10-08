@@ -376,6 +376,8 @@ def test_loss_streak_audit_preserves_incomplete_streak_without_inventing_context
     assert result["qualifying_loss_streak_count"] == 1
     assert result["complete_qualifying_loss_streak_count"] == 0
     assert result["incomplete_qualifying_loss_streak_count"] == 1
+    assert result["all_qualifying_loss_trade_count"] == 3
+    assert result["qualifying_loss_excluded_partial_resolved_trade_count"] == 0
     assert result["qualifying_loss_unresolved_trade_count"] == 3
     assert result["qualifying_loss_unresolved_reason_counts"] == {
         "missing feature snapshot": 3
@@ -448,6 +450,8 @@ def test_partial_incomplete_streak_does_not_generate_false_recurring_context(
     assert result["incomplete_qualifying_loss_streak_count"] == 1
     assert result["qualifying_loss_unresolved_trade_count"] == 1
     assert result["qualifying_loss_trade_count"] == 3
+    assert result["all_qualifying_loss_trade_count"] == 6
+    assert result["qualifying_loss_excluded_partial_resolved_trade_count"] == 2
     assert result["baseline_unresolved_reason_counts"] == {
         "missing feature snapshot": 1
     }
