@@ -405,6 +405,9 @@ from cocomelon.research.prospective_weekly_drawdown_5m_exit_source import (
     ProspectiveWeeklyDrawdown5mExitState,
     prospective_weekly_drawdown_5m_exit_source,
 )
+from cocomelon.research.targeted_trend_paired_freeze import (
+    activate_targeted_trend_paired_freeze,
+)
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
@@ -595,6 +598,9 @@ DELAYED_ENTRY_120S_EXECUTION_SHADOW_STATE_FILENAME = (
 )
 LOSS_CONTEXT_PORTFOLIO_SHADOW_FREEZE_FILENAME = (
     "loss-context-portfolio-shadow-freeze.json"
+)
+TARGETED_TREND_PAIRED_SHADOW_FREEZE_FILENAME = (
+    "targeted-trend-rank-paired-portfolio-freeze.json"
 )
 LOSS_CONTEXT_PAIRED_SHADOW_ROOT = "loss-context-paired-portfolio-shadow"
 LOSS_CONTEXT_PAIRED_SHADOW_SUMMARY_FILENAME = (
@@ -9581,8 +9587,42 @@ async def run_continuous_paper_session(
             component_started,
         )
 
-        loss_context_freeze_path = (
+        legacy_loss_context_freeze_path = (
             root / LOSS_CONTEXT_PORTFOLIO_SHADOW_FREEZE_FILENAME
+        )
+        targeted_trend_freeze_path = (
+            root / TARGETED_TREND_PAIRED_SHADOW_FREEZE_FILENAME
+        )
+        # Independently selected D-087 shadow freezes NEVER occupy the
+        # original historically certified composition candidate path.
+        # Preserve any already-active trial identity across worker upgrades.
+        if (
+            not targeted_trend_freeze_path.exists()
+            and not legacy_loss_context_freeze_path.exists()
+            and prospective_trend_outside_top10_restore_error is None
+        ):
+            component_started = time.perf_counter()
+            try:
+                activate_targeted_trend_paired_freeze(
+                    targeted_trend_freeze_path,
+                    prospective_trend_outside_top10_state,
+                    paired_state_path=(
+                        root / LOSS_CONTEXT_PAIRED_SHADOW_ROOT
+                        / "paired-shadow-state.json"
+                    ),
+                )
+            except Exception as freeze_exc:
+                loss_context_paired_shadow_restore_error = (
+                    f"{type(freeze_exc).__name__}: {freeze_exc}"
+                )
+            record_startup_component(
+                "targeted_trend_paired_shadow_freeze",
+                component_started,
+            )
+        loss_context_freeze_path = (
+            targeted_trend_freeze_path
+            if targeted_trend_freeze_path.exists()
+            else legacy_loss_context_freeze_path
         )
         if loss_context_freeze_path.exists():
             component_started = time.perf_counter()
