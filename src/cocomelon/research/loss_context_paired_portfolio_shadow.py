@@ -17,12 +17,12 @@ from cocomelon.domain.execution import (
     PositionActionType,
 )
 from cocomelon.domain.market import MarketId
-from cocomelon.domain.strategy import Direction
 from cocomelon.domain.replay import (
     EvidenceClass,
     ReplayRecord,
     SourceRecordKind,
 )
+from cocomelon.domain.strategy import Direction
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.lifecycle import (
@@ -438,12 +438,14 @@ class _LaneOffsets:
         present = tuple(field in raw for field in side_fields)
         if any(present) and not all(present):
             raise ValueError("paired shadow direction offsets incomplete")
+        direction_counts: dict[str, int] = {}
+        direction_pnls: dict[str, Decimal] = {}
         if all(present):
             for field in side_fields[:2]:
                 value = raw[field]
                 if type(value) is not int or value < 0:
                     raise ValueError("paired shadow direction count invalid")
-                values[field] = value
+                direction_counts[field] = value
             for field in side_fields[2:]:
                 try:
                     pnl = Decimal(str(raw[field]))
@@ -451,14 +453,25 @@ class _LaneOffsets:
                     raise ValueError("paired shadow direction net PnL invalid") from exc
                 if not pnl.is_finite():
                     raise ValueError("paired shadow direction net PnL not finite")
-                values[field] = pnl
+                direction_pnls[field] = pnl
         if (
-            values.get("long_closed_trade_count", 0)
-            + values.get("short_closed_trade_count", 0)
+            direction_counts.get("long_closed_trade_count", 0)
+            + direction_counts.get("short_closed_trade_count", 0)
             > values["closed_trade_count"]
         ):
             raise ValueError("paired shadow direction counts exceed total")
-        return cls(**values)
+        return cls(
+            closed_trade_count=values["closed_trade_count"],
+            risk_evaluations=values["risk_evaluations"],
+            risk_approvals=values["risk_approvals"],
+            risk_rejections=values["risk_rejections"],
+            opening_execution_attempts=values["opening_execution_attempts"],
+            opening_fills=values["opening_fills"],
+            long_closed_trade_count=direction_counts.get("long_closed_trade_count", 0),
+            short_closed_trade_count=direction_counts.get("short_closed_trade_count", 0),
+            long_closed_net_pnl=direction_pnls.get("long_closed_net_pnl", ZERO),
+            short_closed_net_pnl=direction_pnls.get("short_closed_net_pnl", ZERO),
+        )
 
 
 class LossContextPairedPortfolioShadow:
