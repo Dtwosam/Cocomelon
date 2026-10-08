@@ -5,7 +5,10 @@ from decimal import Decimal
 from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
-from cocomelon.research.profit_lock_counterfactual import DEFAULT_PROFIT_LOCK_RULES
+from cocomelon.research.profit_lock_counterfactual import (
+    DEFAULT_PROFIT_LOCK_COSTS,
+    DEFAULT_PROFIT_LOCK_RULES,
+)
 from cocomelon.research.profit_lock_execution_shadow import (
     EXECUTION_SHADOW_STATE_SCHEMA_VERSION,
     ProfitLockExecutionOutcome,
@@ -115,6 +118,101 @@ def _verified_outcomes(
         )
     integrity["execution_config"] = config
     return started_at_ms, selected, integrity
+
+
+def _verify_trade_exit_cashflow(
+    trade: TradeJournalEntry,
+    outcome: ProfitLockExecutionOutcome,
+) -> None:
+    """Reject corrupted or economically impossible restored exit evidence.
+
+    The frozen IOC shadow calculates every complete close from filled price,
+    entry/exit fees and a duration-sensitive funding reserve. Recompute the
+    cashflow here rather than trusting a persisted candidate PnL number.
+    """
+    if trade.initial_risk_amount <= ZERO:
+        raise ProspectiveProfitTargetComparisonError(
+            "paired exit has non-positive initial risk"
+        )
+    activated = outcome.activation_timestamp_ms
+    triggered = outcome.trigger_timestamp_ms
+    completed = outcome.completion_timestamp_ms
+    if activated is not None and not (
+        trade.opened_at_ms <= activated <= trade.closed_at_ms
+    ):
+        raise ProspectiveProfitTargetComparisonError(
+            "paired exit activation outside original position lifetime"
+        )
+    if triggered is not None and (
+        activated is None or not activated <= triggered <= trade.closed_at_ms
+    ):
+        raise ProspectiveProfitTargetComparisonError(
+            "paired exit trigger precedes activation or original close"
+        )
+    if completed is not None and (
+        triggered is None or not triggered <= completed <= trade.closed_at_ms
+    ):
+        raise ProspectiveProfitTargetComparisonError(
+            "paired exit completion precedes trigger or follows original close"
+        )
+    if outcome.simulated_filled_quantity > trade.filled_quantity:
+        raise ProspectiveProfitTargetComparisonError(
+            "paired exit fills more than the original quantity"
+        )
+    if outcome.no_fill_count > outcome.attempt_count:
+        raise ProspectiveProfitTargetComparisonError(
+            "paired exit no-fill count exceeds attempts"
+        )
+
+    candidate_pnl = outcome.candidate_net_pnl_estimate
+    candidate_r = outcome.candidate_net_r_estimate
+    if candidate_pnl is None or candidate_r is None:
+        return
+    if (
+        outcome.delta_net_pnl_estimate != candidate_pnl - trade.net_pnl
+        or outcome.delta_net_r_estimate != candidate_r - trade.net_r
+    ):
+        raise ProspectiveProfitTargetComparisonError(
+            "paired exit candidate delta does not reconcile to journal"
+        )
+    if not outcome.triggered:
+        return
+    if candidate_r != candidate_pnl / trade.initial_risk_amount:
+        raise ProspectiveProfitTargetComparisonError(
+            "paired exit net R does not reconcile to planned risk"
+        )
+    exit_price = outcome.simulated_average_exit_price
+    if not outcome.simulated_close_complete or exit_price is None or completed is None:
+        raise ProspectiveProfitTargetComparisonError(
+            "paired exit claims candidate PnL without a complete IOC fill"
+        )
+    elapsed_ms = max(1, completed - trade.opened_at_ms)
+    funding_reserve = (
+        trade.entry_price
+        * trade.filled_quantity
+        * DEFAULT_PROFIT_LOCK_COSTS.funding_reserve_fraction_per_hour
+        * Decimal(elapsed_ms)
+        / Decimal(3_600_000)
+    )
+    gross = (
+        (exit_price - trade.entry_price) * trade.filled_quantity
+        if trade.direction.value == "long"
+        else (trade.entry_price - exit_price) * trade.filled_quantity
+    )
+    expected_net = (
+        gross - trade.entry_fees - outcome.simulated_exit_fees
+        - funding_reserve
+    )
+    # Weighted average fill price can be rounded at Decimal precision.
+    tolerance = max(
+        Decimal("1e-12"),
+        abs(trade.entry_price * trade.filled_quantity) * Decimal("1e-24"),
+    )
+    if abs(candidate_pnl - expected_net) > tolerance:
+        raise ProspectiveProfitTargetComparisonError(
+            "paired exit IOC cashflow does not reconcile to filled price, "
+            "fees and funding reserve"
+        )
 
 
 def _economics(
@@ -262,6 +360,7 @@ def _prospective_profit_target_comparison(
                 raise ProspectiveProfitTargetComparisonError(
                     "paired exit journal provenance drift"
                 )
+            _verify_trade_exit_cashflow(trade, outcome)
             if outcome.triggered:
                 if (
                     not outcome.simulated_close_complete
