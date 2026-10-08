@@ -113,6 +113,10 @@ def _rules_payload(
             "rule_id": rule.rule_id,
             "activate_at_r": str(rule.activate_at_r),
             "lock_at_r": str(rule.lock_at_r),
+            **(
+                {"exit_on_activation": "true"}
+                if rule.exit_on_activation else {}
+            ),
         }
         for rule in rules
     ]
@@ -625,10 +629,13 @@ class ProfitLockExecutionShadow:
                     planned_risk=state.planned_risk,
                     lock_at_r=rule.lock_at_r,
                 )
-                if _crossed_lock(
-                    side=state.side,
-                    mark_px=raw_mark,
-                    lock_px=lock_px,
+                if (
+                    rule.exit_on_activation
+                    or _crossed_lock(
+                        side=state.side,
+                        mark_px=raw_mark,
+                        lock_px=lock_px,
+                    )
                 ):
                     rule_state.triggered_at_ms = now_ms
                     rule_state.trigger_mark_px = raw_mark
