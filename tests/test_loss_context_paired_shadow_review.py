@@ -248,12 +248,14 @@ def test_paired_shadow_review_rejects_invented_account_advantage(
     freeze = _freeze()
     row = _checkpoint(freeze, index=1)
     row[field] = "999"
+    ledger = tmp_path / "review.jsonl"
 
     with pytest.raises(
         LossContextPairedShadowReviewError,
         match="review ledger account delta mismatch",
     ):
-        append_review_checkpoint(tmp_path / "review.jsonl", row)
+        append_review_checkpoint(ledger, row)
+    assert not ledger.exists()
 
 
 @pytest.mark.parametrize(
@@ -271,12 +273,14 @@ def test_paired_shadow_review_rejects_inconsistent_market_attribution(
     assert isinstance(admission, dict)
     admission["matching_context_blocked"] = blocked
     admission["matching_context_blocked_unattributed"] = unattributed
+    ledger = tmp_path / "review.jsonl"
 
     with pytest.raises(
         LossContextPairedShadowReviewError,
         match="matching-context block totals do not reconcile",
     ):
-        append_review_checkpoint(tmp_path / "review.jsonl", row)
+        append_review_checkpoint(ledger, row)
+    assert not ledger.exists()
 
 
 def test_paired_shadow_review_rejects_changed_freeze_lineage(
@@ -285,6 +289,7 @@ def test_paired_shadow_review_rejects_changed_freeze_lineage(
     freeze = _freeze()
     ledger = tmp_path / "review.jsonl"
     append_review_checkpoint(ledger, _checkpoint(freeze, index=1))
+    original = ledger.read_bytes()
     second = _checkpoint(freeze, index=2)
     second["loss_context_candidate_id"] = "d" * 64
 
@@ -293,6 +298,7 @@ def test_paired_shadow_review_rejects_changed_freeze_lineage(
         match="review ledger frozen candidate lineage changed",
     ):
         append_review_checkpoint(ledger, second)
+    assert ledger.read_bytes() == original
 
 
 def test_paired_shadow_review_rejects_record_counter_regression(
@@ -301,6 +307,7 @@ def test_paired_shadow_review_rejects_record_counter_regression(
     freeze = _freeze()
     ledger = tmp_path / "review.jsonl"
     append_review_checkpoint(ledger, _checkpoint(freeze, index=1))
+    original = ledger.read_bytes()
     second = _checkpoint(freeze, index=2)
     second["record_count"] = 999
 
@@ -309,3 +316,4 @@ def test_paired_shadow_review_rejects_record_counter_regression(
         match="review ledger record count moved backward",
     ):
         append_review_checkpoint(ledger, second)
+    assert ledger.read_bytes() == original
