@@ -80,13 +80,17 @@ def _checkpoint(
         ),
         "baseline": {
             "closed_trade_count": 4 * index,
+            "equity": str(10_000 + baseline_total),
             "total_account_pnl": str(baseline_total),
             "realized_net_pnl": str(baseline_realized),
+            "max_drawdown_fraction": "0.04",
         },
         "candidate": {
             "closed_trade_count": 4 * index,
+            "equity": str(10_000 + candidate_total),
             "total_account_pnl": str(candidate_total),
             "realized_net_pnl": str(candidate_realized),
+            "max_drawdown_fraction": "0.02",
         },
         "candidate_minus_baseline_equity": str(
             candidate_total - baseline_total
@@ -226,3 +230,82 @@ def test_paired_shadow_review_ledger_detects_tampering(
             ledger,
             candidate_id=freeze.candidate_id,
         )
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "candidate_minus_baseline_equity",
+        "candidate_minus_baseline_total_account_pnl",
+        "candidate_minus_baseline_realized_net_pnl",
+        "candidate_minus_baseline_max_drawdown_fraction",
+    ),
+)
+def test_paired_shadow_review_rejects_invented_account_advantage(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    freeze = _freeze()
+    row = _checkpoint(freeze, index=1)
+    row[field] = "999"
+
+    with pytest.raises(
+        LossContextPairedShadowReviewError,
+        match="review ledger account delta mismatch",
+    ):
+        append_review_checkpoint(tmp_path / "review.jsonl", row)
+
+
+@pytest.mark.parametrize(
+    ("blocked", "unattributed"),
+    ((3, 0), (4, 2)),
+)
+def test_paired_shadow_review_rejects_inconsistent_market_attribution(
+    tmp_path: Path,
+    blocked: int,
+    unattributed: int,
+) -> None:
+    freeze = _freeze()
+    row = _checkpoint(freeze, index=1)
+    admission = row["candidate_admission"]
+    assert isinstance(admission, dict)
+    admission["matching_context_blocked"] = blocked
+    admission["matching_context_blocked_unattributed"] = unattributed
+
+    with pytest.raises(
+        LossContextPairedShadowReviewError,
+        match="matching-context block totals do not reconcile",
+    ):
+        append_review_checkpoint(tmp_path / "review.jsonl", row)
+
+
+def test_paired_shadow_review_rejects_changed_freeze_lineage(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "review.jsonl"
+    append_review_checkpoint(ledger, _checkpoint(freeze, index=1))
+    second = _checkpoint(freeze, index=2)
+    second["loss_context_candidate_id"] = "d" * 64
+
+    with pytest.raises(
+        LossContextPairedShadowReviewError,
+        match="review ledger frozen candidate lineage changed",
+    ):
+        append_review_checkpoint(ledger, second)
+
+
+def test_paired_shadow_review_rejects_record_counter_regression(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "review.jsonl"
+    append_review_checkpoint(ledger, _checkpoint(freeze, index=1))
+    second = _checkpoint(freeze, index=2)
+    second["record_count"] = 999
+
+    with pytest.raises(
+        LossContextPairedShadowReviewError,
+        match="review ledger record count moved backward",
+    ):
+        append_review_checkpoint(ledger, second)
