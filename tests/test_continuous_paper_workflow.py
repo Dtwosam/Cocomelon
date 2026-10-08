@@ -1770,7 +1770,7 @@ def test_exact_research_ledgers_require_eligible_paper_source() -> None:
 
 
 def test_forward_loss_context_cohort_is_frozen_before_runtime_and_reported_after_handoff() -> None:
-    source = WORKFLOW_PATH.read_text(encoding="utf-8")
+    source = WORKFLOW.read_text(encoding="utf-8")
     anchor_at = source.index(
         "- name: Anchor immutable forward-only loss-context cohort"
     )
@@ -1784,7 +1784,10 @@ def test_forward_loss_context_cohort_is_frozen_before_runtime_and_reported_after
 
     anchor = source[anchor_at:runtime_at]
     review = source[review_at:upload_at]
-    upload = source[upload_at:source.index("- name: Rebuild deferred full-stack markouts after handoff", upload_at)]
+    next_step = source.index(
+        "- name: Rebuild deferred full-stack markouts after handoff", upload_at
+    )
+    upload = source[upload_at:next_step]
     assert "python -m cocomelon.research.loss_context_prospective_cohort anchor" in anchor
     assert "--source-run-id" in anchor
     assert "--source-run-attempt" in anchor
