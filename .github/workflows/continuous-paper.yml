@@ -2764,7 +2764,7 @@ jobs:
           compression-level: 6
 
       - name: Queue exact profit-lock execution ledger
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.compact_learning_upload.outcome == 'success' }}
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.durable_state_upload.outcome == 'success' && steps.research_source_gate.outcome == 'success' && steps.compact_learning_upload.outcome == 'success' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -2777,7 +2777,7 @@ jobs:
             -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
 
       - name: Queue exact momentum-pullback fast-markout ledger
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.compact_learning_upload.outcome == 'success' }}
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.durable_state_upload.outcome == 'success' && steps.research_source_gate.outcome == 'success' && steps.compact_learning_upload.outcome == 'success' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -2790,7 +2790,7 @@ jobs:
             -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
 
       - name: Queue exact range-compression entry evidence
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.compact_learning_upload.outcome == 'success' }}
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.durable_state_upload.outcome == 'success' && steps.research_source_gate.outcome == 'success' && steps.compact_learning_upload.outcome == 'success' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
