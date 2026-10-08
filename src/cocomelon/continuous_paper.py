@@ -10997,6 +10997,50 @@ async def run_continuous_paper_session(
                 root / PROSPECTIVE_PROFIT_TARGET_THRESHOLD_COMPARISON_FILENAME,
                 profit_target_threshold_comparison,
             )
+            if (
+                profit_trailing_shadow.shadow is None
+                or profit_lock_execution_shadow.shadow is None
+            ):
+                profit_trailing_comparison = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "ready_for_review": False,
+                    "error": (
+                        profit_trailing_shadow.error
+                        or profit_lock_execution_shadow.error
+                        or "frozen trailing exit observer unavailable"
+                    ),
+                }
+            else:
+                try:
+                    profit_trailing_comparison = (
+                        prospective_profit_trailing_comparison(
+                            tuple(journal.iter_trades()),
+                            profit_trailing_shadow.shadow.state_payload(),
+                            profit_lock_execution_shadow.shadow.state_payload(),
+                        )
+                    )
+                except Exception as exc:
+                    profit_trailing_comparison = {
+                        "enabled": False,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                        "ready_for_review": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                else:
+                    profit_trailing_comparison = dict(
+                        profit_trailing_comparison
+                    )
+                    profit_trailing_comparison["enabled"] = True
+                    profit_trailing_comparison["error"] = None
+            _write_json_atomic(
+                root / PROSPECTIVE_PROFIT_TRAILING_COMPARISON_FILENAME,
+                profit_trailing_comparison,
+            )
             full_stack_capacity_reflow = (
                 _prospective_full_stack_capacity_reflow_payload(
                     opening_opportunity_store,
