@@ -763,3 +763,18 @@ The eligible checkpoint history is divided into three chronological later blocks
 **Authority:** Evidence orchestration only. No strategy, direction preference, cooldown relaxation, risk, sizing, positions, promotion, paper economics, or live-order authority changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+## D-061 — Exact ledger dispatch requires an eligible paper producer
+
+**Date:** 2026-10-08
+
+**Decision:** The continuous-paper worker must not dispatch the three exact-source research ledgers merely because it uploaded the compact learning-source artifact. An artifact is necessary but not sufficient evidence eligibility. Dispatch requires a successfully uploaded durable paper state, a successful explicit research-source gate, and a successfully uploaded compact source from the same run.
+
+**Observed failure:** On 2026-10-08, three direct-dispatch ledgers (profit-lock execution, momentum-pullback fast-markout, and range-compression entry evidence) failed at `Resolve exact source paper run` with `manual source paper run is not evidence-eligible`. Their paper producer had entered the `upgrade_requested` handoff path, whose `research_source_gate` deliberately fails because that run is state-continuity only. The post-handoff compact artifact upload still succeeded and incorrectly triggered all three downstream exact dispatches.
+
+**Scope:** Apply `steps.durable_state_upload.outcome == 'success'`, `steps.research_source_gate.outcome == 'success'`, and `steps.compact_learning_upload.outcome == 'success'` to each of the three dispatch steps. The existing D-039/D-055 consumer-side eligibility checks remain mandatory, especially for manual exact inputs. Normal eligible producers and narrowly authenticated post-dispatch handoff-tail failures remain usable.
+
+**Safety:** This avoids guaranteed-invalid downstream jobs without weakening evidence standards, changing paper-trader continuity or accounting, or changing strategy, direction, risk, sizing, stops, cooldown, promotion, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
