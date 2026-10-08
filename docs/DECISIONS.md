@@ -787,3 +787,14 @@ Do not admit a frozen loss-context portfolio filter for review based on self-rep
 Keep frozen candidate/loss-context lineage and prospective boundary unchanged across a ledger, and reject backward record counters as a continuity failure. These are data-integrity checks for D-054, not relaxed readiness criteria or additional market-direction rules. Fail closed on inconsistent evidence without affecting the ordinary paper account, opening behavior, risk limits, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-063 — Missing historical loss contexts are unresolved, never reconstructed
+
+The deferred loss-streak audit must not abort its entire report when an otherwise authentic historical closed trade has no persisted decision/feature context. Retain the complete qualifying loss streak from journal truth (time, length, net PnL, markets and exits), explicitly attribute every unresolved context by reason, and emit no fabricated features or dominant patterns for an incomplete streak.
+
+Only **fully resolved** qualifying streaks may contribute to recurring-context discovery or stability counts. Reconcile complete/partial/unresolved qualifying loss coverage in the report. Continue to mark the historical baseline normalization incomplete whenever any trade context cannot be resolved, and refuse candidate freeze under the existing `LOSS_CONTEXT_BASELINE_INCOMPLETE` gate. Lineage inconsistencies, future-leaking features, and corrupt sources must still fail closed rather than be classified as ordinary missing evidence.
+
+A separately frozen, fully covered future cohort may be investigated later under its own eligibility/provenance rules. This repair does **not** waive the old baseline completeness contract or allow picking favorable history. No LONG/SHORT-wide restrictions, active paper strategy changes, risk changes, or live execution.
+
+**LIVE TRADING: DISABLED.**
