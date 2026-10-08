@@ -336,6 +336,88 @@ def _baseline_rows(
     return tuple(rows), unresolved
 
 
+
+def _baseline_attribution_gap_diagnostics(
+    trades: tuple[TradeJournalEntry, ...],
+    facts: EvaluationFactStore,
+    features: LearningFeatureSnapshotStore,
+    ranks: ContinuousPaperOpeningRankStore,
+) -> dict[str, object]:
+    # Do not impute missing historical features or silently change the
+    # denominator used by discovery and validation.
+    ordered = tuple(sorted(
+        trades,
+        key=lambda item: (
+            item.opened_at_ms,
+            item.closed_at_ms,
+            item.trade_id,
+        ),
+    ))
+    gaps: list[dict[str, object]] = []
+    resolved_count = 0
+    first_resolved_index: int | None = None
+    last_unresolved_index: int | None = None
+    for index, trade in enumerate(ordered):
+        resolved, reason = _try_resolve(trade, facts, features, ranks)
+        if resolved is not None:
+            resolved_count += 1
+            if first_resolved_index is None:
+                first_resolved_index = index
+            continue
+        last_unresolved_index = index
+        gaps.append({
+            "trade_id": trade.trade_id,
+            "opening_plan_id": trade.opening_plan_id,
+            "feature_snapshot_id": trade.feature_snapshot_id,
+            "strategy_decision_id": trade.strategy_decision_id,
+            "market": trade.market.canonical,
+            "direction": trade.direction.value,
+            "opened_at_ms": trade.opened_at_ms,
+            "closed_at_ms": trade.closed_at_ms,
+            "reason": reason or "unresolved",
+        })
+    prefix_only = (
+        bool(gaps)
+        and first_resolved_index is not None
+        and last_unresolved_index is not None
+        and last_unresolved_index < first_resolved_index
+    )
+    suffix_start_index = (
+        0 if last_unresolved_index is None
+        else last_unresolved_index + 1
+    )
+    suffix = ordered[suffix_start_index:]
+    return {
+        "research_only": True,
+        "changes_strategy": False,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "historical_exclusion_authority": False,
+        "source_trade_count": len(ordered),
+        "resolved_trade_count": resolved_count,
+        "unresolved_trade_count": len(gaps),
+        "unresolved_trades": gaps,
+        "unresolved_strictly_before_first_resolved": prefix_only,
+        "first_resolved_opened_at_ms": (
+            None if first_resolved_index is None
+            else ordered[first_resolved_index].opened_at_ms
+        ),
+        "fully_attributed_trailing_suffix_trades": len(suffix),
+        "trailing_suffix_first_opened_at_ms": (
+            None if not suffix else suffix[0].opened_at_ms
+        ),
+        "trailing_suffix_net_pnl": str(
+            sum((trade.net_pnl for trade in suffix), ZERO)
+        ),
+        "requires_exact_source_recovery_for_full_baseline": bool(gaps),
+        "warning": (
+            "The trailing suffix is a descriptive availability diagnostic, "
+            "not a validated training cohort or license to omit losses. "
+            "The full-baseline candidate-freeze gate remains fail closed."
+        ),
+    }
+
+
 def try_resolve_entry_context_row(
     trade: TradeJournalEntry,
     facts: EvaluationFactStore,
@@ -850,6 +932,17 @@ def loss_streak_context_audit(
         if Decimal(str(row["net_pnl"])) >= ZERO
     )
     baseline_complete = not baseline_unresolved
+    attribution_gaps = _baseline_attribution_gap_diagnostics(
+        trades, facts, features, ranks,
+    )
+    if (
+        attribution_gaps["resolved_trade_count"] != len(baseline_rows)
+        or attribution_gaps["unresolved_trade_count"]
+        != sum(baseline_unresolved.values())
+    ):
+        raise LossStreakContextAuditError(
+            "attribution gap diagnostics diverge from baseline"
+        )
     current_length = (
         len(all_streaks[-1])
         if all_streaks
@@ -902,6 +995,7 @@ def loss_streak_context_audit(
             sorted(baseline_unresolved.items())
         ),
         "baseline_normalization_complete": baseline_complete,
+        "baseline_attribution_gaps": attribution_gaps,
         "non_loss_control_trade_count": len(non_loss_rows),
         "qualifying_loss_trade_count": len(qualifying_loss_rows),
         "all_qualifying_loss_trade_count": sum(
