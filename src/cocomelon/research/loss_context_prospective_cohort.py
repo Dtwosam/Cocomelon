@@ -118,7 +118,7 @@ def _validate_anchor(anchor: dict[str, object]) -> None:
     last = anchor["source_last_closed_at_ms"]
     if last is not None and (
         isinstance(last, bool) or not isinstance(last, int) or last < 0
-        or last > anchor["frozen_at_ms"]
+        or last > cast(int, anchor["frozen_at_ms"])
     ):
         raise LossContextForwardCohortError("source last closed time invalid")
     for field, length in (
