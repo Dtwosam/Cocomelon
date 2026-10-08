@@ -5,6 +5,9 @@ from decimal import Decimal
 
 import pytest
 
+from cocomelon.research.full_stack_reflow_capacity_review import (
+    review_full_stack_reflow_capacity,
+)
 from cocomelon.research.prospective_full_stack_reflow_exact_ledger import (
     ProspectiveFullStackReflowExactLedgerError,
     update_full_stack_reflow_exact_ledger,
@@ -337,3 +340,140 @@ def test_exact_ledger_keeps_horizon_economics_separate_and_robust() -> None:
         assert readiness["ready_for_evidence_review"] is True
         assert readiness["changes_execution"] is False
         assert readiness["changes_readiness_gate"] is False
+
+
+def _capacity_review_ledger(
+    *,
+    spacing_ms: int = 4_000_000,
+    weak_short: bool = False,
+    repeated_opportunity: bool = False,
+    missing_last_exit: bool = False,
+) -> dict[str, object]:
+    options: list[dict[str, object]] = []
+    for index in range(24):
+        direction = "long" if index % 2 == 0 else "short"
+        pnl = "-1" if weak_short and direction == "short" else (
+            "4" if weak_short else "2"
+        )
+        option = _option(
+            str(index),
+            direction=direction,
+            market=("BTC", "ETH", "SOL", "AVAX")[index % 4],
+            exact_horizons=(
+                HORIZONS[:-1]
+                if missing_last_exit and index == 23
+                else HORIZONS
+            ),
+            pnl=pnl,
+        )
+        when = 20_000_000 + index * spacing_ms
+        option["opportunity_timestamp_ms"] = when
+        option["entry_attempt_timestamp_ms"] = when + 1_000
+        if repeated_opportunity and index == 1:
+            option["opportunity_id"] = "opportunity-0"
+        options.append(option)
+    return update_full_stack_reflow_exact_ledger(
+        _summary(options),
+        previous=None,
+        source_paper_run_id=240,
+        source_paper_run_attempt=1,
+        source_artifact_name="reflow-review-source",
+        source_artifact_digest=_digest("6"),
+    )
+
+
+def test_reflow_exclusive_capacity_review_positive_fixed_horizons() -> None:
+    ledger = _capacity_review_ledger()
+    original = deepcopy(ledger)
+    report = review_full_stack_reflow_capacity(ledger)
+    assert ledger == original
+    assert report["source_ledger_sha256"] == ledger["ledger_sha256"]
+    assert report["cross_horizon_economics_aggregated"] is False
+    assert report["horizon_chosen_by_future_pnl"] is False
+    assert report["maximum_simultaneous_replacement_positions"] == 1
+    for horizon in HORIZONS:
+        item = report["by_horizon"][str(horizon)]
+        assert item["source_exact_options"] == 24
+        assert item["selected_exact_options"] == 24
+        assert item["skipped_for_one_position_capacity"] == 0
+        assert item["ambiguous_opportunity_count"] == 0
+        assert item["selected_distinct_markets"] == 4
+        assert item["economic_screen_passes"] is True
+        assert item["both_directions_profitable"] is True
+        assert item["chronologically_profitable"] is True
+        assert item["positive_after_leave_one_option"] is True
+        assert item["positive_after_leave_one_market"] is True
+        assert item["ready_for_review"] is False
+        assert item["portfolio_profitability_proven"] is False
+    assert report["execution_authority"] is False
+    assert report["promotion_authority"] is False
+
+
+def test_reflow_review_rejects_option_double_counting_and_time_overlap() -> None:
+    ledger = _capacity_review_ledger(
+        spacing_ms=30_000,
+        repeated_opportunity=True,
+    )
+    report = review_full_stack_reflow_capacity(ledger)
+    for horizon in HORIZONS:
+        item = report["by_horizon"][str(horizon)]
+        assert item["raw_exact_opportunity_economics"]["net_pnl"] == "48"
+        assert item["ambiguous_opportunity_count"] == 1
+        assert item["ambiguous_opportunity_option_rows"] == 2
+        assert item["selected_exact_options"] <= 3
+        assert item["skipped_for_one_position_capacity"] > 0
+        assert item["sample_complete"] is False
+        assert item["economic_screen_passes"] is False
+
+
+def test_reflow_review_does_not_hide_unprofitable_short_replacements() -> None:
+    report = review_full_stack_reflow_capacity(
+        _capacity_review_ledger(weak_short=True)
+    )
+    for horizon in HORIZONS:
+        item = report["by_horizon"][str(horizon)]
+        assert Decimal(item["one_slot_selected_economics"]["net_pnl"]) > 0
+        assert item["chronologically_profitable"] is True
+        assert item["by_direction"]["long"]["positive"] is True
+        assert item["by_direction"]["short"]["positive"] is False
+        assert item["both_directions_profitable"] is False
+        assert item["economic_screen_passes"] is False
+
+
+def test_reflow_review_rejects_partial_exact_exit_censoring() -> None:
+    ledger = _capacity_review_ledger(missing_last_exit=True)
+    report = review_full_stack_reflow_capacity(ledger)
+    assert ledger["pending_option_horizons"] == 1
+    for horizon in HORIZONS:
+        item = report["by_horizon"][str(horizon)]
+        assert item["source_structurally_complete"] is False
+        assert item["economic_screen_passes"] is False
+
+
+def test_reflow_review_rejects_post_entry_delays_outside_horizon() -> None:
+    option = _option("1", exact_horizons=HORIZONS)
+    option["entry_attempt_timestamp_ms"] = (
+        option["opportunity_timestamp_ms"] + HORIZONS[-1] + 1
+    )
+    ledger = update_full_stack_reflow_exact_ledger(
+        _summary([option]),
+        previous=None,
+        source_paper_run_id=241,
+        source_paper_run_attempt=1,
+        source_artifact_name="late-entry-source",
+        source_artifact_digest=_digest("7"),
+    )
+    report = review_full_stack_reflow_capacity(ledger)
+    for horizon in HORIZONS:
+        item = report["by_horizon"][str(horizon)]
+        assert item["invalid_entry_window_rows"] == 1
+        assert item["selected_exact_options"] == 0
+        assert item["economic_screen_passes"] is False
+
+
+def test_reflow_review_fails_closed_on_tampered_digest() -> None:
+    ledger = _capacity_review_ledger()
+    altered = deepcopy(ledger)
+    altered["rows"][0]["exact_realized_pnl"] = "999"
+    with pytest.raises(ProspectiveFullStackReflowExactLedgerError):
+        review_full_stack_reflow_capacity(altered)
