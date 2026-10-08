@@ -4,8 +4,6 @@ from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
-import pytest
-
 from cocomelon.domain.evaluation import DecisionEvaluationFact
 from cocomelon.domain.features import FeatureSnapshot, TrendRegime, VolatilityRegime
 from cocomelon.domain.journal import TradeJournalEntry
@@ -20,10 +18,15 @@ from cocomelon.research.continuous_paper_opening_rank import (
 from cocomelon.research.learning_feature_snapshots import (
     LearningFeatureSnapshotStore,
 )
+from cocomelon.research.loss_context_candidate import (
+    LossContextCandidateError,
+    build_loss_context_candidate_freeze,
+)
 from cocomelon.research.loss_streak_context_audit import (
-    LossStreakContextAuditError,
     loss_streak_context_audit,
 )
+
+import pytest
 
 RUN_ID = "continuous-paper-mainnet-v1"
 MARKET = MarketId("", "HYPE")
@@ -340,7 +343,7 @@ def test_current_short_streak_is_visible_below_qualifying_floor(
     assert result["latest_qualifying_streak"] is None
 
 
-def test_loss_streak_audit_fails_closed_on_missing_feature(
+def test_loss_streak_audit_preserves_incomplete_streak_without_inventing_context(
     tmp_path: Path,
 ) -> None:
     facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
@@ -361,19 +364,104 @@ def test_loss_streak_audit_fails_closed_on_missing_feature(
             facts.record_decision_fact(_fact(trade))
             ranks.record(_rank(trade))
 
-        with pytest.raises(
-            LossStreakContextAuditError,
-            match="missing feature snapshot",
-        ):
-            loss_streak_context_audit(
-                trades,
-                facts,
-                features,
-                ranks,
-            )
+        result = loss_streak_context_audit(
+            trades,
+            facts,
+            features,
+            ranks,
+        )
     finally:
         facts.close()
 
+    assert result["qualifying_loss_streak_count"] == 1
+    assert result["complete_qualifying_loss_streak_count"] == 0
+    assert result["incomplete_qualifying_loss_streak_count"] == 1
+    assert result["qualifying_loss_unresolved_trade_count"] == 3
+    assert result["qualifying_loss_unresolved_reason_counts"] == {
+        "missing feature snapshot": 3
+    }
+    assert result["baseline_normalization_complete"] is False
+    assert result["recurring_dominant_patterns"] == ()
+    streak = result["latest_qualifying_streak"]
+    assert isinstance(streak, dict)
+    assert streak["length"] == 3
+    assert streak["net_pnl"] == "-12"
+    assert streak["context_complete"] is False
+    assert streak["dominant_dimensions"] == ()
+    assert streak["context_resolved_trade_count"] == 0
+    assert streak["context_unresolved_trade_count"] == 3
+
+    with pytest.raises(
+        LossContextCandidateError,
+        match="LOSS_CONTEXT_BASELINE_INCOMPLETE",
+    ):
+        build_loss_context_candidate_freeze(
+            result,
+            frozen_at_ms=2_000_000,
+            source_paper_run_id=123,
+            source_paper_run_attempt=1,
+            source_paper_head_sha="a" * 40,
+        )
+
+
+def test_partial_incomplete_streak_does_not_generate_false_recurring_context(
+    tmp_path: Path,
+) -> None:
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    features = LearningFeatureSnapshotStore(tmp_path / "features")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    trades: list[TradeJournalEntry] = []
+    try:
+        for streak_index in range(2):
+            for index in range(3):
+                timestamp = 2_000_000 + streak_index * 600_000 + index * 120_000
+                feature = _feature(as_of_ms=timestamp - 1_000)
+                trade = _trade(
+                    suffix=f"streak-{streak_index}-{index}",
+                    feature=feature,
+                    opened_at_ms=timestamp,
+                    pnl="-4",
+                )
+                if streak_index == 1 and index == 1:
+                    facts.record_decision_fact(_fact(trade))
+                    ranks.record(_rank(trade))
+                else:
+                    _record(trade, feature, facts, features, ranks)
+                trades.append(trade)
+            if streak_index == 0:
+                timestamp = 2_400_000
+                feature = _feature(as_of_ms=timestamp - 1_000)
+                winner = _trade(
+                    suffix="separator",
+                    feature=feature,
+                    opened_at_ms=timestamp,
+                    pnl="5",
+                )
+                _record(winner, feature, facts, features, ranks)
+                trades.append(winner)
+        result = loss_streak_context_audit(tuple(trades), facts, features, ranks)
+    finally:
+        facts.close()
+
+    assert result["qualifying_loss_streak_count"] == 2
+    assert result["complete_qualifying_loss_streak_count"] == 1
+    assert result["incomplete_qualifying_loss_streak_count"] == 1
+    assert result["qualifying_loss_unresolved_trade_count"] == 1
+    assert result["qualifying_loss_trade_count"] == 3
+    assert result["baseline_unresolved_reason_counts"] == {
+        "missing feature snapshot": 1
+    }
+    assert result["baseline_normalization_complete"] is False
+    assert result["recurring_dominant_patterns"] == ()
+    streaks = result["streaks"]
+    assert isinstance(streaks, tuple)
+    assert streaks[0]["context_complete"] is True
+    assert streaks[1]["context_complete"] is False
+    assert streaks[1]["length"] == 3
+    assert streaks[1]["net_pnl"] == "-12"
+    assert streaks[1]["context_resolved_trade_count"] == 2
+    assert streaks[1]["context_unresolved_trade_count"] == 1
+    assert streaks[1]["dominant_dimensions"] == ()
 
 
 def test_loss_streak_audit_highlights_context_overrepresented_vs_winners(
