@@ -561,3 +561,10 @@ This is evidence plumbing only. The active cooldown and all risk/promotion/live 
 ### Momentum-pullback markout source contract — D-059
 
 A successful momentum-pullback forward-markout summary must emit `enabled=true` and `error=null` because the append-only ledger treats those fields as the source-availability contract. This does not imply `integrity_clean=true`; integrity remains an independent evidence-quality gate.
+
+
+### Research handoff raw-outcome rule — D-060
+
+D-060 supersedes D-057/D-058 for sequencing. Use an upstream research step's raw `outcome == 'success'` only when that step validates its produced file before completion. Do not depend on same-job `outputs.ready` or newly generated `hashFiles(...)` for control flow.
+
+Optional candidate freezes must return a non-success raw outcome when no candidate qualifies; because those steps are `continue-on-error`, paper continuity remains unaffected while downstream research fails closed.

@@ -4981,3 +4981,14 @@ The repeatedly failing momentum-pullback fast-markout workflow was not failing b
 The producer now emits `enabled=true` and `error=null` on successful reconstruction, and regression coverage passes a real producer summary directly into the ledger. Integrity-clean and post-integrity-miss rules remain unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Raw-outcome handoff gating — 2026-10-07
+
+The first real handoff after the loss-context readiness repair showed that `outputs.ready` was still not a dependable control-flow signal: the audit rebuilt, but upload/restore/freeze remained skipped. Cooldown stability showed the same symptom before selection.
+
+The post-handoff research chain now keys off each validated producer step's raw `outcome == success`. Optional freezes deliberately return a non-success outcome when no qualified candidate exists, while `continue-on-error` keeps the paper handoff independent.
+
+This makes the pipeline fail closed for real evidence reasons instead of silently stopping because a same-job output flag was not propagated.
+
+**LIVE TRADING: DISABLED.**
