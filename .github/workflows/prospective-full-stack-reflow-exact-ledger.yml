@@ -565,6 +565,22 @@ jobs:
           )
           summary = ledger["summary"]
 
+          from cocomelon.research.full_stack_reflow_capacity_review import (
+              review_full_stack_reflow_capacity,
+          )
+
+          exclusive = review_full_stack_reflow_capacity(ledger)
+          Path("prospective-full-stack-exclusive-capacity-review.json").write_text(
+              json.dumps(
+                  exclusive,
+                  indent=2,
+                  sort_keys=True,
+                  ensure_ascii=False,
+                  allow_nan=False,
+              ) + "\n",
+              encoding="utf-8",
+          )
+
           def stamp(value):
               return datetime.fromtimestamp(
                   int(value) / 1000,
@@ -612,8 +628,37 @@ jobs:
                       ready=readiness["ready_for_evidence_review"],
                   )
               )
+
+          lines.extend([
+              "",
+              "### One-slot capacity-exclusivity screen (descriptive only)",
+              "",
+              "| Horizon | Raw exact | Exclusive fills | Overlap skipped | Ambiguous opps | Net selected PnL | Long positive? | Short positive? | Stable blocks? | Screen passes? |",
+              "| --- | ---: | ---: | ---: | ---: | ---: | --- | --- | --- | --- |",
+          ])
+          for horizon_ms in ledger["horizons_ms"]:
+              view = exclusive["by_horizon"][str(horizon_ms)]
+              side = view["by_direction"]
+              lines.append(
+                  "| {minutes}m | {raw} | {selected} | {overlap} | {ambiguous} | "
+                  "{pnl} | {long} | {short} | {stable} | {passes} |".format(
+                      minutes=horizon_ms // 60000,
+                      raw=view["source_exact_options"],
+                      selected=view["selected_exact_options"],
+                      overlap=view["skipped_for_one_position_capacity"],
+                      ambiguous=view["ambiguous_opportunity_count"],
+                      pnl=view["one_slot_selected_economics"]["net_pnl"],
+                      long=side["long"]["positive"],
+                      short=side["short"]["positive"],
+                      stable=view["chronologically_profitable"],
+                      passes=view["economic_screen_passes"],
+                  )
+              )
           lines.extend(
               [
+                  "",
+                  "Exclusive selection sorts by entry time, never by returns. Duplicate opportunity alternatives have zero selection credit; overlapping windows share only one provisional capital slot.",
+                  "A capacity screen PASS is not portfolio profitability, and it does not choose a best exit horizon or authorize a trading-policy change.",
                   "",
                   "Precommitted review bar per horizon: >=20 exact option-horizons, >=5 LONG, >=5 SHORT, >=4 markets, positive realized PnL and return, plus positive leave-one-option and leave-one-market robustness in both units.",
                   "Only fully closed exits with complete crossed funding-boundary evidence become immutable rows. Incomplete horizons remain pending and may mature later.",
@@ -642,5 +687,17 @@ jobs:
         with:
           name: prospective-full-stack-reflow-exact-ledger-${{ github.run_id }}-${{ github.run_attempt }}
           path: prospective-full-stack-reflow-exact-ledger.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload separate exclusive-capacity economics review
+        if: >-
+          steps.source.outputs.source_eligible == 'true' &&
+          steps.compact.outputs.eligible == 'true' &&
+          steps.ledger.outputs.clean == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-full-stack-exclusive-capacity-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: prospective-full-stack-exclusive-capacity-review.json
           if-no-files-found: error
           retention-days: 90
