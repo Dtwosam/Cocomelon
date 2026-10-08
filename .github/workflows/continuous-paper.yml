@@ -313,6 +313,18 @@ jobs:
                   if isinstance(step.get("name"), str)
               }
               trader_status = steps.get("Run continuous paper trader")
+              # GitHub skipped steps have status=completed and
+              # conclusion=skipped; never compare status to "skipped".
+              skipped_checkout = any(
+                  step.get("name") == "Run actions/checkout@v7"
+                  and step.get("conclusion") == "skipped"
+                  for step in paper_jobs[0].get("steps", [])
+              )
+              # A guarded push may still have an in_progress job after
+              # deciding to skip every runtime step. It must not prevent
+              # an exact-state successor from starting.
+              if skipped_checkout:
+                  continue
               if trader_status is None:
                   # Startup before the trader step is visible is still active.
                   print(run_id)
@@ -327,10 +339,11 @@ jobs:
           if [ -n "$ACTIVE" ]; then
             echo "continuous paper runtime already active in run $ACTIVE"
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            if [ "$EVENT_NAME" = "push" ]; then
-              echo "::notice::holding runtime push rendezvous for active worker handoff"
-              sleep 75
-            fi
+            # Do not keep a skipped push run alive. An exact successor
+            # dispatched after its predecessor exits could otherwise see
+            # this guard-only job as an active trader and skip itself.
+            # The running worker's independent upgrade watchdog detects
+            # historical main-branch push run IDs even after they finish.
           fi
 
       - uses: actions/checkout@v7
@@ -505,19 +518,55 @@ jobs:
                   text=True,
               )
               run = json.loads(result.stdout)
-              if (
+              if not (
                   run.get("path") == ".github/workflows/continuous-paper.yml"
-                  and run.get("status") == "completed"
-                  and run.get("conclusion") in {"success", "failure"}
                   and run.get("head_branch") == "main"
                   and (run.get("head_repository") or {}).get("full_name")
                   == os.environ["GITHUB_REPOSITORY"]
               ):
-                  head_sha = run.get("head_sha")
-                  if not isinstance(head_sha, str) or len(head_sha) != 40:
+                  continue
+              if run.get("status") == "in_progress":
+                  # Post-handoff research can keep a workflow in_progress
+                  # for hours AFTER the trader and durable state upload
+                  # have succeeded. Those artifacts are valid recovery
+                  # sources and must beat older completed snapshots.
+                  jobs_response = subprocess.run(
+                      [
+                          "gh", "api",
+                          f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}/jobs?per_page=100",
+                      ],
+                      check=True,
+                      capture_output=True,
+                      text=True,
+                  )
+                  jobs = json.loads(jobs_response.stdout).get("jobs", [])
+                  paper_jobs = [
+                      job for job in jobs if job.get("name") == "paper"
+                  ]
+                  if len(paper_jobs) != 1:
                       continue
-                  print(f"{artifact['id']} {head_sha}")
-                  break
+                  successful_steps = {
+                      step.get("name")
+                      for step in paper_jobs[0].get("steps", [])
+                      if step.get("status") == "completed"
+                      and step.get("conclusion") == "success"
+                  }
+                  if not {
+                      "Run continuous paper trader",
+                      "Pack durable continuous paper state",
+                      "Upload durable continuous paper state",
+                  } <= successful_steps:
+                      continue
+              elif not (
+                  run.get("status") == "completed"
+                  and run.get("conclusion") in {"success", "failure"}
+              ):
+                  continue
+              head_sha = run.get("head_sha")
+              if not isinstance(head_sha, str) or len(head_sha) != 40:
+                  continue
+              print(f"{artifact['id']} {head_sha}")
+              break
           PY
           )"
           if [ -n "$ARTIFACT_SELECTION" ]; then

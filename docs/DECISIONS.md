@@ -816,3 +816,14 @@ The deterministic baseline opening queue orders same-epoch directional candidate
 Pending candidates expire strictly after `DECISION_INTERVAL_MS + decision_grace_ms` from the original epoch evaluation timestamp (the existing lifecycle strategy-freshness limit), both when newer epochs are staged and before any L2 execution attempt. Drop expired candidates **without** a risk evaluation, execution order, invented market data, or replacement signal. Keep within-window ordering and all original risk/execution/data-freshness checks unchanged. Surface the number of currently pending and cumulatively expired paper opening candidates in the operational heartbeat; investigate whether counts explain the gap between directional decisions and actual risk reviews before changing the strategy. This is a conservative **paper-entry safety** repair and not proof of positive expectancy, an automatic strategy promotion, or live-trading authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-066 — Exact paper successor is not blocked by a skipped push guard
+
+A push-triggered continuous-paper run can correctly decline to start a duplicate worker when an older worker is active. It must **finish immediately after recording its skip**, not spend 75 seconds artificially remaining `in_progress` for an upgrade rendezvous. The existing upgrade watchdog searches **historical newer main-branch push run IDs regardless of status**, and the worker's heartbeat independently compares `main` source changes; a skipped push need not remain active to be discovered.
+
+The exact-state successor's startup guard must also recognize already-skipped checkout steps using GitHub Actions `conclusion: skipped` (not `status: completed`) and ignore those non-worker jobs. Continue treating genuinely queued or in-progress trader steps as active so separate workflow runs do not place overlapping paper orders. Research-only tails after the trader has stopped remain ignorable. Preserve exact archive restoration and existing fail-closed missing-state behavior. Do not silently reset the account or enable live execution.
+
+Evidence: on 2026-10-08 the paper worker in run 37766197594 finished trading and uploaded a fast resume, but exact successor 37767269087 skipped itself on a 75-second guarded push run 37767138725 rather than restoring the predecessor's state; both GitHub workflow conclusions were misleadingly `success` with the trader step `skipped`.
+
+**LIVE TRADING: DISABLED.**
