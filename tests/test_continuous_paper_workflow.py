@@ -1836,3 +1836,37 @@ def test_skipped_push_guard_never_blocks_exact_successor() -> None:
     assert '"in_progress"' in guard
     assert 'print(run_id)' in guard
 
+
+
+def test_guarded_recovery_prefers_finished_trader_upload_over_older_account() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    start = source.index(
+        "- name: Restore latest trusted state for watchdog/manual recovery"
+    )
+    end = source.index(
+        "- name: Restore immutable loss-context shadow candidate for runtime",
+        start,
+    )
+    recovery = source[start:end]
+    assert "key=lambda item: item.get(\"created_at\", \"\")" in recovery
+    assert "reverse=True" in recovery
+    assert 'run.get("status") == "in_progress"' in recovery
+    assert "actions/runs/{run_id}/jobs?per_page=100" in recovery
+    assert 'job.get("name") == "paper"' in recovery
+    for step in (
+        "Run continuous paper trader",
+        "Pack durable continuous paper state",
+        "Upload durable continuous paper state",
+    ):
+        assert step in recovery
+    assert 'step.get("status") == "completed"' in recovery
+    assert 'step.get("conclusion") == "success"' in recovery
+    assert '"Pack durable continuous paper state",' in recovery
+    assert '"Upload durable continuous paper state",' in recovery
+    assert "} <= successful_steps:" in recovery
+    assert "continue" in recovery
+    assert 'run.get("status") == "completed"' in recovery
+    assert 'run.get("conclusion") in {"success", "failure"}' in recovery
+    assert "ARTIFACT_HEAD_SHA" in recovery
+    assert "bash scripts/restore_continuous_paper_state.sh" in recovery
+
