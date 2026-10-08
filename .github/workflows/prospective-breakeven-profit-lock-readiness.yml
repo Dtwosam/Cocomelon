@@ -585,6 +585,9 @@ jobs:
           )
           readiness = payload["readiness"]
           robustness = payload["robustness"]
+          payoff = payload["paired_exit_payoff"]
+          by_direction = payload["by_direction"]
+          chronological = payload["chronological_stability"]
 
           def stamp(value):
               return datetime.fromtimestamp(
@@ -617,6 +620,13 @@ jobs:
               f"- integrity / sample / candidate profitable / delta positive: `{readiness['integrity_clean']} / {readiness['sample_complete']} / {readiness['candidate_profitable']} / {readiness['delta_positive']}`",
               f"- single-trade / single-market robust: `{readiness['single_trade_robust']} / {readiness['single_market_robust']}`",
               f"- ready for review: `{readiness['ready_for_review']}`",
+              f"- both time-ordered halves absolutely profitable and improved: `{readiness['chronologically_stable_absolute_and_incremental']}`",
+              f"- losing positions converted to net winners / existing winners lost / existing winners preserved: `{payoff['losers_recovered_as_winners']} / {payoff['original_winners_turned_nonprofitable']} / {payoff['original_winners_preserved']}`",
+              f"- gross PnL improvements / sacrificed gains: `{payoff['gross_positive_contribution_pnl']} / {payoff['gross_forgone_contribution_pnl']}`",
+              f"- LONG actual / candidate / incremental PnL: `{by_direction['long']['actual_net_pnl']} / {by_direction['long']['candidate_net_pnl']} / {by_direction['long']['delta_net_pnl']}`",
+              f"- SHORT actual / candidate / incremental PnL: `{by_direction['short']['actual_net_pnl']} / {by_direction['short']['candidate_net_pnl']} / {by_direction['short']['delta_net_pnl']}`",
+              f"- earlier half candidate net / incremental PnL: `{chronological['halves'][0]['candidate_net_pnl']} / {chronological['halves'][0]['delta_net_pnl']}`",
+              f"- later half candidate net / incremental PnL: `{chronological['halves'][1]['candidate_net_pnl']} / {chronological['halves'][1]['delta_net_pnl']}`",
               f"- still needed evaluated / activated / triggered / full closes / LONG / SHORT: `{readiness['missing_evaluated_trades']} / {readiness['missing_activated_trades']} / {readiness['missing_triggered_trades']} / {readiness['missing_simulated_full_closes']} / {readiness['missing_long_evaluated_trades']} / {readiness['missing_short_evaluated_trades']}`",
               f"- leave-one-trade minimum delta PnL / R: `{robustness['leave_one_trade_out_min_delta_pnl']} / {robustness['leave_one_trade_out_min_delta_r']}`",
               f"- leave-one-market minimum delta PnL / R: `{robustness['leave_one_market_out_min_delta_pnl']} / {robustness['leave_one_market_out_min_delta_r']}`",
