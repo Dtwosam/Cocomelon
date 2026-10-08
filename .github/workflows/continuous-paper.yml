@@ -2886,6 +2886,7 @@ jobs:
             continuous-paper-state/prospective-profit-target-one-r-comparison.json
             continuous-paper-state/prospective-profit-target-threshold-comparison.json
             continuous-paper-state/prospective-profit-trailing-comparison.json
+            continuous-paper-state/prospective-profit-trailing-grid-comparison.json
             continuous-paper-state/prospective-full-stack-forward-markout-summary.json
             continuous-paper-state/prospective-correlation-bucket-priority-summary.json
             continuous-paper-state/prospective-long-trend-execution-shadow-source.json
@@ -3289,6 +3290,61 @@ jobs:
                   "- no profitable threshold selected from this cohort: "
                   f"{report['selected_winning_threshold']}"
               )
+          PY
+
+      - name: Upload full five-way book-aware exit comparison
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-profit-trailing-grid-comparison.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-five-way-exit-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/prospective-profit-trailing-grid-comparison.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Show same-cohort dynamic trailing versus fixed exits
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-profit-trailing-grid-comparison.json') != '' }}
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path(
+              "continuous-paper-state/"
+              "prospective-profit-trailing-grid-comparison.json"
+          ).read_text(encoding="utf-8"))
+          print("## Five-way matched actual, breakeven, +1R, +1.5R and trailing exit")
+          print("- identical complete books and entry trades; research-only; no selection")
+          if report.get("error"):
+              print(f"- integrity or review error: {report['error']}")
+          else:
+              print(
+                  "- common future trades / full cohort integrity: "
+                  f"{report['common_matched_trade_count']} / "
+                  f"{report['five_way_cohort_aligned']}"
+              )
+              print(
+                  "- strict trailing versus ALL four controls "
+                  "(both sides, all time blocks, removal shocks): "
+                  f"{report['trailing_strict_cross_policy_screen_passes']}"
+              )
+              controls = report.get("trailing_vs_controls")
+              if controls is None:
+                  print("- paired net cashflow unavailable: missing or incomplete same-trade IOC")
+              else:
+                  for name in ("actual", "breakeven", "one_r", "one_half_r"):
+                      review = controls[name]
+                      overall = review["overall"]
+                      print(
+                          f"- trailing minus {name} net PnL / R: "
+                          f"{overall['trailing_minus_benchmark_net_pnl']} / "
+                          f"{overall['trailing_minus_benchmark_net_r']}"
+                      )
+                      print(
+                          f"  LONG / SHORT / chronological / leave-one-out: "
+                          f"{review['side_consistency_passes']} / "
+                          f"{review['time_consistency_passes']} / "
+                          f"{review['concentration_resilience_passes']}"
+                      )
           PY
 
       - name: Upload book-aware dynamic trailing exit economic review
