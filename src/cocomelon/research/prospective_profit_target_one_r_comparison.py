@@ -715,7 +715,7 @@ def _paired_threshold_delta_review(
         ) >= MIN_DIRECTION_TRADES
         and economics["waiting_beats_one_r_net"] is True
         and economics["one_half_r_absolute_net_profitable"] is True
-        for economics in direction.values()
+        for side, economics in direction.items()
     )
     sample_complete = (
         len(observed) >= MIN_PAIRED_TRADES
