@@ -871,3 +871,13 @@ Ignore an empty-job workflow only if it is a **completed** speculative `push` or
 This narrows only the liveness false positive from never-started GitHub workflow admissions; it does not weaken runtime trader overlap guards, account-state integrity, position/exposure logic, direction choice, or profitability/promotion gates.
 
 **LIVE TRADING: DISABLED.**
+
+### D-072 — Evaluate entry, exit and fees together without future-leaking execution decisions
+
+The paper account is still losing on net realized trades. Counting avoided trades alone, or forbidding a whole direction merely because its current win rate is low, does not establish a profitable trading edge. Entry and exit geometry and actual execution costs must be evaluated together at the level of a specifically attributed setup.
+
+Add `closed_trade_lifecycle_economics` to continuous paper research state, attributed to immutable decision facts. Report net PnL, fees, funding, signed slippage and reconciliation residuals for each LONG/SHORT and lead-strategy setup, direction-and-regime context and exit reason; distinguish losing trades with little favorable mark movement (<0.25R), losing trades that first reached at least +0.5R/+1R favorable mark movement, and gross-positive trades flipped below zero by fees/funding. Incomplete excursion paths stay unknown. Verify pre-open decision lineage, refuse duplicated trade IDs, and expose retrospective chronological-half and largest-winner sensitivity. These are diagnostic labels, **not** executable future-aware signals, exit trigger simulations or evidence that limit/stop fills were available at the observed mark excursion.
+
+A retrospective setup can only be flagged **worth independent forward test** if it has at least 20 trades, at least ten trades in each ordered half, two markets, 80% complete excursions, positive fee-adjusted net PnL and net R across both halves and after removing its largest winner. This does **not** promote a strategy: a genuinely runnable entry-and-exit challenger still requires separately frozen, prospective and fill-aware paired comparisons, opportunity-cost and robustness checks, and positive absolute economics. Neither hard stops nor risk budgets are relaxed.
+
+Paper execution remains unchanged; **LIVE TRADING: DISABLED.**
