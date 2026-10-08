@@ -3258,6 +3258,31 @@ jobs:
                   "- 1.5R minus 1R net PnL on identical complete trades: "
                   f"{report['one_half_minus_one_r_net_pnl']}"
               )
+              direct = report.get("same_trade_incremental_robustness")
+              if direct is None:
+                  print("- direct 1.5R-vs-1R robustness: unavailable (incomplete pairing)")
+              else:
+                  print(
+                      "- stricter higher-target incremental screen "
+                      "(LONG/SHORT, four time blocks, holdouts): "
+                      f"{report['higher_target_strict_incremental_screen_passes']}"
+                  )
+                  print(
+                      "- direct incremental PnL by LONG / SHORT: "
+                      f"{direct['by_direction']['long']['one_half_minus_one_r_pnl']} / "
+                      f"{direct['by_direction']['short']['one_half_minus_one_r_pnl']}"
+                  )
+                  print(
+                      "- direction / time / leave-one-out passes: "
+                      f"{direct['direction_consistency_passes']} / "
+                      f"{direct['chronological_consistency_passes']} / "
+                      f"{direct['leave_one_out_consistency_passes']}"
+                  )
+                  print(
+                      "- 1R winners reduced by waiting / losing 1R exits rescued: "
+                      f"{direct['overall']['one_r_winners_reduced_by_waiting']} / "
+                      f"{direct['overall']['one_r_losers_recovered_by_waiting']}"
+                  )
               print(
                   "- no profitable threshold selected from this cohort: "
                   f"{report['selected_winning_threshold']}"
