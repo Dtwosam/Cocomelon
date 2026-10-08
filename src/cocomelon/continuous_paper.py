@@ -10912,6 +10912,53 @@ async def run_continuous_paper_session(
                 root / PROSPECTIVE_PROFIT_TARGET_ONE_R_COMPARISON_FILENAME,
                 profit_target_comparison,
             )
+            if (
+                profit_target_execution_shadow.shadow is None
+                or profit_target_one_half_shadow.shadow is None
+                or profit_lock_execution_shadow.shadow is None
+            ):
+                profit_target_threshold_comparison = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "ready_for_review": False,
+                    "error": (
+                        profit_target_one_half_shadow.error
+                        or profit_target_execution_shadow.error
+                        or profit_lock_execution_shadow.error
+                        or "frozen exit target shadows unavailable"
+                    ),
+                }
+            else:
+                try:
+                    profit_target_threshold_comparison = (
+                        prospective_profit_target_threshold_comparison(
+                            tuple(journal.iter_trades()),
+                            profit_target_execution_shadow.shadow.state_payload(),
+                            profit_target_one_half_shadow.shadow.state_payload(),
+                            profit_lock_execution_shadow.shadow.state_payload(),
+                        )
+                    )
+                except Exception as exc:
+                    profit_target_threshold_comparison = {
+                        "enabled": False,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                        "ready_for_review": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                else:
+                    profit_target_threshold_comparison = dict(
+                        profit_target_threshold_comparison
+                    )
+                    profit_target_threshold_comparison["enabled"] = True
+                    profit_target_threshold_comparison["error"] = None
+            _write_json_atomic(
+                root / PROSPECTIVE_PROFIT_TARGET_THRESHOLD_COMPARISON_FILENAME,
+                profit_target_threshold_comparison,
+            )
             full_stack_capacity_reflow = (
                 _prospective_full_stack_capacity_reflow_payload(
                     opening_opportunity_store,
