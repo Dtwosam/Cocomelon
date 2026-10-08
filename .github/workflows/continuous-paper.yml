@@ -313,10 +313,17 @@ jobs:
                   if isinstance(step.get("name"), str)
               }
               trader_status = steps.get("Run continuous paper trader")
+              # GitHub skipped steps have status=completed and
+              # conclusion=skipped; never compare status to "skipped".
+              skipped_checkout = any(
+                  step.get("name") == "Run actions/checkout@v7"
+                  and step.get("conclusion") == "skipped"
+                  for step in paper_jobs[0].get("steps", [])
+              )
               # A guarded push may still have an in_progress job after
               # deciding to skip every runtime step. It must not prevent
               # an exact-state successor from starting.
-              if steps.get("Run actions/checkout@v7") == "skipped":
+              if skipped_checkout:
                   continue
               if trader_status is None:
                   # Startup before the trader step is visible is still active.
