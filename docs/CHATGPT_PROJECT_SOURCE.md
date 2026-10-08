@@ -568,3 +568,8 @@ A successful momentum-pullback forward-markout summary must emit `enabled=true` 
 D-060 supersedes D-057/D-058 for sequencing. Use an upstream research step's raw `outcome == 'success'` only when that step validates its produced file before completion. Do not depend on same-job `outputs.ready` or newly generated `hashFiles(...)` for control flow.
 
 Optional candidate freezes must return a non-success raw outcome when no candidate qualifies; because those steps are `continue-on-error`, paper continuity remains unaffected while downstream research fails closed.
+
+
+### Exact ledger dispatch eligibility — D-061
+
+Direct `workflow_dispatch` jobs for profit-lock execution, momentum-pullback markout, and range-compression evidence must only come from a paper worker that succeeded at all three upstream checks: durable paper-state upload, explicit research-source gate, and compact learning-source upload. A successful compact upload alone does not mean an `upgrade_requested` handoff is a valid research producer. Those handoffs keep exact durable continuity but remain research-ineligible under D-039. Consumer-side eligibility and immutable exact run/attempt/artifact requirements remain unchanged. This avoids research errors without weakening evidence gates or changing active trading.
