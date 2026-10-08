@@ -8221,6 +8221,12 @@ def _operational_live_status_payload(
             activity.opening_execution_attempts
         ),
         "session_opening_fills": activity.opening_fills,
+        "pending_opening_candidate_count": len(
+            pump.pipeline.pending_opening_markets
+        ),
+        "expired_opening_candidate_count": (
+            pump.pipeline.expired_opening_candidate_count
+        ),
         "open_position_count": len(positions),
         "positions": positions,
         "starting_cash": str(execution.account.starting_cash),
