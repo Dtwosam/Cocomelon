@@ -8056,7 +8056,7 @@ def _open_trailing_profit_preview(
             "simulated_filled_quantity": child["filled_quantity"],
             "remaining_quantity": child["remaining_quantity"],
         })
-    info = shadow.summary_payload()
+    info = shadow.operational_metadata_payload()
     return {
         "enabled": True,
         "research_only": True,
