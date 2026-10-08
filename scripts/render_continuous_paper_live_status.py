@@ -9319,6 +9319,12 @@ def _render_operational_live_status(
     )
     if not isinstance(breakeven_preview, dict):
         breakeven_preview = {}
+    trailing_preview = payload.get("open_trailing_profit_preview", {})
+    if not isinstance(trailing_preview, dict):
+        trailing_preview = {}
+    trailing_positions = trailing_preview.get("positions", [])
+    if not isinstance(trailing_positions, list):
+        trailing_positions = []
     breakeven_positions = breakeven_preview.get("positions", [])
     if not isinstance(breakeven_positions, list):
         breakeven_positions = []
@@ -9726,6 +9732,57 @@ def _render_operational_live_status(
                             "remaining_quantity",
                             "n/a",
                         ),
+                    )
+                )
+
+    if trailing_preview:
+        lines.extend([
+            "",
+            "### High-water trailing exit preview",
+            "",
+            (
+                "> RESEARCH ONLY — theoretical mark-stop, not an IOC fill. "
+                "Actual paper stops, orders and risk limits are unchanged."
+            ),
+            (
+                "- frozen rule / start ms: "
+                f"{trailing_preview.get('candidate_id')} / "
+                f"{trailing_preview.get('started_at_ms')}"
+            ),
+            (
+                "- open / armed / triggered: "
+                f"{trailing_preview.get('observed_open_positions', 0)} / "
+                f"{trailing_preview.get('activated_open_positions', 0)} / "
+                f"{trailing_preview.get('triggered_open_positions', 0)}"
+            ),
+        ])
+        if trailing_preview.get("enabled") is not True:
+            lines.append(
+                "- shadow unavailable: "
+                f"{trailing_preview.get('error', 'unknown')}"
+            )
+        elif trailing_positions:
+            lines.extend([
+                "| Market | Side | Armed | Triggered | High-water R | "
+                "Gross lock R | Theoretical mark stop | IOC fill qty |",
+                "| --- | --- | --- | --- | ---: | ---: | ---: | ---: |",
+            ])
+            for raw in trailing_positions:
+                if not isinstance(raw, dict):
+                    raise ValueError(
+                        "trailing preview position must be an object"
+                    )
+                lines.append(
+                    "| {market} | {side} | {armed} | {triggered} | "
+                    "{peak} | {lock} | {stop} | {filled} |".format(
+                        market=raw.get("market", "n/a"),
+                        side=raw.get("side", "n/a"),
+                        armed=str(bool(raw.get("activated"))).lower(),
+                        triggered=str(bool(raw.get("triggered"))).lower(),
+                        peak=raw.get("peak_gross_r") or "n/a",
+                        lock=raw.get("theoretical_lock_r") or "n/a",
+                        stop=raw.get("theoretical_stop_price") or "n/a",
+                        filled=raw.get("simulated_filled_quantity", "0"),
                     )
                 )
 
