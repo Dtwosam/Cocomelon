@@ -81,6 +81,18 @@ def choose_exact_source(
             if isinstance(job, dict) and job.get("name") == "paper"
         ]
         if len(paper_jobs) != 1:
+            # A speculative push/scheduled workflow can be cancelled or
+            # fail during workflow admission without materializing ANY job.
+            # It has not run a trader and does not own an account state.
+            # A run with any jobs, a pending/in-progress run, or an exact
+            # workflow_dispatch remains fail-closed.
+            if (
+                not jobs
+                and status == "completed"
+                and run.get("event") in {"push", "schedule"}
+                and run.get("conclusion") in {"cancelled", "failure", "skipped"}
+            ):
+                continue
             return "blocked", None
         job = paper_jobs[0]
         # A successful guard-only run has no trader. Do not confuse its green
