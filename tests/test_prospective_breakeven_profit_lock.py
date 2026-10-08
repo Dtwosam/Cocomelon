@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -17,6 +18,10 @@ from cocomelon.research.profit_lock_execution_ledger import (
 from cocomelon.research.profit_lock_execution_shadow import (
     EXECUTION_SHADOW_STATE_SCHEMA_VERSION,
     ProfitLockExecutionOutcome,
+)
+from cocomelon.research.prospective_profit_target_one_r_comparison import (
+    ProspectiveProfitTargetComparisonError,
+    prospective_profit_target_one_r_comparison,
 )
 from cocomelon.research.prospective_breakeven_profit_lock import (
     EMBARGO_MS,
@@ -478,3 +483,186 @@ def test_prospective_exit_audits_winners_lost_as_well_as_losses_saved() -> None:
     assert result["by_direction"]["long"]["delta_net_pnl"] == "-6"
     assert result["by_direction"]["short"]["delta_net_pnl"] == "4"
     assert result["readiness"]["ready_for_review"] is False
+
+
+def _profit_target_state(
+    outcomes: tuple[ProfitLockExecutionOutcome, ...],
+    *,
+    started_at_ms: int = 1_000_000,
+) -> dict[str, object]:
+    state = _state(outcomes)
+    state["started_at_ms"] = started_at_ms
+    state["rules"] = [{
+        "rule_id": "profit_target_at_1r",
+        "activate_at_r": "1",
+        "lock_at_r": "1",
+        "exit_on_activation": "true",
+    }]
+    return state
+
+
+def _profit_target_fixture(
+    *,
+    bad_late_block: bool = False,
+    short_loses: bool = False,
+    unfilled: bool = False,
+) -> tuple[
+    tuple[TradeJournalEntry, ...], dict[str, object], dict[str, object]
+]:
+    trades = []
+    targets = []
+    breakevens = []
+    for index in range(40):
+        trade = _trade(
+            f"paired-target-{index}",
+            opened_at_ms=1_100_000 + index * 100_000,
+            market=("BTC", "ETH", "SOL", "AVAX")[index % 4],
+            direction=Direction.LONG if index % 2 == 0 else Direction.SHORT,
+            pnl="-2",
+        )
+        target_pnl = (
+            "-1" if bad_late_block and index >= 30
+            else "-1" if short_loses and index % 2
+            else "1"
+        )
+        trades.append(trade)
+        targets.append(replace(
+            _outcome(
+                trade,
+                candidate_pnl=target_pnl,
+                triggered=True,
+                complete=not (unfilled and index == 39),
+            ),
+            rule_id="profit_target_at_1r",
+        ))
+        breakevens.append(_outcome(
+            trade, candidate_pnl="0", triggered=True, complete=True
+        ))
+    return (
+        tuple(trades),
+        _profit_target_state(tuple(targets)),
+        _state(tuple(breakevens)),
+    )
+
+
+def test_paired_one_r_profit_target_requires_absolute_profit_and_two_benchmarks() -> None:
+    trades, target, breakeven = _profit_target_fixture()
+    report = prospective_profit_target_one_r_comparison(
+        trades, target, breakeven
+    )
+    assert report["frozen_start_ms"] == 1_000_000
+    assert report["prospective_closed_trades"] == 40
+    assert report["matched_trades"] == 40
+    assert report["target_triggered_trades"] == 40
+    assert report["target_full_ioc_closes"] == 40
+    assert report["integrity_clean"] is True
+    assert report["sample_complete"] is True
+    assert report["economic_screen_passes"] is True
+    assert report["overall"]["actual_net_pnl"] == "-80"
+    assert report["overall"]["breakeven_net_pnl"] == "0"
+    assert report["overall"]["target_net_pnl"] == "40"
+    assert report["overall"]["target_vs_actual_pnl"] == "120"
+    assert report["overall"]["target_vs_breakeven_pnl"] == "40"
+    assert all(block["passes"] for block in report["chronological_blocks"])
+    assert report["positive_robust_to_single_winner_and_market"] is True
+    assert report["by_direction"]["short"]["target_net_pnl"] == "20"
+    assert report["ready_for_review"] is False
+    assert report["account_level_profitability_proven"] is False
+    assert report["execution_authority"] is False
+
+
+def test_paired_one_r_profit_target_rejects_late_loss_cluster() -> None:
+    trades, target, breakeven = _profit_target_fixture(
+        bad_late_block=True
+    )
+    report = prospective_profit_target_one_r_comparison(
+        trades, target, breakeven
+    )
+    assert Decimal(report["overall"]["target_net_pnl"]) > 0
+    assert Decimal(report["overall"]["target_vs_actual_pnl"]) > 0
+    assert report["chronological_blocks"][-1]["target_net_pnl"] == "-10"
+    assert report["chronological_blocks"][-1]["passes"] is False
+    assert report["economic_screen_passes"] is False
+
+
+def test_paired_one_r_profit_target_rejects_losing_short_exits() -> None:
+    trades, target, breakeven = _profit_target_fixture(
+        short_loses=True
+    )
+    report = prospective_profit_target_one_r_comparison(
+        trades, target, breakeven
+    )
+    assert report["overall"]["target_net_pnl"] == "0"
+    assert report["by_direction"]["short"]["target_net_pnl"] == "-20"
+    assert report["economic_screen_passes"] is False
+
+
+def test_paired_one_r_profit_target_never_counts_unfilled_exit() -> None:
+    trades, target, breakeven = _profit_target_fixture(unfilled=True)
+    report = prospective_profit_target_one_r_comparison(
+        trades, target, breakeven
+    )
+    assert report["prospective_closed_trades"] == 40
+    assert report["matched_trades"] == 39
+    assert report["incomplete_trade_ids"] == [trades[-1].trade_id]
+    assert report["integrity_clean"] is False
+    assert report["economic_screen_passes"] is False
+
+
+def test_paired_one_r_profit_target_rejects_missing_shadow_trade() -> None:
+    trades, target, breakeven = _profit_target_fixture()
+    target["outcomes"] = target["outcomes"][:-1]
+    report = prospective_profit_target_one_r_comparison(
+        trades, target, breakeven
+    )
+    assert report["missing_target_trade_ids"] == [trades[-1].trade_id]
+    assert report["economic_screen_passes"] is False
+
+
+def test_paired_one_r_profit_target_rejects_rule_or_config_drift() -> None:
+    trades, target, breakeven = _profit_target_fixture()
+    target["rules"] = [{
+        "rule_id": "profit_target_at_1r",
+        "activate_at_r": "0.8",
+        "lock_at_r": "1",
+        "exit_on_activation": "true",
+    }]
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="rule identity drift",
+    ):
+        prospective_profit_target_one_r_comparison(
+            trades, target, breakeven
+        )
+    target["rules"][0]["activate_at_r"] = "1"
+    target["execution_config"] = {"config_version": "changed"}
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="execution cost/config drift",
+    ):
+        prospective_profit_target_one_r_comparison(
+            trades, target, breakeven
+        )
+
+
+def test_paired_one_r_profit_target_counts_winners_sacrificed() -> None:
+    winning = _trade(
+        "target-existing-big-winner",
+        opened_at_ms=1_100_000,
+        pnl="5",
+    )
+    target = _profit_target_state((
+        replace(
+            _outcome(winning, candidate_pnl="1"),
+            rule_id="profit_target_at_1r",
+        ),
+    ))
+    baseline = _state((_outcome(winning, candidate_pnl="3"),))
+    report = prospective_profit_target_one_r_comparison(
+        (winning,), target, baseline
+    )
+    assert report["existing_winners_with_reduced_pnl"] == 1
+    assert report["existing_winners_turned_into_losers"] == 0
+    assert report["overall"]["target_vs_actual_pnl"] == "-4"
+    assert report["overall"]["target_vs_breakeven_pnl"] == "-2"
+    assert report["economic_screen_passes"] is False
