@@ -771,7 +771,7 @@ def _targeted_trend_rank_fixture(
         trade = _trade(
             suffix=f"trend-rank-{i}",
             direction=(
-                Direction.LONG if i % 2 == 0
+                Direction.LONG if (i // 4) % 2 == 0
                 else Direction.SHORT
             ),
             opened_at_ms=(
