@@ -1,0 +1,35 @@
+name: Independent Paper Recovery Watchdog
+run-name: Independent Paper Rescue · ${{ github.run_id }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/independent-paper-recovery.yml"
+      - "scripts/rescue_continuous_paper.py"
+  workflow_dispatch:
+  schedule:
+    - cron: "3,13,23,33,43,53 * * * *"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: independent-paper-rescue
+  cancel-in-progress: false
+
+jobs:
+  rescue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      COCOMELON_EXECUTION_MODE: paper
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Validate exact paper continuity and dispatch if needed
+        run: python scripts/rescue_continuous_paper.py
