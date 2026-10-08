@@ -881,3 +881,13 @@ Add `closed_trade_lifecycle_economics` to continuous paper research state, attri
 A retrospective setup can only be flagged **worth independent forward test** if it has at least 20 trades, at least ten trades in each ordered half, two markets, 80% complete excursions, positive fee-adjusted net PnL and net R across both halves and after removing its largest winner. This does **not** promote a strategy: a genuinely runnable entry-and-exit challenger still requires separately frozen, prospective and fill-aware paired comparisons, opportunity-cost and robustness checks, and positive absolute economics. Neither hard stops nor risk budgets are relaxed.
 
 Paper execution remains unchanged; **LIVE TRADING: DISABLED.**
+
+### D-073 — Net-profitable exits must preserve winners and work across time
+
+The clean prospective breakeven-at-0.5R exit candidate has shown positive paired improvement while remaining **absolutely unprofitable**: 53 clean trades, actual net -$127.32, fill-aware shadow candidate net -$67.74, +$59.58 delta as of 2026-10-08 13:53 UTC (Issue #724). A large relative improvement is not a profitable trading strategy and does not justify moving stops automatically.
+
+Require an exit challenger seeking review to show absolute positive candidate PnL and R, positive incremental paired improvement, integrity, both LONG and SHORT observation coverage, leave-one-trade and leave-one-market robustness, **and stable absolute/incremental economics in two chronologically ordered entry-time halves** (at least ten paired exits per half). No policy is permitted to pass review on one short burst of stop-driven gains while losing or failing to improve later.
+
+Add prospective-only payoff diagnostics with exact paired journal/outcome lineage: existing net winners preserved or turned into nonwinners, net losers converted into winners, aggregate gross improvement *and* foregone gains, LONG and SHORT candidate net PnL individually, and each chronological half's PnL and delta. Do not use an exit's post-entry mark excursions or future profitable close as an entry filter. No retrospective evidence receives prospective credit. Report unknown or incomplete fills as non-evaluable and block integrity instead of fabricating exits. Review readiness remains **non-promotional** and cannot act on paper stops.
+
+Both directions remain eligible; no blanket LONG or SHORT ban. Existing hard stops, risk limits and position sizing remain unchanged. **LIVE TRADING: DISABLED.**
