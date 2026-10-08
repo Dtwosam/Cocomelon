@@ -332,6 +332,9 @@ from cocomelon.research.prospective_full_stack_capacity_reflow import (
 from cocomelon.research.prospective_full_stack_entry_exit import (
     prospective_full_stack_entry_exit_summary,
 )
+from cocomelon.research.prospective_profit_target_one_r_comparison import (
+    prospective_profit_target_one_r_comparison,
+)
 from cocomelon.research.prospective_full_stack_exit_capacity_reflow import (
     prospective_full_stack_exit_capacity_reflow,
 )
@@ -452,6 +455,9 @@ PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME = (
 )
 PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME = (
     "prospective-full-stack-entry-exit-summary.json"
+)
+PROSPECTIVE_PROFIT_TARGET_ONE_R_COMPARISON_FILENAME = (
+    "prospective-profit-target-one-r-comparison.json"
 )
 PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME = (
     "prospective-full-stack-forward-markout-summary.json"
@@ -10824,6 +10830,48 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME,
                 full_stack_entry_exit,
+            )
+            if (
+                profit_target_execution_shadow.shadow is None
+                or profit_lock_execution_shadow.shadow is None
+            ):
+                profit_target_comparison = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "ready_for_review": False,
+                    "error": (
+                        profit_target_execution_shadow.error
+                        or profit_lock_execution_shadow.error
+                        or "paired exit shadows unavailable"
+                    ),
+                }
+            else:
+                try:
+                    profit_target_comparison = (
+                        prospective_profit_target_one_r_comparison(
+                            tuple(journal.iter_trades()),
+                            profit_target_execution_shadow.shadow.state_payload(),
+                            profit_lock_execution_shadow.shadow.state_payload(),
+                        )
+                    )
+                except Exception as exc:
+                    profit_target_comparison = {
+                        "enabled": False,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                        "ready_for_review": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                else:
+                    profit_target_comparison = dict(profit_target_comparison)
+                    profit_target_comparison["enabled"] = True
+                    profit_target_comparison["error"] = None
+            _write_json_atomic(
+                root / PROSPECTIVE_PROFIT_TARGET_ONE_R_COMPARISON_FILENAME,
+                profit_target_comparison,
             )
             full_stack_capacity_reflow = (
                 _prospective_full_stack_capacity_reflow_payload(
