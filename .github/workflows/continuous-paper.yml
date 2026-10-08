@@ -259,6 +259,21 @@ jobs:
                   continue
               status = run.get("status")
               if status in {"queued", "pending"}:
+                  # A push/scheduled guard-only workflow can remain queued
+                  # behind an older paper run's deferred research tail.
+                  # It has no trader step and must never veto an exact
+                  # predecessor-state handoff. When that speculative run
+                  # starts, its own guard will see the real successor.
+                  if (
+                      os.environ.get("SOURCE_RUN_ID")
+                      and run.get("event") in {"push", "schedule"}
+                  ):
+                      print(
+                          "::notice::exact successor ignores queued "
+                          f"speculative {run.get('event')} run {run_id}",
+                          file=sys.stderr,
+                      )
+                      continue
                   if (
                       run_id < current
                       and run.get("head_sha") != current_head
