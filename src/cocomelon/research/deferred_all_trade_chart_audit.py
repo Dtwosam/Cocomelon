@@ -85,7 +85,9 @@ def _path_gap_ms(path: dict[str, object], opened: int, closed: int) -> int | Non
         if type(a) is not int or (b is not None and type(b) is not int):
             raise AllPaperTradeChartAuditError("invalid trade path gap times")
         if b is None:
-            return None
+            if a < closed:
+                return None
+            continue
         if b < a:
             raise AllPaperTradeChartAuditError("reversed trade path gap")
         if a < closed and b > opened:
@@ -303,6 +305,12 @@ def write_deferred_trade_charts(
         or session.get("exit_reason") not in _HANDOFF_REASONS
     ):
         raise AllPaperTradeChartAuditError("requires completed paper handoff")
+    for filename in ("journal.sqlite3", "facts.sqlite3"):
+        store_path = root / filename
+        if not store_path.is_file() or store_path.stat().st_size <= 0:
+            raise AllPaperTradeChartAuditError(
+                f"missing authoritative paper store: {filename}"
+            )
     journal = JournalStore(root / "journal.sqlite3")
     facts = EvaluationFactStore(root / "facts.sqlite3")
     try:
