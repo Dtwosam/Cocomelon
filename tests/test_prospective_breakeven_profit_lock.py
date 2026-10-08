@@ -1325,7 +1325,7 @@ def test_five_way_exit_grid_rejects_forged_one_half_r_cashflow() -> None:
     one_half["outcomes"][0]["candidate_net_pnl_estimate"] = "999"
     with pytest.raises(
         ProspectiveProfitTargetComparisonError,
-        match=".*cashflow|.*net PnL|.*estimate|.*simulated",
+        match="candidate delta|IOC cashflow|net R",
     ):
         prospective_profit_trailing_grid_comparison(
             trades, one_r, one_half, trailing, baseline
