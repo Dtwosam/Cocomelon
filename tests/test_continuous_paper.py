@@ -5702,3 +5702,45 @@ def test_net_reserved_trailing_rule_is_independent_frozen_paper_research() -> No
     assert '"execution_authority": False' in research
     assert '"promotion_authority": False' in research
     assert '"account_level_profitability_proven": False' in research
+
+
+def test_frozen_entry_cost_r_screen_is_observational_and_deployed_on_changes() -> None:
+    source = Path(
+        "src/cocomelon/continuous_paper.py"
+    ).read_text(encoding="utf-8")
+    workflow = Path(
+        ".github/workflows/continuous-paper.yml"
+    ).read_text(encoding="utf-8")
+    research = Path(
+        "src/cocomelon/research/prospective_entry_cost_r.py"
+    ).read_text(encoding="utf-8")
+
+    assert "PROSPECTIVE_ENTRY_COST_R_STATE_FILENAME" in source
+    assert "PROSPECTIVE_ENTRY_COST_R_COMPARISON_FILENAME" in source
+    assert "_restore_prospective_entry_cost_r(" in source
+    assert "prospective_entry_cost_r_state.payload()" in source
+    assert "prospective_entry_cost_r_comparison(" in source
+    assert "execution.store.load_plan" in source
+    assert "prospective-entry-cost-r-state.json" in workflow
+    assert "prospective-entry-cost-r-comparison.json" in workflow
+    assert "Upload prospective round-trip entry cost/R economics" in workflow
+    assert "Display prospective entry round-trip cost/R evidence" in workflow
+
+    # Every source file must be its own valid YAML push-path entry.
+    # PR #1036 previously combined two filenames into one quoted path,
+    # which silently removed the matching path trigger.
+    for module in (
+        "prospective_profit_trailing_grid.py",
+        "prospective_net_reserved_trailing.py",
+        "prospective_entry_cost_r.py",
+    ):
+        path = "src/cocomelon/research/" + module
+        assert f'      - "{path}"\n' in workflow
+        assert workflow.count(path) >= 2
+    assert "prospective_profit_trailing_grid.py                    " not in (
+        workflow.split("paths:", 1)[1].split("workflow_dispatch:", 1)[0]
+    )
+    assert '"selected_winner": None' in research
+    assert '"execution_authority": False' in research
+    assert '"promotion_authority": False' in research
+    assert '"account_level_profitability_proven": False' in research
