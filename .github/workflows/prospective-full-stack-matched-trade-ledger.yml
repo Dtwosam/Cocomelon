@@ -542,6 +542,22 @@ jobs:
           robust = summary["robustness"]
           campaign = ledger["campaign"]
 
+          from cocomelon.research.full_stack_matched_trade_economic_review import (
+              review_durable_full_stack_economics,
+          )
+
+          strict_review = review_durable_full_stack_economics(ledger)
+          Path("prospective-full-stack-economic-review.json").write_text(
+              json.dumps(
+                  strict_review,
+                  sort_keys=True,
+                  indent=2,
+                  ensure_ascii=False,
+                  allow_nan=False,
+              ) + "\n",
+              encoding="utf-8",
+          )
+
           def stamp(value):
               return datetime.fromtimestamp(
                   int(value) / 1000,
@@ -569,12 +585,21 @@ jobs:
               f"- candidate LOO trade min PnL/R: `{robust['candidate_leave_one_trade_out_min_pnl']} / {robust['candidate_leave_one_trade_out_min_r']}`",
               f"- candidate LOO market min PnL/R: `{robust['candidate_leave_one_market_out_min_pnl']} / {robust['candidate_leave_one_market_out_min_r']}`",
               f"- ready for evidence review: `{readiness['ready_for_evidence_review']}`",
+              f"- strict economic screen / both directions profitable / all time blocks pass: `{strict_review['economic_screen_passes']} / {strict_review['both_sides_profitable']} / {strict_review['all_temporal_blocks_profitable_and_improved']}`",
+              f"- strict screen trade coverage / markets / admitted / blocked: `{strict_review['source_row_count']} / {strict_review['market_count']} / {strict_review['admitted_trades']} / {strict_review['blocked_trades']}`",
+              f"- blocked loser entries / blocked winners forgone: `{strict_review['blocked_losers']} / {strict_review['blocked_winners_forgone']}`",
+              f"- admitted winners preserved / harmed by exit / losers recovered by exit: `{strict_review['admitted_winners_preserved']} / {strict_review['admitted_winners_lost_after_exit']} / {strict_review['admitted_losers_recovered_after_exit']}`",
+              f"- first temporal block full net / delta PnL: `{strict_review['temporal_blocks'][0]['candidate_net_pnl']} / {strict_review['temporal_blocks'][0]['delta_net_pnl']}`",
+              f"- final temporal block full net / delta PnL: `{strict_review['temporal_blocks'][-1]['candidate_net_pnl']} / {strict_review['temporal_blocks'][-1]['delta_net_pnl']}`",
+
               f"- rows SHA-256: `{ledger['rows_sha256']}`",
               f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
               "",
               "Review readiness requires the final stack itself to be profitable in both PnL and net R, not merely better than actual paper.",
               "Any pending closed trade keeps integrity incomplete and blocks evidence review.",
               "Replacement-trade economics remain separate in Issue #738; this ledger is matched-trade contribution only.",
+              "The strict economic screen cannot confer review/promotion authority or assert account-level profitability; legacy review readiness alone is insufficient.",
+
               "",
               "**Execution authority:** `false`",
               "**Promotion authority:** `false`",
@@ -596,5 +621,16 @@ jobs:
         with:
           name: prospective-full-stack-matched-trade-ledger-${{ github.run_id }}-${{ github.run_attempt }}
           path: prospective-full-stack-matched-trade-ledger.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload separate strict economic review
+        if: >-
+          steps.compact.outputs.eligible == 'true' &&
+          steps.ledger.outputs.clean == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-full-stack-economic-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: prospective-full-stack-economic-review.json
           if-no-files-found: error
           retention-days: 90
