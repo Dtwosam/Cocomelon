@@ -27,6 +27,7 @@ on:
       - "src/cocomelon/research/cadence_opportunity_learning.py"
       - "src/cocomelon/research/closed_trade_concentration.py"
       - "src/cocomelon/research/closed_trade_friction.py"
+      - "src/cocomelon/research/closed_trade_lifecycle_economics.py"
       - "src/cocomelon/research/closed_trade_robustness.py"
       - "src/cocomelon/research/closed_trade_stability.py"
       - "src/cocomelon/research/closed_trade_stop_reentry.py"
