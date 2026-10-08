@@ -1022,6 +1022,15 @@ class LossContextPairedPortfolioShadow:
         baseline: _LaneSnapshot,
         candidate: _LaneSnapshot,
     ) -> dict[str, object]:
+        # A/B valuations require identical data-gap histories in both lanes.
+        # Persist compact cumulative evidence, not unbounded interval arrays.
+        baseline_gaps = self._baseline.known_gap_intervals
+        candidate_gaps = self._candidate.known_gap_intervals
+        if baseline_gaps != candidate_gaps:
+            raise RuntimeError("paired paper lanes have different market-data gaps")
+        closed_gaps = tuple(
+            (start, end) for start, end in baseline_gaps if end is not None
+        )
         return {
             "portfolio_shadow_candidate_id": self._freeze.candidate_id,
             "loss_context_candidate_id": (
@@ -1031,6 +1040,13 @@ class LossContextPairedPortfolioShadow:
                 self._freeze.prospective_not_before_ms
             ),
             "end_ms": end_ms,
+            "data_gap_closed_count": len(closed_gaps),
+            "data_gap_closed_duration_ms": sum(
+                end - start for start, end in closed_gaps
+            ),
+            "data_gap_open_count": sum(
+                end is None for _start, end in baseline_gaps
+            ),
             "record_count": self._record_count,
             "last_record_available_at_ms": (
                 self._last_record_available_at_ms
