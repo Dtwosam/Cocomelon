@@ -117,6 +117,27 @@ def _lane_closed_trades(row: dict[str, object], lane: str) -> int:
     )
 
 
+def _validate_row_account_parity(row: dict[str, object]) -> None:
+    """A reported A/B advantage must equal the two independent account snapshots."""
+    baseline = _mapping(row.get("baseline"), "baseline")
+    candidate = _mapping(row.get("candidate"), "candidate")
+    for delta_field, account_field in (
+        ("candidate_minus_baseline_equity", "equity"),
+        ("candidate_minus_baseline_total_account_pnl", "total_account_pnl"),
+        ("candidate_minus_baseline_realized_net_pnl", "realized_net_pnl"),
+        ("candidate_minus_baseline_max_drawdown_fraction", "max_drawdown_fraction"),
+    ):
+        expected = (
+            _decimal(candidate.get(account_field), f"candidate.{account_field}")
+            - _decimal(baseline.get(account_field), f"baseline.{account_field}")
+        )
+        observed = _decimal(row.get(delta_field), delta_field)
+        if observed != expected:
+            raise LossContextPairedShadowReviewError(
+                f"review ledger account delta mismatch: {delta_field}"
+            )
+
+
 def _candidate_admission(row: dict[str, object]) -> dict[str, object]:
     return _mapping(row.get("candidate_admission"), "candidate_admission")
 
@@ -141,10 +162,19 @@ def _unattributed_block_count(row: dict[str, object]) -> int:
                 "attributed matching-context count exceeds total"
             )
         return total - attributed
-    return _integer(
+    unattributed = _integer(
         raw,
         "matching_context_blocked_unattributed",
     )
+    total = _integer(
+        admission.get("matching_context_blocked"),
+        "matching_context_blocked",
+    )
+    if _matching_block_count(row) + unattributed != total:
+        raise LossContextPairedShadowReviewError(
+            "matching-context block totals do not reconcile"
+        )
+    return unattributed
 
 
 def _validate_row_authority(row: dict[str, object]) -> None:
@@ -183,6 +213,10 @@ def verify_review_ledger(
     previous_markets: dict[str, int] = {}
     previous_baseline_closed = 0
     previous_candidate_closed = 0
+    previous_candidate_id: str | None = None
+    previous_loss_context_id: str | None = None
+    previous_prospective_start: int | None = None
+    previous_record_count = 0
 
     for line_number, line in enumerate(
         ledger_path.read_text(encoding="utf-8").splitlines(),
@@ -230,6 +264,31 @@ def verify_review_ledger(
                 "review ledger candidate mismatch"
             )
         _validate_row_authority(unsigned)
+        _validate_row_account_parity(unsigned)
+        loss_context_id = _string(
+            unsigned.get("loss_context_candidate_id"),
+            "loss_context_candidate_id",
+        )
+        prospective_start = _integer(
+            unsigned.get("prospective_not_before_ms"),
+            "prospective_not_before_ms",
+        )
+        record_count = _integer(unsigned.get("record_count"), "record_count")
+        if (
+            previous_candidate_id is not None
+            and (
+                row_candidate != previous_candidate_id
+                or loss_context_id != previous_loss_context_id
+                or prospective_start != previous_prospective_start
+            )
+        ):
+            raise LossContextPairedShadowReviewError(
+                "review ledger frozen candidate lineage changed"
+            )
+        if record_count < previous_record_count:
+            raise LossContextPairedShadowReviewError(
+                "review ledger record count moved backward"
+            )
 
         end_ms = _integer(unsigned.get("end_ms"), "end_ms")
         if previous_end_ms is not None and end_ms <= previous_end_ms:
@@ -272,6 +331,10 @@ def verify_review_ledger(
         previous_markets = markets
         previous_baseline_closed = baseline_closed
         previous_candidate_closed = candidate_closed
+        previous_candidate_id = row_candidate
+        previous_loss_context_id = loss_context_id
+        previous_prospective_start = prospective_start
+        previous_record_count = record_count
 
     return tuple(rows)
 
