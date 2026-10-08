@@ -313,6 +313,11 @@ jobs:
                   if isinstance(step.get("name"), str)
               }
               trader_status = steps.get("Run continuous paper trader")
+              # A guarded push may still have an in_progress job after
+              # deciding to skip every runtime step. It must not prevent
+              # an exact-state successor from starting.
+              if steps.get("Run actions/checkout@v7") == "skipped":
+                  continue
               if trader_status is None:
                   # Startup before the trader step is visible is still active.
                   print(run_id)
@@ -327,10 +332,11 @@ jobs:
           if [ -n "$ACTIVE" ]; then
             echo "continuous paper runtime already active in run $ACTIVE"
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            if [ "$EVENT_NAME" = "push" ]; then
-              echo "::notice::holding runtime push rendezvous for active worker handoff"
-              sleep 75
-            fi
+            # Do not keep a skipped push run alive. An exact successor
+            # dispatched after its predecessor exits could otherwise see
+            # this guard-only job as an active trader and skip itself.
+            # The running worker's independent upgrade watchdog detects
+            # historical main-branch push run IDs even after they finish.
           fi
 
       - uses: actions/checkout@v7
