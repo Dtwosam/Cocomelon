@@ -30,9 +30,9 @@ from cocomelon.research.prospective_breakeven_profit_lock import (
 from cocomelon.research.prospective_profit_target_one_r_comparison import (
     ProspectiveProfitTargetComparisonError,
     prospective_profit_target_one_half_r_comparison,
-    prospective_profit_trailing_comparison,
     prospective_profit_target_one_r_comparison,
     prospective_profit_target_threshold_comparison,
+    prospective_profit_trailing_comparison,
 )
 
 
