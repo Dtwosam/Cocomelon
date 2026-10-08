@@ -2869,6 +2869,7 @@ jobs:
             continuous-paper-state/journal.sqlite3
             continuous-paper-state/profit-lock-execution-shadow-state.json
             continuous-paper-state/profit-target-one-r-execution-shadow-state.json
+            continuous-paper-state/profit-target-one-half-r-execution-shadow-state.json
             continuous-paper-state/prospective-breakeven-profit-lock-state.json
             continuous-paper-state/prospective-momentum-band-entry-state.json
             continuous-paper-state/prospective-momentum-pullback-entry-state.json
@@ -2882,6 +2883,7 @@ jobs:
             continuous-paper-state/loss-streak-context-audit-summary.json
             continuous-paper-state/prospective-full-stack-entry-exit-summary.json
             continuous-paper-state/prospective-profit-target-one-r-comparison.json
+            continuous-paper-state/prospective-profit-target-threshold-comparison.json
             continuous-paper-state/prospective-full-stack-forward-markout-summary.json
             continuous-paper-state/prospective-correlation-bucket-priority-summary.json
             continuous-paper-state/prospective-long-trend-execution-shadow-source.json
@@ -3203,6 +3205,63 @@ jobs:
                           ),
                       )
                   )
+          PY
+
+      - name: Upload same-cohort 1R and 1.5R take-profit economic review
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-profit-target-threshold-comparison.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-profit-target-threshold-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/prospective-profit-target-threshold-comparison.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Render fixed two-threshold profit-taking economic review
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-profit-target-threshold-comparison.json') != '' }}
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path(
+                  "continuous-paper-state/"
+                  "prospective-profit-target-threshold-comparison.json"
+              ).read_text(encoding="utf-8")
+          )
+          print("## Frozen 1R and 1.5R book-aware profit targets")
+          print("- research only; no strategy selection or execution")
+          if report.get("error"):
+              print(f"- shadow integrity/research error: {report['error']}")
+          else:
+              print(
+                  "- shared closed trades / exact four-way pairing: "
+                  f"{report['common_matched_trade_count']} / "
+                  f"{report['same_complete_future_trade_cohort']}"
+              )
+              for name in ("one_r", "one_half_r"):
+                  candidate = report[name]
+                  overall = candidate["overall"]
+                  print(
+                      f"- {name} actual / breakeven / take-profit net PnL: "
+                      f"{overall['actual_net_pnl']} / "
+                      f"{overall['breakeven_net_pnl']} / "
+                      f"{overall['target_net_pnl']}"
+                  )
+                  print(
+                      f"- {name} target complete IOC closes / absolute "
+                      "profit and incremental screen: "
+                      f"{candidate['target_full_ioc_closes']} / "
+                      f"{candidate['economic_screen_passes']}"
+                  )
+              print(
+                  "- 1.5R minus 1R net PnL on identical complete trades: "
+                  f"{report['one_half_minus_one_r_net_pnl']}"
+              )
+              print(
+                  "- no profitable threshold selected from this cohort: "
+                  f"{report['selected_winning_threshold']}"
+              )
           PY
 
       - name: Upload matched 1R profit-target versus breakeven economic review
