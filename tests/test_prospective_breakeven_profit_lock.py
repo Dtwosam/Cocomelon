@@ -28,7 +28,9 @@ from cocomelon.research.prospective_breakeven_profit_lock import (
 )
 from cocomelon.research.prospective_profit_target_one_r_comparison import (
     ProspectiveProfitTargetComparisonError,
+    prospective_profit_target_one_half_r_comparison,
     prospective_profit_target_one_r_comparison,
+    prospective_profit_target_threshold_comparison,
 )
 
 
@@ -666,3 +668,138 @@ def test_paired_one_r_profit_target_counts_winners_sacrificed() -> None:
     assert report["overall"]["target_vs_actual_pnl"] == "-4"
     assert report["overall"]["target_vs_breakeven_pnl"] == "-2"
     assert report["economic_screen_passes"] is False
+
+
+def _one_half_target_state(
+    outcomes: tuple[ProfitLockExecutionOutcome, ...],
+    *,
+    started_at_ms: int = 1_050_000,
+) -> dict[str, object]:
+    state = _profit_target_state(outcomes, started_at_ms=started_at_ms)
+    state["rules"] = [{
+        "rule_id": "profit_target_at_1_5r",
+        "activate_at_r": "1.5",
+        "lock_at_r": "1.5",
+        "exit_on_activation": "true",
+    }]
+    return state
+
+
+def test_precommitted_one_half_profit_target_is_positive_on_identical_trades() -> None:
+    trades, target_one_r, baseline = _profit_target_fixture()
+    one_half = _one_half_target_state(tuple(
+        replace(
+            _outcome(trade, candidate_pnl="2"),
+            rule_id="profit_target_at_1_5r",
+        )
+        for trade in trades
+    ))
+    report = prospective_profit_target_threshold_comparison(
+        trades, target_one_r, one_half, baseline
+    )
+    assert report["frozen_common_start_ms"] == 1_050_000
+    assert report["same_complete_future_trade_cohort"] is True
+    assert report["common_matched_trade_count"] == 40
+    assert report["one_r_net_pnl_on_identical_trades"] == "40"
+    assert report["one_half_r_net_pnl_on_identical_trades"] == "80"
+    assert report["one_half_minus_one_r_net_pnl"] == "40"
+    assert Decimal(report["one_half_minus_one_r_net_r"]) == Decimal("4")
+    assert report["one_r"]["economic_screen_passes"] is True
+    assert report["one_half_r"]["economic_screen_passes"] is True
+    assert report["both_precommitted_economic_screens_pass"] is True
+    assert report["selected_winning_threshold"] is None
+    assert report["threshold_selected_by_hindsight"] is False
+    assert report["ready_for_review"] is False
+    assert report["execution_authority"] is False
+    assert report["promotion_authority"] is False
+
+
+def test_one_half_exit_only_compares_same_complete_fill_cohort() -> None:
+    trades, target_one_r, baseline = _profit_target_fixture()
+    one_half = _one_half_target_state(tuple(
+        replace(
+            _outcome(
+                trade,
+                candidate_pnl="2",
+                complete=index != 39,
+                triggered=True,
+            ),
+            rule_id="profit_target_at_1_5r",
+        )
+        for index, trade in enumerate(trades)
+    ))
+    report = prospective_profit_target_threshold_comparison(
+        trades, target_one_r, one_half, baseline
+    )
+    assert report["one_r"]["matched_trades"] == 40
+    assert report["one_half_r"]["matched_trades"] == 39
+    assert report["common_matched_trade_count"] == 39
+    assert report["same_complete_future_trade_cohort"] is False
+    assert report["one_half_minus_one_r_net_pnl"] is None
+    assert report["one_half_minus_one_r_net_r"] is None
+    assert report["both_precommitted_economic_screens_pass"] is False
+
+
+def test_one_half_exit_rejects_winning_threshold_selected_by_rule_drift() -> None:
+    trades, target_one_r, baseline = _profit_target_fixture()
+    one_half = _one_half_target_state(tuple(
+        replace(
+            _outcome(trade, candidate_pnl="2"),
+            rule_id="profit_target_at_1_5r",
+        )
+        for trade in trades
+    ))
+    one_half["rules"][0]["activate_at_r"] = "1.25"
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="rule identity drift",
+    ):
+        prospective_profit_target_threshold_comparison(
+            trades, target_one_r, one_half, baseline
+        )
+
+
+def test_one_half_exit_requires_same_cost_model_on_both_shadow_targets() -> None:
+    trades, target_one_r, baseline = _profit_target_fixture()
+    one_half = _one_half_target_state(tuple(
+        replace(
+            _outcome(trade, candidate_pnl="2"),
+            rule_id="profit_target_at_1_5r",
+        )
+        for trade in trades
+    ))
+    one_half["execution_config"] = {"config_version": "not-original"}
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="different execution cost models",
+    ):
+        prospective_profit_target_threshold_comparison(
+            trades, target_one_r, one_half, baseline
+        )
+
+
+def test_one_half_exit_stays_absolute_unprofitable_when_large_winner_pnl_erased() -> None:
+    trades, target_one_r, baseline = _profit_target_fixture()
+    one_half = _one_half_target_state(tuple(
+        replace(
+            _outcome(
+                trade,
+                candidate_pnl="-2" if index >= 30 else "2",
+            ),
+            rule_id="profit_target_at_1_5r",
+        )
+        for index, trade in enumerate(trades)
+    ))
+    review = prospective_profit_target_one_half_r_comparison(
+        trades, one_half, baseline
+    )
+    assert review["candidate_id"] == "profit_target_at_1_5r"
+    assert review["overall"]["target_net_pnl"] == "40"
+    assert review["chronological_blocks"][-1]["passes"] is False
+    assert review["economic_screen_passes"] is False
+    comparison = prospective_profit_target_threshold_comparison(
+        trades, target_one_r, one_half, baseline
+    )
+    assert comparison["same_complete_future_trade_cohort"] is True
+    assert comparison["one_half_minus_one_r_net_pnl"] == "0"
+    assert comparison["both_precommitted_economic_screens_pass"] is False

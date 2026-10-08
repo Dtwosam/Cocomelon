@@ -570,3 +570,93 @@ def test_take_profit_shadow_is_new_frozen_cohort_and_restores_exact_rule() -> No
         ProfitLockExecutionShadowError, match="rule mismatch"
     ):
         old.restore_state(restored.state_payload())
+
+
+@pytest.mark.parametrize(
+    ("side", "mark_px", "bid", "ask", "actual_exit"),
+    [
+        (PositionSide.LONG, "115", "114.9", "115.1", "90"),
+        (PositionSide.SHORT, "85", "84.9", "85.1", "110"),
+    ],
+)
+def test_one_half_r_profit_target_requires_fresh_book_execution(
+    side: PositionSide,
+    mark_px: str,
+    bid: str,
+    ask: str,
+    actual_exit: str,
+) -> None:
+    rule = ProfitLockRule(
+        rule_id="profit_target_at_1_5r",
+        activate_at_r=Decimal("1.5"),
+        lock_at_r=Decimal("1.5"),
+        exit_on_activation=True,
+    )
+    position = _position(side=side)
+    shadow = ProfitLockExecutionShadow(
+        _config(),
+        started_at_ms=500,
+        rules=(rule,),
+    )
+    shadow.observe_mark(
+        (position,),
+        _mark(mark_px, 1500),
+        now_ms=1500,
+    )
+    rule_before_fill = shadow.open_rule_state_payloads(
+        rule.rule_id
+    )[0]["rule"]
+    assert rule_before_fill["activated_at_ms"] == 1500
+    assert rule_before_fill["triggered_at_ms"] == 1500
+    assert rule_before_fill["filled_quantity"] == "0"
+    shadow.observe_book(
+        (position,),
+        _instrument(),
+        _book(receive_ms=2_500, bid=bid, ask=ask),
+        reference_price=Decimal(mark_px),
+        now_ms=2500,
+    )
+    shadow.record_closed_trade(
+        _trade(position, exit_price=actual_exit)
+    )
+    outcome = shadow.state_payload()["outcomes"][0]
+    assert outcome["candidate_source"] == "visible_book_ioc"
+    assert outcome["simulated_close_complete"] is True
+    assert Decimal(outcome["simulated_exit_fees"]) > 0
+    assert Decimal(outcome["candidate_net_pnl_estimate"]) > 14
+    assert Decimal(outcome["delta_net_pnl_estimate"]) > 24
+
+
+def test_one_half_r_shadow_refuses_older_precommitted_one_r_rule_state() -> None:
+    old_target = ProfitLockExecutionShadow(
+        _config(),
+        started_at_ms=500,
+        rules=(PROFIT_TARGET_RULE,),
+    )
+    new_rule = ProfitLockRule(
+        rule_id="profit_target_at_1_5r",
+        activate_at_r=Decimal("1.5"),
+        lock_at_r=Decimal("1.5"),
+        exit_on_activation=True,
+    )
+    new_target = ProfitLockExecutionShadow(
+        _config(),
+        started_at_ms=500,
+        rules=(new_rule,),
+    )
+    assert new_target.state_payload()["rules"] == [{
+        "rule_id": "profit_target_at_1_5r",
+        "activate_at_r": "1.5",
+        "lock_at_r": "1.5",
+        "exit_on_activation": "true",
+    }]
+    with pytest.raises(
+        ProfitLockExecutionShadowError,
+        match="rule mismatch",
+    ):
+        old_target.restore_state(new_target.state_payload())
+    with pytest.raises(
+        ProfitLockExecutionShadowError,
+        match="rule mismatch",
+    ):
+        new_target.restore_state(old_target.state_payload())
