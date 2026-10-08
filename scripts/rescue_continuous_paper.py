@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
+from datetime import UTC, datetime
 from collections.abc import Callable
 from typing import Any
 
@@ -16,6 +18,8 @@ WORKFLOW_PATH = ".github/workflows/continuous-paper.yml"
 TRADER_STEP = "Run continuous paper trader"
 FAST_UPLOAD_STEP = "Upload fast continuous paper resume state"
 DURABLE_UPLOAD_STEP = "Upload durable continuous paper state"
+LIVE_STATUS_ISSUE = "469"
+HEARTBEAT_STALE_SECONDS = 15 * 60
 
 
 class PaperRescueError(RuntimeError):
@@ -104,7 +108,10 @@ def choose_exact_source(
         if trader is None:
             return "blocked", None
         if trader.get("status") in {"queued", "pending", "in_progress"}:
-            return "active", None
+            attempt = run.get("run_attempt")
+            if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt <= 0:
+                raise PaperRescueError("invalid active paper run attempt")
+            return "active", (run_id, attempt)
         if trader.get("status") != "completed":
             return "blocked", None
         if trader.get("conclusion") == "skipped":
@@ -142,6 +149,63 @@ def choose_exact_source(
             return "ready", (run_id, attempt)
         return "blocked", None
     return "no_source", None
+
+
+def verify_active_heartbeat(
+    body: object,
+    *,
+    active_run_id: int,
+    run_started_at: object,
+    now: datetime,
+) -> str:
+    """Confirm a running trader still emits a recent authoritative heartbeat.
+
+    A newly started trader is given a bounded startup grace, not a second
+    trading lease. This check only reports failure; it never restarts or
+    cancels an active trader.
+    """
+    if now.tzinfo is None:
+        raise PaperRescueError("heartbeat clock must have timezone")
+    if not isinstance(body, str):
+        raise PaperRescueError("live status issue body missing")
+    if not isinstance(run_started_at, str):
+        raise PaperRescueError("active run start timestamp missing")
+    try:
+        start = datetime.fromisoformat(run_started_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise PaperRescueError("invalid paper run start timestamp") from exc
+    if start.tzinfo is None:
+        raise PaperRescueError("paper run start timestamp lacks timezone")
+    start_age = (now - start).total_seconds()
+    if start_age < -120:
+        raise PaperRescueError("paper run start is future dated")
+    run_match = re.search(r"(?m)^Worker run:\s*(\d+)\s*$", body)
+    updated_match = re.search(r"(?m)^Updated:\s*(\S+)\s*$", body)
+    worker_id = int(run_match.group(1)) if run_match else None
+    if worker_id != active_run_id:
+        if 0 <= start_age <= HEARTBEAT_STALE_SECONDS:
+            return "startup_grace"
+        raise PaperRescueError(
+            f"active trader {active_run_id} has no current heartbeat; "
+            f"issue still describes worker {worker_id}"
+        )
+    if updated_match is None:
+        raise PaperRescueError("active worker heartbeat timestamp missing")
+    try:
+        last = datetime.fromisoformat(
+            updated_match.group(1).replace("Z", "+00:00")
+        )
+    except ValueError as exc:
+        raise PaperRescueError("invalid active heartbeat timestamp") from exc
+    if last.tzinfo is None:
+        raise PaperRescueError("active heartbeat has no timezone")
+    age = (now - last).total_seconds()
+    if age < -120 or age > HEARTBEAT_STALE_SECONDS:
+        raise PaperRescueError(
+            f"active trader {active_run_id} heartbeat stale or "
+            f"future-dated: age_seconds={age:.1f}"
+        )
+    return "fresh"
 
 
 def _gh_json(resource: str) -> dict[str, Any]:
@@ -187,7 +251,28 @@ def main() -> int:
         ),
     )
     if status == "active":
-        print("Active paper trader confirmed; no rescue dispatch.")
+        if source is None:
+            raise PaperRescueError("active paper trader identity missing")
+        run_id, _attempt = source
+        active_run = next(
+            (run for run in runs if run.get("id") == run_id),
+            None,
+        )
+        if active_run is None:
+            raise PaperRescueError("active paper run absent from source listing")
+        issue = _gh_json(
+            f"repos/{repository}/issues/{LIVE_STATUS_ISSUE}"
+        )
+        health = verify_active_heartbeat(
+            issue.get("body"),
+            active_run_id=run_id,
+            run_started_at=active_run.get("run_started_at"),
+            now=datetime.now(UTC),
+        )
+        print(
+            f"Active paper trader {run_id} heartbeat={health}; "
+            "no overlapping rescue dispatch."
+        )
         return 0
     if status == "queued_exact":
         print("Exact successor already queued; no duplicate rescue dispatch.")
