@@ -21,6 +21,7 @@ MIN_REVIEW_CHECKPOINTS: Final = 9
 MIN_MATCHING_CONTEXT_BLOCKS: Final = 30
 MIN_BLOCKED_MARKETS: Final = 4
 MAX_DOMINANT_BLOCKED_MARKET_SHARE: Final = Decimal("0.50")
+MAX_FORWARD_MARKET_DATA_GAP_FRACTION: Final = Decimal("0.01")
 MIN_CLOSED_TRADES_PER_LANE: Final = 30
 REVIEW_BLOCK_COUNT: Final = 3
 MIN_MATCHES_PER_BLOCK: Final = 5
@@ -138,6 +139,25 @@ def _validate_row_account_parity(row: dict[str, object]) -> None:
             )
 
 
+def _gap_counters(
+    row: dict[str, object],
+) -> tuple[int, int, int] | None:
+    """Legacy rows are readable, but lack data-coverage review credit."""
+    fields = (
+        "data_gap_closed_count",
+        "data_gap_closed_duration_ms",
+        "data_gap_open_count",
+    )
+    present = tuple(field in row for field in fields)
+    if not any(present):
+        return None
+    if not all(present):
+        raise LossContextPairedShadowReviewError(
+            "partial market-data gap evidence"
+        )
+    return tuple(_integer(row[field], field) for field in fields)
+
+
 def _candidate_admission(row: dict[str, object]) -> dict[str, object]:
     return _mapping(row.get("candidate_admission"), "candidate_admission")
 
@@ -217,6 +237,7 @@ def verify_review_ledger(
     previous_loss_context_id: str | None = None
     previous_prospective_start: int | None = None
     previous_record_count = 0
+    previous_gap_counters: tuple[int, int, int] | None = None
 
     for line_number, line in enumerate(
         ledger_path.read_text(encoding="utf-8").splitlines(),
@@ -265,6 +286,16 @@ def verify_review_ledger(
             )
         _validate_row_authority(unsigned)
         _validate_row_account_parity(unsigned)
+        gaps = _gap_counters(unsigned)
+        if previous_gap_counters is not None:
+            if gaps is None:
+                raise LossContextPairedShadowReviewError(
+                    "market-data gap evidence disappeared"
+                )
+            if gaps[1] < previous_gap_counters[1]:
+                raise LossContextPairedShadowReviewError(
+                    "market-data closed gap duration moved backward"
+                )
         loss_context_id = _string(
             unsigned.get("loss_context_candidate_id"),
             "loss_context_candidate_id",
@@ -335,6 +366,7 @@ def verify_review_ledger(
         previous_loss_context_id = loss_context_id
         previous_prospective_start = prospective_start
         previous_record_count = record_count
+        previous_gap_counters = gaps
 
     return tuple(rows)
 
@@ -382,9 +414,18 @@ def append_review_checkpoint(
     }
     _validate_row_authority(unsigned)
     _validate_row_account_parity(unsigned)
+    current_gaps = _gap_counters(unsigned)
     _unattributed_block_count(unsigned)
     if rows:
         previous = rows[-1]
+        prior_gaps = _gap_counters(previous)
+        if prior_gaps is not None and (
+            current_gaps is None
+            or current_gaps[1] < prior_gaps[1]
+        ):
+            raise LossContextPairedShadowReviewError(
+                "market-data closed gap duration regressed or disappeared"
+            )
         if (
             unsigned.get("loss_context_candidate_id")
             != previous.get("loss_context_candidate_id")
@@ -599,6 +640,30 @@ def build_paired_shadow_review(
     realized_advantage = ZERO
     drawdown_delta = ZERO
     dominant_market_share: Decimal | None = None
+    forward_gap_duration_ms: int | None = None
+    forward_gap_fraction: Decimal | None = None
+    latest_open_gaps: int | None = None
+
+    if eligible and not all(_gap_counters(row) is not None for row in eligible):
+        reasons.append("missing_forward_market_data_gap_evidence")
+    elif anchor is not None and latest is not None:
+        start_gaps = _gap_counters(anchor)
+        end_gaps = _gap_counters(latest)
+        assert start_gaps is not None and end_gaps is not None
+        forward_gap_duration_ms = end_gaps[1] - start_gaps[1]
+        if forward_gap_duration_ms < 0:
+            raise LossContextPairedShadowReviewError(
+                "forward market-data gap duration moved backward"
+            )
+        latest_open_gaps = end_gaps[2]
+        if latest_open_gaps:
+            reasons.append("market_data_gap_still_open")
+        if duration_ms > 0:
+            forward_gap_fraction = (
+                Decimal(forward_gap_duration_ms) / Decimal(duration_ms)
+            )
+            if forward_gap_fraction > MAX_FORWARD_MARKET_DATA_GAP_FRACTION:
+                reasons.append("excessive_forward_market_data_gaps")
 
     if latest is None or anchor is None:
         reasons.append("no_eligible_checkpoints")
@@ -694,6 +759,11 @@ def build_paired_shadow_review(
             else _integer(anchor.get("end_ms"), "end_ms")
         ),
         "future_duration_ms": duration_ms,
+        "forward_market_data_gap_duration_ms": forward_gap_duration_ms,
+        "forward_market_data_gap_fraction": (
+            None if forward_gap_fraction is None else str(forward_gap_fraction)
+        ),
+        "latest_open_market_data_gaps": latest_open_gaps,
         "matching_context_blocks": matching,
         "unattributed_legacy_matching_context_blocks": (
             unattributed_matching
@@ -723,6 +793,11 @@ def build_paired_shadow_review(
         "ready_for_review": not reasons,
         "thresholds": {
             "min_future_duration_ms": MIN_REVIEW_DURATION_MS,
+            "max_forward_market_data_gap_fraction": str(
+                MAX_FORWARD_MARKET_DATA_GAP_FRACTION
+            ),
+            "complete_prospective_data_gap_evidence_required": True,
+            "no_open_gap_at_final_checkpoint_required": True,
             "min_review_checkpoints": MIN_REVIEW_CHECKPOINTS,
             "min_matching_context_blocks": MIN_MATCHING_CONTEXT_BLOCKS,
             "min_blocked_markets": MIN_BLOCKED_MARKETS,
