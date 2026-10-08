@@ -908,7 +908,7 @@ def loss_streak_context_audit(
             len(streak) for streak in qualifying
         ),
         "qualifying_loss_excluded_partial_resolved_trade_count": sum(
-            int(streak["context_resolved_trade_count"])
+            cast(int, streak["context_resolved_trade_count"])
             for streak in ordered
             if streak["context_complete"] is False
         ),
