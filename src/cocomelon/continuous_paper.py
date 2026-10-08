@@ -389,13 +389,13 @@ from cocomelon.research.prospective_top10_rank_filter import (
     ProspectiveTop10RankFilterState,
     evaluate_prospective_top10_rank_filter,
 )
-from cocomelon.research.prospective_trend_outside_top10 import (
-    ProspectiveTrendOutsideTop10State,
-    prospective_trend_outside_top10_comparison,
-)
 from cocomelon.research.prospective_trade_quality import (
     ProspectiveTradeQualityState,
     prospective_trade_quality_summary,
+)
+from cocomelon.research.prospective_trend_outside_top10 import (
+    ProspectiveTrendOutsideTop10State,
+    prospective_trend_outside_top10_comparison,
 )
 from cocomelon.research.prospective_two_strike_stop_filter import (
     ProspectiveTwoStrikeStopFilterState,
