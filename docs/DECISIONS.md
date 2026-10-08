@@ -861,3 +861,13 @@ A successful `gh workflow run` request is **not** proof the successor traded. Ob
 This supersedes D-067's schedule placement (but keeps its recovery intent) without weakening D-066/D-068 handoff arbitration. Long and short trade selection, NO_TRADE, L2 book freshness, stops, position sizing, hard risk limits, research evidence gates, and promotions remain unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+### D-070 — Terminal speculative workflows with no jobs never owned a paper account
+
+The first independent rescue watchdog run 37771946109 correctly stopped on `Paper trader unverified; recovery blocked`. Investigation found that a sequence of speculative `push` workflows on the path to the latest `main` was cancelled or failed **before any GitHub Actions job materialized**: runs 37771010416, 37770349229, and 37769990622 were `completed` with `cancelled`/`failure` and each returned an empty job list. No trader step existed in those runs.
+
+Ignore an empty-job workflow only if it is a **completed** speculative `push` or `schedule` with terminal `cancelled`, `failure`, or `skipped` conclusion. It cannot have modified account state. A queued/in-progress run, a materialized job of any outcome, or a `workflow_dispatch` exact successor remains strict: missing/unverified jobs fail closed, never fall back to older balance. A real trader that failed or finished without a corresponding successful exact archive upload still blocks recovery.
+
+This narrows only the liveness false positive from never-started GitHub workflow admissions; it does not weaken runtime trader overlap guards, account-state integrity, position/exposure logic, direction choice, or profitability/promotion gates.
+
+**LIVE TRADING: DISABLED.**
