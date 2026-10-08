@@ -5576,3 +5576,24 @@ def test_precommitted_one_half_target_isolated_and_reviewed() -> None:
     assert "Render fixed two-threshold profit-taking economic review" in workflow
     assert "profit_target_execution_shadow," in source
     assert "profit_target_one_half_shadow," in source
+
+
+def test_strict_same_trade_target_delta_is_research_only() -> None:
+    source = Path(
+        "src/cocomelon/research/prospective_profit_target_one_r_comparison.py"
+    ).read_text(encoding="utf-8")
+    workflow = Path(
+        ".github/workflows/continuous-paper.yml"
+    ).read_text(encoding="utf-8")
+    assert "_paired_threshold_delta_review(pairs)" in source
+    assert '"same_trade_incremental_robustness": paired_delta_review' in source
+    assert '"higher_target_strict_incremental_screen_passes": (' in source
+    assert '"selected_winning_threshold": None' in source
+    assert '"threshold_selected": None' in source
+    assert '"execution_authority": False' in source
+    assert '"promotion_authority": False' in source
+    assert "direction_consistency_passes" in source
+    assert "chronological_consistency_passes" in source
+    assert "leave_one_out_consistency_passes" in source
+    assert "higher_target_strict_incremental_screen_passes" in workflow
+    assert "direct incremental PnL by LONG / SHORT" in workflow
