@@ -400,6 +400,24 @@ def append_review_checkpoint(
             raise LossContextPairedShadowReviewError(
                 "review ledger record count moved backward"
             )
+        if _matching_block_count(unsigned) < _matching_block_count(previous):
+            raise LossContextPairedShadowReviewError(
+                "matching-context attributed count moved backward"
+            )
+        if _unattributed_block_count(unsigned) < _unattributed_block_count(previous):
+            raise LossContextPairedShadowReviewError(
+                "matching-context unattributed count moved backward"
+            )
+        for market, count in _blocked_by_market(_candidate_admission(previous)).items():
+            if _blocked_by_market(_candidate_admission(unsigned)).get(market, 0) < count:
+                raise LossContextPairedShadowReviewError(
+                    "blocked-market count moved backward"
+                )
+        for lane in ("baseline", "candidate"):
+            if _lane_closed_trades(unsigned, lane) < _lane_closed_trades(previous, lane):
+                raise LossContextPairedShadowReviewError(
+                    f"{lane} closed-trade count moved backward"
+                )
     row = {**unsigned, "row_digest": _digest(unsigned)}
     encoded = (_canonical_json(row) + "\n").encode("utf-8")
     ledger_path = Path(path)
