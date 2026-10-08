@@ -599,6 +599,9 @@ DELAYED_ENTRY_120S_EXECUTION_SHADOW_STATE_FILENAME = (
 LOSS_CONTEXT_PORTFOLIO_SHADOW_FREEZE_FILENAME = (
     "loss-context-portfolio-shadow-freeze.json"
 )
+TARGETED_TREND_PAIRED_SHADOW_FREEZE_FILENAME = (
+    "targeted-trend-rank-paired-portfolio-freeze.json"
+)
 LOSS_CONTEXT_PAIRED_SHADOW_ROOT = "loss-context-paired-portfolio-shadow"
 LOSS_CONTEXT_PAIRED_SHADOW_SUMMARY_FILENAME = (
     "loss-context-paired-portfolio-shadow-summary.json"
@@ -9584,26 +9587,27 @@ async def run_continuous_paper_session(
             component_started,
         )
 
-        loss_context_freeze_path = (
+        legacy_loss_context_freeze_path = (
             root / LOSS_CONTEXT_PORTFOLIO_SHADOW_FREEZE_FILENAME
         )
-        # A separately frozen D-087 trial can use the existing complete
-        # matched portfolio simulator even while the unrelated legacy
-        # historical-composition gate remains blocked by old missing features.
-        # Its source was selected retrospectively, so this is an independent
-        # future-only shadow comparison, never active trading authority.
+        targeted_trend_freeze_path = (
+            root / TARGETED_TREND_PAIRED_SHADOW_FREEZE_FILENAME
+        )
+        # Independently selected D-087 shadow freezes NEVER occupy the
+        # original historically certified composition candidate path.
+        # Preserve any already-active trial identity across worker upgrades.
         if (
-            not loss_context_freeze_path.exists()
+            not targeted_trend_freeze_path.exists()
+            and not legacy_loss_context_freeze_path.exists()
             and prospective_trend_outside_top10_restore_error is None
         ):
             component_started = time.perf_counter()
             try:
                 activate_targeted_trend_paired_freeze(
-                    loss_context_freeze_path,
+                    targeted_trend_freeze_path,
                     prospective_trend_outside_top10_state,
                     paired_state_path=(
-                        root
-                        / LOSS_CONTEXT_PAIRED_SHADOW_ROOT
+                        root / LOSS_CONTEXT_PAIRED_SHADOW_ROOT
                         / "paired-shadow-state.json"
                     ),
                 )
@@ -9615,6 +9619,11 @@ async def run_continuous_paper_session(
                 "targeted_trend_paired_shadow_freeze",
                 component_started,
             )
+        loss_context_freeze_path = (
+            targeted_trend_freeze_path
+            if targeted_trend_freeze_path.exists()
+            else legacy_loss_context_freeze_path
+        )
         if loss_context_freeze_path.exists():
             component_started = time.perf_counter()
             try:
