@@ -518,19 +518,55 @@ jobs:
                   text=True,
               )
               run = json.loads(result.stdout)
-              if (
+              if not (
                   run.get("path") == ".github/workflows/continuous-paper.yml"
-                  and run.get("status") == "completed"
-                  and run.get("conclusion") in {"success", "failure"}
                   and run.get("head_branch") == "main"
                   and (run.get("head_repository") or {}).get("full_name")
                   == os.environ["GITHUB_REPOSITORY"]
               ):
-                  head_sha = run.get("head_sha")
-                  if not isinstance(head_sha, str) or len(head_sha) != 40:
+                  continue
+              if run.get("status") == "in_progress":
+                  # Post-handoff research can keep a workflow in_progress
+                  # for hours AFTER the trader and durable state upload
+                  # have succeeded. Those artifacts are valid recovery
+                  # sources and must beat older completed snapshots.
+                  jobs_response = subprocess.run(
+                      [
+                          "gh", "api",
+                          f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}/jobs?per_page=100",
+                      ],
+                      check=True,
+                      capture_output=True,
+                      text=True,
+                  )
+                  jobs = json.loads(jobs_response.stdout).get("jobs", [])
+                  paper_jobs = [
+                      job for job in jobs if job.get("name") == "paper"
+                  ]
+                  if len(paper_jobs) != 1:
                       continue
-                  print(f"{artifact['id']} {head_sha}")
-                  break
+                  successful_steps = {
+                      step.get("name")
+                      for step in paper_jobs[0].get("steps", [])
+                      if step.get("status") == "completed"
+                      and step.get("conclusion") == "success"
+                  }
+                  if not {
+                      "Run continuous paper trader",
+                      "Pack durable continuous paper state",
+                      "Upload durable continuous paper state",
+                  } <= successful_steps:
+                      continue
+              elif not (
+                  run.get("status") == "completed"
+                  and run.get("conclusion") in {"success", "failure"}
+              ):
+                  continue
+              head_sha = run.get("head_sha")
+              if not isinstance(head_sha, str) or len(head_sha) != 40:
+                  continue
+              print(f"{artifact['id']} {head_sha}")
+              break
           PY
           )"
           if [ -n "$ARTIFACT_SELECTION" ]; then
