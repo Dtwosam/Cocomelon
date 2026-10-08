@@ -32,13 +32,13 @@ from cocomelon.research.prospective_combined_entry_filter import (
 from cocomelon.research.prospective_entry_filter import (
     ProspectiveEntryFilterState,
 )
+from cocomelon.research.prospective_top10_rank_filter import (
+    ProspectiveTop10RankFilterState,
+)
 from cocomelon.research.prospective_trend_outside_top10 import (
     ProspectiveTrendOutsideTop10Error,
     ProspectiveTrendOutsideTop10State,
     prospective_trend_outside_top10_comparison,
-)
-from cocomelon.research.prospective_top10_rank_filter import (
-    ProspectiveTop10RankFilterState,
 )
 
 MARKET = MarketId("", "SOL")
