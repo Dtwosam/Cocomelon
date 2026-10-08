@@ -5620,3 +5620,28 @@ def test_high_water_trailing_exit_is_frozen_persistent_and_non_trading() -> None
     assert "prospective-profit-trailing-comparison.json" in workflow
     assert "Upload book-aware dynamic trailing exit economic review" in workflow
     assert "Render frozen high-water trailing exit economics" in workflow
+
+
+def test_five_way_exit_grid_source_is_deferred_nonpromotional() -> None:
+    source = Path(
+        "src/cocomelon/continuous_paper.py"
+    ).read_text(encoding="utf-8")
+    workflow = Path(
+        ".github/workflows/continuous-paper.yml"
+    ).read_text(encoding="utf-8")
+    review = Path(
+        "src/cocomelon/research/prospective_profit_trailing_grid.py"
+    ).read_text(encoding="utf-8")
+
+    assert "prospective_profit_trailing_grid_comparison(" in source
+    assert "PROSPECTIVE_PROFIT_TRAILING_GRID_FILENAME" in source
+    assert "profit_trailing_shadow.shadow" in source
+    assert "prospective-profit-trailing-grid-comparison.json" in workflow
+    assert "Upload full five-way book-aware exit comparison" in workflow
+    assert "Show same-cohort dynamic trailing versus fixed exits" in workflow
+    assert '"candidate_winner_selected": None' in review
+    assert '"threshold_selected_by_hindsight": False' in review
+    assert '"execution_authority": False' in review
+    assert '"promotion_authority": False' in review
+    assert '"ready_for_review": False' in review
+    assert '"account_level_profitability_proven": False' in review
