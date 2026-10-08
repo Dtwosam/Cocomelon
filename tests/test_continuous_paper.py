@@ -5511,3 +5511,27 @@ def test_paper_heartbeat_exposes_pending_and_expired_opening_candidates() -> Non
     assert renderer.count(
         "payload.get('expired_opening_candidate_count', 0)"
     ) == 2
+
+
+def test_isolated_book_aware_profit_target_has_new_durable_shadow() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    workflow = Path(".github/workflows/continuous-paper.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "PROFIT_TARGET_1R_RULE = ProfitLockRule(" in source
+    assert 'rule_id="profit_target_at_1r"' in source
+    assert "exit_on_activation=True" in source
+    assert "PROFIT_TARGET_EXECUTION_SHADOW_STATE_FILENAME" in source
+    assert "rules=(PROFIT_TARGET_1R_RULE,)" in source
+    assert "profit_target_execution_shadow.reconcile_open_positions(" in source
+    assert '"profit_target_one_r_execution_shadow": (' in source
+    assert '"profit_target_shadow_state"' in source
+    assert (
+        "_CompositePositionResearchObserver(\n"
+        "                    profit_lock_execution_shadow,\n"
+        "                    profit_target_execution_shadow,"
+    ) in source
+    assert "profit-target-one-r-execution-shadow-state.json" in workflow
+    assert "profit_target_execution_shadow.shadow.state_payload" in source
