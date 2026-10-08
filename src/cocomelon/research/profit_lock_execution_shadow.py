@@ -1100,6 +1100,10 @@ class ProfitLockExecutionShadow:
                 else str(state.trigger_mark_px)
             ),
             "trigger_event_key": state.trigger_event_key,
+            **(
+                {"peak_gross_r": str(state.peak_gross_r)}
+                if state.peak_gross_r is not None else {}
+            ),
             "latest_mark_timestamp_ms": (
                 state.latest_mark_timestamp_ms
             ),
@@ -1269,6 +1273,9 @@ class ProfitLockExecutionShadow:
                 "trigger_mark_px",
             ),
             trigger_event_key=trigger_event_key,
+            peak_gross_r=_optional_decimal(
+                raw.get("peak_gross_r"), "peak_gross_r"
+            ),
             latest_mark_timestamp_ms=_optional_integer(
                 raw.get("latest_mark_timestamp_ms"),
                 "latest_mark_timestamp_ms",
