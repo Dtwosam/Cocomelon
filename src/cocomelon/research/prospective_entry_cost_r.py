@@ -261,8 +261,10 @@ def prospective_entry_cost_r_comparison(
     markets = {row[0].market.canonical for row in rows}
     side_counts = all(
         len(sides[side]) >= MIN_DIRECTION_RETAINED + MIN_DIRECTION_BLOCKED
-        and per_direction[side]["retained_trades"] >= MIN_DIRECTION_RETAINED
-        and per_direction[side]["blocked_trades"] >= MIN_DIRECTION_BLOCKED
+        and sum(not skipped for _, skipped, _ in sides[side])
+        >= MIN_DIRECTION_RETAINED
+        and sum(skipped for _, skipped, _ in sides[side])
+        >= MIN_DIRECTION_BLOCKED
         for side in ("long", "short")
     )
     return {
