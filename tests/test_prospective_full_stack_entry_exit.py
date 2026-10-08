@@ -307,3 +307,180 @@ def test_full_stack_reports_unevaluable_exact_outcome() -> None:
     assert result["unevaluable_breakeven_outcomes"] == 1
     assert result["economically_evaluated_trades"] == 0
     assert result["integrity_clean"] is False
+
+
+def _economic_fixture(
+    *,
+    last_block_negative: bool = False,
+    all_blocked: bool = False,
+    short_net_negative: bool = False,
+) -> dict[str, object]:
+    start = 40_000_000
+    trades: list[TradeJournalEntry] = []
+    combined: dict[str, object] = {}
+    strikes: dict[str, object] = {}
+    momentum: dict[str, object] = {}
+    outcomes: list[dict[str, object]] = []
+    for index in range(40):
+        blocked = all_blocked or index % 5 == 0
+        loss_block = last_block_negative and index >= 30
+        weak_short = short_net_negative and index % 2 == 1 and not blocked
+        actual = (
+            "-3" if loss_block or weak_short
+            else ("-2" if blocked else "1")
+        )
+        candidate = "-2" if loss_block else ("-1" if weak_short else "3")
+        trade = _trade(
+            f"economic-{index}",
+            direction=(
+                Direction.LONG if index % 2 == 0 else Direction.SHORT
+            ),
+            pnl=actual,
+            opened_at_ms=start + index * 120_000,
+            market=("BTC", "ETH", "SOL", "AVAX")[index % 4],
+        )
+        trades.append(trade)
+        combined[trade.trade_id] = "rank_and_trend" if blocked else None
+        strikes[trade.trade_id] = 0
+        momentum[trade.trade_id] = {"decision": "ADMIT"}
+        if not blocked:
+            outcomes.append(_outcome(trade, candidate_pnl=candidate))
+    return {
+        "trades": tuple(trades),
+        "combined": {
+            "started_at_ms": start,
+            "decision_block_reason_by_trade_id": combined,
+        },
+        "two": {
+            "started_at_ms": start,
+            "decision_prior_strikes": strikes,
+        },
+        "momentum": {
+            "started_at_ms": start,
+            "decision_details": momentum,
+        },
+        "shadow": {"outcomes": outcomes},
+        "breakeven": ProspectiveBreakevenProfitLockState(
+            frozen_at_ms=start - 6 * 60 * 60 * 1_000
+        ),
+    }
+
+
+def _evaluate_fixture(raw: dict[str, object]) -> dict[str, object]:
+    return prospective_full_stack_entry_exit_summary(
+        raw["trades"],
+        raw["combined"],
+        raw["two"],
+        raw["momentum"],
+        raw["shadow"],
+        raw["breakeven"],
+    )
+
+
+def test_full_stack_economic_screen_needs_real_winners_in_each_block() -> None:
+    result = _evaluate_fixture(_economic_fixture())
+    screen = result["economic_viability_screen"]
+    assert result["integrity_clean"] is True
+    assert screen["economic_screen_passes"] is True
+    assert screen["absolute_candidate_profitable"] is True
+    assert screen["both_directions_absolutely_profitable"] is True
+    assert screen["incremental_vs_actual_positive"] is True
+    assert screen["chronological_blocks_all_pass"] is True
+    assert screen["candidate_leave_one_out_robust"] is True
+    assert screen["incremental_leave_one_out_robust"] is True
+    assert screen["evaluated_trades"] == 40
+    assert screen["observed_markets"] == 4
+    assert screen["entry_admitted"] == 32
+    assert screen["entry_blocked"] == 8
+    assert screen["blocked_losers"] == 8
+    assert screen["blocked_winners_forgone"] == 0
+    assert screen["admitted_winners_preserved"] == 32
+    assert screen["admitted_winners_lost_after_exit"] == 0
+    assert screen["by_direction"]["short"]["evaluated_trades"] == 20
+    assert all(
+        block["passes_absolute_and_incremental"]
+        for block in screen["temporal_blocks"]
+    )
+    # Matched trade economics must never count as full account profits.
+    assert screen["ready_for_review"] is False
+    assert screen["portfolio_profitability_proven"] is False
+    assert screen["execution_authority"] is False
+    assert screen["promotion_authority"] is False
+
+
+def test_full_stack_economic_screen_rejects_profitable_total_with_bad_late_block() -> None:
+    result = _evaluate_fixture(_economic_fixture(last_block_negative=True))
+    screen = result["economic_viability_screen"]
+    assert Decimal(screen["full_stack_net_pnl"]) > 0
+    assert Decimal(screen["full_stack_delta_net_pnl"]) > 0
+    assert screen["sample_sufficient"] is True
+    assert screen["chronological_blocks_all_pass"] is False
+    assert screen["temporal_blocks"][-1]["full_stack_net_pnl"] == "-16"
+    assert screen["economic_screen_passes"] is False
+
+
+def test_full_stack_economic_screen_rejects_flat_no_trade_strategy() -> None:
+    result = _evaluate_fixture(_economic_fixture(all_blocked=True))
+    screen = result["economic_viability_screen"]
+    assert screen["evaluated_trades"] == 40
+    assert screen["entry_admitted"] == 0
+    assert screen["full_stack_net_pnl"] == "0"
+    assert screen["absolute_candidate_profitable"] is False
+    assert screen["sample_sufficient"] is False
+    assert screen["economic_screen_passes"] is False
+
+
+def test_full_stack_exit_counts_existing_winner_lost() -> None:
+    start = 45_000_000
+    winner = _trade(
+        "profit-forgone",
+        direction=Direction.SHORT,
+        pnl="4",
+        opened_at_ms=start,
+        market="ETH",
+    )
+    report = prospective_full_stack_entry_exit_summary(
+        (winner,),
+        {
+            "started_at_ms": start,
+            "decision_block_reason_by_trade_id": {winner.trade_id: None},
+        },
+        {
+            "started_at_ms": start,
+            "decision_prior_strikes": {winner.trade_id: 0},
+        },
+        {
+            "started_at_ms": start,
+            "decision_details": {winner.trade_id: {"decision": "ADMIT"}},
+        },
+        {"outcomes": [_outcome(winner, candidate_pnl="-1")]},
+        ProspectiveBreakevenProfitLockState(
+            frozen_at_ms=start - 6 * 60 * 60 * 1_000
+        ),
+    )
+    screen = report["economic_viability_screen"]
+    assert screen["admitted_winners_preserved"] == 0
+    assert screen["admitted_winners_lost_after_exit"] == 1
+    assert screen["blocked_winners_forgone"] == 0
+    assert screen["exit_incremental_net_pnl"] == "-5"
+    assert screen["economic_screen_passes"] is False
+
+
+def test_full_stack_cannot_hide_negative_short_trade_economics() -> None:
+    result = _evaluate_fixture(_economic_fixture(short_net_negative=True))
+    screen = result["economic_viability_screen"]
+    assert screen["sample_sufficient"] is True
+    assert Decimal(screen["full_stack_net_pnl"]) > 0
+    assert Decimal(screen["full_stack_delta_net_pnl"]) > 0
+    assert screen["chronological_blocks_all_pass"] is True
+    assert Decimal(screen["by_direction"]["long"]["net_pnl"]) > 0
+    assert Decimal(screen["by_direction"]["short"]["net_pnl"]) < 0
+    assert screen["both_directions_absolutely_profitable"] is False
+    assert screen["direction_absolute_profitability"] == {
+        "long": True,
+        "short": False,
+    }
+    assert screen["economic_screen_passes"] is False
+    # No blanket ban is authorized by this finding.
+    assert screen["execution_authority"] is False
+    assert screen["promotion_authority"] is False
