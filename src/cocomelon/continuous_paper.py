@@ -332,9 +332,6 @@ from cocomelon.research.prospective_full_stack_capacity_reflow import (
 from cocomelon.research.prospective_full_stack_entry_exit import (
     prospective_full_stack_entry_exit_summary,
 )
-from cocomelon.research.prospective_profit_target_one_r_comparison import (
-    prospective_profit_target_one_r_comparison,
-)
 from cocomelon.research.prospective_full_stack_exit_capacity_reflow import (
     prospective_full_stack_exit_capacity_reflow,
 )
@@ -355,6 +352,9 @@ from cocomelon.research.prospective_momentum_band_forward_markout import (
 from cocomelon.research.prospective_momentum_pullback_entry import (
     ProspectiveMomentumPullbackEntryState,
     evaluate_prospective_momentum_pullback_entry,
+)
+from cocomelon.research.prospective_profit_target_one_r_comparison import (
+    prospective_profit_target_one_r_comparison,
 )
 from cocomelon.research.prospective_range_compression_entry import (
     ProspectiveRangeCompressionEntryState,
