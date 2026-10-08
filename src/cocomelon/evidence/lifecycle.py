@@ -398,6 +398,10 @@ class BaselineReplayPipeline:
         return self._opening.pending_markets
 
     @property
+    def expired_opening_candidate_count(self) -> int:
+        return self._opening.expired_candidate_count
+
+    @property
     def runtime_max_ms_by_component(self) -> dict[str, int]:
         return dict(self._runtime_max_ms_by_component)
 

@@ -491,3 +491,97 @@ def test_opening_candidate_filter_blocks_before_risk_or_execution(
     assert adapter.account.positions == ()
     assert candidate_filter.calls == [(BTC.canonical, eligible_ms)]
     adapter.close()
+
+
+def test_unavailable_head_candidate_expires_before_next_decision_epoch(
+    tmp_path: Path,
+) -> None:
+    # Before this fix the oldest missing-book candidate could remain at
+    # index zero forever and suppress risk reviews for later decision epochs.
+    from cocomelon.evidence.epochs import DECISION_INTERVAL_MS
+
+    adapter = _adapter(tmp_path / "expired-head-blocking.sqlite3")
+    state = _state(BTC, ETH)
+    config = BaselineReplayConfig()
+    engine = BaselineOpeningEngine(config, adapter, state)
+    engine.stage_epoch(_epoch(BTC, ETH))
+
+    first_book_ms = EVALUATED_AT_MS + config.execution.latency_ms
+    assert engine.on_book(_book(ETH, receive_ms=first_book_ms), first_book_ms) == ()
+    assert tuple(market.canonical for market in engine.pending_markets) == (
+        "BTC", "ETH"
+    )
+
+    expired_at_ms = (
+        EVALUATED_AT_MS + DECISION_INTERVAL_MS + config.decision_grace_ms + 1
+    )
+    engine.stage_epoch(
+        DecisionEpoch(
+            boundary_ms=expired_at_ms - 30_000,
+            evaluated_at_ms=expired_at_ms,
+            markets=(_evaluation(ETH),),
+        )
+    )
+    # Both old candidates are now gone; a valid later decision can reach
+    # the execution/risk evaluator rather than waiting behind the old BTC.
+    assert tuple(m.canonical for m in engine.pending_markets) == ("ETH",)
+    assert engine.expired_candidate_count == 2
+
+    fresh_book_at_ms = expired_at_ms + config.execution.latency_ms
+    outcomes = engine.on_book(
+        _book(ETH, receive_ms=fresh_book_at_ms),
+        fresh_book_at_ms,
+    )
+    assert len(outcomes) == 1
+    assert outcomes[0].risk_decision.market == ETH
+    assert engine.pending_markets == ()
+    assert engine.expired_candidate_count == 2
+    adapter.close()
+
+
+def test_expired_opening_never_trades_even_when_fresh_book_arrives_later(
+    tmp_path: Path,
+) -> None:
+    from cocomelon.evidence.epochs import DECISION_INTERVAL_MS
+
+    adapter = _adapter(tmp_path / "do-not-resurrect.sqlite3")
+    config = BaselineReplayConfig()
+    engine = BaselineOpeningEngine(config, adapter, _state(BTC))
+    engine.stage_epoch(_epoch(BTC))
+
+    # A newly received book cannot revive an old decision from the prior
+    # cycle, including a favorable price/book that arrives after the cutoff.
+    too_late_ms = (
+        EVALUATED_AT_MS + DECISION_INTERVAL_MS + config.decision_grace_ms + 1
+    )
+    assert engine.on_book(_book(BTC, receive_ms=too_late_ms), too_late_ms) == ()
+    assert engine.take_traces() == ()
+    assert engine.pending_markets == ()
+    assert engine.expired_candidate_count == 1
+    assert adapter.account.positions == ()
+    adapter.close()
+
+
+def test_opening_expiry_is_strictly_after_existing_strategy_age_limit(
+    tmp_path: Path,
+) -> None:
+    from cocomelon.evidence.epochs import DECISION_INTERVAL_MS
+
+    adapter = _adapter(tmp_path / "expiry-boundary.sqlite3")
+    config = BaselineReplayConfig()
+    engine = BaselineOpeningEngine(config, adapter, _state(BTC))
+    engine.stage_epoch(_epoch(BTC))
+    deadline_ms = (
+        EVALUATED_AT_MS + DECISION_INTERVAL_MS + config.decision_grace_ms
+    )
+    # Reaching the exact shared strategy-freshness deadline is allowed;
+    # one millisecond beyond it is not.
+    engine.on_book(_book(ETH, receive_ms=deadline_ms), deadline_ms)
+    assert engine.pending_markets == (BTC,)
+    assert engine.expired_candidate_count == 0
+    engine.on_book(
+        _book(ETH, receive_ms=deadline_ms + 1), deadline_ms + 1
+    )
+    assert engine.pending_markets == ()
+    assert engine.expired_candidate_count == 1
+    adapter.close()

@@ -807,3 +807,12 @@ Historical feature-snapshot gaps are real missing evidence, not permission to re
 Only consider trades **opened strictly after** this anchor; exclude any carryover positions opened before it even if they close later. Report both LONG and SHORT, actual net closed-trade economics, market breadth and missing feature/decision context. Research-discovery readiness requires at least 72 elapsed hours, 30 forward closed trades, 4 distinct markets, 6 non-losing controls, and complete source lineage. These are **data-readiness minima**, not profitability claims. The old complete-historical-baseline gate stays mandatory for the existing historical candidate pipeline. This separate cohort does not feed existing candidate freezes, change risk/strategy, grant paper execution or live execution, or waive D-054 paired shadow absolute net account profitability requirements. A distinct future validation/promotion design must be reviewed against genuine out-of-sample economics.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-065 — Expire queued opening candidates when their original strategy decision is no longer fresh
+
+The deterministic baseline opening queue orders same-epoch directional candidates by evaluation timestamp and canonical market key to share a single risk budget. Do **not** abandon that ordering or force a new entry when an earlier market lacks a fresh book. However, a missing-book candidate must **not** persist indefinitely into subsequent strategy-decision epochs: it could eventually trade based on a materially obsolete strategy decision and indefinitely block newer opportunities.
+
+Pending candidates expire strictly after `DECISION_INTERVAL_MS + decision_grace_ms` from the original epoch evaluation timestamp (the existing lifecycle strategy-freshness limit), both when newer epochs are staged and before any L2 execution attempt. Drop expired candidates **without** a risk evaluation, execution order, invented market data, or replacement signal. Keep within-window ordering and all original risk/execution/data-freshness checks unchanged. Surface the number of currently pending and cumulatively expired paper opening candidates in the operational heartbeat; investigate whether counts explain the gap between directional decisions and actual risk reviews before changing the strategy. This is a conservative **paper-entry safety** repair and not proof of positive expectancy, an automatic strategy promotion, or live-trading authority.
+
+**LIVE TRADING: DISABLED.**

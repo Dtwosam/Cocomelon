@@ -16,7 +16,12 @@ from cocomelon.domain.strategy import Direction
 from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.evidence.baseline import RecordedStateBook
 from cocomelon.evidence.contracts import BaselineReplayConfig
-from cocomelon.evidence.epochs import DecisionEpoch, EpochMarketEvaluation, _effective_snapshot
+from cocomelon.evidence.epochs import (
+    DECISION_INTERVAL_MS,
+    DecisionEpoch,
+    EpochMarketEvaluation,
+    _effective_snapshot,
+)
 from cocomelon.execution.accounting import risk_state_from_paper
 from cocomelon.execution.interface import OpeningSubmission
 from cocomelon.execution.paper import PaperExecutionAdapter
@@ -149,6 +154,27 @@ class BaselineOpeningEngine:
         self._pending: list[_PendingOpening] = []
         self._books: dict[str, StreamEvent] = {}
         self._traces: list[BaselineOpeningTrace] = []
+        self._expired_candidate_count = 0
+
+    @property
+    def expired_candidate_count(self) -> int:
+        return self._expired_candidate_count
+
+    def _expire_pending(self, now_ms: int) -> None:
+        # Mirrors the lifecycle's strategy-freshness deadline. A missing or
+        # repeatedly stale book must never retain authority to open a trade
+        # from a past decision epoch, or block newer epochs forever.
+        max_age_ms = DECISION_INTERVAL_MS + self._config.decision_grace_ms
+        retained: list[_PendingOpening] = []
+        for candidate in self._pending:
+            if (
+                now_ms >= candidate.evaluated_at_ms
+                and now_ms - candidate.evaluated_at_ms > max_age_ms
+            ):
+                self._expired_candidate_count += 1
+            else:
+                retained.append(candidate)
+        self._pending = retained
 
     @property
     def pending_markets(self) -> tuple[MarketId, ...]:
@@ -160,6 +186,7 @@ class BaselineOpeningEngine:
         return traces
 
     def stage_epoch(self, epoch: DecisionEpoch) -> None:
+        self._expire_pending(epoch.evaluated_at_ms)
         directional = tuple(
             item
             for item in epoch.markets
@@ -295,6 +322,7 @@ class BaselineOpeningEngine:
         received_ms = _receive_ms(book)
         if received_ms > now_ms:
             raise ValueError("book cannot be consumed before receive time")
+        self._expire_pending(now_ms)
         existing = self._books.get(book.market.canonical)
         if existing is None or _receive_ms(existing) <= received_ms:
             self._books[book.market.canonical] = book

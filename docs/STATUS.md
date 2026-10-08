@@ -5041,3 +5041,12 @@ The active paper heartbeat on merged PR #1013 reported **ready=0, stale=20/20 on
 The final operational heartbeat now samples `utc_now_ms()` at emission time, after awaited network work. Added a source regression test preserving the strict existing exchange-time freshness check and keeping execution, risk, entry decisions, subscription recovery, and strategy unchanged. Compare post-deployment fresh-clock lane health against independent pipeline-readiness evidence; neither a passing status check nor this diagnostic fix demonstrates profitable trades.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Expiration of orphaned queued paper opening decisions — 2026-10-08
+
+The live paper decision path reported 6 directional signals in a sampled 15-minute epoch but 0 risk evaluations despite deep-ready markets; that **does not establish a broken signal** on its own. Repository investigation uncovered a plausible independent pipeline starvation defect: `BaselineOpeningEngine.on_book()` breaks at the first queued market without a usable book, leaving earlier entries indefinitely queued even after more decision epochs; an old strategy decision could eventually be submitted if a book arrived very late.
+
+Introduced fail-closed expiration of queued candidates at the established 15-minute decision interval plus 30-second decision grace, both on new epochs and book events. Expiry does not submit or approve trades, and the deterministic chronological/canonical execution ordering of still-fresh candidates is unchanged. Added regression cases for old head-of-line blocking, expired decisions never resurrected by later L2 books, and exact boundary behavior. Added heartbeat counters for queued and expired candidates so subsequent mainnet observations can distinguish actual strategy/risk bottlenecks from wait-for-book behavior.
+
+This is **not** a claim of trading profitability or a side filter. Prospective account-level net return, after-cost baseline comparison, drawdown and paired-shadow evidence remain mandatory before strategy promotion. Continue recording both LONG and SHORT and NO_TRADE with real market context. **LIVE TRADING: DISABLED.**
