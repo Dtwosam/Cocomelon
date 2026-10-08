@@ -1075,7 +1075,7 @@ def test_cost_reserved_profit_floor_triggers_before_gross_only_lock(
     assert outcome["candidate_source"] == "visible_book_ioc"
     assert outcome["simulated_close_complete"] is True
     assert Decimal(outcome["candidate_net_pnl_estimate"]) > 0
-    assert outcome["simulated_filled_quantity"] == "10"
+    assert Decimal(outcome["simulated_filled_quantity"]) == Decimal("10")
 
 
 def test_cost_reserved_trailing_freeze_survives_restart_with_original_history() -> None:
