@@ -318,8 +318,9 @@ def _full_stack_economic_screen(
         len(rows) >= MIN_SCREEN_TRADES
         and len(by_market) >= MIN_SCREEN_MARKETS
         and all(
-            cohort["evaluated_trades"] >= MIN_SCREEN_DIRECTION_TRADES
-            for cohort in by_side.values()
+            sum(row[0].direction.value == side for row in rows)
+            >= MIN_SCREEN_DIRECTION_TRADES
+            for side in ("long", "short")
         )
         and entry_admitted >= MIN_SCREEN_ADMITTED_TRADES
         and entry_blocked >= MIN_SCREEN_BLOCKED_TRADES
