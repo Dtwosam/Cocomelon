@@ -5645,3 +5645,27 @@ def test_five_way_exit_grid_source_is_deferred_nonpromotional() -> None:
     assert '"promotion_authority": False' in review
     assert '"ready_for_review": False' in review
     assert '"account_level_profitability_proven": False' in review
+
+
+def test_operational_exit_preview_is_live_and_research_only() -> None:
+    source = Path(
+        "src/cocomelon/continuous_paper.py"
+    ).read_text(encoding="utf-8")
+    renderer = Path(
+        "scripts/render_continuous_paper_live_status.py"
+    ).read_text(encoding="utf-8")
+    first = source.index("def _operational_live_status_payload(")
+    last = source.index("def _emit_operational_live_status(", first)
+    hot = source[first:last]
+
+    assert "def _open_trailing_profit_preview(" in source
+    assert '"open_trailing_profit_preview": (' in hot
+    assert "_open_trailing_profit_preview(" in hot
+    assert "profit_trailing_execution_shadow=profit_trailing_shadow" in source
+    assert source.count(
+        "profit_trailing_execution_shadow=profit_trailing_shadow"
+    ) == 4
+    assert '"execution_authority": False' in source
+    assert "a high-water theoretical mark stop" in source.lower()
+    assert "### High-water trailing exit preview" in renderer
+    assert "Actual paper stops, orders and risk limits are unchanged" in renderer
