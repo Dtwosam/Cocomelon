@@ -353,6 +353,9 @@ from cocomelon.research.prospective_momentum_pullback_entry import (
     ProspectiveMomentumPullbackEntryState,
     evaluate_prospective_momentum_pullback_entry,
 )
+from cocomelon.research.prospective_profit_trailing_grid import (
+    prospective_profit_trailing_grid_comparison,
+)
 from cocomelon.research.prospective_profit_target_one_r_comparison import (
     prospective_profit_target_one_r_comparison,
     prospective_profit_target_threshold_comparison,
@@ -484,6 +487,9 @@ PROSPECTIVE_PROFIT_TARGET_THRESHOLD_COMPARISON_FILENAME = (
 )
 PROSPECTIVE_PROFIT_TRAILING_COMPARISON_FILENAME = (
     "prospective-profit-trailing-comparison.json"
+)
+PROSPECTIVE_PROFIT_TRAILING_GRID_FILENAME = (
+    "prospective-profit-trailing-grid-comparison.json"
 )
 PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME = (
     "prospective-full-stack-forward-markout-summary.json"
@@ -11040,6 +11046,65 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / PROSPECTIVE_PROFIT_TRAILING_COMPARISON_FILENAME,
                 profit_trailing_comparison,
+            )
+            if any(
+                observer.shadow is None
+                for observer in (
+                    profit_target_execution_shadow,
+                    profit_target_one_half_shadow,
+                    profit_trailing_shadow,
+                    profit_lock_execution_shadow,
+                )
+            ):
+                profit_trailing_grid = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "ready_for_review": False,
+                    "error": (
+                        profit_trailing_shadow.error
+                        or profit_target_execution_shadow.error
+                        or profit_target_one_half_shadow.error
+                        or profit_lock_execution_shadow.error
+                        or "five-way shadow exit observation unavailable"
+                    ),
+                }
+            else:
+                try:
+                    one_r_state = profit_target_execution_shadow.shadow
+                    one_half_state = profit_target_one_half_shadow.shadow
+                    trailing_state = profit_trailing_shadow.shadow
+                    baseline_state = profit_lock_execution_shadow.shadow
+                    assert one_r_state is not None
+                    assert one_half_state is not None
+                    assert trailing_state is not None
+                    assert baseline_state is not None
+                    profit_trailing_grid = (
+                        prospective_profit_trailing_grid_comparison(
+                            tuple(journal.iter_trades()),
+                            one_r_state.state_payload(),
+                            one_half_state.state_payload(),
+                            trailing_state.state_payload(),
+                            baseline_state.state_payload(),
+                        )
+                    )
+                except Exception as exc:
+                    profit_trailing_grid = {
+                        "enabled": False,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                        "ready_for_review": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                else:
+                    profit_trailing_grid = dict(profit_trailing_grid)
+                    profit_trailing_grid["enabled"] = True
+                    profit_trailing_grid["error"] = None
+            _write_json_atomic(
+                root / PROSPECTIVE_PROFIT_TRAILING_GRID_FILENAME,
+                profit_trailing_grid,
             )
             full_stack_capacity_reflow = (
                 _prospective_full_stack_capacity_reflow_payload(
