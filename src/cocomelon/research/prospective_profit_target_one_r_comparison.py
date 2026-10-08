@@ -13,6 +13,7 @@ from cocomelon.research.profit_lock_execution_shadow import (
 
 ZERO: Final = Decimal("0")
 TAKE_PROFIT_RULE_ID: Final = "profit_target_at_1r"
+TAKE_PROFIT_ONE_HALF_RULE_ID: Final = "profit_target_at_1_5r"
 BREAKEVEN_RULE_ID: Final = "breakeven_after_0_5r"
 MIN_PAIRED_TRADES: Final = 40
 MIN_DIRECTION_TRADES: Final = 10
@@ -40,20 +41,30 @@ def _verified_outcomes(
         raise ProspectiveProfitTargetComparisonError(
             "shadow state schema mismatch"
         )
-    expected_rules = (
-        [{
+    if rule_id == TAKE_PROFIT_RULE_ID:
+        expected_rules = [{
             "rule_id": TAKE_PROFIT_RULE_ID,
             "activate_at_r": "1",
             "lock_at_r": "1",
             "exit_on_activation": "true",
         }]
-        if rule_id == TAKE_PROFIT_RULE_ID
-        else [{
+    elif rule_id == TAKE_PROFIT_ONE_HALF_RULE_ID:
+        expected_rules = [{
+            "rule_id": TAKE_PROFIT_ONE_HALF_RULE_ID,
+            "activate_at_r": "1.5",
+            "lock_at_r": "1.5",
+            "exit_on_activation": "true",
+        }]
+    elif rule_id == BREAKEVEN_RULE_ID:
+        expected_rules = [{
             "rule_id": rule.rule_id,
             "activate_at_r": str(rule.activate_at_r),
             "lock_at_r": str(rule.lock_at_r),
         } for rule in DEFAULT_PROFIT_LOCK_RULES]
-    )
+    else:
+        raise ProspectiveProfitTargetComparisonError(
+            "unsupported frozen exit candidate"
+        )
     if state.get("rules") != expected_rules:
         raise ProspectiveProfitTargetComparisonError(
             "frozen exit rule identity drift"
@@ -160,8 +171,36 @@ def prospective_profit_target_one_r_comparison(
     target_shadow_state: object,
     breakeven_shadow_state: object,
 ) -> dict[str, object]:
+    return _prospective_profit_target_comparison(
+        trades,
+        target_shadow_state,
+        breakeven_shadow_state,
+        target_rule_id=TAKE_PROFIT_RULE_ID,
+    )
+
+
+def prospective_profit_target_one_half_r_comparison(
+    trades: Sequence[TradeJournalEntry],
+    target_shadow_state: object,
+    breakeven_shadow_state: object,
+) -> dict[str, object]:
+    return _prospective_profit_target_comparison(
+        trades,
+        target_shadow_state,
+        breakeven_shadow_state,
+        target_rule_id=TAKE_PROFIT_ONE_HALF_RULE_ID,
+    )
+
+
+def _prospective_profit_target_comparison(
+    trades: Sequence[TradeJournalEntry],
+    target_shadow_state: object,
+    breakeven_shadow_state: object,
+    *,
+    target_rule_id: str,
+) -> dict[str, object]:
     target_start, target_outcomes, target_integrity = _verified_outcomes(
-        target_shadow_state, rule_id=TAKE_PROFIT_RULE_ID
+        target_shadow_state, rule_id=target_rule_id
     )
     breakeven_start, breakeven_outcomes, breakeven_integrity = _verified_outcomes(
         breakeven_shadow_state, rule_id=BREAKEVEN_RULE_ID
@@ -370,7 +409,7 @@ def prospective_profit_target_one_r_comparison(
     )
     return {
         "schema_version": 1,
-        "candidate_id": TAKE_PROFIT_RULE_ID,
+        "candidate_id": target_rule_id,
         "benchmark_id": BREAKEVEN_RULE_ID,
         "research_only": True,
         "execution_authority": False,
@@ -383,6 +422,7 @@ def prospective_profit_target_one_r_comparison(
         "breakeven_shadow_started_at_ms": breakeven_start,
         "prospective_closed_trades": len(prospective),
         "matched_trades": len(pairs),
+        "paired_trade_ids": [trade.trade_id for trade, _, _ in pairs],
         "observed_markets": len(markets),
         "target_triggered_trades": target_triggered,
         "target_full_ioc_closes": target_complete,
