@@ -778,3 +778,12 @@ The eligible checkpoint history is divided into three chronological later blocks
 **Safety:** This avoids guaranteed-invalid downstream jobs without weakening evidence standards, changing paper-trader continuity or accounting, or changing strategy, direction, risk, sizing, stops, cooldown, promotion, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-062 — Paired loss-context review evidence must reconcile to accounts
+
+Do not admit a frozen loss-context portfolio filter for review based on self-reported A/B deltas alone. Every hash-chained paired-shadow review row must reconcile candidate-minus-baseline equity, total account PnL, realized net PnL, and maximum drawdown directly to its two independent paper account snapshots. Context blocks attributed by market plus explicit legacy unattributed blocks must equal the total blocked attempts; otherwise that checkpoint is invalid evidence, not a partial win.
+
+Keep frozen candidate/loss-context lineage and prospective boundary unchanged across a ledger, and reject backward record counters as a continuity failure. These are data-integrity checks for D-054, not relaxed readiness criteria or additional market-direction rules. Fail closed on inconsistent evidence without affecting the ordinary paper account, opening behavior, risk limits, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
