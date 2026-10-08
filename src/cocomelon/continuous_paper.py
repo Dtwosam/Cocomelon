@@ -353,6 +353,9 @@ from cocomelon.research.prospective_momentum_pullback_entry import (
     ProspectiveMomentumPullbackEntryState,
     evaluate_prospective_momentum_pullback_entry,
 )
+from cocomelon.research.prospective_net_reserved_trailing import (
+    prospective_net_reserved_trailing_comparison,
+)
 from cocomelon.research.prospective_profit_target_one_r_comparison import (
     prospective_profit_target_one_r_comparison,
     prospective_profit_target_threshold_comparison,
@@ -452,6 +455,16 @@ TRAILING_PROFIT_1R_RULE = ProfitLockRule(
 TRAILING_PROFIT_1R_SHADOW_STATE_FILENAME = (
     "profit-trailing-one-r-execution-shadow-state.json"
 )
+NET_RESERVED_TRAILING_RULE = ProfitLockRule(
+    rule_id="trail_peak_after_1r_by_0_5r_net_reserved_0_25r",
+    activate_at_r=Decimal("1"),
+    lock_at_r=Decimal("0.5"),
+    trail_by_r=Decimal("0.5"),
+    minimum_estimated_net_lock_r=Decimal("0.25"),
+)
+NET_RESERVED_TRAILING_SHADOW_STATE_FILENAME = (
+    "net-reserved-trailing-execution-shadow-state.json"
+)
 PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-entry-filter-state.json"
 )
@@ -490,6 +503,9 @@ PROSPECTIVE_PROFIT_TRAILING_COMPARISON_FILENAME = (
 )
 PROSPECTIVE_PROFIT_TRAILING_GRID_FILENAME = (
     "prospective-profit-trailing-grid-comparison.json"
+)
+PROSPECTIVE_NET_RESERVED_TRAILING_FILENAME = (
+    "prospective-net-reserved-trailing-comparison.json"
 )
 PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME = (
     "prospective-full-stack-forward-markout-summary.json"
@@ -9242,6 +9258,17 @@ async def run_continuous_paper_session(
             opening_plan_loader=execution.store.load_plan,
         )
     )
+    net_reserved_trailing_shadow = (
+        _ContinuousProfitLockExecutionShadowSink(
+            _restore_profit_lock_execution_shadow(
+                root / NET_RESERVED_TRAILING_SHADOW_STATE_FILENAME,
+                replay_config.execution,
+                started_at_ms=started_at_ms,
+                rules=(NET_RESERVED_TRAILING_RULE,),
+            ),
+            opening_plan_loader=execution.store.load_plan,
+        )
+    )
     delayed_entry_execution_shadow = (
         _ContinuousDelayedEntryExecutionShadowSink(
             _restore_delayed_entry_execution_shadow(
@@ -9285,6 +9312,9 @@ async def run_continuous_paper_session(
         execution.account.positions
     )
     profit_trailing_shadow.reconcile_open_positions(
+        execution.account.positions
+    )
+    net_reserved_trailing_shadow.reconcile_open_positions(
         execution.account.positions
     )
     delayed_entry_execution_shadow.reconcile_open_positions(
@@ -9539,6 +9569,7 @@ async def run_continuous_paper_session(
                     profit_target_execution_shadow,
                     profit_target_one_half_shadow,
                     profit_trailing_shadow,
+                    net_reserved_trailing_shadow,
                     delayed_entry_execution_shadow,
                     delayed_entry_120s_execution_shadow,
                     original_stop_book_capture,
@@ -9822,6 +9853,16 @@ async def run_continuous_paper_session(
                         timed_component(
                             "profit_trailing_shadow_state",
                             profit_trailing_shadow.shadow.state_payload,
+                        ),
+                    )
+                )
+            if net_reserved_trailing_shadow.shadow is not None:
+                payloads.append(
+                    (
+                        root / NET_RESERVED_TRAILING_SHADOW_STATE_FILENAME,
+                        timed_component(
+                            "net_reserved_trailing_shadow_state",
+                            net_reserved_trailing_shadow.shadow.state_payload,
                         ),
                     )
                 )
@@ -11235,6 +11276,59 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / PROSPECTIVE_PROFIT_TRAILING_GRID_FILENAME,
                 profit_trailing_grid,
+            )
+            if (
+                net_reserved_trailing_shadow.shadow is None
+                or profit_trailing_shadow.shadow is None
+                or profit_lock_execution_shadow.shadow is None
+            ):
+                net_reserved_trailing_report = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "ready_for_review": False,
+                    "error": (
+                        net_reserved_trailing_shadow.error
+                        or profit_trailing_shadow.error
+                        or profit_lock_execution_shadow.error
+                        or "net-reserved trailing evidence unavailable"
+                    ),
+                }
+            else:
+                try:
+                    net_shadow = net_reserved_trailing_shadow.shadow
+                    orig_shadow = profit_trailing_shadow.shadow
+                    base_shadow = profit_lock_execution_shadow.shadow
+                    assert net_shadow is not None
+                    assert orig_shadow is not None
+                    assert base_shadow is not None
+                    net_reserved_trailing_report = (
+                        prospective_net_reserved_trailing_comparison(
+                            tuple(journal.iter_trades()),
+                            net_shadow.state_payload(),
+                            orig_shadow.state_payload(),
+                            base_shadow.state_payload(),
+                        )
+                    )
+                except Exception as exc:
+                    net_reserved_trailing_report = {
+                        "enabled": False,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                        "ready_for_review": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                else:
+                    net_reserved_trailing_report = dict(
+                        net_reserved_trailing_report
+                    )
+                    net_reserved_trailing_report["enabled"] = True
+                    net_reserved_trailing_report["error"] = None
+            _write_json_atomic(
+                root / PROSPECTIVE_NET_RESERVED_TRAILING_FILENAME,
+                net_reserved_trailing_report,
             )
             full_stack_capacity_reflow = (
                 _prospective_full_stack_capacity_reflow_payload(
