@@ -660,3 +660,178 @@ def test_one_half_r_shadow_refuses_older_precommitted_one_r_rule_state() -> None
         match="rule mismatch",
     ):
         new_target.restore_state(old_target.state_payload())
+
+
+TRAILING_PROFIT_RULE = ProfitLockRule(
+    rule_id="trail_peak_after_1r_by_0_5r",
+    activate_at_r=Decimal("1"),
+    lock_at_r=Decimal("0.5"),
+    trail_by_r=Decimal("0.5"),
+)
+
+
+@pytest.mark.parametrize(
+    ("side", "first", "peak", "pullback", "trigger", "bid", "ask", "actual"),
+    [
+        (PositionSide.LONG, "110", "120", "117", "114", "113.9", "114.1", "90"),
+        (PositionSide.SHORT, "90", "80", "83", "86", "85.9", "86.1", "110"),
+    ],
+)
+def test_high_water_trailing_protects_profit_without_capping_initial_winner(
+    side: PositionSide,
+    first: str,
+    peak: str,
+    pullback: str,
+    trigger: str,
+    bid: str,
+    ask: str,
+    actual: str,
+) -> None:
+    position = _position(side=side)
+    shadow = ProfitLockExecutionShadow(
+        _config(), started_at_ms=500, rules=(TRAILING_PROFIT_RULE,)
+    )
+    shadow.observe_mark((position,), _mark(first, 1_500), now_ms=1_500)
+    state = shadow.open_rule_state_payloads(
+        TRAILING_PROFIT_RULE.rule_id
+    )[0]["rule"]
+    assert state["activated_at_ms"] == 1_500
+    assert state["triggered_at_ms"] is None
+    assert state["peak_gross_r"] == "1"
+
+    shadow.observe_mark((position,), _mark(peak, 1_700), now_ms=1_700)
+    shadow.observe_mark(
+        (position,), _mark(pullback, 1_800), now_ms=1_800
+    )
+    state = shadow.open_rule_state_payloads(
+        TRAILING_PROFIT_RULE.rule_id
+    )[0]["rule"]
+    assert state["peak_gross_r"] == "2"
+    assert state["triggered_at_ms"] is None
+
+    shadow.observe_mark(
+        (position,), _mark(trigger, 1_900), now_ms=1_900
+    )
+    state = shadow.open_rule_state_payloads(
+        TRAILING_PROFIT_RULE.rule_id
+    )[0]["rule"]
+    assert state["peak_gross_r"] == "2"
+    assert state["triggered_at_ms"] == 1_900
+    assert state["filled_quantity"] == "0"
+
+    shadow.observe_book(
+        (position,),
+        _instrument(),
+        _book(receive_ms=2_700, bid=bid, ask=ask),
+        reference_price=Decimal(trigger),
+        now_ms=2_700,
+    )
+    shadow.record_closed_trade(_trade(position, exit_price=actual))
+    outcome = shadow.state_payload()["outcomes"][0]
+    assert outcome["candidate_source"] == "visible_book_ioc"
+    assert outcome["simulated_close_complete"] is True
+    assert Decimal(outcome["candidate_net_pnl_estimate"]) > Decimal("13")
+    assert Decimal(outcome["simulated_exit_fees"]) > 0
+
+
+def test_trailing_rule_has_no_lookahead_and_no_mark_only_profit() -> None:
+    position = _position()
+    shadow = ProfitLockExecutionShadow(
+        _config(), started_at_ms=500, rules=(TRAILING_PROFIT_RULE,)
+    )
+    shadow.observe_mark(
+        (position,), _mark("120", 1_500), now_ms=1_500
+    )
+    shadow.observe_mark(
+        (position,), _mark("114", 2_000), now_ms=2_000
+    )
+    shadow.record_closed_trade(_trade(position))
+    outcome = shadow.state_payload()["outcomes"][0]
+    assert outcome["triggered"] is True
+    assert outcome["candidate_source"] == "triggered_incomplete"
+    assert outcome["candidate_net_pnl_estimate"] is None
+
+
+def test_trailing_peak_survives_exact_restart_and_rejects_corruption() -> None:
+    position = _position()
+    trailing = ProfitLockExecutionShadow(
+        _config(), started_at_ms=500, rules=(TRAILING_PROFIT_RULE,)
+    )
+    trailing.observe_mark(
+        (position,), _mark("120", 1_500), now_ms=1_500
+    )
+    payload = trailing.state_payload()
+    assert payload["rules"][0]["trail_by_r"] == "0.5"
+    assert payload["positions"][0]["rules"][0]["peak_gross_r"] == "2"
+
+    restored = ProfitLockExecutionShadow(
+        _config(), started_at_ms=9_999, rules=(TRAILING_PROFIT_RULE,)
+    )
+    restored.restore_state(payload)
+    restored.observe_mark(
+        (position,), _mark("114", 2_000), now_ms=2_000
+    )
+    assert restored.open_rule_state_payloads(
+        TRAILING_PROFIT_RULE.rule_id
+    )[0]["rule"]["triggered_at_ms"] == 2_000
+
+    old = _shadow()
+    with pytest.raises(
+        ProfitLockExecutionShadowError, match="rule mismatch"
+    ):
+        old.restore_state(payload)
+    with pytest.raises(
+        ProfitLockExecutionShadowError, match="rule mismatch"
+    ):
+        trailing.restore_state(old.state_payload())
+
+    payload["positions"][0]["rules"][0]["peak_gross_r"] = "0.2"
+    with pytest.raises(
+        ProfitLockExecutionShadowError,
+        match="activated trailing rule peak R",
+    ):
+        trailing.restore_state(payload)
+
+
+def test_fixed_rules_keep_exact_metadata_without_peak() -> None:
+    position = _position()
+    original = _shadow()
+    original.observe_mark(
+        (position,), _mark("106", 1_500), now_ms=1_500
+    )
+    state = original.state_payload()
+    assert "trail_by_r" not in state["rules"][0]
+    assert "peak_gross_r" not in state["positions"][0]["rules"][0]
+    original.restore_state(state)
+
+    fixed = ProfitLockExecutionShadow(
+        _config(), started_at_ms=500, rules=(PROFIT_TARGET_RULE,)
+    )
+    assert fixed.state_payload()["rules"][0] == {
+        "rule_id": "profit_target_at_1r",
+        "activate_at_r": "1",
+        "lock_at_r": "1",
+        "exit_on_activation": "true",
+    }
+
+
+@pytest.mark.parametrize("offset", ["0", "-0.1", "1.5"])
+def test_trailing_rule_rejects_invalid_r_gap(offset: str) -> None:
+    with pytest.raises(ValueError, match="trail_by_r"):
+        ProfitLockRule(
+            rule_id="bad-trailer",
+            activate_at_r=Decimal("1"),
+            lock_at_r=Decimal("0.5"),
+            trail_by_r=Decimal(offset),
+        )
+
+
+def test_trailing_cannot_be_immediate_take_profit() -> None:
+    with pytest.raises(ValueError, match="cannot exit immediately"):
+        ProfitLockRule(
+            rule_id="bad-activation",
+            activate_at_r=Decimal("1"),
+            lock_at_r=Decimal("0.5"),
+            exit_on_activation=True,
+            trail_by_r=Decimal("0.5"),
+        )
