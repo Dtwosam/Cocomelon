@@ -345,8 +345,9 @@ def prospective_profit_target_one_r_comparison(
         len(pairs) >= MIN_PAIRED_TRADES
         and len(markets) >= MIN_MARKETS
         and all(
-            item["trades"] >= MIN_DIRECTION_TRADES
-            for item in direction.values()
+            sum(trade.direction.value == side for trade, _, _ in pairs)
+            >= MIN_DIRECTION_TRADES
+            for side in ("long", "short")
         )
         and target_triggered >= MIN_PROFIT_TARGET_TRIGGERS
         and target_complete >= MIN_PROFIT_TARGET_FULL_CLOSES
@@ -389,7 +390,7 @@ def prospective_profit_target_one_r_comparison(
         "integrity_clean": complete_integrity,
         "sample_complete": sample_complete,
         "economic_screen_passes": economic_screen,
-        "existing_winners_sacrificed_dollars": winners_sacrificed,
+        "existing_winners_with_reduced_pnl": winners_sacrificed,
         "existing_winners_turned_into_losers": winner_to_loser,
         "existing_losers_recovered_as_winners": saved_losers,
         "overall": totals,
