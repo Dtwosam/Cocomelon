@@ -34,6 +34,7 @@ on:
       - "src/cocomelon/research/post_freshness_paper_cohort.py"
       - "src/cocomelon/research/prospective_breakeven_profit_lock.py"
       - "src/cocomelon/research/prospective_profit_target_one_r_comparison.py"
+      - "src/cocomelon/research/prospective_profit_trailing_grid.py"
       - "src/cocomelon/research/prospective_momentum_band_entry.py"
       - "src/cocomelon/research/prospective_momentum_pullback_entry.py"
       - "src/cocomelon/research/prospective_range_compression_entry.py"
