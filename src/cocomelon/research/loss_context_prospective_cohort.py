@@ -335,9 +335,9 @@ def build_forward_report(
         "forward_qualifying_loss_streaks": audit[
             "qualifying_loss_streak_count"
         ],
-        "forward_stable_context_candidates": audit[
-            "context_filter_stability"
-        ]["stable_candidate_count"],
+        "forward_stable_context_candidates": _object(
+            audit["context_filter_stability"], "context_filter_stability"
+        )["stable_candidate_count"],
         "ready_for_research_discovery": ready,
         "strategy_promotion_eligible": False,
         "account_profitability_proven": False,
