@@ -251,7 +251,7 @@ def test_prospective_breakeven_ready_requires_profitable_robust_both_sides() -> 
     )
     trades: list[TradeJournalEntry] = []
     outcomes: list[ProfitLockExecutionOutcome] = []
-    for index in range(30):
+    for index in range(40):
         direction = (
             Direction.LONG if index % 2 == 0 else Direction.SHORT
         )
@@ -259,7 +259,7 @@ def test_prospective_breakeven_ready_requires_profitable_robust_both_sides() -> 
         trade = _trade(
             f"ready-{index}",
             opened_at_ms=candidate.started_at_ms + index * 120_000,
-            pnl="-1" if index < 10 else "1",
+            pnl="-1" if index % 3 == 0 else "1",
             market=market,
             direction=direction,
         )
@@ -268,11 +268,11 @@ def test_prospective_breakeven_ready_requires_profitable_robust_both_sides() -> 
             _outcome(
                 trade,
                 candidate_pnl="1",
-                activated=index < 16,
-                triggered=index < 10,
-                complete=index < 10,
+                activated=True,
+                triggered=True,
+                complete=True,
             )
-            if index < 10
+            if index % 3 == 0
             else ProfitLockExecutionOutcome(
                 trade_id=trade.trade_id,
                 opening_plan_id=trade.opening_plan_id,
@@ -319,8 +319,15 @@ def test_prospective_breakeven_ready_requires_profitable_robust_both_sides() -> 
     assert readiness["single_trade_robust"] is True
     assert readiness["single_market_robust"] is True
     assert readiness["ready_for_review"] is True
-    assert result["long_evaluated_trades"] == 15
-    assert result["short_evaluated_trades"] == 15
+    assert result["long_evaluated_trades"] == 20
+    assert result["short_evaluated_trades"] == 20
+    assert readiness["chronologically_stable_absolute_and_incremental"] is True
+    temporal = result["chronological_stability"]
+    assert temporal["both_halves_profitable_and_improved"] is True
+    assert len(temporal["halves"]) == 2
+    assert result["paired_exit_payoff"]["losers_recovered_as_winners"] == 14
+    assert result["paired_exit_payoff"]["original_winners_preserved"] == 26
+    assert result["by_direction"]["short"]["trades"] == 20
 
 
 def test_prospective_breakeven_incomplete_trigger_blocks_integrity() -> None:
@@ -392,3 +399,82 @@ def test_prospective_breakeven_reuses_immutable_execution_ledger() -> None:
     assert result["source_paper_run_id"] == 77
     assert result["source_paper_run_attempt"] == 2
     assert result["source_artifact_name"] == "learning-77-2"
+
+
+def test_prospective_exit_no_promotion_for_one_half_only_improvement() -> None:
+    state = ProspectiveBreakevenProfitLockState(
+        frozen_at_ms=7_000_000
+    )
+    trades = tuple(
+        _trade(
+            f"one-half-{index}",
+            opened_at_ms=state.started_at_ms + index * 120_000,
+            pnl="-1" if index < 10 else "1",
+            market="ETH" if index % 2 else "SOL",
+            direction=Direction.LONG if index % 2 else Direction.SHORT,
+        )
+        for index in range(30)
+    )
+    outcomes = tuple(
+        _outcome(
+            trade,
+            candidate_pnl="1",
+            activated=True,
+            triggered=index < 10,
+            complete=index < 10,
+        )
+        for index, trade in enumerate(trades)
+    )
+    result = prospective_breakeven_profit_lock_summary(
+        trades, _state(outcomes), state
+    )
+    readiness = result["readiness"]
+    assert readiness["sample_complete"] is True
+    assert readiness["candidate_profitable"] is True
+    assert readiness["delta_positive"] is True
+    assert readiness["single_trade_robust"] is True
+    assert readiness["single_market_robust"] is True
+    assert readiness[
+        "chronologically_stable_absolute_and_incremental"
+    ] is False
+    assert readiness["ready_for_review"] is False
+    assert result["chronological_stability"]["halves"][1][
+        "delta_net_pnl"
+    ] == "0"
+
+
+def test_prospective_exit_audits_winners_lost_as_well_as_losses_saved() -> None:
+    state = ProspectiveBreakevenProfitLockState(
+        frozen_at_ms=8_000_000
+    )
+    winner = _trade(
+        "foregone-winner",
+        opened_at_ms=state.started_at_ms,
+        pnl="5",
+        direction=Direction.LONG,
+    )
+    loser = _trade(
+        "recovered-loser",
+        opened_at_ms=state.started_at_ms + 120_000,
+        pnl="-2",
+        direction=Direction.SHORT,
+    )
+    result = prospective_breakeven_profit_lock_summary(
+        (winner, loser),
+        _state((
+            _outcome(winner, candidate_pnl="-1"),
+            _outcome(loser, candidate_pnl="2"),
+        )),
+        state,
+    )
+    economics = result["paired_exit_payoff"]
+    assert economics["trades"] == 2
+    assert economics["losers_recovered_as_winners"] == 1
+    assert economics["original_winners_turned_nonprofitable"] == 1
+    assert economics["original_winners_preserved"] == 0
+    assert economics["gross_positive_contribution_pnl"] == "4"
+    assert economics["gross_forgone_contribution_pnl"] == "6"
+    assert economics["delta_net_pnl"] == "-2"
+    assert result["by_direction"]["long"]["delta_net_pnl"] == "-6"
+    assert result["by_direction"]["short"]["delta_net_pnl"] == "4"
+    assert result["readiness"]["ready_for_review"] is False
