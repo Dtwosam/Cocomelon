@@ -319,10 +319,10 @@ class BaselineOpeningEngine:
     ) -> tuple[OpeningSubmission, ...]:
         if book.kind is not StreamKind.L2_BOOK:
             raise ValueError("baseline opening engine accepts only L2 book events")
-        self._expire_pending(now_ms)
         received_ms = _receive_ms(book)
         if received_ms > now_ms:
             raise ValueError("book cannot be consumed before receive time")
+        self._expire_pending(now_ms)
         existing = self._books.get(book.market.canonical)
         if existing is None or _receive_ms(existing) <= received_ms:
             self._books[book.market.canonical] = book
