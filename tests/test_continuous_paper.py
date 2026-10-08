@@ -5535,3 +5535,20 @@ def test_isolated_book_aware_profit_target_has_new_durable_shadow() -> None:
     ) in source
     assert "profit-target-one-r-execution-shadow-state.json" in workflow
     assert "profit_target_execution_shadow.shadow.state_payload" in source
+
+
+def test_paired_one_r_exit_research_is_durable_not_execution() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    workflow = Path(".github/workflows/continuous-paper.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "prospective_profit_target_one_r_comparison(" in source
+    assert "profit_target_execution_shadow.shadow.state_payload()" in source
+    assert "profit_lock_execution_shadow.shadow.state_payload()" in source
+    assert "PROSPECTIVE_PROFIT_TARGET_ONE_R_COMPARISON_FILENAME" in source
+    assert "prospective-profit-target-one-r-comparison.json" in workflow
+    assert "Upload matched 1R profit-target versus breakeven economic review" in workflow
+    assert "Render matched 1R exit economic review" in workflow
+    assert '"execution_authority": False' in source
