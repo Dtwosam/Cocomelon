@@ -293,6 +293,20 @@ def _full_stack_economic_screen(
             tuple(row for row in rows if row[0].direction.value == side),
         )
     }
+    direction_profitability = {
+        side: (
+            sum((
+                row[1] for row in rows
+                if row[0].direction.value == side
+            ), ZERO) > ZERO
+            and sum((
+                row[2] for row in rows
+                if row[0].direction.value == side
+            ), ZERO) > ZERO
+        )
+        for side in ("long", "short")
+    }
+    both_directions_profitable = all(direction_profitability.values())
     blocked_losers = sum(
         full[1] == ZERO and entry[1] == ZERO and full[0].net_pnl < ZERO
         for full, entry in ordered_pairs
@@ -352,6 +366,7 @@ def _full_stack_economic_screen(
         and full_r > ZERO
         and full_pnl > actual_pnl
         and full_r > actual_r
+        and both_directions_profitable
         and stable
         and candidate_robust
         and incremental_robust
@@ -376,6 +391,10 @@ def _full_stack_economic_screen(
         "incremental_vs_actual_positive": (
             full_pnl > actual_pnl and full_r > actual_r
         ),
+        "both_directions_absolutely_profitable": (
+            both_directions_profitable
+        ),
+        "direction_absolute_profitability": direction_profitability,
         "chronological_blocks_all_pass": stable,
         "candidate_leave_one_out_robust": candidate_robust,
         "incremental_leave_one_out_robust": incremental_robust,
