@@ -313,6 +313,7 @@ def _economic_fixture(
     *,
     last_block_negative: bool = False,
     all_blocked: bool = False,
+    short_net_negative: bool = False,
 ) -> dict[str, object]:
     start = 40_000_000
     trades: list[TradeJournalEntry] = []
@@ -323,8 +324,12 @@ def _economic_fixture(
     for index in range(40):
         blocked = all_blocked or index % 5 == 0
         loss_block = last_block_negative and index >= 30
-        actual = "-3" if loss_block else ("-2" if blocked else "1")
-        candidate = "-2" if loss_block else "3"
+        weak_short = short_net_negative and index % 2 == 1 and not blocked
+        actual = (
+            "-3" if loss_block or weak_short
+            else ("-2" if blocked else "1")
+        )
+        candidate = "-2" if loss_block else ("-1" if weak_short else "3")
         trade = _trade(
             f"economic-{index}",
             direction=(
@@ -378,6 +383,7 @@ def test_full_stack_economic_screen_needs_real_winners_in_each_block() -> None:
     assert result["integrity_clean"] is True
     assert screen["economic_screen_passes"] is True
     assert screen["absolute_candidate_profitable"] is True
+    assert screen["both_directions_absolutely_profitable"] is True
     assert screen["incremental_vs_actual_positive"] is True
     assert screen["chronological_blocks_all_pass"] is True
     assert screen["candidate_leave_one_out_robust"] is True
@@ -458,3 +464,23 @@ def test_full_stack_exit_counts_existing_winner_lost() -> None:
     assert screen["blocked_winners_forgone"] == 0
     assert screen["exit_incremental_net_pnl"] == "-5"
     assert screen["economic_screen_passes"] is False
+
+
+def test_full_stack_cannot_hide_negative_short_trade_economics() -> None:
+    result = _evaluate_fixture(_economic_fixture(short_net_negative=True))
+    screen = result["economic_viability_screen"]
+    assert screen["sample_sufficient"] is True
+    assert Decimal(screen["full_stack_net_pnl"]) > 0
+    assert Decimal(screen["full_stack_delta_net_pnl"]) > 0
+    assert screen["chronological_blocks_all_pass"] is True
+    assert Decimal(screen["by_direction"]["long"]["net_pnl"]) > 0
+    assert Decimal(screen["by_direction"]["short"]["net_pnl"]) < 0
+    assert screen["both_directions_absolutely_profitable"] is False
+    assert screen["direction_absolute_profitability"] == {
+        "long": True,
+        "short": False,
+    }
+    assert screen["economic_screen_passes"] is False
+    # No blanket ban is authorized by this finding.
+    assert screen["execution_authority"] is False
+    assert screen["promotion_authority"] is False
