@@ -245,7 +245,7 @@ def prospective_profit_trailing_grid_comparison(
             for item in comparison.values()
         )
     )
-    benchmarks: dict[str, object] | None = None
+    benchmarks: dict[str, dict[str, object]] | None = None
     strict = False
     if aligned:
         trade_by_id = {trade.trade_id: trade for trade in trades}
