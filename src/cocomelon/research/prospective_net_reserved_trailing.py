@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from decimal import Decimal
-from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.research.prospective_profit_target_one_r_comparison import (
