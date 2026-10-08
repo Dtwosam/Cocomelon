@@ -82,7 +82,10 @@ def _verified_outcomes(
     selected: dict[str, ProfitLockExecutionOutcome] = {}
     for raw in raw_outcomes:
         outcome = ProfitLockExecutionOutcome.from_payload(raw)
-        if rule_id == TAKE_PROFIT_RULE_ID and outcome.rule_id != rule_id:
+        if (
+            rule_id in {TAKE_PROFIT_RULE_ID, TAKE_PROFIT_ONE_HALF_RULE_ID}
+            and outcome.rule_id != rule_id
+        ):
             raise ProspectiveProfitTargetComparisonError(
                 "profit target state contains other rules"
             )
