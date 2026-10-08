@@ -5488,3 +5488,26 @@ def test_post_refresh_heartbeat_samples_fresh_clock_after_l2_recovery() -> None:
     assert "def _l2_event_fresh_for_promotion(" in source
     assert "return 0 <= age_ms <= max_book_age_ms" in source
 
+
+
+def test_paper_heartbeat_exposes_pending_and_expired_opening_candidates() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    assert '"pending_opening_candidate_count": len(' in source
+    assert "pump.pipeline.pending_opening_markets" in source
+    assert '"expired_opening_candidate_count": (' in source
+    assert "pump.pipeline.expired_opening_candidate_count" in source
+
+    renderer = Path(
+        "scripts/render_continuous_paper_live_status.py"
+    ).read_text(encoding="utf-8")
+    assert renderer.count(
+        "- opening candidates pending / expired: "
+    ) == 2
+    assert renderer.count(
+        "payload.get('pending_opening_candidate_count', 0)"
+    ) == 2
+    assert renderer.count(
+        "payload.get('expired_opening_candidate_count', 0)"
+    ) == 2
