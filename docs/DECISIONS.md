@@ -849,3 +849,15 @@ Observed: after PR #1017 merged, push run 37770349229 for commit `4ec2525` remai
 This fixes handoff arbitration only. It does not prove a strategy edge, relax book freshness or hard risk limits, change LONG/SHORT/NO_TRADE selection or trade execution, or enable live trading.
 
 **LIVE TRADING: DISABLED.**
+
+### D-069 — Independent exact-state watchdog is not blocked by research tails
+
+The continuous-paper trading step can finish successfully while its GitHub Actions job continues hours of deferred research. GitHub's per-workflow guarded concurrency then holds later `push` and `schedule` paper runs in `pending` without any active trader. This can leave the paper account dormant after a green-but-skipped exact handoff even after D-066/D-068 fixes.
+
+Move the **scheduled watchdog** out of the continuous-paper workflow into `.github/workflows/independent-paper-recovery.yml` on a **separate concurrency group**. Run this independent GitHub Actions job nominally every ten minutes (plus workflow deployment push/manual activation), checking actual GitHub job *step outcomes* rather than only workflow conclusions. It may dispatch an exact paper successor only after verifying the latest finished successful trader has a matching run/attempt immutable fast or durable state artifact and successful upload step. Ignore queued speculative push/scheduled jobs and completed guard-only skips; **do not ignore** a queued exact successor or an active/unknown real trader, and do not fall back across a failed, unarchived, cancelled, corrupted, or unverified newer run. The worker itself still authenticates its exact predecessor and preserves the same account; no invented fresh balance is permitted.
+
+A successful `gh workflow run` request is **not** proof the successor traded. Observe its actual trader step and the moving Issue #469 heartbeat. If archive integrity or liveness remains unknown, fail visibly and keep capital protected. Scheduled Actions are best effort, not a ten-minute guaranteed recovery SLA.
+
+This supersedes D-067's schedule placement (but keeps its recovery intent) without weakening D-066/D-068 handoff arbitration. Long and short trade selection, NO_TRADE, L2 book freshness, stops, position sizing, hard risk limits, research evidence gates, and promotions remain unchanged.
+
+**LIVE TRADING: DISABLED.**
