@@ -827,3 +827,13 @@ The exact-state successor's startup guard must also recognize already-skipped ch
 Evidence: on 2026-10-08 the paper worker in run 37766197594 finished trading and uploaded a fast resume, but exact successor 37767269087 skipped itself on a 75-second guarded push run 37767138725 rather than restoring the predecessor's state; both GitHub workflow conclusions were misleadingly `success` with the trader step `skipped`.
 
 **LIVE TRADING: DISABLED.**
+
+### D-067 — Frequent guarded watchdog after exact paper handoff failures
+
+The October 8 paper continuity incident showed that a workflow can finish green with its actual trader step skipped. PR #1016 repaired the specific guard race, but the scheduled watchdog still ran only twice per hour. Keep this independent recovery route and shorten its *nominal* check interval to ten minutes (`7,17,27,37,47,57 * * * *` UTC) so an unexpected lost successor is detected earlier.
+
+The scheduled run **never overrides the active-trader guard**. A queued/running real trader prevents another paper worker; a guard-only skipped checkout or a completed trader with research still running does not. Recovery continues to restore the most recent authenticated durable paper account, and an exact successor still restores its exact predecessor when available. A missing or unverifiable state fails closed. Scheduled GitHub Actions can be delayed; ten minutes is a configured polling interval, **not a guaranteed recovery-time SLA**.
+
+This improves operational continuity, not trade selection or evidence of an edge. Do not change LONG/SHORT/NO_TRADE logic, market-data freshness gates, risk limits, sizing, stops, account state, or live execution authority.
+
+**LIVE TRADING: DISABLED.**
