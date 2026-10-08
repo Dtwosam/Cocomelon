@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
 from datetime import UTC, datetime, timedelta
+
+import pytest
 
 from scripts.rescue_continuous_paper import (
     PaperRescueError,
@@ -242,13 +243,12 @@ def test_corrupt_run_attempt_rejected() -> None:
         )
 
 
-
 def test_active_worker_heartbeat_must_match_run_and_be_recent() -> None:
     now = datetime(2026, 10, 8, 12, 30, tzinfo=UTC)
     issue = (
-        "## Continuous paper runtime live status\\n"
-        "Updated: 2026-10-08T12:29:24+00:00\\n"
-        "Worker run: 37776929867\\n"
+        "## Continuous paper runtime live status\n"
+        "Updated: 2026-10-08T12:29:24+00:00\n"
+        "Worker run: 37776929867\n"
     )
     assert verify_active_heartbeat(
         issue,
@@ -275,8 +275,8 @@ def test_active_worker_heartbeat_must_match_run_and_be_recent() -> None:
 def test_heartbeat_startup_grace_never_claims_old_worker_is_current() -> None:
     now = datetime(2026, 10, 8, 12, 30, tzinfo=UTC)
     old_issue = (
-        "Updated: 2026-10-08T11:29:24+00:00\\n"
-        "Worker run: 37768727228\\n"
+        "Updated: 2026-10-08T11:29:24+00:00\n"
+        "Worker run: 37768727228\n"
     )
     assert verify_active_heartbeat(
         old_issue,
@@ -305,7 +305,7 @@ def test_corrupt_heartbeat_and_missing_run_start_fail_closed() -> None:
             )
     with pytest.raises(PaperRescueError, match="start timestamp"):
         verify_active_heartbeat(
-            "Worker run: 12\\n",
+            "Worker run: 12\n",
             active_run_id=12,
             run_started_at=None,
             now=now,
