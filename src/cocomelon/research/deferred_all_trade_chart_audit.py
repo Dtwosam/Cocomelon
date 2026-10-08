@@ -257,7 +257,7 @@ h1{font-size:26px}select{background:#1e293b;color:#f8fafc;padding:10px;max-width
 IN-POSITION mark prices—not OHLC candles or executable limit fills.
 Incomplete or missing chart evidence is disclosed, never filled in.</p>
 <label for="trade">Trade</label> <select id="trade"></select>
-<p id="meta"></p><svg id="chart" viewBox="0 0 1000 420" role="img" aria-label="Recorded mark price chart"></svg>
+<p id="meta"></p><svg id="chart" viewBox="0 0 1000 420"\n role="img" aria-label="Recorded mark price chart"></svg>
 <p class="note">Entry = dashed blue, initial stop = dashed red, actual exit = dashed white.
 The price path may have gaps; do not infer an executable profit target from a mark high.</p>
 <script>const rows = """ + safe_json + """;
@@ -288,7 +288,7 @@ function render(){svg.replaceChildren();const r=rows[Number(sel.value)||0];if(!r
  stroke:colors[i],'stroke-dasharray':'6 5','stroke-width':1.6});});
  if(p.length) S('polyline',{points:p.map(a=>x(a[0])+','+y(a[1])).join(' '),
  fill:'none',stroke:'#4ade80','stroke-width':2});
- else {const n=S('text',{x:65,y:80,fill:'#fca5a5'});n.textContent='No recorded chart path for this trade';}
+ else {const n=S('text',{x:65,y:80,fill:'#fca5a5'});\n n.textContent='No recorded chart path for this trade';}
 }sel.addEventListener('change',render);render();</script></html>
 """
 
