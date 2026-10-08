@@ -36,6 +36,8 @@ class ProfitLockRule:
     # Research-only optional high-water trailing lock; no behavior changes
     # for existing frozen rules when absent.
     trail_by_r: Decimal | None = None
+    # Optional frozen research floor for expected *net* R at the lock.
+    minimum_estimated_net_lock_r: Decimal | None = None
 
     def __post_init__(self) -> None:
         if not self.rule_id.strip():
@@ -60,6 +62,18 @@ class ProfitLockRule:
             if self.exit_on_activation:
                 raise ValueError(
                     "trailing rule cannot exit immediately on activation"
+                )
+        if self.minimum_estimated_net_lock_r is not None:
+            net_floor = self.minimum_estimated_net_lock_r
+            if (
+                not net_floor.is_finite()
+                or net_floor < ZERO
+                or net_floor > self.activate_at_r
+                or self.trail_by_r is None
+            ):
+                raise ValueError(
+                    "minimum_estimated_net_lock_r requires a trailing rule "
+                    "and a non-negative net lock no greater than activation R"
                 )
 
 
