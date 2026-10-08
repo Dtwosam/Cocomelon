@@ -6304,6 +6304,29 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         },
     }
 
+    payload["open_trailing_profit_preview"] = {
+        "enabled": True,
+        "research_only": True,
+        "execution_authority": False,
+        "candidate_id": "trail_peak_after_1r_by_0_5r",
+        "started_at_ms": 1_699_000_000_000,
+        "observed_open_positions": 1,
+        "activated_open_positions": 1,
+        "triggered_open_positions": 0,
+        "positions": [{
+            "market": "BTC",
+            "side": "long",
+            "eligible": True,
+            "activated": True,
+            "triggered": False,
+            "peak_gross_r": "2.0",
+            "theoretical_lock_r": "1.5",
+            "theoretical_stop_price": "101500",
+            "simulated_filled_quantity": "0",
+            "remaining_quantity": "0.01",
+        }],
+    }
+
     rendered = render_live_status(
         payload,
         run_id="123",
@@ -6315,6 +6338,10 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert "Worker run: 123" in rendered
     assert "BTC" in rendered
     assert "### Breakeven stop shadow" in rendered
+    assert "### High-water trailing exit preview" in rendered
+    assert "Actual paper stops, orders and risk limits are unchanged" in rendered
+    assert "open / armed / triggered: 1 / 1 / 0" in rendered
+    assert "| BTC | long | true | false | 2.0 | 1.5 | 101500 | 0 |" in rendered
     assert "Research-only preview" in rendered
     assert (
         "clean open / activated / triggered / pre-start excluded: "
