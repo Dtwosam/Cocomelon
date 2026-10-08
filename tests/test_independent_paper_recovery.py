@@ -325,5 +325,6 @@ def test_independent_workflow_has_unshared_concurrency_and_no_live_orders() -> N
     assert "group: independent-paper-rescue" in watchdog
     assert "python scripts/rescue_continuous_paper.py" in watchdog
     assert "COCOMELON_EXECUTION_MODE: paper" in watchdog
+    assert "issues: read" in watchdog
     assert "  schedule:" not in paper
     assert "cancel-in-progress: false" in watchdog
