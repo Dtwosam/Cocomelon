@@ -9973,6 +9973,9 @@ def _render_operational_live_status(
                 f"{cooldown.get('cooldown_ms')}ms"
             ),
             "",
+            *_paired_paper_trial_lines(
+                payload.get("loss_context_paired_portfolio_shadow")
+            ),
             "### Runtime",
             "",
             f"- selected markets: {payload['selected_market_count']}",
