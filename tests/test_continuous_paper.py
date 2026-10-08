@@ -5461,3 +5461,30 @@ def test_loss_context_paired_shadow_feed_stays_off_active_critical_path() -> Non
         "                loss_context_paired_shadow_checkpoint_error"
         in source
     )
+
+
+def test_post_refresh_heartbeat_samples_fresh_clock_after_l2_recovery() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    # The main control loop may spend seconds awaiting HTTP context refresh
+    # and WebSocket recovery. Its earlier "now_ms" can precede the newest
+    # L2 exchange timestamps; reusing it falsely labels all books stale.
+    start = source.index(
+        "                if not systemically_unhealthy_l2:\n"
+        "                    systemically_unhealthy_l2 = (\n"
+        "                        await recover_systemic_l2_if_needed()"
+    )
+    end = source.index(
+        '                _mark_event_loop_phase(pump, "control_wait")',
+        start,
+    )
+    heartbeat = source[start:end]
+    assert "await recover_systemic_l2_if_needed()" in heartbeat
+    assert 'timestamp_ms=utc_now_ms(),' in heartbeat
+    assert 'timestamp_ms=now_ms,' not in heartbeat
+    # This is a reporting timestamp correction. Strict L2 freshness
+    # checks and the trade eligibility threshold must remain unchanged.
+    assert "def _l2_event_fresh_for_promotion(" in source
+    assert "return 0 <= age_ms <= max_book_age_ms" in source
+

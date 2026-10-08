@@ -10411,13 +10411,17 @@ async def run_continuous_paper_session(
                         await recover_systemic_l2_if_needed()
                     )
 
+                # Context refresh and L2 recovery await network operations,
+                # so the old control-loop timestamp may predate fresh L2
+                # events. Sample wall-clock time at heartbeat emission;
+                # otherwise healthy books can appear future-dated/stale.
                 _mark_event_loop_phase(pump, "heartbeat")
                 _emit_operational_live_status(
                     execution,
                     pump,
                     selected,
                     replay_config.risk_limits,
-                    timestamp_ms=now_ms,
+                    timestamp_ms=utc_now_ms(),
                     l2_supervisor_group=supervisor_group,
                     profit_lock_execution_shadow=profit_lock_execution_shadow,
                     prospective_breakeven_profit_lock_state=(
