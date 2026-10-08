@@ -4,6 +4,8 @@ from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from cocomelon.domain.evaluation import DecisionEvaluationFact
 from cocomelon.domain.features import FeatureSnapshot, TrendRegime, VolatilityRegime
 from cocomelon.domain.journal import TradeJournalEntry
@@ -25,8 +27,6 @@ from cocomelon.research.loss_context_candidate import (
 from cocomelon.research.loss_streak_context_audit import (
     loss_streak_context_audit,
 )
-
-import pytest
 
 RUN_ID = "continuous-paper-mainnet-v1"
 MARKET = MarketId("", "HYPE")
