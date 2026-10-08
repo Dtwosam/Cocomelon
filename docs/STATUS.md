@@ -5012,3 +5012,14 @@ The ledger verifier now checks paired equity, total-account and realized-net PnL
 No filter is enabled in the ordinary trader. The portfolio-shadow freeze must still qualify and accrue independent forward observations, with all D-054 profitability, duration, market-diversity and chronological-block review floors unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Deferred loss-streak historical gap diagnosis and repair — 2026-10-08
+
+An actual completed continuous-paper GitHub job log (run 37727104195) established why the recurring loss-context chain stopped despite a misleading green `continue-on-error` step conclusion: `LossStreakContextAuditError: loss-streak trade is missing feature snapshot`. The downstream upload and immutable candidate-freeze steps then skipped because the producer's **raw** outcome failed.
+
+The audit now reports incomplete qualifying streaks explicitly, preserving their authentic closed-trade count and economics while refusing to compute dominance or recurring-context evidence from only a partially resolved streak. Both complete and incomplete streak counts, missing context reasons, and full coverage reconciliation are visible. New tests exercise entirely missing and partially missing qualifying streaks and prove the existing candidate freeze still rejects an incomplete baseline. The handoff summary surfaces these blockers instead of silently advancing.
+
+This repairs an evidence-reporting crash but **does not** certify a historical filter or start a clean paired A/B candidate. The next frontier is examining the missing snapshot lineage and establishing an independently frozen fully covered future cohort without using incomplete legacy history as proof. The D-054 absolute-profitability and account-level comparison gates remain unchanged.
+
+**LIVE TRADING: DISABLED.**

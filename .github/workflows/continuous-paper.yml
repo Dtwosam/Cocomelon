@@ -1347,6 +1347,20 @@ jobs:
               )
           stability = payload["context_filter_stability"]
           print(
+              "- qualifying streaks complete / incomplete: "
+              f"{payload['complete_qualifying_loss_streak_count']} / "
+              f"{payload['incomplete_qualifying_loss_streak_count']}"
+          )
+          print(
+              "- unresolved qualifying loss contexts: "
+              f"{payload['qualifying_loss_unresolved_trade_count']} / "
+              f"{payload['qualifying_loss_unresolved_reason_counts']}"
+          )
+          print(
+              "- historical baseline normalization complete: "
+              f"{payload['baseline_normalization_complete']}"
+          )
+          print(
               "- context-filter candidates / stable: "
               f"{stability['candidate_count']} / "
               f"{stability['stable_candidate_count']}"

@@ -65,6 +65,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "qualifying_loss_trade_count": payload[
                     "qualifying_loss_trade_count"
                 ],
+                "complete_qualifying_loss_streak_count": payload[
+                    "complete_qualifying_loss_streak_count"
+                ],
+                "incomplete_qualifying_loss_streak_count": payload[
+                    "incomplete_qualifying_loss_streak_count"
+                ],
+                "qualifying_loss_unresolved_trade_count": payload[
+                    "qualifying_loss_unresolved_trade_count"
+                ],
+                "qualifying_loss_unresolved_reason_counts": payload[
+                    "qualifying_loss_unresolved_reason_counts"
+                ],
                 "execution_authority": payload[
                     "execution_authority"
                 ],
