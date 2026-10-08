@@ -10,6 +10,7 @@ from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.profit_lock_counterfactual import (
+    DEFAULT_PROFIT_LOCK_COSTS,
     DEFAULT_PROFIT_LOCK_RULES,
 )
 from cocomelon.research.profit_lock_execution_ledger import (
@@ -94,6 +95,24 @@ def _outcome(
     complete: bool = True,
 ) -> ProfitLockExecutionOutcome:
     candidate = Decimal(candidate_pnl)
+    # Fixture IOC fills must reconcile to their reported PnL after reserve.
+    completion_elapsed_ms = 21_000
+    funding_reserve = (
+        trade.entry_price
+        * trade.filled_quantity
+        * DEFAULT_PROFIT_LOCK_COSTS.funding_reserve_fraction_per_hour
+        * Decimal(completion_elapsed_ms)
+        / Decimal(3_600_000)
+    )
+    per_unit_profit = (
+        (candidate + trade.entry_fees + funding_reserve)
+        / trade.filled_quantity
+    )
+    simulated_exit_price = (
+        trade.entry_price + per_unit_profit
+        if trade.direction is Direction.LONG
+        else trade.entry_price - per_unit_profit
+    )
     return ProfitLockExecutionOutcome(
         trade_id=trade.trade_id,
         opening_plan_id=trade.opening_plan_id,
@@ -116,7 +135,7 @@ def _outcome(
             trade.filled_quantity if complete else Decimal("0")
         ),
         simulated_average_exit_price=(
-            Decimal("100") if complete else None
+            simulated_exit_price if complete and triggered else None
         ),
         simulated_exit_fees=Decimal("0"),
         attempt_count=1 if triggered else 0,
@@ -803,3 +822,94 @@ def test_one_half_exit_stays_absolute_unprofitable_when_large_winner_pnl_erased(
     assert comparison["same_complete_future_trade_cohort"] is True
     assert comparison["one_half_minus_one_r_net_pnl"] == "0"
     assert comparison["both_precommitted_economic_screens_pass"] is False
+
+
+def test_profit_target_rejects_manipulated_pnl_even_with_consistent_r() -> None:
+    trades, target, baseline = _profit_target_fixture()
+    forged = target["outcomes"][0]
+    original_trade = trades[0]
+    forged["candidate_net_pnl_estimate"] = "500"
+    forged["candidate_net_r_estimate"] = "50"
+    forged["delta_net_pnl_estimate"] = str(
+        Decimal("500") - original_trade.net_pnl
+    )
+    forged["delta_net_r_estimate"] = str(
+        Decimal("50") - original_trade.net_r
+    )
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="IOC cashflow does not reconcile",
+    ):
+        prospective_profit_target_one_r_comparison(trades, target, baseline)
+
+
+def test_profit_target_rejects_forged_pnl_or_r_deltas() -> None:
+    trades, target, baseline = _profit_target_fixture()
+    target["outcomes"][0]["delta_net_pnl_estimate"] = "10000"
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="candidate delta",
+    ):
+        prospective_profit_target_one_r_comparison(trades, target, baseline)
+
+    trades, target, baseline = _profit_target_fixture()
+    target["outcomes"][0]["candidate_net_r_estimate"] = "500"
+    target["outcomes"][0]["delta_net_r_estimate"] = str(
+        Decimal("500") - trades[0].net_r
+    )
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="net R does not reconcile",
+    ):
+        prospective_profit_target_one_r_comparison(trades, target, baseline)
+
+
+def test_profit_target_rejects_impossible_ioc_event_timing() -> None:
+    trades, target, baseline = _profit_target_fixture()
+    target["outcomes"][0]["activation_timestamp_ms"] = (
+        trades[0].opened_at_ms + 25_000
+    )
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="trigger precedes activation",
+    ):
+        prospective_profit_target_one_r_comparison(trades, target, baseline)
+
+    trades, target, baseline = _profit_target_fixture()
+    target["outcomes"][0]["completion_timestamp_ms"] = (
+        trades[0].closed_at_ms + 1
+    )
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="completion precedes trigger or follows original close",
+    ):
+        prospective_profit_target_one_r_comparison(trades, target, baseline)
+
+
+def test_profit_target_rejects_filled_quantity_exceeding_original_trade() -> None:
+    trades, target, baseline = _profit_target_fixture()
+    target["outcomes"][0]["simulated_filled_quantity"] = "2"
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="fills more than the original quantity",
+    ):
+        prospective_profit_target_one_r_comparison(trades, target, baseline)
+
+
+def test_threshold_comparison_rejects_forged_one_half_r_payoff() -> None:
+    trades, first, baseline = _profit_target_fixture()
+    one_half = _one_half_target_state(tuple(
+        replace(
+            _outcome(trade, candidate_pnl="2"),
+            rule_id="profit_target_at_1_5r",
+        )
+        for trade in trades
+    ))
+    one_half["outcomes"][0]["simulated_exit_fees"] = "99"
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="IOC cashflow does not reconcile",
+    ):
+        prospective_profit_target_threshold_comparison(
+            trades, first, one_half, baseline
+        )
