@@ -157,25 +157,6 @@ def _try_resolve(
     )
 
 
-def _resolve(
-    trade: TradeJournalEntry,
-    facts: EvaluationFactStore,
-    features: LearningFeatureSnapshotStore,
-    ranks: ContinuousPaperOpeningRankStore,
-) -> _ResolvedLoss:
-    resolved, unresolved_reason = _try_resolve(
-        trade,
-        facts,
-        features,
-        ranks,
-    )
-    if resolved is None:
-        raise LossStreakContextAuditError(
-            "loss-streak trade is "
-            f"{unresolved_reason or 'unresolved'}"
-        )
-    return resolved
-
 def _row(item: _ResolvedLoss) -> dict[str, object]:
     trade = item.trade
     fact = item.fact
