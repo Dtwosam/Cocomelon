@@ -9584,6 +9584,34 @@ async def run_continuous_paper_session(
         loss_context_freeze_path = (
             root / LOSS_CONTEXT_PORTFOLIO_SHADOW_FREEZE_FILENAME
         )
+        # A separately frozen D-087 trial can use the existing complete
+        # matched portfolio simulator even while the unrelated legacy
+        # historical-composition gate remains blocked by old missing features.
+        # Its source was selected retrospectively, so this is an independent
+        # future-only shadow comparison, never active trading authority.
+        if (
+            not loss_context_freeze_path.exists()
+            and prospective_trend_outside_top10_restore_error is None
+        ):
+            component_started = time.perf_counter()
+            try:
+                activate_targeted_trend_paired_freeze(
+                    loss_context_freeze_path,
+                    prospective_trend_outside_top10_state,
+                    paired_state_path=(
+                        root
+                        / LOSS_CONTEXT_PAIRED_SHADOW_ROOT
+                        / "paired-shadow-state.json"
+                    ),
+                )
+            except Exception as freeze_exc:
+                loss_context_paired_shadow_restore_error = (
+                    f"{type(freeze_exc).__name__}: {freeze_exc}"
+                )
+            record_startup_component(
+                "targeted_trend_paired_shadow_freeze",
+                component_started,
+            )
         if loss_context_freeze_path.exists():
             component_started = time.perf_counter()
             try:
