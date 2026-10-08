@@ -117,6 +117,10 @@ def _rules_payload(
                 {"exit_on_activation": "true"}
                 if rule.exit_on_activation else {}
             ),
+            **(
+                {"trail_by_r": str(rule.trail_by_r)}
+                if rule.trail_by_r is not None else {}
+            ),
         }
         for rule in rules
     ]
