@@ -1472,7 +1472,29 @@ class ProfitLockExecutionShadow:
                 raise ProfitLockExecutionShadowError(
                     "restored position eligibility is inconsistent"
                 )
+            rule_by_id = {
+                rule.rule_id: rule for rule in self._rules
+            }
             for rule_state in state.rules.values():
+                frozen_rule = rule_by_id[rule_state.rule_id]
+                if frozen_rule.trail_by_r is None:
+                    if rule_state.peak_gross_r is not None:
+                        raise ProfitLockExecutionShadowError(
+                            "non-trailing rule has unexpected peak R"
+                        )
+                elif rule_state.activated_at_ms is not None:
+                    if (
+                        rule_state.peak_gross_r is None
+                        or rule_state.peak_gross_r
+                        < frozen_rule.activate_at_r
+                    ):
+                        raise ProfitLockExecutionShadowError(
+                            "activated trailing rule peak R missing or invalid"
+                        )
+                elif rule_state.peak_gross_r is not None:
+                    raise ProfitLockExecutionShadowError(
+                        "inactive trailing rule cannot have peak R"
+                    )
                 if (
                     rule_state.remaining_quantity
                     + rule_state.filled_quantity
