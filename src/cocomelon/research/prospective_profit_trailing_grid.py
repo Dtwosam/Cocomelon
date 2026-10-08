@@ -44,7 +44,7 @@ def _economics(
     control_r = ZERO
     winner_reduced = 0
     loser_rescued = 0
-    for trade, candidate, benchmark_pnl, benchmark_r in rows:
+    for _trade, candidate, benchmark_pnl, benchmark_r in rows:
         pnl = candidate.candidate_net_pnl_estimate
         net_r = candidate.candidate_net_r_estimate
         if pnl is None or net_r is None:
@@ -224,14 +224,16 @@ def prospective_profit_trailing_grid_comparison(
             TRAILING_PROFIT_RULE_ID,
         )
     }
-    ids = {
-        name: item["paired_trade_ids"]
-        for name, item in comparison.items()
-    }
-    if any(not isinstance(value, list) for value in ids.values()):
-        raise ProspectiveProfitTargetComparisonError(
-            "five-way grid missing paired trade identities"
-        )
+    ids: dict[str, list[str]] = {}
+    for name, item in comparison.items():
+        raw_ids = item["paired_trade_ids"]
+        if not isinstance(raw_ids, list) or not all(
+            isinstance(trade_id, str) for trade_id in raw_ids
+        ):
+            raise ProspectiveProfitTargetComparisonError(
+                "five-way grid missing paired trade identities"
+            )
+        ids[name] = raw_ids
     cohorts = [set(value) for value in ids.values()]
     intersection = set.intersection(*cohorts)
     original_ids = ids[TAKE_PROFIT_RULE_ID]
