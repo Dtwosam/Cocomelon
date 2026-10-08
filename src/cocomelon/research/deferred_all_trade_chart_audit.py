@@ -270,10 +270,10 @@ rows.forEach((r,i)=>{const o=document.createElement('option');o.value=String(i);
 function render(){svg.replaceChildren();const r=rows[Number(sel.value)||0];if(!r){return;}
  meta.textContent='Trade '+r.trade_id+' | '+r.side.toUpperCase()+' '+r.market+
  ' | realized after-cost PnL $'+r.net_pnl+' ('+r.net_r+'R)'+
- '\nExit: '+r.exit_reason+' | Gross $'+r.gross_realized_pnl+
+ '\\nExit: '+r.exit_reason+' | Gross $'+r.gross_realized_pnl+
  ' | Fees $'+(Number(r.entry_fees)+Number(r.exit_fees)).toFixed(4)+
  ' | Funding $'+r.funding_cash_pnl+
- '\nPath complete: '+r.chart_coverage_complete+' | Marks: '+r.chart_mark_count+
+ '\\nPath complete: '+r.chart_coverage_complete+' | Marks: '+r.chart_mark_count+
  ' | Known data gap ms: '+r.chart_known_gap_duration_ms+
  ' | Peak favorable R: '+r.mfe_r+' | Peak adverse R: '+r.mae_r;
  const p=r.chart_mark_samples.map(a=>[Number(a[0]),Number(a[1])]);
