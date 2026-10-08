@@ -162,6 +162,54 @@ def test_missing_or_expired_exact_artifact_fails_closed() -> None:
     ) == ("blocked", None)
 
 
+def test_cancelled_and_failed_pushes_without_jobs_do_not_block_archive() -> None:
+    # Actual production runs had no job at all: 37771010416
+    # (cancelled), 37770349229 (cancelled), and 37769990622
+    # (failed admission). They cannot own or mutate a paper account.
+    assert choose(
+        [
+            run(37771010416, status="completed", conclusion="cancelled"),
+            run(37770349229, status="completed", conclusion="cancelled"),
+            run(37769990622, status="completed", conclusion="failure"),
+            run(OLD_RUN),
+        ],
+        jobs_by_run={
+            37771010416: [],
+            37770349229: [],
+            37769990622: [],
+            OLD_RUN: paper_job("completed", "success"),
+        },
+        artifacts_by_run={OLD_RUN: exact_artifact(OLD_RUN)},
+    ) == ("ready", (OLD_RUN, 1))
+
+
+def test_cancelled_worker_with_materialized_paper_job_still_blocks() -> None:
+    assert choose(
+        [run(13, status="completed", conclusion="cancelled"), run(12)],
+        jobs_by_run={
+            13: paper_job("completed", "failure"),
+            12: paper_job("completed", "success"),
+        },
+        artifacts_by_run={12: exact_artifact(12)},
+    ) == ("blocked", None)
+
+
+def test_cancelled_exact_dispatch_without_jobs_still_blocks() -> None:
+    assert choose(
+        [
+            run(
+                13,
+                event="workflow_dispatch",
+                status="completed",
+                conclusion="cancelled",
+            ),
+            run(12),
+        ],
+        jobs_by_run={13: [], 12: paper_job("completed", "success")},
+        artifacts_by_run={12: exact_artifact(12)},
+    ) == ("blocked", None)
+
+
 def test_missing_paper_job_fails_closed() -> None:
     assert choose(
         [run(12)],
