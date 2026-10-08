@@ -908,3 +908,137 @@ def test_loss_context_filter_rejects_one_market_carry(
     )
     assert candidate["validation_markets"] == 1
     assert candidate["stable_on_validation"] is False
+
+
+def test_loss_context_audit_names_missing_bootstrap_features_without_promoting(
+    tmp_path: Path,
+) -> None:
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    features = LearningFeatureSnapshotStore(tmp_path / "features")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    first_feature = _feature(as_of_ms=10_000)
+    first = _trade(
+        suffix="unobserved-bootstrap",
+        feature=first_feature,
+        opened_at_ms=11_000,
+        pnl="-5",
+    )
+    second_feature = _feature(as_of_ms=140_000)
+    second = _trade(
+        suffix="covered-after-start",
+        feature=second_feature,
+        opened_at_ms=141_000,
+        pnl="7",
+    )
+    try:
+        facts.record_decision_fact(_fact(first))
+        ranks.record(_rank(first))
+        # The older feature was never captured: do not fabricate it.
+        _record(second, second_feature, facts, features, ranks)
+        report = loss_streak_context_audit(
+            (first, second), facts, features, ranks
+        )
+    finally:
+        facts.close()
+
+    diagnostics = report["baseline_attribution_gaps"]
+    assert diagnostics["source_trade_count"] == 2
+    assert diagnostics["resolved_trade_count"] == 1
+    assert diagnostics["unresolved_trade_count"] == 1
+    assert diagnostics["unresolved_strictly_before_first_resolved"] is True
+    assert diagnostics["trailing_suffix_first_opened_at_ms"] == 141_000
+    assert diagnostics["fully_attributed_trailing_suffix_trades"] == 1
+    assert diagnostics["trailing_suffix_net_pnl"] == "7"
+    assert diagnostics["historical_exclusion_authority"] is False
+    assert diagnostics["execution_authority"] is False
+    assert diagnostics["promotion_authority"] is False
+    assert report["baseline_normalization_complete"] is False
+    assert diagnostics["unresolved_trades"] == [{
+        "trade_id": first.trade_id,
+        "opening_plan_id": first.opening_plan_id,
+        "feature_snapshot_id": first.feature_snapshot_id,
+        "strategy_decision_id": first.strategy_decision_id,
+        "market": first.market.canonical,
+        "direction": first.direction.value,
+        "opened_at_ms": first.opened_at_ms,
+        "closed_at_ms": first.closed_at_ms,
+        "reason": "missing feature snapshot",
+    }]
+    with pytest.raises(
+        LossContextCandidateError, match="BASELINE_INCOMPLETE"
+    ):
+        build_loss_context_candidate_freeze(
+            report,
+            frozen_at_ms=200_000,
+            source_paper_run_id=1,
+            source_paper_run_attempt=1,
+            source_paper_head_sha="a" * 40,
+        )
+
+
+def test_late_missing_entry_feature_is_not_misclassified_as_bootstrap(
+    tmp_path: Path,
+) -> None:
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    features = LearningFeatureSnapshotStore(tmp_path / "features")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    first_feature = _feature(as_of_ms=10_000)
+    first = _trade(
+        suffix="covered-first",
+        feature=first_feature,
+        opened_at_ms=11_000,
+        pnl="2",
+    )
+    missing_feature = _feature(as_of_ms=140_000)
+    missing = _trade(
+        suffix="missing-later",
+        feature=missing_feature,
+        opened_at_ms=141_000,
+        pnl="-3",
+    )
+    try:
+        _record(first, first_feature, facts, features, ranks)
+        facts.record_decision_fact(_fact(missing))
+        ranks.record(_rank(missing))
+        report = loss_streak_context_audit(
+            (first, missing), facts, features, ranks
+        )
+    finally:
+        facts.close()
+
+    gaps = report["baseline_attribution_gaps"]
+    assert gaps["unresolved_strictly_before_first_resolved"] is False
+    assert gaps["fully_attributed_trailing_suffix_trades"] == 0
+    assert gaps["trailing_suffix_first_opened_at_ms"] is None
+    assert gaps["requires_exact_source_recovery_for_full_baseline"] is True
+    assert report["baseline_normalization_complete"] is False
+
+
+def test_complete_entry_features_report_zero_attribution_gaps(
+    tmp_path: Path,
+) -> None:
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    features = LearningFeatureSnapshotStore(tmp_path / "features")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    feature = _feature(as_of_ms=10_000)
+    trade = _trade(
+        suffix="complete",
+        feature=feature,
+        opened_at_ms=11_000,
+        pnl="2",
+    )
+    try:
+        _record(trade, feature, facts, features, ranks)
+        report = loss_streak_context_audit(
+            (trade,), facts, features, ranks
+        )
+    finally:
+        facts.close()
+    gaps = report["baseline_attribution_gaps"]
+    assert gaps["unresolved_trades"] == []
+    assert gaps["resolved_trade_count"] == 1
+    assert gaps["fully_attributed_trailing_suffix_trades"] == 1
+    assert gaps["trailing_suffix_net_pnl"] == "2"
+    assert gaps["unresolved_strictly_before_first_resolved"] is False
+    assert gaps["requires_exact_source_recovery_for_full_baseline"] is False
+    assert report["baseline_normalization_complete"] is True
