@@ -5001,3 +5001,14 @@ Three exact-source research workflows were repeatedly launched against upgrade-o
 The continuous-paper producer now dispatches profit-lock execution, momentum-pullback markout, and range-compression evidence only after its durable-state upload, research-source eligibility gate, and compact artifact upload have each succeeded. This is an upstream control-plane fix: consumer validation remains fail-closed, ordinary paper operation remains independent, and no trading behavior or promotion gate changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Paired loss-context shadow review account parity — 2026-10-08
+
+The D-054 prospective account-level review gate has been hardened to refuse internally inconsistent evidence. Previously, a validly hashed ledger row could carry a candidate-minus-baseline profit claim not equal to its own independent lane PnLs, or more market-attributed blocked attempts than its declared total. Either error could falsely favor an unproven loss-context filter.
+
+The ledger verifier now checks paired equity, total-account and realized-net PnL, and max-drawdown arithmetic against both lane snapshots; reconciles matching-context market attribution plus legacy unattributed blocks to the total; and rejects frozen-lineage changes or decreasing processed-record counts across handoffs. Focused regression tests cover deliberate mismatches. This makes the existing clean prospective test harder to misread; it does not create an edge or claim profitability.
+
+No filter is enabled in the ordinary trader. The portfolio-shadow freeze must still qualify and accrue independent forward observations, with all D-054 profitability, duration, market-diversity and chronological-block review floors unchanged.
+
+**LIVE TRADING: DISABLED.**
