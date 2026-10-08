@@ -120,3 +120,16 @@ def test_full_stack_reflow_exact_ledger_heredocs_escape_markdown() -> None:
         block = source[heredoc:end]
         assert "\\`" in block
         assert "`" not in block.replace("\\`", "")
+
+
+def test_exact_reflow_ledger_publishes_no_double_count_screen() -> None:
+    source = _source()
+
+    assert "review_full_stack_reflow_capacity(ledger)" in source
+    assert "prospective-full-stack-exclusive-capacity-review.json" in source
+    assert "Upload separate exclusive-capacity economics review" in source
+    assert "One-slot capacity-exclusivity screen" in source
+    assert "skipped_for_one_position_capacity" in source
+    assert "ambiguous_opportunity_count" in source
+    assert "chronologically_profitable" in source
+    assert "A capacity screen PASS is not portfolio profitability" in source
