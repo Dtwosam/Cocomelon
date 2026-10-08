@@ -355,6 +355,7 @@ from cocomelon.research.prospective_momentum_pullback_entry import (
 )
 from cocomelon.research.prospective_profit_target_one_r_comparison import (
     prospective_profit_target_one_r_comparison,
+    prospective_profit_target_threshold_comparison,
 )
 from cocomelon.research.prospective_range_compression_entry import (
     ProspectiveRangeCompressionEntryState,
@@ -429,6 +430,15 @@ PROFIT_TARGET_1R_RULE = ProfitLockRule(
     lock_at_r=Decimal("1"),
     exit_on_activation=True,
 )
+PROFIT_TARGET_1_5R_RULE = ProfitLockRule(
+    rule_id="profit_target_at_1_5r",
+    activate_at_r=Decimal("1.5"),
+    lock_at_r=Decimal("1.5"),
+    exit_on_activation=True,
+)
+PROFIT_TARGET_1_5R_SHADOW_STATE_FILENAME = (
+    "profit-target-one-half-r-execution-shadow-state.json"
+)
 PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-entry-filter-state.json"
 )
@@ -458,6 +468,9 @@ PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME = (
 )
 PROSPECTIVE_PROFIT_TARGET_ONE_R_COMPARISON_FILENAME = (
     "prospective-profit-target-one-r-comparison.json"
+)
+PROSPECTIVE_PROFIT_TARGET_THRESHOLD_COMPARISON_FILENAME = (
+    "prospective-profit-target-threshold-comparison.json"
 )
 PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME = (
     "prospective-full-stack-forward-markout-summary.json"
@@ -9061,6 +9074,18 @@ async def run_continuous_paper_session(
             opening_plan_loader=execution.store.load_plan,
         )
     )
+    # A distinct frozen +1.5R horizon: never reset or mix +1R history.
+    profit_target_one_half_shadow = (
+        _ContinuousProfitLockExecutionShadowSink(
+            _restore_profit_lock_execution_shadow(
+                root / PROFIT_TARGET_1_5R_SHADOW_STATE_FILENAME,
+                replay_config.execution,
+                started_at_ms=started_at_ms,
+                rules=(PROFIT_TARGET_1_5R_RULE,),
+            ),
+            opening_plan_loader=execution.store.load_plan,
+        )
+    )
     delayed_entry_execution_shadow = (
         _ContinuousDelayedEntryExecutionShadowSink(
             _restore_delayed_entry_execution_shadow(
@@ -9098,6 +9123,9 @@ async def run_continuous_paper_session(
         execution.account.positions
     )
     profit_target_execution_shadow.reconcile_open_positions(
+        execution.account.positions
+    )
+    profit_target_one_half_shadow.reconcile_open_positions(
         execution.account.positions
     )
     delayed_entry_execution_shadow.reconcile_open_positions(
@@ -9350,6 +9378,7 @@ async def run_continuous_paper_session(
                 _CompositePositionResearchObserver(
                     profit_lock_execution_shadow,
                     profit_target_execution_shadow,
+                    profit_target_one_half_shadow,
                     delayed_entry_execution_shadow,
                     delayed_entry_120s_execution_shadow,
                     original_stop_book_capture,
@@ -9613,6 +9642,16 @@ async def run_continuous_paper_session(
                         timed_component(
                             "profit_target_shadow_state",
                             profit_target_execution_shadow.shadow.state_payload,
+                        ),
+                    )
+                )
+            if profit_target_one_half_shadow.shadow is not None:
+                payloads.append(
+                    (
+                        root / PROFIT_TARGET_1_5R_SHADOW_STATE_FILENAME,
+                        timed_component(
+                            "profit_target_one_half_shadow_state",
+                            profit_target_one_half_shadow.shadow.state_payload,
                         ),
                     )
                 )
