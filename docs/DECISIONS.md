@@ -871,3 +871,15 @@ Ignore an empty-job workflow only if it is a **completed** speculative `push` or
 This narrows only the liveness false positive from never-started GitHub workflow admissions; it does not weaken runtime trader overlap guards, account-state integrity, position/exposure logic, direction choice, or profitability/promotion gates.
 
 **LIVE TRADING: DISABLED.**
+
+### D-071 — Running paper step must also produce fresh worker heartbeat
+
+A GitHub Actions step marked `in_progress` proves a process has not returned; it does **not** prove paper trading is advancing. The independent recovery watchdog must cross-check the reported active paper worker run ID against the authoritative operational issue #469 `Worker run:` and ISO `Updated:` heartbeat from that exact runtime. A matching heartbeat older than 15 minutes or future-dated by more than two minutes is a visible failure, not a healthy green watchdog.
+
+During the first 15 minutes of a newly started worker, allow only a labeled startup grace when the issue still contains its predecessor's heartbeat. After that, no matching heartbeat fails visibly. Require a parseable timezone-aware runner start time and issue timestamps; missing or corrupt details fail closed.
+
+**Safety:** A stale heartbeat never authorizes a second trader, job cancellation, forced reinitialization, weaker L2 freshness, or retrospective invented market data. The watchdog merely fails visibly while the existing active-step exclusion keeps the paper account safe from duplicate trading. Continue watching the exact worker step and account heartbeat after deployment.
+
+No new strategy, profit-target, sizing, risk, stop, promotion or live-execution authority. This is an **observability-only** guard.
+
+**LIVE TRADING: DISABLED.**
