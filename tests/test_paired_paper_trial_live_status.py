@@ -4,6 +4,7 @@ from pathlib import Path
 
 from scripts.render_continuous_paper_live_status import (
     _paired_paper_trial_lines,
+    render_live_status,
 )
 
 
@@ -90,3 +91,68 @@ def test_operational_renderer_includes_frozen_paired_trial_status() -> None:
     assert "_paired_paper_trial_lines(" in source
     assert '"loss_context_paired_portfolio_shadow": (' in runtime
     assert "pump.loss_context_paired_shadow_payload()" in runtime
+
+
+def _operational_payload(trial: object) -> dict[str, object]:
+    return {
+        "heartbeat_scope": "operational",
+        "timestamp_ms": 1_700_000_000_000,
+        "starting_cash": "10000",
+        "equity": "10000",
+        "cash": "10000",
+        "unrealized_pnl": "0",
+        "realized_gross_pnl": "0",
+        "cumulative_fees": "0",
+        "cumulative_funding": "0",
+        "closed_trades": 0,
+        "execution_healthy": True,
+        "selected_market_count": 1,
+        "processed_records": 1,
+        "journal_observations": 1,
+        "positions": [],
+        "recent_closed_trades": [],
+        "loss_context_paired_portfolio_shadow": trial,
+    }
+
+
+def test_actual_operational_heartbeat_renders_paired_trial_health() -> None:
+    rendered = render_live_status(
+        _operational_payload({
+            "enabled": True,
+            "initialized": True,
+            "failed": False,
+            "error": None,
+            "portfolio_shadow_candidate_id": "frozen-d087",
+            "submitted_records": 30,
+            "processed_records": 28,
+            "queue_depth": 2,
+            "queue_capacity": 16_384,
+            "queue_overflows": 0,
+            "checkpoint_count": 1,
+        }),
+        run_id="worker-1",
+        head_sha="a" * 40,
+        predecessor_run_id="worker-0",
+    )
+    assert "## Continuous paper runtime live status" in rendered
+    assert "### Frozen paired paper-account trial" in rendered
+    assert "- state: `active`" in rendered
+    assert "- frozen trial candidate ID: `frozen-d087`" in rendered
+    assert "30 / 28 / 2" in rendered
+    assert "RESEARCH ONLY / NO EXECUTION" in rendered
+
+
+def test_actual_operational_heartbeat_exposes_shadow_failure() -> None:
+    rendered = render_live_status(
+        _operational_payload({
+            "enabled": False,
+            "error": "missing immutable freeze",
+        }),
+        run_id="worker-1",
+        head_sha="a" * 40,
+        predecessor_run_id="worker-0",
+    )
+    assert "- execution healthy: true" in rendered
+    assert "### Frozen paired paper-account trial" in rendered
+    assert "- state: `failed`" in rendered
+    assert "missing immutable freeze" in rendered
