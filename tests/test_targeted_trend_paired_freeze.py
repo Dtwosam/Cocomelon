@@ -148,4 +148,4 @@ def test_legacy_composition_gate_remains_independent() -> None:
     assert "source_audit_raw_sha256" in helper
     assert "no_legacy_composition_gate_credit" in helper
     assert "historical_feature_coverage_complete" in helper
-    assert '"research_only"' not in ""  # Test retains conventional authority checks.
+    assert 'research_only=True' in helper or '"research_only": True' in helper
