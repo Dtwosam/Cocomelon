@@ -613,26 +613,36 @@ class ProfitLockExecutionShadow:
         for rule_state in state.rules.values():
             rule_state.latest_mark_timestamp_ms = now_ms
             rule = rule_by_id[rule_state.rule_id]
+            mark_r = _gross_r(
+                side=state.side,
+                entry_price=state.entry_price,
+                quantity=state.initial_quantity,
+                planned_risk=state.planned_risk,
+                mark_px=raw_mark,
+            )
             if rule_state.activated_at_ms is None:
-                if _gross_r(
-                    side=state.side,
-                    entry_price=state.entry_price,
-                    quantity=state.initial_quantity,
-                    planned_risk=state.planned_risk,
-                    mark_px=raw_mark,
-                ) >= rule.activate_at_r:
+                if mark_r >= rule.activate_at_r:
                     rule_state.activated_at_ms = now_ms
 
             if (
                 rule_state.activated_at_ms is not None
                 and rule_state.triggered_at_ms is None
             ):
+                lock_at_r = rule.lock_at_r
+                if rule.trail_by_r is not None:
+                    peak = rule_state.peak_gross_r
+                    if peak is None or mark_r > peak:
+                        peak = mark_r
+                        rule_state.peak_gross_r = peak
+                    lock_at_r = max(
+                        lock_at_r, peak - rule.trail_by_r
+                    )
                 lock_px = _lock_price(
                     side=state.side,
                     entry_price=state.entry_price,
                     quantity=state.initial_quantity,
                     planned_risk=state.planned_risk,
-                    lock_at_r=rule.lock_at_r,
+                    lock_at_r=lock_at_r,
                 )
                 if (
                     rule.exit_on_activation
