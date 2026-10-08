@@ -179,6 +179,7 @@ class _RuleState:
     triggered_at_ms: int | None = None
     trigger_mark_px: Decimal | None = None
     trigger_event_key: str | None = None
+    peak_gross_r: Decimal | None = None
     latest_mark_timestamp_ms: int | None = None
     pending_plan: PaperOrderPlan | None = None
     filled_quantity: Decimal = ZERO
