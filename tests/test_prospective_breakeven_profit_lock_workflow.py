@@ -108,3 +108,16 @@ def test_breakeven_status_markdown_avoids_shell_backtick_substitution() -> None:
     assert '- candidate state present: `false`' in source
     assert '**Execution authority:** `false`' in source
     assert '**Promotion authority:** `false`' in source
+
+
+def test_breakeven_status_shows_exit_opportunity_cost_and_stability() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    assert 'payload["paired_exit_payoff"]' in source
+    assert 'payload["by_direction"]' in source
+    assert 'payload["chronological_stability"]' in source
+    assert "original_winners_turned_nonprofitable" in source
+    assert "original_winners_preserved" in source
+    assert "gross_forgone_contribution_pnl" in source
+    assert "chronologically_stable_absolute_and_incremental" in source
+    assert "earlier half candidate net / incremental PnL" in source
+    assert "later half candidate net / incremental PnL" in source
