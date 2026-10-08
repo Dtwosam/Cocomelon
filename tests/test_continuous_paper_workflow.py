@@ -1724,3 +1724,46 @@ def test_optional_research_freezes_fail_closed_without_qualified_candidate() -> 
     cooldown_block = source[cooldown_start:cooldown_end]
     assert "no stable cooldown context selected" in cooldown_block
     assert "exit 78" in cooldown_block
+
+
+
+def test_exact_research_ledgers_require_eligible_paper_source() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    gate_at = source.index("- name: Fail closed on upgrade handoff source")
+    durable_at = source.index("- name: Upload durable continuous paper state")
+    compact_at = source.index("- name: Upload compact continuous learning source")
+
+    for name, command in (
+        (
+            "Queue exact profit-lock execution ledger",
+            "gh workflow run profit-lock-execution-ledger.yml",
+        ),
+        (
+            "Queue exact momentum-pullback fast-markout ledger",
+            "gh workflow run prospective-momentum-pullback-fast-markout-ledger.yml",
+        ),
+        (
+            "Queue exact range-compression entry evidence",
+            "gh workflow run prospective-range-compression-entry-evidence.yml",
+        ),
+    ):
+        at = source.index(f"- name: {name}")
+        next_at = source.find("\n      - name:", at + 1)
+        block = source[at:next_at if next_at >= 0 else len(source)]
+        assert durable_at < gate_at < compact_at < at
+        assert "always()" in block
+        assert "steps.guard.outputs.skip != 'true'" in block
+        assert "steps.durable_state_upload.outcome == 'success'" in block
+        assert "steps.research_source_gate.outcome == 'success'" in block
+        assert "steps.compact_learning_upload.outcome == 'success'" in block
+        assert "continue-on-error: true" in block
+        assert command in block
+        assert '-f "source_run_id=$GITHUB_RUN_ID"' in block
+        assert '-f "source_run_attempt=$GITHUB_RUN_ATTEMPT"' in block
+
+    gate_block = source[
+        gate_at:
+        source.index("- name: Queue exact LONG trend horizon comparison", gate_at)
+    ]
+    assert '[ "$exit_reason" = "upgrade_requested" ]' in gate_block
+    assert "exit 75" in gate_block
