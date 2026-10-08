@@ -24,6 +24,7 @@ from cocomelon.research.historical_discovery_freeze import (
 )
 from cocomelon.research.loss_context_paired_portfolio_shadow import (
     LossContextPairedPortfolioShadow,
+    _LaneOffsets,
 )
 from cocomelon.research.loss_context_portfolio_shadow_candidate import (
     LossContextPortfolioShadowFreeze,
@@ -798,3 +799,38 @@ def test_paired_shadow_rejects_tampered_review_ledger(
                 lead_strategy="trend",
             ),
         )
+
+
+def test_directional_offsets_are_durable_and_legacy_trades_not_reclassified() -> None:
+    offsets = _LaneOffsets(
+        closed_trade_count=3,
+        long_closed_trade_count=2,
+        short_closed_trade_count=1,
+        long_closed_net_pnl=Decimal("3.25"),
+        short_closed_net_pnl=Decimal("-1.75"),
+    )
+    assert _LaneOffsets.from_payload(offsets.to_dict()) == offsets
+
+    # Before the first upgraded checkpoint, old trades have no side witness.
+    legacy = dict(offsets.to_dict())
+    for key in (
+        "long_closed_trade_count", "short_closed_trade_count",
+        "long_closed_net_pnl", "short_closed_net_pnl",
+    ):
+        legacy.pop(key)
+    restored = _LaneOffsets.from_payload(legacy)
+    assert restored.closed_trade_count == 3
+    assert restored.long_closed_trade_count == 0
+    assert restored.short_closed_trade_count == 0
+    assert restored.long_closed_net_pnl == Decimal("0")
+    assert restored.short_closed_net_pnl == Decimal("0")
+
+    partial = dict(offsets.to_dict())
+    partial.pop("short_closed_net_pnl")
+    with pytest.raises(ValueError, match="direction offsets incomplete"):
+        _LaneOffsets.from_payload(partial)
+
+    impossible = dict(offsets.to_dict())
+    impossible["short_closed_trade_count"] = 4
+    with pytest.raises(ValueError, match="direction counts exceed total"):
+        _LaneOffsets.from_payload(impossible)

@@ -23,6 +23,7 @@ MIN_BLOCKED_MARKETS: Final = 4
 MAX_DOMINANT_BLOCKED_MARKET_SHARE: Final = Decimal("0.50")
 MAX_FORWARD_MARKET_DATA_GAP_FRACTION: Final = Decimal("0.01")
 MIN_CLOSED_TRADES_PER_LANE: Final = 30
+MIN_CLOSED_TRADES_PER_DIRECTION: Final = 8
 REVIEW_BLOCK_COUNT: Final = 3
 MIN_MATCHES_PER_BLOCK: Final = 5
 MIN_MARKETS_PER_BLOCK: Final = 2
@@ -115,6 +116,36 @@ def _lane_closed_trades(row: dict[str, object], lane: str) -> int:
     return _integer(
         payload.get("closed_trade_count"),
         f"{lane}.closed_trade_count",
+    )
+
+
+def _side_counters(
+    row: dict[str, object],
+    lane: str,
+) -> tuple[int, int, Decimal, Decimal] | None:
+    """Only independently journaled closed after-cost trades count by side."""
+    account = _mapping(row.get(lane), lane)
+    fields = (
+        "long_closed_trade_count", "short_closed_trade_count",
+        "long_closed_net_pnl", "short_closed_net_pnl",
+    )
+    present = tuple(field in account for field in fields)
+    if not any(present):
+        return None
+    if not all(present):
+        raise LossContextPairedShadowReviewError(
+            f"{lane} partial direction economics evidence"
+        )
+    longs = _integer(account[fields[0]], f"{lane}.{fields[0]}")
+    shorts = _integer(account[fields[1]], f"{lane}.{fields[1]}")
+    if longs + shorts > _lane_closed_trades(row, lane):
+        raise LossContextPairedShadowReviewError(
+            f"{lane} side counts exceed closed trades"
+        )
+    return (
+        longs, shorts,
+        _decimal(account[fields[2]], f"{lane}.{fields[2]}"),
+        _decimal(account[fields[3]], f"{lane}.{fields[3]}"),
     )
 
 
@@ -242,6 +273,9 @@ def verify_review_ledger(
     previous_prospective_start: int | None = None
     previous_record_count = 0
     previous_gap_counters: tuple[int, int, int] | None = None
+    previous_side_counters: dict[
+        str, tuple[int, int, Decimal, Decimal] | None
+    ] = {"baseline": None, "candidate": None}
 
     for line_number, line in enumerate(
         ledger_path.read_text(encoding="utf-8").splitlines(),
@@ -291,6 +325,17 @@ def verify_review_ledger(
         _validate_row_authority(unsigned)
         _validate_row_account_parity(unsigned)
         gaps = _gap_counters(unsigned)
+        sides = {lane: _side_counters(unsigned, lane) for lane in ("baseline", "candidate")}
+        for lane, previous_side in previous_side_counters.items():
+            current_side = sides[lane]
+            if previous_side is not None and (
+                current_side is None
+                or current_side[0] < previous_side[0]
+                or current_side[1] < previous_side[1]
+            ):
+                raise LossContextPairedShadowReviewError(
+                    f"{lane} directional evidence disappeared or count regressed"
+                )
         if previous_gap_counters is not None:
             if gaps is None:
                 raise LossContextPairedShadowReviewError(
@@ -371,6 +416,7 @@ def verify_review_ledger(
         previous_prospective_start = prospective_start
         previous_record_count = record_count
         previous_gap_counters = gaps
+        previous_side_counters = sides
 
     return tuple(rows)
 
@@ -419,9 +465,24 @@ def append_review_checkpoint(
     _validate_row_authority(unsigned)
     _validate_row_account_parity(unsigned)
     current_gaps = _gap_counters(unsigned)
+    current_sides = {
+        lane: _side_counters(unsigned, lane)
+        for lane in ("baseline", "candidate")
+    }
     _unattributed_block_count(unsigned)
     if rows:
         previous = rows[-1]
+        for lane in ("baseline", "candidate"):
+            old_side = _side_counters(previous, lane)
+            new_side = current_sides[lane]
+            if old_side is not None and (
+                new_side is None
+                or new_side[0] < old_side[0]
+                or new_side[1] < old_side[1]
+            ):
+                raise LossContextPairedShadowReviewError(
+                    f"{lane} direction evidence regressed or disappeared"
+                )
         prior_gaps = _gap_counters(previous)
         if prior_gaps is not None and (
             current_gaps is None
@@ -647,6 +708,37 @@ def build_paired_shadow_review(
     forward_gap_duration_ms: int | None = None
     forward_gap_fraction: Decimal | None = None
     latest_open_gaps: int | None = None
+    side_performance: dict[str, object] = {}
+    if eligible and any(
+        _side_counters(row, lane) is None
+        for row in eligible
+        for lane in ("baseline", "candidate")
+    ):
+        reasons.append("missing_forward_direction_economics")
+    elif anchor is not None and latest is not None:
+        for lane in ("baseline", "candidate"):
+            start = _side_counters(anchor, lane)
+            end = _side_counters(latest, lane)
+            assert start is not None and end is not None
+            long_count = end[0] - start[0]
+            short_count = end[1] - start[1]
+            long_net = end[2] - start[2]
+            short_net = end[3] - start[3]
+            side_performance[lane] = {
+                "long_closed_trades": long_count,
+                "short_closed_trades": short_count,
+                "long_realized_net_pnl": str(long_net),
+                "short_realized_net_pnl": str(short_net),
+            }
+            if long_count < MIN_CLOSED_TRADES_PER_DIRECTION:
+                reasons.append(f"{lane}_insufficient_long_closed_trades")
+            if short_count < MIN_CLOSED_TRADES_PER_DIRECTION:
+                reasons.append(f"{lane}_insufficient_short_closed_trades")
+            if lane == "candidate":
+                if long_net <= ZERO:
+                    reasons.append("candidate_long_realized_net_pnl_not_positive")
+                if short_net <= ZERO:
+                    reasons.append("candidate_short_realized_net_pnl_not_positive")
 
     if eligible and not all(_gap_counters(row) is not None for row in eligible):
         reasons.append("missing_forward_market_data_gap_evidence")
@@ -768,6 +860,7 @@ def build_paired_shadow_review(
             None if forward_gap_fraction is None else str(forward_gap_fraction)
         ),
         "latest_open_market_data_gaps": latest_open_gaps,
+        "forward_closed_trade_economics_by_direction": side_performance,
         "matching_context_blocks": matching,
         "unattributed_legacy_matching_context_blocks": (
             unattributed_matching
@@ -809,6 +902,9 @@ def build_paired_shadow_review(
                 MAX_DOMINANT_BLOCKED_MARKET_SHARE
             ),
             "min_closed_trades_per_lane": MIN_CLOSED_TRADES_PER_LANE,
+            "min_closed_trades_per_direction": MIN_CLOSED_TRADES_PER_DIRECTION,
+            "positive_candidate_realized_net_pnl_each_direction_required": True,
+            "complete_future_direction_economics_required": True,
             "review_block_count": REVIEW_BLOCK_COUNT,
             "min_matches_per_block": MIN_MATCHES_PER_BLOCK,
             "min_markets_per_block": MIN_MARKETS_PER_BLOCK,

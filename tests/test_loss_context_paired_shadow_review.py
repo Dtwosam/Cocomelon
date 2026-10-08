@@ -84,6 +84,10 @@ def _checkpoint(
         ),
         "baseline": {
             "closed_trade_count": 4 * index,
+            "long_closed_trade_count": 2 * index,
+            "short_closed_trade_count": 2 * index,
+            "long_closed_net_pnl": str(-index),
+            "short_closed_net_pnl": str(-index),
             "equity": str(10_000 + baseline_total),
             "total_account_pnl": str(baseline_total),
             "realized_net_pnl": str(baseline_realized),
@@ -91,6 +95,10 @@ def _checkpoint(
         },
         "candidate": {
             "closed_trade_count": 4 * index,
+            "long_closed_trade_count": 2 * index,
+            "short_closed_trade_count": 2 * index,
+            "long_closed_net_pnl": str(index if candidate_profitable else -index),
+            "short_closed_net_pnl": str(index if candidate_profitable else 0),
             "equity": str(10_000 + candidate_total),
             "total_account_pnl": str(candidate_total),
             "realized_net_pnl": str(candidate_realized),
@@ -163,6 +171,11 @@ def test_paired_shadow_review_requires_real_profit_and_three_clean_blocks(
     assert report["blocked_market_count"] == 4
     assert report["candidate_closed_trade_count"] == 32
     assert report["baseline_closed_trade_count"] == 32
+    sides = report["forward_closed_trade_economics_by_direction"]
+    assert sides["candidate"]["long_closed_trades"] == 16
+    assert sides["candidate"]["short_closed_trades"] == 16
+    assert sides["candidate"]["long_realized_net_pnl"] == "8"
+    assert sides["candidate"]["short_realized_net_pnl"] == "8"
     assert report["candidate_total_account_pnl"] == "27"
     assert report["candidate_realized_net_pnl"] == "18"
     blocks = report["chronological_blocks"]
@@ -405,3 +418,92 @@ def test_paired_review_rejects_gap_counter_regression(
         match="market-data closed gap duration",
     ):
         append_review_checkpoint(ledger, second)
+
+
+def test_paired_review_cannot_mask_losing_shorts_with_profitable_longs(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "review.jsonl"
+    for index in range(1, 10):
+        row = _checkpoint(freeze, index=index)
+        candidate = row["candidate"]
+        assert isinstance(candidate, dict)
+        candidate["long_closed_net_pnl"] = str(3 * index)
+        candidate["short_closed_net_pnl"] = str(-index)
+        append_review_checkpoint(ledger, row)
+    review = build_paired_shadow_review(freeze, ledger)
+    assert review["candidate_realized_net_pnl"] == "18"
+    assert review["ready_for_review"] is False
+    assert "candidate_short_realized_net_pnl_not_positive" in review["readiness_failures"]
+    assert review["forward_closed_trade_economics_by_direction"]["candidate"][
+        "short_realized_net_pnl"
+    ] == "-8"
+
+
+def test_paired_review_rejects_missing_forward_direction_provenance(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "review.jsonl"
+    for index in range(1, 10):
+        row = _checkpoint(freeze, index=index)
+        if index == 1:
+            for lane in ("baseline", "candidate"):
+                data = row[lane]
+                assert isinstance(data, dict)
+                for field in (
+                    "long_closed_trade_count", "short_closed_trade_count",
+                    "long_closed_net_pnl", "short_closed_net_pnl",
+                ):
+                    data.pop(field)
+        append_review_checkpoint(ledger, row)
+    report = build_paired_shadow_review(freeze, ledger)
+    assert report["ready_for_review"] is False
+    assert "missing_forward_direction_economics" in report["readiness_failures"]
+
+
+def test_paired_review_rejects_missing_one_direction_field(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    row = _checkpoint(freeze, index=1)
+    candidate = row["candidate"]
+    assert isinstance(candidate, dict)
+    candidate.pop("short_closed_net_pnl")
+    with pytest.raises(
+        LossContextPairedShadowReviewError,
+        match="partial direction economics evidence",
+    ):
+        append_review_checkpoint(tmp_path / "review.jsonl", row)
+
+
+def test_paired_review_rejects_decreasing_direction_count(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    path = tmp_path / "review.jsonl"
+    append_review_checkpoint(path, _checkpoint(freeze, index=2))
+    next_row = _checkpoint(freeze, index=3)
+    candidate = next_row["candidate"]
+    assert isinstance(candidate, dict)
+    candidate["short_closed_trade_count"] = 1
+    with pytest.raises(
+        LossContextPairedShadowReviewError,
+        match="direction evidence regressed",
+    ):
+        append_review_checkpoint(path, next_row)
+
+
+def test_paired_review_rejects_side_count_greater_than_total(
+    tmp_path: Path,
+) -> None:
+    row = _checkpoint(_freeze(), index=1)
+    baseline = row["baseline"]
+    assert isinstance(baseline, dict)
+    baseline["long_closed_trade_count"] = 10
+    with pytest.raises(
+        LossContextPairedShadowReviewError,
+        match="side counts exceed closed trades",
+    ):
+        append_review_checkpoint(tmp_path / "review.jsonl", row)
