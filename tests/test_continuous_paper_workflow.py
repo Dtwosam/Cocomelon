@@ -466,8 +466,10 @@ def test_continuous_paper_upgrade_watchdog_does_not_require_heartbeat() -> None:
         not in watchdog_source
     )
     assert 'int(run.get("run_number", 0)) > current_number' in watchdog_source
-    assert "holding runtime push rendezvous for active worker handoff" in source
-    assert "sleep 75" in source
+    # Once the guard has rejected a push it must finish promptly. The
+    # watchdog searches historical push run IDs, not just active runs.
+    assert "holding runtime push rendezvous for active worker handoff" not in source
+    assert "sleep 75" not in source
     assert "requesting graceful handoff independently of heartbeat" in source
     assert 'request_runtime_handoff "$trader_pid" "$replacement_run"' in source
     assert "for _ in $(seq 1 120)" in source
@@ -1804,3 +1806,33 @@ def test_forward_loss_context_cohort_is_frozen_before_runtime_and_reported_after
     assert "steps.forward_loss_context_review.outcome == 'success'" in upload
     assert "loss-context-forward-cohort-anchor.json" in upload
     assert "loss-context-forward-cohort-report.json" in upload
+
+
+def test_skipped_push_guard_never_blocks_exact_successor() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    guard_at = source.index(
+        "- name: Skip bootstrap/watchdog when a continuous paper run"
+    )
+    checkout_at = source.index("- uses: actions/checkout@v7", guard_at)
+    guard = source[guard_at:checkout_at]
+
+    assert 'step.get("name") == "Run actions/checkout@v7"' in guard
+    assert 'step.get("conclusion") == "skipped"' in guard
+    assert "if skipped_checkout:" in guard
+    assert "continue" in guard[guard.index("if skipped_checkout:"):]
+    assert "trader_status in" in guard
+    assert 'trader_status in {"queued", "pending", "in_progress"}' in guard
+    assert "after trading has stopped" in guard
+
+    # A skipped push used to sleep for 75 seconds after recording
+    # skip=true. The newly dispatched successor could observe its
+    # pending trader step and skip too, leaving no running paper worker.
+    skipped_path = guard[guard.index('if [ -n "$ACTIVE" ]; then'):]
+    assert 'echo "skip=true" >> "$GITHUB_OUTPUT"' in skipped_path
+    assert 'sleep 75' not in skipped_path
+    assert 'sleep 60' not in skipped_path
+
+    # True in-progress trader jobs still guard against duplicate workers.
+    assert '"in_progress"' in guard
+    assert 'print(run_id)' in guard
+
