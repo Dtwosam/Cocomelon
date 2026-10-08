@@ -5032,3 +5032,12 @@ Opened an independent research-only prospective coverage lane rather than weaken
 The cohort includes all trades opened after anchor time, excludes pre-cutover in-flight positions, counts both sides and multiple markets, reports realized *closed-trade* net PnL and missing feature facts, and stays discovery-unready until 72h / 30 closed trades / 4 markets / 6 non-loss controls with complete coverage. Even when discovery ready, strategy promotion, account profitability, and execution authority remain **explicitly false**. Legacy historical data gaps and the original historical filter-freeze complete-baseline gate remain unresolved; future prospective paired account-level A/B economics are still required to establish any improvement.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Fresh-clock operational L2 heartbeat — 2026-10-08
+
+The active paper heartbeat on merged PR #1013 reported **ready=0, stale=20/20 on both live WebSocket lanes** while their exchange-to-receive L2 book ages remained positive and below one second. Investigated the live control-loop emission: the final heartbeat passed `now_ms` captured **before** awaited mainnet context refresh, selection work and potentially L2 recovery. Newer legitimate exchange timestamps could therefore lie *after the old reporting timestamp*, producing negative current ages and falsely classifying every L2 book as future-dated/stale in that report. This is a heartbeat clock-sampling defect, not evidence that it is safe to bypass market-data eligibility.
+
+The final operational heartbeat now samples `utc_now_ms()` at emission time, after awaited network work. Added a source regression test preserving the strict existing exchange-time freshness check and keeping execution, risk, entry decisions, subscription recovery, and strategy unchanged. Compare post-deployment fresh-clock lane health against independent pipeline-readiness evidence; neither a passing status check nor this diagnostic fix demonstrates profitable trades.
+
+**LIVE TRADING: DISABLED.**
