@@ -9795,6 +9795,11 @@ def _render_operational_live_status(
                 f"{payload.get('session_opening_fills', 0)}"
             ),
             (
+                "- opening candidates pending / expired: "
+                f"{payload.get('pending_opening_candidate_count', 0)} / "
+                f"{payload.get('expired_opening_candidate_count', 0)}"
+            ),
+            (
                 "- latest eligibility markets / rankable / deep-ready: "
                 f"{latest_eligibility.get('market_count', 0)} / "
                 f"{latest_eligibility.get('rankable', 0)} / "
@@ -10736,6 +10741,11 @@ def render_live_status(
                 "- opening execution attempts / fills: "
                 f"`{payload.get('session_opening_execution_attempts', 0)} / "
                 f"{payload.get('session_opening_fills', 0)}`"
+            ),
+            (
+                "- opening candidates pending / expired: "
+                f"`{payload.get('pending_opening_candidate_count', 0)} / "
+                f"{payload.get('expired_opening_candidate_count', 0)}`"
             ),
             (
                 "- latest eligibility markets / rankable / deep-ready: "
