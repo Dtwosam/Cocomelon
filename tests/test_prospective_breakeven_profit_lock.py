@@ -255,7 +255,7 @@ def test_prospective_breakeven_ready_requires_profitable_robust_both_sides() -> 
         direction = (
             Direction.LONG if index % 2 == 0 else Direction.SHORT
         )
-        market = "SOL" if index % 3 else "ETH"
+        market = "SOL" if index % 5 < 3 else "ETH"
         trade = _trade(
             f"ready-{index}",
             opened_at_ms=candidate.started_at_ms + index * 120_000,
