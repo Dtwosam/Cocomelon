@@ -9,6 +9,9 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
+from cocomelon.research.full_stack_matched_trade_economic_review import (
+    review_durable_full_stack_economics,
+)
 from cocomelon.research.prospective_full_stack_matched_trade_ledger import (
     ProspectiveFullStackMatchedTradeLedgerError,
     update_full_stack_matched_trade_ledger,
@@ -435,3 +438,128 @@ def test_full_stack_ledger_rejects_semantically_corrupt_stored_row() -> None:
         match="stored derived economics do not reconcile",
     ):
         validate_full_stack_matched_trade_ledger(corrupt)
+
+
+def _screen_ledger(
+    *,
+    weak_short: bool = False,
+    late_bad: bool = False,
+    all_blocked: bool = False,
+    pending_last: bool = False,
+) -> dict[str, object]:
+    trades: list[TradeJournalEntry] = []
+    decisions: dict[str, dict[str, object]] = {}
+    for index in range(40):
+        blocked = all_blocked or index % 5 == 0
+        short_weak = weak_short and index % 2 == 1 and not blocked
+        late_loss = late_bad and index >= 30 and not blocked
+        actual = (
+            "-3" if short_weak or late_loss
+            else ("-2" if blocked else "1")
+        )
+        candidate = (
+            "-2" if late_loss
+            else ("-1" if short_weak else "3")
+        )
+        row = _trade(
+            f"screen-{index}",
+            direction=Direction.LONG if index % 2 == 0 else Direction.SHORT,
+            market=("BTC", "ETH", "SOL", "AVAX")[index % 4],
+            opened_at_ms=START + 1_000 + index * 100_000,
+            pnl=actual,
+        )
+        trades.append(row)
+        decisions[row.trade_id] = (
+            _block_decision() if blocked
+            else _admit_decision(
+                candidate_pnl=(
+                    None if pending_last and index == 39 else candidate
+                )
+            )
+        )
+    return update_full_stack_matched_trade_ledger(
+        tuple(trades),
+        _summary(tuple(trades), decisions),
+        previous=None,
+        source_paper_run_id=600,
+        source_paper_run_attempt=1,
+        source_artifact_name="screen-600-1",
+        source_artifact_digest=_digest("a"),
+    )
+
+
+def test_durable_economic_review_passes_robust_profit_both_sides_all_blocks() -> None:
+    ledger = _screen_ledger()
+    original = deepcopy(ledger)
+    report = review_durable_full_stack_economics(ledger)
+    assert ledger == original
+    assert report["source_ledger_sha256"] == ledger["ledger_sha256"]
+    assert report["source_rows_sha256"] == ledger["rows_sha256"]
+    assert report["source_row_count"] == 40
+    assert report["sample_complete"] is True
+    assert report["source_integrity_complete"] is True
+    assert report["both_sides_profitable"] is True
+    assert report["all_temporal_blocks_profitable_and_improved"] is True
+    assert report["candidate_leave_one_trade_and_market_robust"] is True
+    assert report["delta_leave_one_trade_and_market_robust"] is True
+    assert report["economic_screen_passes"] is True
+    assert report["blocked_losers"] == 8
+    assert report["blocked_winners_forgone"] == 0
+    assert report["admitted_winners_preserved"] == 32
+    assert report["admitted_winners_lost_after_exit"] == 0
+    assert report["ready_for_review"] is False
+    assert report["portfolio_counterfactual_complete"] is False
+    assert report["execution_authority"] is False
+    assert report["promotion_authority"] is False
+
+
+def test_durable_economic_review_rejects_negative_short_subcohort() -> None:
+    report = review_durable_full_stack_economics(
+        _screen_ledger(weak_short=True)
+    )
+    assert Decimal(report["overall"]["candidate_net_pnl"]) > 0
+    assert report["all_temporal_blocks_profitable_and_improved"] is True
+    assert report["by_direction"]["long"]["candidate_profitable"] is True
+    assert report["by_direction"]["short"]["candidate_profitable"] is False
+    assert report["both_sides_profitable"] is False
+    assert report["economic_screen_passes"] is False
+
+
+def test_durable_economic_review_rejects_late_loss_cluster() -> None:
+    report = review_durable_full_stack_economics(
+        _screen_ledger(late_bad=True)
+    )
+    assert Decimal(report["overall"]["candidate_net_pnl"]) > 0
+    assert Decimal(report["overall"]["delta_net_pnl"]) > 0
+    assert report["all_temporal_blocks_profitable_and_improved"] is False
+    assert report["temporal_blocks"][-1]["candidate_net_pnl"] == "-16"
+    assert report["economic_screen_passes"] is False
+
+
+def test_durable_economic_review_rejects_flat_all_blocked_candidate() -> None:
+    report = review_durable_full_stack_economics(
+        _screen_ledger(all_blocked=True)
+    )
+    assert report["overall"]["candidate_net_pnl"] == "0"
+    assert report["admitted_trades"] == 0
+    assert report["economic_screen_passes"] is False
+
+
+def test_durable_economic_review_cannot_ignore_unsettled_exit() -> None:
+    ledger = _screen_ledger(pending_last=True)
+    report = review_durable_full_stack_economics(ledger)
+    assert ledger["pending_trade_count"] == 1
+    assert report["pending_trades"] == 1
+    assert report["source_integrity_complete"] is False
+    assert report["economic_screen_passes"] is False
+
+
+def test_durable_economic_review_refuses_mutated_append_only_history() -> None:
+    ledger = _screen_ledger()
+    tampered = deepcopy(ledger)
+    tampered["summary"]["overall"]["full_stack_candidate_net_pnl"] = "99999"
+    with pytest.raises(
+        ProspectiveFullStackMatchedTradeLedgerError,
+        match="summary does not reconcile",
+    ):
+        review_durable_full_stack_economics(tampered)
