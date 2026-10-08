@@ -27,15 +27,15 @@ from cocomelon.research.prospective_breakeven_profit_lock import (
     prospective_breakeven_from_execution_ledger,
     prospective_breakeven_profit_lock_summary,
 )
-from cocomelon.research.prospective_profit_trailing_grid import (
-    prospective_profit_trailing_grid_comparison,
-)
 from cocomelon.research.prospective_profit_target_one_r_comparison import (
     ProspectiveProfitTargetComparisonError,
     prospective_profit_target_one_half_r_comparison,
     prospective_profit_target_one_r_comparison,
     prospective_profit_target_threshold_comparison,
     prospective_profit_trailing_comparison,
+)
+from cocomelon.research.prospective_profit_trailing_grid import (
+    prospective_profit_trailing_grid_comparison,
 )
 
 
