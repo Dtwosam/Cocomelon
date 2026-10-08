@@ -8081,6 +8081,25 @@ def _open_trailing_profit_preview(
     }
 
 
+def _safe_open_trailing_profit_preview(
+    sink: _ContinuousProfitLockExecutionShadowSink,
+    positions: Sequence[PaperPosition],
+) -> dict[str, object]:
+    """Never let a research telemetry error disrupt paper execution."""
+    try:
+        return _open_trailing_profit_preview(sink, positions)
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": TRAILING_PROFIT_1R_RULE.rule_id,
+            "error": f"{type(exc).__name__}: {exc}",
+            "positions": [],
+        }
+
+
 def _operational_live_status_payload(
     execution: PaperExecutionAdapter,
     pump: _RecordPump,
@@ -8193,7 +8212,7 @@ def _operational_live_status_payload(
         "open_trailing_profit_preview": (
             None
             if profit_trailing_execution_shadow is None
-            else _open_trailing_profit_preview(
+            else _safe_open_trailing_profit_preview(
                 profit_trailing_execution_shadow,
                 execution.account.positions,
             )
