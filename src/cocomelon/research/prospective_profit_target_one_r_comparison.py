@@ -221,6 +221,10 @@ def prospective_profit_target_one_r_comparison(
                     or outcome.candidate_source != "visible_book_ioc"
                     or outcome.completion_timestamp_ms is None
                     or outcome.trigger_timestamp_ms is None
+                    or outcome.simulated_filled_quantity
+                    != trade.filled_quantity
+                    or outcome.simulated_average_exit_price is None
+                    or outcome.attempt_count <= 0
                     or not (
                         trade.opened_at_ms
                         <= outcome.trigger_timestamp_ms
