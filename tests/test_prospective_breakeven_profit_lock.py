@@ -19,16 +19,16 @@ from cocomelon.research.profit_lock_execution_shadow import (
     EXECUTION_SHADOW_STATE_SCHEMA_VERSION,
     ProfitLockExecutionOutcome,
 )
-from cocomelon.research.prospective_profit_target_one_r_comparison import (
-    ProspectiveProfitTargetComparisonError,
-    prospective_profit_target_one_r_comparison,
-)
 from cocomelon.research.prospective_breakeven_profit_lock import (
     EMBARGO_MS,
     ProspectiveBreakevenProfitLockError,
     ProspectiveBreakevenProfitLockState,
     prospective_breakeven_from_execution_ledger,
     prospective_breakeven_profit_lock_summary,
+)
+from cocomelon.research.prospective_profit_target_one_r_comparison import (
+    ProspectiveProfitTargetComparisonError,
+    prospective_profit_target_one_r_comparison,
 )
 
 
