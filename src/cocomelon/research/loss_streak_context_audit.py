@@ -284,6 +284,40 @@ def _streak_payload(
         ),
         "dominant_dimensions": dominant,
         "trades": rows,
+        "context_complete": True,
+        "context_resolved_trade_count": len(resolved),
+        "context_unresolved_trade_count": 0,
+        "context_unresolved_reason_counts": {},
+    }
+
+
+def _incomplete_streak_payload(
+    streak_index: int,
+    trades: tuple[TradeJournalEntry, ...],
+    resolved: tuple[_ResolvedLoss, ...],
+    unresolved: Counter[str],
+) -> dict[str, object]:
+    """Retain true journal economics without claiming partial entry-context patterns."""
+    if not trades or not unresolved:
+        raise ValueError("incomplete streak requires trades and unresolved context")
+    return {
+        "streak_index": streak_index,
+        "length": len(trades),
+        "started_at_ms": trades[0].closed_at_ms,
+        "ended_at_ms": trades[-1].closed_at_ms,
+        "net_pnl": str(sum((trade.net_pnl for trade in trades), ZERO)),
+        "net_r": str(sum((trade.net_r for trade in trades), ZERO)),
+        "market_count": len({trade.market.canonical for trade in trades}),
+        "direction_count": len({trade.direction.value for trade in trades}),
+        "stop_triggered_losses": sum(
+            trade.exit_reason == "MARK_STOP_TRIGGERED" for trade in trades
+        ),
+        "dominant_dimensions": (),
+        "trades": tuple(_row(item) for item in resolved),
+        "context_complete": False,
+        "context_resolved_trade_count": len(resolved),
+        "context_unresolved_trade_count": sum(unresolved.values()),
+        "context_unresolved_reason_counts": dict(sorted(unresolved.items())),
     }
 
 
@@ -578,6 +612,8 @@ def _context_recurring_streaks(
 ) -> int:
     count = 0
     for streak in streaks:
+        if streak.get("context_complete") is not True:
+            continue
         raw = streak.get("trades")
         if not isinstance(raw, tuple):
             raise LossStreakContextAuditError(
@@ -793,15 +829,31 @@ def loss_streak_context_audit(
     )
     payloads: list[dict[str, object]] = []
     qualifying_resolved: list[_ResolvedLoss] = []
+    qualifying_unresolved: Counter[str] = Counter()
     for index, streak in enumerate(qualifying, start=1):
-        resolved = tuple(
-            _resolve(trade, facts, features, ranks)
-            for trade in streak
-        )
+        resolved: list[_ResolvedLoss] = []
+        unresolved: Counter[str] = Counter()
+        for trade in streak:
+            item, reason = _try_resolve(trade, facts, features, ranks)
+            if item is None:
+                unresolved[reason or "unresolved"] += 1
+            else:
+                resolved.append(item)
+        if unresolved:
+            qualifying_unresolved.update(unresolved)
+            payloads.append(
+                _incomplete_streak_payload(
+                    index, streak, tuple(resolved), unresolved
+                )
+            )
+            continue
         qualifying_resolved.extend(resolved)
-        payloads.append(_streak_payload(index, resolved))
+        payloads.append(_streak_payload(index, tuple(resolved)))
 
     ordered = tuple(payloads)
+    complete_streaks = tuple(
+        streak for streak in ordered if streak["context_complete"] is True
+    )
     qualifying_loss_rows = tuple(
         _row(item) for item in qualifying_resolved
     )
@@ -831,9 +883,9 @@ def loss_streak_context_audit(
     latest = None if not ordered else ordered[-1]
     recurring = (
         ()
-        if len(ordered) < RECURRING_STREAK_MIN
+        if len(complete_streaks) < RECURRING_STREAK_MIN
         else _recurring_patterns(
-            ordered,
+            complete_streaks,
             qualifying_loss_rows=qualifying_loss_rows,
             baseline_rows=baseline_rows,
             non_loss_rows=non_loss_rows,
@@ -841,7 +893,7 @@ def loss_streak_context_audit(
         )
     )
     context_filter_stability = _context_filter_stability(
-        ordered,
+        complete_streaks,
         baseline_rows,
     )
     return {
@@ -871,6 +923,16 @@ def loss_streak_context_audit(
         "baseline_normalization_complete": baseline_complete,
         "non_loss_control_trade_count": len(non_loss_rows),
         "qualifying_loss_trade_count": len(qualifying_loss_rows),
+        "qualifying_loss_unresolved_trade_count": sum(
+            qualifying_unresolved.values()
+        ),
+        "qualifying_loss_unresolved_reason_counts": dict(
+            sorted(qualifying_unresolved.items())
+        ),
+        "complete_qualifying_loss_streak_count": len(complete_streaks),
+        "incomplete_qualifying_loss_streak_count": (
+            len(ordered) - len(complete_streaks)
+        ),
         "recurring_patterns_baseline_normalized": True,
         "normalization_strategy_authority": False,
         "loss_streak_count": len(all_streaks),
