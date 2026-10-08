@@ -7989,6 +7989,117 @@ def _consecutive_loss_cooldown_status(
     }
 
 
+def _open_trailing_profit_preview(
+    sink: _ContinuousProfitLockExecutionShadowSink,
+    positions: Sequence[PaperPosition],
+) -> dict[str, object]:
+    """Research-only gross-R mark-level preview; never an IOC fill."""
+    rule = TRAILING_PROFIT_1R_RULE
+    shadow = sink.shadow
+    if shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "candidate_id": rule.rule_id,
+            "error": sink.error or "trailing shadow unavailable",
+            "positions": [],
+        }
+    active_ids = {
+        position.opening_plan_id for position in positions
+    }
+    states: list[dict[str, object]] = []
+    for raw in shadow.open_rule_state_payloads(rule.rule_id):
+        if raw["opening_plan_id"] not in active_ids:
+            continue
+        child = raw["rule"]
+        assert isinstance(child, dict)
+        active = child["activated_at_ms"] is not None
+        peak_raw = child.get("peak_gross_r")
+        peak = Decimal(str(peak_raw)) if peak_raw is not None else None
+        lock_r: Decimal | None = None
+        stop_px: Decimal | None = None
+        if active and raw["eligible"] is True and peak is not None:
+            qty = (
+                Decimal(str(child["remaining_quantity"]))
+                + Decimal(str(child["filled_quantity"]))
+            )
+            entry = Decimal(str(raw["entry_price"]))
+            risk = Decimal(str(raw["planned_risk"]))
+            if qty <= 0 or entry <= 0 or risk <= 0:
+                raise ValueError(
+                    "trailing preview has invalid position economics"
+                )
+            assert rule.trail_by_r is not None
+            lock_r = max(rule.lock_at_r, peak - rule.trail_by_r)
+            offset = lock_r * risk / qty
+            stop_px = (
+                entry + offset
+                if raw["side"] == "long" else entry - offset
+            )
+        states.append({
+            "market": raw["market"],
+            "side": raw["side"],
+            "eligible": raw["eligible"],
+            "activated": active,
+            "triggered": child["triggered_at_ms"] is not None,
+            "simulated_close_complete": (
+                child["completed_at_ms"] is not None
+            ),
+            "peak_gross_r": None if peak is None else str(peak),
+            "theoretical_lock_r": (
+                None if lock_r is None else str(lock_r)
+            ),
+            "theoretical_stop_price": (
+                None if stop_px is None else str(stop_px)
+            ),
+            "simulated_filled_quantity": child["filled_quantity"],
+            "remaining_quantity": child["remaining_quantity"],
+        })
+    info = shadow.operational_metadata_payload()
+    return {
+        "enabled": True,
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "candidate_id": rule.rule_id,
+        "started_at_ms": info["started_at_ms"],
+        "state_restored": info["state_restored"],
+        "state_restore_error": info["state_restore_error"],
+        "observed_open_positions": len(states),
+        "activated_open_positions": sum(
+            state["activated"] is True for state in states
+        ),
+        "triggered_open_positions": sum(
+            state["triggered"] is True for state in states
+        ),
+        "positions": states,
+        "warning": (
+            "A high-water theoretical mark stop is not a filled IOC "
+            "or an actual paper stop/order."
+        ),
+    }
+
+
+def _safe_open_trailing_profit_preview(
+    sink: _ContinuousProfitLockExecutionShadowSink,
+    positions: Sequence[PaperPosition],
+) -> dict[str, object]:
+    """Never let a research telemetry error disrupt paper execution."""
+    try:
+        return _open_trailing_profit_preview(sink, positions)
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": TRAILING_PROFIT_1R_RULE.rule_id,
+            "error": f"{type(exc).__name__}: {exc}",
+            "positions": [],
+        }
+
+
 def _operational_live_status_payload(
     execution: PaperExecutionAdapter,
     pump: _RecordPump,
@@ -7998,6 +8109,9 @@ def _operational_live_status_payload(
     timestamp_ms: int,
     l2_supervisor_group: _SupervisorGroup | None = None,
     profit_lock_execution_shadow: (
+        _ContinuousProfitLockExecutionShadowSink | None
+    ) = None,
+    profit_trailing_execution_shadow: (
         _ContinuousProfitLockExecutionShadowSink | None
     ) = None,
     prospective_breakeven_profit_lock_state: (
@@ -8095,6 +8209,14 @@ def _operational_live_status_payload(
         "kind": "continuous-paper-heartbeat",
         "heartbeat_scope": "operational",
         "timestamp_ms": timestamp_ms,
+        "open_trailing_profit_preview": (
+            None
+            if profit_trailing_execution_shadow is None
+            else _safe_open_trailing_profit_preview(
+                profit_trailing_execution_shadow,
+                execution.account.positions,
+            )
+        ),
         "paper_only": True,
         "live_orders": False,
         "research_telemetry_deferred": True,
@@ -8358,6 +8480,9 @@ def _emit_operational_live_status(
     profit_lock_execution_shadow: (
         _ContinuousProfitLockExecutionShadowSink | None
     ) = None,
+    profit_trailing_execution_shadow: (
+        _ContinuousProfitLockExecutionShadowSink | None
+    ) = None,
     prospective_breakeven_profit_lock_state: (
         ProspectiveBreakevenProfitLockState | None
     ) = None,
@@ -8370,6 +8495,7 @@ def _emit_operational_live_status(
         timestamp_ms=timestamp_ms,
         l2_supervisor_group=l2_supervisor_group,
         profit_lock_execution_shadow=profit_lock_execution_shadow,
+        profit_trailing_execution_shadow=profit_trailing_execution_shadow,
         prospective_breakeven_profit_lock_state=(
             prospective_breakeven_profit_lock_state
         ),
@@ -10022,6 +10148,7 @@ async def run_continuous_paper_session(
                 replay_config.risk_limits,
                 timestamp_ms=utc_now_ms(),
                 profit_lock_execution_shadow=profit_lock_execution_shadow,
+                profit_trailing_execution_shadow=profit_trailing_shadow,
                 prospective_breakeven_profit_lock_state=(
                     prospective_breakeven_profit_lock_state
                 ),
@@ -10402,6 +10529,7 @@ async def run_continuous_paper_session(
                         profit_lock_execution_shadow=(
                             profit_lock_execution_shadow
                         ),
+                        profit_trailing_execution_shadow=profit_trailing_shadow,
                         prospective_breakeven_profit_lock_state=(
                             prospective_breakeven_profit_lock_state
                         ),
@@ -10437,6 +10565,7 @@ async def run_continuous_paper_session(
                         profit_lock_execution_shadow=(
                             profit_lock_execution_shadow
                         ),
+                        profit_trailing_execution_shadow=profit_trailing_shadow,
                         prospective_breakeven_profit_lock_state=(
                             prospective_breakeven_profit_lock_state
                         ),
@@ -10600,6 +10729,7 @@ async def run_continuous_paper_session(
                     timestamp_ms=utc_now_ms(),
                     l2_supervisor_group=supervisor_group,
                     profit_lock_execution_shadow=profit_lock_execution_shadow,
+                    profit_trailing_execution_shadow=profit_trailing_shadow,
                     prospective_breakeven_profit_lock_state=(
                         prospective_breakeven_profit_lock_state
                     ),

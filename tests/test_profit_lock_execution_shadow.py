@@ -5,6 +5,11 @@ from decimal import Decimal
 
 import pytest
 
+from cocomelon.continuous_paper import (
+    _ContinuousProfitLockExecutionShadowSink,
+    _open_trailing_profit_preview,
+    _safe_open_trailing_profit_preview,
+)
 from cocomelon.domain.execution import (
     InstrumentExecutionSpec,
     PaperExecutionConfig,
@@ -835,3 +840,170 @@ def test_trailing_cannot_be_immediate_take_profit() -> None:
             exit_on_activation=True,
             trail_by_r=Decimal("0.5"),
         )
+
+
+@pytest.mark.parametrize(
+    ("side", "peak_mark", "retrace_mark", "trigger_mark", "stop_px"),
+    [
+        (PositionSide.LONG, "120", "116", "114", "115"),
+        (PositionSide.SHORT, "80", "84", "86", "85"),
+    ],
+)
+def test_operational_trailing_preview_tracks_gross_high_water_without_fills(
+    side: PositionSide,
+    peak_mark: str,
+    retrace_mark: str,
+    trigger_mark: str,
+    stop_px: str,
+) -> None:
+    rule = ProfitLockRule(
+        rule_id="trail_peak_after_1r_by_0_5r",
+        activate_at_r=Decimal("1"),
+        lock_at_r=Decimal("0.5"),
+        trail_by_r=Decimal("0.5"),
+    )
+    position = _position(side=side)
+    shadow = ProfitLockExecutionShadow(
+        _config(), started_at_ms=500, rules=(rule,)
+    )
+    sink = _ContinuousProfitLockExecutionShadowSink(
+        shadow, opening_plan_loader=lambda _id: None
+    )
+    initial = _open_trailing_profit_preview(sink, (position,))
+    assert initial["observed_open_positions"] == 0
+    assert initial["research_only"] is True
+    assert initial["execution_authority"] is False
+
+    shadow.observe_mark(
+        (position,), _mark(peak_mark, 1_500), now_ms=1_500
+    )
+    shadow.observe_mark(
+        (position,), _mark(retrace_mark, 1_700), now_ms=1_700
+    )
+    payload = _open_trailing_profit_preview(sink, (position,))
+    assert payload["activated_open_positions"] == 1
+    assert payload["triggered_open_positions"] == 0
+    row = payload["positions"][0]
+    assert row["market"] == MARKET.canonical
+    assert row["side"] == side.value
+    assert row["peak_gross_r"] == "2"
+    assert row["theoretical_lock_r"] == "1.5"
+    assert Decimal(row["theoretical_stop_price"]) == Decimal(stop_px)
+    assert row["simulated_filled_quantity"] == "0"
+    assert row["simulated_close_complete"] is False
+
+    shadow.observe_mark(
+        (position,), _mark(trigger_mark, 1_900), now_ms=1_900
+    )
+    after_trigger = _open_trailing_profit_preview(sink, (position,))
+    assert after_trigger["triggered_open_positions"] == 1
+    assert after_trigger["positions"][0]["peak_gross_r"] == "2"
+    assert after_trigger["positions"][0]["simulated_filled_quantity"] == "0"
+
+    restored = ProfitLockExecutionShadow(
+        _config(), started_at_ms=9_999, rules=(rule,)
+    )
+    restored.restore_state(shadow.state_payload())
+    restored_sink = _ContinuousProfitLockExecutionShadowSink(
+        restored, opening_plan_loader=lambda _id: None
+    )
+    next_status = _open_trailing_profit_preview(
+        restored_sink, (position,)
+    )
+    assert next_status["positions"][0] == after_trigger["positions"][0]
+    assert next_status["started_at_ms"] == 500
+
+
+def test_operational_trailing_preview_fails_closed_on_disabled_shadow() -> None:
+    rule = ProfitLockRule(
+        rule_id="trail_peak_after_1r_by_0_5r",
+        activate_at_r=Decimal("1"),
+        lock_at_r=Decimal("0.5"),
+        trail_by_r=Decimal("0.5"),
+    )
+    sink = _ContinuousProfitLockExecutionShadowSink(
+        ProfitLockExecutionShadow(
+            _config(), started_at_ms=500, rules=(rule,)
+        ),
+        opening_plan_loader=lambda _id: None,
+    )
+    sink._disable(RuntimeError("state mismatch"))
+    status = _open_trailing_profit_preview(sink, (_position(),))
+    assert status["enabled"] is False
+    assert status["positions"] == []
+    assert "state mismatch" in status["error"]
+    assert status["execution_authority"] is False
+
+
+def test_operational_trailing_preview_never_scans_closed_shadow_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rule = ProfitLockRule(
+        rule_id="trail_peak_after_1r_by_0_5r",
+        activate_at_r=Decimal("1"),
+        lock_at_r=Decimal("0.5"),
+        trail_by_r=Decimal("0.5"),
+    )
+    position = _position()
+    shadow = ProfitLockExecutionShadow(
+        _config(), started_at_ms=500, rules=(rule,)
+    )
+    shadow.observe_mark(
+        (position,), _mark("120", 1_500), now_ms=1_500
+    )
+
+    def forbidden_historical_summary(
+        _shadow: ProfitLockExecutionShadow,
+    ) -> dict[str, object]:
+        raise AssertionError("operational heartbeat scanned closed outcomes")
+
+    monkeypatch.setattr(
+        ProfitLockExecutionShadow,
+        "summary_payload",
+        forbidden_historical_summary,
+    )
+    sink = _ContinuousProfitLockExecutionShadowSink(
+        shadow, opening_plan_loader=lambda _id: None
+    )
+    preview = _open_trailing_profit_preview(sink, (position,))
+    assert preview["started_at_ms"] == 500
+    assert preview["activated_open_positions"] == 1
+    assert preview["positions"][0]["theoretical_lock_r"] == "1.5"
+
+
+def test_corrupt_open_trailing_preview_cannot_interrupt_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rule = ProfitLockRule(
+        rule_id="trail_peak_after_1r_by_0_5r",
+        activate_at_r=Decimal("1"),
+        lock_at_r=Decimal("0.5"),
+        trail_by_r=Decimal("0.5"),
+    )
+    shadow = ProfitLockExecutionShadow(
+        _config(), started_at_ms=500, rules=(rule,)
+    )
+
+    def failed_snapshot(
+        _shadow: ProfitLockExecutionShadow,
+        _rule_id: str,
+    ) -> tuple[dict[str, object], ...]:
+        raise ValueError("bad persisted high-water mark")
+
+    monkeypatch.setattr(
+        ProfitLockExecutionShadow,
+        "open_rule_state_payloads",
+        failed_snapshot,
+    )
+    sink = _ContinuousProfitLockExecutionShadowSink(
+        shadow, opening_plan_loader=lambda _id: None
+    )
+    preview = _safe_open_trailing_profit_preview(
+        sink, (_position(),)
+    )
+    assert preview["enabled"] is False
+    assert preview["execution_authority"] is False
+    assert preview["promotion_authority"] is False
+    assert preview["positions"] == []
+    assert "bad persisted high-water mark" in preview["error"]
+    assert sink.shadow is shadow
