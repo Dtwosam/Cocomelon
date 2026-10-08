@@ -115,7 +115,10 @@ def test_targeted_freeze_detects_tampered_original_file(tmp_path: Path) -> None:
     raw = json.loads(file.read_text(encoding="utf-8"))
     raw["dimensions"] = ["direction", "rank_band"]
     file.write_text(json.dumps(raw), encoding="utf-8")
-    with pytest.raises(LossContextPortfolioShadowCandidateError):
+    with pytest.raises(
+        (ValueError, LossContextPortfolioShadowCandidateError),
+        match="portfolio shadow must retain lead strategy",
+    ):
         activate_targeted_trend_paired_freeze(
             file, _hypothesis(), paired_state_path=paired_state
         )
