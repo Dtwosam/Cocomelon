@@ -904,6 +904,14 @@ def loss_streak_context_audit(
         "baseline_normalization_complete": baseline_complete,
         "non_loss_control_trade_count": len(non_loss_rows),
         "qualifying_loss_trade_count": len(qualifying_loss_rows),
+        "all_qualifying_loss_trade_count": sum(
+            len(streak) for streak in qualifying
+        ),
+        "qualifying_loss_excluded_partial_resolved_trade_count": sum(
+            int(streak["context_resolved_trade_count"])
+            for streak in ordered
+            if streak["context_complete"] is False
+        ),
         "qualifying_loss_unresolved_trade_count": sum(
             qualifying_unresolved.values()
         ),
