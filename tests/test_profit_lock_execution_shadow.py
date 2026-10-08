@@ -1007,3 +1007,134 @@ def test_corrupt_open_trailing_preview_cannot_interrupt_execution(
     assert preview["positions"] == []
     assert "bad persisted high-water mark" in preview["error"]
     assert sink.shadow is shadow
+
+
+COST_RESERVED_TRAILING_RULE = ProfitLockRule(
+    rule_id="trail_peak_after_1r_by_0_5r_net_reserved_0_25r",
+    activate_at_r=Decimal("1"),
+    lock_at_r=Decimal("0.5"),
+    trail_by_r=Decimal("0.5"),
+    minimum_estimated_net_lock_r=Decimal("0.25"),
+)
+
+
+@pytest.mark.parametrize(
+    ("side", "peak", "retrace", "bid", "ask"),
+    [
+        (PositionSide.LONG, "101", "100.56", "100.54", "100.57"),
+        (PositionSide.SHORT, "99", "99.44", "99.43", "99.46"),
+    ],
+)
+def test_cost_reserved_profit_floor_triggers_before_gross_only_lock(
+    side: PositionSide,
+    peak: str,
+    retrace: str,
+    bid: str,
+    ask: str,
+) -> None:
+    position = _position(
+        quantity="10", planned_risk="10", side=side
+    )
+    costed = ProfitLockExecutionShadow(
+        _config(), started_at_ms=500, rules=(COST_RESERVED_TRAILING_RULE,)
+    )
+    original = ProfitLockExecutionShadow(
+        _config(), started_at_ms=500, rules=(TRAILING_PROFIT_RULE,)
+    )
+    for shadow in (costed, original):
+        shadow.observe_mark(
+            (position,), _mark(peak, 1_500), now_ms=1_500
+        )
+        shadow.observe_mark(
+            (position,), _mark(retrace, 1_700), now_ms=1_700
+        )
+
+    reserved = costed.open_rule_state_payloads(
+        COST_RESERVED_TRAILING_RULE.rule_id
+    )[0]["rule"]
+    gross_only = original.open_rule_state_payloads(
+        TRAILING_PROFIT_RULE.rule_id
+    )[0]["rule"]
+    assert reserved["peak_gross_r"] == "1"
+    assert reserved["triggered_at_ms"] == 1_700
+    assert gross_only["triggered_at_ms"] is None
+    assert reserved["filled_quantity"] == "0"
+
+    costed.observe_book(
+        (position,), _instrument(),
+        _book(receive_ms=2_700, bid=bid, ask=ask, bid_size="20", ask_size="20"),
+        reference_price=Decimal(retrace), now_ms=2_700,
+    )
+    costed.record_closed_trade(
+        _trade(
+            position,
+            exit_price="90" if side is PositionSide.LONG else "110",
+        )
+    )
+    outcome = costed.state_payload()["outcomes"][0]
+    assert outcome["candidate_source"] == "visible_book_ioc"
+    assert outcome["simulated_close_complete"] is True
+    assert Decimal(outcome["candidate_net_pnl_estimate"]) > 0
+    assert outcome["simulated_filled_quantity"] == "10"
+
+
+def test_cost_reserved_trailing_freeze_survives_restart_with_original_history() -> None:
+    position = _position(quantity="10", planned_risk="10")
+    shadow = ProfitLockExecutionShadow(
+        _config(), started_at_ms=500, rules=(COST_RESERVED_TRAILING_RULE,)
+    )
+    shadow.observe_mark(
+        (position,), _mark("101", 1_500), now_ms=1_500
+    )
+    payload = shadow.state_payload()
+    assert payload["rules"][0]["minimum_estimated_net_lock_r"] == "0.25"
+    assert payload["rules"][0]["trail_by_r"] == "0.5"
+    assert payload["positions"][0]["rules"][0]["peak_gross_r"] == "1"
+    restarted = ProfitLockExecutionShadow(
+        _config(), started_at_ms=10_000, rules=(COST_RESERVED_TRAILING_RULE,)
+    )
+    restarted.restore_state(payload)
+    restarted.observe_mark(
+        (position,), _mark("100.56", 1_700), now_ms=1_700
+    )
+    assert restarted.open_rule_state_payloads(
+        COST_RESERVED_TRAILING_RULE.rule_id
+    )[0]["rule"]["triggered_at_ms"] == 1_700
+
+    old = ProfitLockExecutionShadow(
+        _config(), started_at_ms=500, rules=(TRAILING_PROFIT_RULE,)
+    )
+    assert "minimum_estimated_net_lock_r" not in old.state_payload()["rules"][0]
+    with pytest.raises(
+        ProfitLockExecutionShadowError, match="rule mismatch"
+    ):
+        old.restore_state(payload)
+    payload["rules"][0]["minimum_estimated_net_lock_r"] = "0.2"
+    with pytest.raises(
+        ProfitLockExecutionShadowError, match="rule mismatch"
+    ):
+        restarted.restore_state(payload)
+
+
+@pytest.mark.parametrize(
+    "bad_net", ["-0.1", "1.1", "NaN"],
+)
+def test_cost_reserved_trailing_rejects_invalid_net_lock(bad_net: str) -> None:
+    with pytest.raises(ValueError, match="minimum_estimated_net_lock_r"):
+        ProfitLockRule(
+            rule_id="bad-cost-trailer",
+            activate_at_r=Decimal("1"),
+            lock_at_r=Decimal("0.5"),
+            trail_by_r=Decimal("0.5"),
+            minimum_estimated_net_lock_r=Decimal(bad_net),
+        )
+
+
+def test_cost_reserved_floor_cannot_attach_to_fixed_exit() -> None:
+    with pytest.raises(ValueError, match="minimum_estimated_net_lock_r"):
+        ProfitLockRule(
+            rule_id="bad-fixed",
+            activate_at_r=Decimal("1"),
+            lock_at_r=Decimal("0.5"),
+            minimum_estimated_net_lock_r=Decimal("0.25"),
+        )
