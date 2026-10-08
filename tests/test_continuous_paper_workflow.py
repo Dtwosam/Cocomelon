@@ -34,7 +34,7 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert "path: continuous-paper-state/learning-features" in source
     assert "gh workflow run continuous-paper.yml" in source
     assert 'source_run_id' in source
-    assert '7,17,27,37,47,57 * * * *' in source
+    assert "  schedule:" not in source
     assert "push:" in source
     assert "issues: write" in source
     assert 'LIVE_STATUS_ISSUE: "469"' in source
@@ -75,11 +75,14 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert fast_cleanup_at < durable_upload_at < fallback_dispatch_at
     assert fallback_dispatch_at < deferred_markout_at
 
-def test_frequent_scheduled_recovery_still_fails_closed_on_active_trader() -> None:
+def test_independent_scheduled_recovery_keeps_active_trader_guard() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
-    schedule = source[source.index("  schedule:"):source.index("\npermissions:")]
-    assert '- cron: "7,17,27,37,47,57 * * * *"' in schedule
-    assert schedule.count("- cron:") == 1
+    watchdog = Path(
+        ".github/workflows/independent-paper-recovery.yml"
+    ).read_text(encoding="utf-8")
+    assert "  schedule:" not in source
+    assert '- cron: "3,13,23,33,43,53 * * * *"' in watchdog
+    assert "group: independent-paper-rescue" in watchdog
     assert "cancel-in-progress: false" in source
     guard_at = source.index(
         "- name: Skip bootstrap/watchdog when a continuous paper run is already active"
