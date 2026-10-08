@@ -209,9 +209,11 @@ def _full_stack_economic_screen(
             return None, None
         full = full_pnl if pnl else full_r
         delta = full - (actual_pnl if pnl else actual_r)
-        index = 1 if pnl else 2
         removed_full = tuple(
-            sum((pair[0][index] for pair in group), ZERO)
+            sum((
+                pair[0][1] if pnl else pair[0][2]
+                for pair in group
+            ), ZERO)
             for group in cohorts
         )
         removed_actual = tuple(
