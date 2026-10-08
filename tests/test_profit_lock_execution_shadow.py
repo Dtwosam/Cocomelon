@@ -445,3 +445,128 @@ def test_execution_shadow_reconciles_orphaned_restored_position() -> None:
         round_trip.summary_payload()["orphaned_restored_positions"]
         == 1
     )
+
+
+PROFIT_TARGET_RULE = ProfitLockRule(
+    rule_id="profit_target_at_1r",
+    activate_at_r=Decimal("1"),
+    lock_at_r=Decimal("1"),
+    exit_on_activation=True,
+)
+
+
+@pytest.mark.parametrize(
+    ("side", "target_px", "bid", "ask", "reference", "actual_exit"),
+    [
+        (PositionSide.LONG, "110", "109.7", "109.9", "109.8", "90"),
+        (PositionSide.SHORT, "90", "90.1", "90.3", "90.2", "110"),
+    ],
+)
+def test_take_profit_at_1r_triggers_immediately_but_needs_real_book_fill(
+    side: PositionSide,
+    target_px: str,
+    bid: str,
+    ask: str,
+    reference: str,
+    actual_exit: str,
+) -> None:
+    position = _position(side=side)
+    shadow = ProfitLockExecutionShadow(
+        _config(),
+        started_at_ms=500,
+        rules=(PROFIT_TARGET_RULE,),
+    )
+    shadow.observe_mark(
+        (position,), _mark(target_px, 1_500), now_ms=1_500
+    )
+    rule_state = shadow.open_rule_state_payloads(
+        PROFIT_TARGET_RULE.rule_id
+    )[0]["rule"]
+    assert rule_state["activated_at_ms"] == 1_500
+    assert rule_state["triggered_at_ms"] == 1_500
+    assert rule_state["filled_quantity"] == "0"
+
+    shadow.observe_book(
+        (position,),
+        _instrument(),
+        _book(receive_ms=2_500, bid=bid, ask=ask),
+        reference_price=Decimal(reference),
+        now_ms=2_500,
+    )
+    shadow.record_closed_trade(
+        _trade(position, exit_price=actual_exit)
+    )
+    outcome = shadow.state_payload()["outcomes"][0]
+    assert outcome["candidate_source"] == "visible_book_ioc"
+    assert outcome["simulated_close_complete"] is True
+    assert Decimal(outcome["candidate_net_pnl_estimate"]) > Decimal("9")
+    assert Decimal(outcome["delta_net_pnl_estimate"]) > Decimal("19")
+    assert Decimal(outcome["simulated_exit_fees"]) > 0
+
+
+def test_take_profit_rule_does_not_award_mark_only_wins() -> None:
+    position = _position()
+    shadow = ProfitLockExecutionShadow(
+        _config(),
+        started_at_ms=500,
+        rules=(PROFIT_TARGET_RULE,),
+    )
+    shadow.observe_mark(
+        (position,), _mark("110", 1_500), now_ms=1_500
+    )
+    shadow.record_closed_trade(_trade(position))
+    outcome = shadow.state_payload()["outcomes"][0]
+    assert outcome["triggered"] is True
+    assert outcome["candidate_source"] == "triggered_incomplete"
+    assert outcome["candidate_net_pnl_estimate"] is None
+    assert outcome["delta_net_pnl_estimate"] is None
+
+
+def test_take_profit_shadow_is_new_frozen_cohort_and_restores_exact_rule() -> None:
+    position = _position()
+    old = _shadow()
+    old.observe_mark(
+        (position,), _mark("105", 1_500), now_ms=1_500
+    )
+    old_state = old.state_payload()
+    assert old_state["rules"] == [{
+        "rule_id": RULE.rule_id,
+        "activate_at_r": "0.5",
+        "lock_at_r": "0",
+    }]
+
+    target = ProfitLockExecutionShadow(
+        _config(),
+        started_at_ms=1_000,
+        rules=(PROFIT_TARGET_RULE,),
+    )
+    target.observe_mark(
+        (position,), _mark("109", 1_500), now_ms=1_500
+    )
+    assert target.open_rule_state_payloads(
+        PROFIT_TARGET_RULE.rule_id
+    )[0]["rule"]["triggered_at_ms"] is None
+    state = target.state_payload()
+    assert state["rules"] == [{
+        "rule_id": "profit_target_at_1r",
+        "activate_at_r": "1",
+        "lock_at_r": "1",
+        "exit_on_activation": "true",
+    }]
+
+    restored = ProfitLockExecutionShadow(
+        _config(),
+        started_at_ms=99_999,
+        rules=(PROFIT_TARGET_RULE,),
+    )
+    restored.restore_state(state)
+    restored.observe_mark(
+        (position,), _mark("111", 2_000), now_ms=2_000
+    )
+    assert restored.open_rule_state_payloads(
+        PROFIT_TARGET_RULE.rule_id
+    )[0]["rule"]["triggered_at_ms"] == 2_000
+    with pytest.raises(
+        ProfitLockExecutionShadowError, match="rule mismatch"
+    ):
+        old.restore_state(restored.state_payload())

@@ -32,6 +32,7 @@ class ProfitLockRule:
     rule_id: str
     activate_at_r: Decimal
     lock_at_r: Decimal
+    exit_on_activation: bool = False
 
     def __post_init__(self) -> None:
         if not self.rule_id.strip():
@@ -42,6 +43,8 @@ class ProfitLockRule:
                 raise ValueError(f"{field} must be non-negative and finite")
         if self.lock_at_r > self.activate_at_r:
             raise ValueError("lock_at_r must not exceed activate_at_r")
+        if not isinstance(self.exit_on_activation, bool):
+            raise ValueError("exit_on_activation must be boolean")
 
 
 DEFAULT_PROFIT_LOCK_RULES: Final = (
