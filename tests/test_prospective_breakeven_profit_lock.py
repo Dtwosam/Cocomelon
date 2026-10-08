@@ -5,6 +5,12 @@ from decimal import Decimal
 
 import pytest
 
+from cocomelon.domain.execution import (
+    OrderSide,
+    OrderType,
+    PaperExecutionConfig,
+    PaperOrderPlan,
+)
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
@@ -26,6 +32,11 @@ from cocomelon.research.prospective_breakeven_profit_lock import (
     ProspectiveBreakevenProfitLockState,
     prospective_breakeven_from_execution_ledger,
     prospective_breakeven_profit_lock_summary,
+)
+from cocomelon.research.prospective_entry_cost_r import (
+    ProspectiveEntryCostRError,
+    ProspectiveEntryCostRState,
+    prospective_entry_cost_r_comparison,
 )
 from cocomelon.research.prospective_net_reserved_trailing import (
     prospective_net_reserved_trailing_comparison,
@@ -1468,3 +1479,183 @@ def test_net_reserved_trailing_rejects_mutated_rule_and_costs() -> None:
         prospective_net_reserved_trailing_comparison(
             trades, new, older, baseline
         )
+
+
+def _entry_cost_r_cohort(
+    state: ProspectiveEntryCostRState,
+    *,
+    blocked_pnl: str = "-2",
+    retained_pnl: str = "5",
+    blocked_quantity: str = "10",
+) -> tuple[
+    tuple[TradeJournalEntry, ...],
+    dict[str, PaperOrderPlan],
+]:
+    config = PaperExecutionConfig()
+    trades: list[TradeJournalEntry] = []
+    plans: dict[str, PaperOrderPlan] = {}
+    for i in range(40):
+        blocked = i % 4 >= 2
+        qty = Decimal(blocked_quantity if blocked else "2")
+        direction = Direction.LONG if i % 2 == 0 else Direction.SHORT
+        initial = _trade(
+            f"cost-r-{i}",
+            opened_at_ms=state.started_at_ms + 5_000 + i * 60_000,
+            pnl=blocked_pnl if blocked else retained_pnl,
+            market=("SOL", "BTC", "ADA", "ETH")[i % 4],
+            direction=direction,
+        )
+        initial = replace(
+            initial,
+            filled_quantity=qty,
+            initial_stop=(
+                Decimal("90")
+                if direction is Direction.LONG
+                else Decimal("110")
+            ),
+            exit_price=(
+                Decimal("100") + initial.net_pnl / qty
+                if direction is Direction.LONG
+                else Decimal("100") - initial.net_pnl / qty
+            ),
+        )
+        plan = PaperOrderPlan(
+            risk_decision_id=initial.risk_decision_id,
+            strategy_decision_id=initial.strategy_decision_id,
+            market=initial.market,
+            side=(
+                OrderSide.BUY
+                if direction is Direction.LONG else OrderSide.SELL
+            ),
+            requested_quantity=qty,
+            order_type=OrderType.MARKETABLE_IOC,
+            reduce_only=False,
+            execution_reference_price=Decimal("100"),
+            max_slippage_bps=config.max_ioc_slippage_bps,
+            stop_price=initial.initial_stop,
+            approved_notional_ceiling=qty * Decimal("100"),
+            created_at_ms=initial.opened_at_ms - 1_000,
+            earliest_execution_ms=initial.opened_at_ms,
+            execution_config_version=config.config_version,
+            instrument_metadata_received_at_ms=initial.opened_at_ms - 2_000,
+            approved_risk_amount_ceiling=Decimal("10"),
+            stop_distance_fraction=Decimal("0.1"),
+            effective_loss_fraction=Decimal("0.106"),
+        )
+        trade = replace(initial, opening_plan_id=plan.plan_id)
+        trades.append(trade)
+        plans[plan.plan_id] = plan
+    return tuple(trades), plans
+
+
+def test_frozen_entry_cost_r_gate_is_forward_only_both_sides_positive() -> None:
+    config = PaperExecutionConfig()
+    state = ProspectiveEntryCostRState.freeze(
+        config, frozen_at_ms=1_000_000
+    )
+    assert state.started_at_ms == 2_800_000
+    assert ProspectiveEntryCostRState.from_payload(state.payload()) == state
+    trades, plans = _entry_cost_r_cohort(state)
+    report = prospective_entry_cost_r_comparison(
+        trades, plans.get, state, config
+    )
+    assert report["closed_prospective_trades"] == 40
+    assert report["hypothetically_blocked_trades"] == 20
+    assert report["retained_trades"] == 20
+    assert report["blocked_actual_winners"] == 0
+    assert report["blocked_actual_losers"] == 20
+    assert report["overall"]["actual_net_pnl"] == "60"
+    assert report["overall"]["candidate_net_pnl"] == "100"
+    assert report["overall"]["delta_net_pnl"] == "40"
+    assert report["overall"]["economics_ready"] is True
+    assert report["by_direction"]["long"]["retained_trades"] == 10
+    assert report["by_direction"]["short"]["retained_trades"] == 10
+    assert all(
+        period["passes"] is True
+        for period in report["chronological_periods"]
+    )
+    assert report["strict_descriptive_screen_passes"] is True
+    assert report["execution_authority"] is False
+    assert report["promotion_authority"] is False
+    assert report["selected_winner"] is None
+    assert report["account_level_profitability_proven"] is False
+
+    # Historical trades before the frozen scoring embargo cannot vote.
+    old = replace(
+        trades[0],
+        opened_at_ms=state.frozen_at_ms - 100_000,
+        closed_at_ms=state.frozen_at_ms - 40_000,
+        holding_duration_ms=60_000,
+    )
+    report_with_old = prospective_entry_cost_r_comparison(
+        (*trades, old), plans.get, state, config
+    )
+    assert report_with_old["closed_prospective_trades"] == 40
+
+
+def test_entry_cost_r_gate_cannot_hide_valuable_blocked_winners() -> None:
+    config = PaperExecutionConfig()
+    state = ProspectiveEntryCostRState.freeze(
+        config, frozen_at_ms=1_000_000
+    )
+    trades, plans = _entry_cost_r_cohort(
+        state, blocked_pnl="7"
+    )
+    report = prospective_entry_cost_r_comparison(
+        trades, plans.get, state, config
+    )
+    assert report["blocked_actual_winners"] == 20
+    assert report["overall"]["delta_net_pnl"] == "-140"
+    assert report["strict_descriptive_screen_passes"] is False
+
+
+def test_entry_cost_r_gate_fails_closed_on_missing_or_forged_entry_plans() -> None:
+    config = PaperExecutionConfig()
+    state = ProspectiveEntryCostRState.freeze(
+        config, frozen_at_ms=1_000_000
+    )
+    trades, plans = _entry_cost_r_cohort(state)
+    with pytest.raises(
+        ProspectiveEntryCostRError, match="missing original durable opening plan"
+    ):
+        prospective_entry_cost_r_comparison(
+            trades, lambda _: None, state, config
+        )
+    original = plans[trades[0].opening_plan_id]
+    altered = replace(original, requested_quantity=Decimal("20"))
+    mutated = dict(plans)
+    mutated[trades[0].opening_plan_id] = altered
+    with pytest.raises(
+        ProspectiveEntryCostRError, match="lineage or frozen cost drift"
+    ):
+        prospective_entry_cost_r_comparison(
+            trades, mutated.get, state, config
+        )
+    altered_config = replace(
+        config, max_ioc_slippage_bps=Decimal("20")
+    )
+    with pytest.raises(
+        ProspectiveEntryCostRError, match="configuration drift"
+    ):
+        prospective_entry_cost_r_comparison(
+            trades, plans.get, state, altered_config
+        )
+
+
+def test_entry_cost_r_gate_restore_rejects_hindsight_threshold_change() -> None:
+    config = PaperExecutionConfig()
+    state = ProspectiveEntryCostRState.freeze(
+        config, frozen_at_ms=2_000_000
+    )
+    modified = state.payload()
+    modified["max_predicted_round_trip_cost_r"] = "0.35"
+    with pytest.raises(
+        ProspectiveEntryCostRError, match="policy or cost reserve drift"
+    ):
+        ProspectiveEntryCostRState.from_payload(modified)
+    modified = state.payload()
+    modified["funding_reserve_per_hour"] = "0.00001"
+    with pytest.raises(
+        ProspectiveEntryCostRError, match="policy or cost reserve drift"
+    ):
+        ProspectiveEntryCostRState.from_payload(modified)

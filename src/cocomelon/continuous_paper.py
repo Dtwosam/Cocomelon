@@ -322,6 +322,10 @@ from cocomelon.research.prospective_delayed_price_confirmation import (
     ProspectiveDelayedPriceConfirmationState,
     prospective_delayed_price_confirmation_summary,
 )
+from cocomelon.research.prospective_entry_cost_r import (
+    ProspectiveEntryCostRState,
+    prospective_entry_cost_r_comparison,
+)
 from cocomelon.research.prospective_entry_filter import (
     ProspectiveEntryFilterState,
     evaluate_prospective_entry_filter,
@@ -467,6 +471,12 @@ NET_RESERVED_TRAILING_SHADOW_STATE_FILENAME = (
 )
 PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-entry-filter-state.json"
+)
+PROSPECTIVE_ENTRY_COST_R_STATE_FILENAME = (
+    "prospective-entry-cost-r-state.json"
+)
+PROSPECTIVE_ENTRY_COST_R_COMPARISON_FILENAME = (
+    "prospective-entry-cost-r-comparison.json"
 )
 PROSPECTIVE_DELAYED_PRICE_CONFIRM_STATE_FILENAME = (
     "prospective-delayed-price-confirm-state.json"
@@ -2693,6 +2703,31 @@ def _restore_entry_mid_markout_shadow(
             f"{type(exc).__name__}: {exc}"
         )
     return shadow
+
+
+def _restore_prospective_entry_cost_r(
+    path: Path,
+    config: PaperExecutionConfig,
+    *,
+    frozen_at_ms: int,
+) -> tuple[ProspectiveEntryCostRState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveEntryCostRState.freeze(
+                config, frozen_at_ms=frozen_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return ProspectiveEntryCostRState.from_payload(raw), None
+    except Exception as exc:
+        return (
+            ProspectiveEntryCostRState.freeze(
+                config, frozen_at_ms=frozen_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
 
 
 def _restore_prospective_entry_filter(
@@ -9327,6 +9362,14 @@ async def run_continuous_paper_session(
         execution.account.positions
     )
     (
+        prospective_entry_cost_r_state,
+        prospective_entry_cost_r_restore_error,
+    ) = _restore_prospective_entry_cost_r(
+        root / PROSPECTIVE_ENTRY_COST_R_STATE_FILENAME,
+        replay_config.execution,
+        frozen_at_ms=started_at_ms,
+    )
+    (
         prospective_entry_filter_state,
         prospective_entry_filter_restore_error,
     ) = _restore_prospective_entry_filter(
@@ -9780,6 +9823,10 @@ async def run_continuous_paper_session(
                 ),
             )
             payloads: list[tuple[Path, object]] = [
+                (
+                    root / PROSPECTIVE_ENTRY_COST_R_STATE_FILENAME,
+                    prospective_entry_cost_r_state.payload(),
+                ),
                 (
                     checkpoint_path,
                     timed_component(
@@ -10881,6 +10928,49 @@ async def run_continuous_paper_session(
                 root
                 / PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME,
                 cooldown_shadow_summary,
+            )
+            if prospective_entry_cost_r_restore_error is not None:
+                entry_cost_r_report: dict[str, object] = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "ready_for_review": False,
+                    "candidate_id": prospective_entry_cost_r_state.candidate_id,
+                    "state_restore_error": (
+                        prospective_entry_cost_r_restore_error
+                    ),
+                    "error": "entry cost gate original freeze unavailable",
+                }
+            else:
+                try:
+                    entry_cost_r_report = prospective_entry_cost_r_comparison(
+                        tuple(journal.iter_trades()),
+                        execution.store.load_plan,
+                        prospective_entry_cost_r_state,
+                        replay_config.execution,
+                    )
+                except Exception as exc:
+                    entry_cost_r_report = {
+                        "enabled": False,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                        "ready_for_review": False,
+                        "candidate_id": (
+                            prospective_entry_cost_r_state.candidate_id
+                        ),
+                        "state_restore_error": None,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                else:
+                    entry_cost_r_report = dict(entry_cost_r_report)
+                    entry_cost_r_report["enabled"] = True
+                    entry_cost_r_report["state_restore_error"] = None
+                    entry_cost_r_report["error"] = None
+            _write_json_atomic(
+                root / PROSPECTIVE_ENTRY_COST_R_COMPARISON_FILENAME,
+                entry_cost_r_report,
             )
             full_stack_combined = _prospective_combined_entry_filter_payload(
                 journal,
