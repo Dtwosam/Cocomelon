@@ -32,6 +32,7 @@ from cocomelon.research.prospective_profit_target_one_r_comparison import (
     prospective_profit_target_one_half_r_comparison,
     prospective_profit_target_one_r_comparison,
     prospective_profit_target_threshold_comparison,
+    prospective_profit_trailing_comparison,
 )
 
 
@@ -1043,4 +1044,89 @@ def test_higher_target_cannot_trigger_before_lower_target() -> None:
     ):
         prospective_profit_target_threshold_comparison(
             trades, first, one_half, baseline
+        )
+
+
+def _trailing_profit_state(
+    outcomes: tuple[ProfitLockExecutionOutcome, ...],
+) -> dict[str, object]:
+    state = _profit_target_state(outcomes, started_at_ms=1_050_000)
+    state["rules"] = [{
+        "rule_id": "trail_peak_after_1r_by_0_5r",
+        "activate_at_r": "1",
+        "lock_at_r": "0.5",
+        "trail_by_r": "0.5",
+    }]
+    return state
+
+
+def test_prospective_trailing_exit_requires_absolute_fee_adjusted_profit() -> None:
+    trades, _one_r, baseline = _profit_target_fixture()
+    trailing = _trailing_profit_state(tuple(
+        replace(
+            _outcome(trade, candidate_pnl="2"),
+            rule_id="trail_peak_after_1r_by_0_5r",
+        )
+        for trade in trades
+    ))
+    report = prospective_profit_trailing_comparison(
+        trades, trailing, baseline
+    )
+    assert report["candidate_id"] == "trail_peak_after_1r_by_0_5r"
+    assert report["frozen_start_ms"] == 1_050_000
+    assert report["matched_trades"] == 40
+    assert report["target_full_ioc_closes"] == 40
+    assert report["overall"]["target_net_pnl"] == "80"
+    assert report["by_direction"]["short"]["target_net_pnl"] == "40"
+    assert report["economic_screen_passes"] is True
+    assert report["execution_authority"] is False
+    assert report["ready_for_review"] is False
+
+
+def test_prospective_trailing_exit_rejects_losing_short_or_incomplete_book() -> None:
+    trades, _one_r, baseline = _profit_target_fixture()
+    trailing = _trailing_profit_state(tuple(
+        replace(
+            _outcome(
+                trade,
+                candidate_pnl="-1" if index % 2 else "2",
+                complete=index != 39,
+            ),
+            rule_id="trail_peak_after_1r_by_0_5r",
+        )
+        for index, trade in enumerate(trades)
+    ))
+    report = prospective_profit_trailing_comparison(
+        trades, trailing, baseline
+    )
+    assert report["matched_trades"] == 39
+    assert report["integrity_clean"] is False
+    assert report["economic_screen_passes"] is False
+
+
+def test_prospective_trailing_exit_fails_frozen_gap_or_cost_drift() -> None:
+    trades, _one_r, baseline = _profit_target_fixture()
+    trailing = _trailing_profit_state(tuple(
+        replace(
+            _outcome(trade, candidate_pnl="2"),
+            rule_id="trail_peak_after_1r_by_0_5r",
+        )
+        for trade in trades
+    ))
+    trailing["rules"][0]["trail_by_r"] = "0.75"
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="frozen exit rule identity drift",
+    ):
+        prospective_profit_trailing_comparison(
+            trades, trailing, baseline
+        )
+    trailing["rules"][0]["trail_by_r"] = "0.5"
+    trailing["execution_config"] = {"config_version": "different"}
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="execution cost/config drift",
+    ):
+        prospective_profit_trailing_comparison(
+            trades, trailing, baseline
         )

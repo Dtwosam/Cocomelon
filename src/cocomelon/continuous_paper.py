@@ -356,6 +356,7 @@ from cocomelon.research.prospective_momentum_pullback_entry import (
 from cocomelon.research.prospective_profit_target_one_r_comparison import (
     prospective_profit_target_one_r_comparison,
     prospective_profit_target_threshold_comparison,
+    prospective_profit_trailing_comparison,
 )
 from cocomelon.research.prospective_range_compression_entry import (
     ProspectiveRangeCompressionEntryState,
@@ -439,6 +440,15 @@ PROFIT_TARGET_1_5R_RULE = ProfitLockRule(
 PROFIT_TARGET_1_5R_SHADOW_STATE_FILENAME = (
     "profit-target-one-half-r-execution-shadow-state.json"
 )
+TRAILING_PROFIT_1R_RULE = ProfitLockRule(
+    rule_id="trail_peak_after_1r_by_0_5r",
+    activate_at_r=Decimal("1"),
+    lock_at_r=Decimal("0.5"),
+    trail_by_r=Decimal("0.5"),
+)
+TRAILING_PROFIT_1R_SHADOW_STATE_FILENAME = (
+    "profit-trailing-one-r-execution-shadow-state.json"
+)
 PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-entry-filter-state.json"
 )
@@ -471,6 +481,9 @@ PROSPECTIVE_PROFIT_TARGET_ONE_R_COMPARISON_FILENAME = (
 )
 PROSPECTIVE_PROFIT_TARGET_THRESHOLD_COMPARISON_FILENAME = (
     "prospective-profit-target-threshold-comparison.json"
+)
+PROSPECTIVE_PROFIT_TRAILING_COMPARISON_FILENAME = (
+    "prospective-profit-trailing-comparison.json"
 )
 PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME = (
     "prospective-full-stack-forward-markout-summary.json"
@@ -9086,6 +9099,17 @@ async def run_continuous_paper_session(
             opening_plan_loader=execution.store.load_plan,
         )
     )
+    profit_trailing_shadow = (
+        _ContinuousProfitLockExecutionShadowSink(
+            _restore_profit_lock_execution_shadow(
+                root / TRAILING_PROFIT_1R_SHADOW_STATE_FILENAME,
+                replay_config.execution,
+                started_at_ms=started_at_ms,
+                rules=(TRAILING_PROFIT_1R_RULE,),
+            ),
+            opening_plan_loader=execution.store.load_plan,
+        )
+    )
     delayed_entry_execution_shadow = (
         _ContinuousDelayedEntryExecutionShadowSink(
             _restore_delayed_entry_execution_shadow(
@@ -9126,6 +9150,9 @@ async def run_continuous_paper_session(
         execution.account.positions
     )
     profit_target_one_half_shadow.reconcile_open_positions(
+        execution.account.positions
+    )
+    profit_trailing_shadow.reconcile_open_positions(
         execution.account.positions
     )
     delayed_entry_execution_shadow.reconcile_open_positions(
@@ -9379,6 +9406,7 @@ async def run_continuous_paper_session(
                     profit_lock_execution_shadow,
                     profit_target_execution_shadow,
                     profit_target_one_half_shadow,
+                    profit_trailing_shadow,
                     delayed_entry_execution_shadow,
                     delayed_entry_120s_execution_shadow,
                     original_stop_book_capture,
@@ -9652,6 +9680,16 @@ async def run_continuous_paper_session(
                         timed_component(
                             "profit_target_one_half_shadow_state",
                             profit_target_one_half_shadow.shadow.state_payload,
+                        ),
+                    )
+                )
+            if profit_trailing_shadow.shadow is not None:
+                payloads.append(
+                    (
+                        root / TRAILING_PROFIT_1R_SHADOW_STATE_FILENAME,
+                        timed_component(
+                            "profit_trailing_shadow_state",
+                            profit_trailing_shadow.shadow.state_payload,
                         ),
                     )
                 )
@@ -10958,6 +10996,50 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / PROSPECTIVE_PROFIT_TARGET_THRESHOLD_COMPARISON_FILENAME,
                 profit_target_threshold_comparison,
+            )
+            if (
+                profit_trailing_shadow.shadow is None
+                or profit_lock_execution_shadow.shadow is None
+            ):
+                profit_trailing_comparison = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "ready_for_review": False,
+                    "error": (
+                        profit_trailing_shadow.error
+                        or profit_lock_execution_shadow.error
+                        or "frozen trailing exit observer unavailable"
+                    ),
+                }
+            else:
+                try:
+                    profit_trailing_comparison = (
+                        prospective_profit_trailing_comparison(
+                            tuple(journal.iter_trades()),
+                            profit_trailing_shadow.shadow.state_payload(),
+                            profit_lock_execution_shadow.shadow.state_payload(),
+                        )
+                    )
+                except Exception as exc:
+                    profit_trailing_comparison = {
+                        "enabled": False,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                        "ready_for_review": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                else:
+                    profit_trailing_comparison = dict(
+                        profit_trailing_comparison
+                    )
+                    profit_trailing_comparison["enabled"] = True
+                    profit_trailing_comparison["error"] = None
+            _write_json_atomic(
+                root / PROSPECTIVE_PROFIT_TRAILING_COMPARISON_FILENAME,
+                profit_trailing_comparison,
             )
             full_stack_capacity_reflow = (
                 _prospective_full_stack_capacity_reflow_payload(

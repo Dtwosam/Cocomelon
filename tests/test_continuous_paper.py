@@ -5597,3 +5597,26 @@ def test_strict_same_trade_target_delta_is_research_only() -> None:
     assert "leave_one_out_consistency_passes" in source
     assert "higher_target_strict_incremental_screen_passes" in workflow
     assert "direct incremental PnL by LONG / SHORT" in workflow
+
+
+def test_high_water_trailing_exit_is_frozen_persistent_and_non_trading() -> None:
+    source = Path(
+        "src/cocomelon/continuous_paper.py"
+    ).read_text(encoding="utf-8")
+    workflow = Path(
+        ".github/workflows/continuous-paper.yml"
+    ).read_text(encoding="utf-8")
+
+    assert 'rule_id="trail_peak_after_1r_by_0_5r"' in source
+    assert 'trail_by_r=Decimal("0.5")' in source
+    assert "TRAILING_PROFIT_1R_SHADOW_STATE_FILENAME" in source
+    assert "rules=(TRAILING_PROFIT_1R_RULE,)" in source
+    assert "profit_trailing_shadow.reconcile_open_positions(" in source
+    assert "profit_trailing_shadow.shadow.state_payload" in source
+    assert "profit_trailing_shadow," in source
+    assert "prospective_profit_trailing_comparison(" in source
+    assert "PROSPECTIVE_PROFIT_TRAILING_COMPARISON_FILENAME" in source
+    assert "profit-trailing-one-r-execution-shadow-state.json" in workflow
+    assert "prospective-profit-trailing-comparison.json" in workflow
+    assert "Upload book-aware dynamic trailing exit economic review" in workflow
+    assert "Render frozen high-water trailing exit economics" in workflow

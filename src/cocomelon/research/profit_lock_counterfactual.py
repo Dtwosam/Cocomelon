@@ -33,6 +33,9 @@ class ProfitLockRule:
     activate_at_r: Decimal
     lock_at_r: Decimal
     exit_on_activation: bool = False
+    # Research-only optional high-water trailing lock; no behavior changes
+    # for existing frozen rules when absent.
+    trail_by_r: Decimal | None = None
 
     def __post_init__(self) -> None:
         if not self.rule_id.strip():
@@ -45,6 +48,19 @@ class ProfitLockRule:
             raise ValueError("lock_at_r must not exceed activate_at_r")
         if not isinstance(self.exit_on_activation, bool):
             raise ValueError("exit_on_activation must be boolean")
+        if self.trail_by_r is not None:
+            if (
+                not self.trail_by_r.is_finite()
+                or self.trail_by_r <= ZERO
+                or self.trail_by_r > self.activate_at_r
+            ):
+                raise ValueError(
+                    "trail_by_r must be positive and at most activation R"
+                )
+            if self.exit_on_activation:
+                raise ValueError(
+                    "trailing rule cannot exit immediately on activation"
+                )
 
 
 DEFAULT_PROFIT_LOCK_RULES: Final = (

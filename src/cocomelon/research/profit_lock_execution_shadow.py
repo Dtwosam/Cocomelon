@@ -117,6 +117,10 @@ def _rules_payload(
                 {"exit_on_activation": "true"}
                 if rule.exit_on_activation else {}
             ),
+            **(
+                {"trail_by_r": str(rule.trail_by_r)}
+                if rule.trail_by_r is not None else {}
+            ),
         }
         for rule in rules
     ]
@@ -175,6 +179,7 @@ class _RuleState:
     triggered_at_ms: int | None = None
     trigger_mark_px: Decimal | None = None
     trigger_event_key: str | None = None
+    peak_gross_r: Decimal | None = None
     latest_mark_timestamp_ms: int | None = None
     pending_plan: PaperOrderPlan | None = None
     filled_quantity: Decimal = ZERO
@@ -608,26 +613,36 @@ class ProfitLockExecutionShadow:
         for rule_state in state.rules.values():
             rule_state.latest_mark_timestamp_ms = now_ms
             rule = rule_by_id[rule_state.rule_id]
+            mark_r = _gross_r(
+                side=state.side,
+                entry_price=state.entry_price,
+                quantity=state.initial_quantity,
+                planned_risk=state.planned_risk,
+                mark_px=raw_mark,
+            )
             if rule_state.activated_at_ms is None:
-                if _gross_r(
-                    side=state.side,
-                    entry_price=state.entry_price,
-                    quantity=state.initial_quantity,
-                    planned_risk=state.planned_risk,
-                    mark_px=raw_mark,
-                ) >= rule.activate_at_r:
+                if mark_r >= rule.activate_at_r:
                     rule_state.activated_at_ms = now_ms
 
             if (
                 rule_state.activated_at_ms is not None
                 and rule_state.triggered_at_ms is None
             ):
+                lock_at_r = rule.lock_at_r
+                if rule.trail_by_r is not None:
+                    peak = rule_state.peak_gross_r
+                    if peak is None or mark_r > peak:
+                        peak = mark_r
+                        rule_state.peak_gross_r = peak
+                    lock_at_r = max(
+                        lock_at_r, peak - rule.trail_by_r
+                    )
                 lock_px = _lock_price(
                     side=state.side,
                     entry_price=state.entry_price,
                     quantity=state.initial_quantity,
                     planned_risk=state.planned_risk,
-                    lock_at_r=rule.lock_at_r,
+                    lock_at_r=lock_at_r,
                 )
                 if (
                     rule.exit_on_activation
@@ -1085,6 +1100,10 @@ class ProfitLockExecutionShadow:
                 else str(state.trigger_mark_px)
             ),
             "trigger_event_key": state.trigger_event_key,
+            **(
+                {"peak_gross_r": str(state.peak_gross_r)}
+                if state.peak_gross_r is not None else {}
+            ),
             "latest_mark_timestamp_ms": (
                 state.latest_mark_timestamp_ms
             ),
@@ -1254,6 +1273,9 @@ class ProfitLockExecutionShadow:
                 "trigger_mark_px",
             ),
             trigger_event_key=trigger_event_key,
+            peak_gross_r=_optional_decimal(
+                raw.get("peak_gross_r"), "peak_gross_r"
+            ),
             latest_mark_timestamp_ms=_optional_integer(
                 raw.get("latest_mark_timestamp_ms"),
                 "latest_mark_timestamp_ms",
@@ -1450,7 +1472,29 @@ class ProfitLockExecutionShadow:
                 raise ProfitLockExecutionShadowError(
                     "restored position eligibility is inconsistent"
                 )
+            rule_by_id = {
+                rule.rule_id: rule for rule in self._rules
+            }
             for rule_state in state.rules.values():
+                frozen_rule = rule_by_id[rule_state.rule_id]
+                if frozen_rule.trail_by_r is None:
+                    if rule_state.peak_gross_r is not None:
+                        raise ProfitLockExecutionShadowError(
+                            "non-trailing rule has unexpected peak R"
+                        )
+                elif rule_state.activated_at_ms is not None:
+                    if (
+                        rule_state.peak_gross_r is None
+                        or rule_state.peak_gross_r
+                        < frozen_rule.activate_at_r
+                    ):
+                        raise ProfitLockExecutionShadowError(
+                            "activated trailing rule peak R missing or invalid"
+                        )
+                elif rule_state.peak_gross_r is not None:
+                    raise ProfitLockExecutionShadowError(
+                        "inactive trailing rule cannot have peak R"
+                    )
                 if (
                     rule_state.remaining_quantity
                     + rule_state.filled_quantity

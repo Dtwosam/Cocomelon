@@ -17,6 +17,7 @@ from cocomelon.research.profit_lock_execution_shadow import (
 ZERO: Final = Decimal("0")
 TAKE_PROFIT_RULE_ID: Final = "profit_target_at_1r"
 TAKE_PROFIT_ONE_HALF_RULE_ID: Final = "profit_target_at_1_5r"
+TRAILING_PROFIT_RULE_ID: Final = "trail_peak_after_1r_by_0_5r"
 BREAKEVEN_RULE_ID: Final = "breakeven_after_0_5r"
 MIN_PAIRED_TRADES: Final = 40
 MIN_DIRECTION_TRADES: Final = 10
@@ -58,6 +59,13 @@ def _verified_outcomes(
             "lock_at_r": "1.5",
             "exit_on_activation": "true",
         }]
+    elif rule_id == TRAILING_PROFIT_RULE_ID:
+        expected_rules = [{
+            "rule_id": TRAILING_PROFIT_RULE_ID,
+            "activate_at_r": "1",
+            "lock_at_r": "0.5",
+            "trail_by_r": "0.5",
+        }]
     elif rule_id == BREAKEVEN_RULE_ID:
         expected_rules = [{
             "rule_id": rule.rule_id,
@@ -86,7 +94,11 @@ def _verified_outcomes(
     for raw in raw_outcomes:
         outcome = ProfitLockExecutionOutcome.from_payload(raw)
         if (
-            rule_id in {TAKE_PROFIT_RULE_ID, TAKE_PROFIT_ONE_HALF_RULE_ID}
+            rule_id in {
+                TAKE_PROFIT_RULE_ID,
+                TAKE_PROFIT_ONE_HALF_RULE_ID,
+                TRAILING_PROFIT_RULE_ID,
+            }
             and outcome.rule_id != rule_id
         ):
             raise ProspectiveProfitTargetComparisonError(
@@ -290,6 +302,20 @@ def prospective_profit_target_one_half_r_comparison(
         target_shadow_state,
         breakeven_shadow_state,
         target_rule_id=TAKE_PROFIT_ONE_HALF_RULE_ID,
+    )
+
+
+def prospective_profit_trailing_comparison(
+    trades: Sequence[TradeJournalEntry],
+    trailing_shadow_state: object,
+    breakeven_shadow_state: object,
+) -> dict[str, object]:
+    """Score frozen peak-trailing exits against actual and breakeven trades."""
+    return _prospective_profit_target_comparison(
+        trades,
+        trailing_shadow_state,
+        breakeven_shadow_state,
+        target_rule_id=TRAILING_PROFIT_RULE_ID,
     )
 
 
