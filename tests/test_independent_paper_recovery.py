@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import pytest
+from datetime import UTC, datetime, timedelta
 
-from scripts.rescue_continuous_paper import PaperRescueError, choose_exact_source
+from scripts.rescue_continuous_paper import (
+    PaperRescueError,
+    choose_exact_source,
+    verify_active_heartbeat,
+)
 
 REPOSITORY = "Dtwosam/Cocomelon"
 OLD_RUN = 37768727228
@@ -105,7 +110,7 @@ def test_running_real_trader_blocks_any_replacement() -> None:
     assert choose(
         [run(12)],
         jobs_by_run={12: paper_job("in_progress", None)},
-    ) == ("active", None)
+    ) == ("active", (12, 1))
 
 
 def test_pending_exact_successor_blocks_duplicate_dispatch() -> None:
@@ -234,6 +239,76 @@ def test_corrupt_run_attempt_rejected() -> None:
         choose(
             [bad],
             jobs_by_run={13: paper_job("completed", "success")},
+        )
+
+
+
+def test_active_worker_heartbeat_must_match_run_and_be_recent() -> None:
+    now = datetime(2026, 10, 8, 12, 30, tzinfo=UTC)
+    issue = (
+        "## Continuous paper runtime live status\\n"
+        "Updated: 2026-10-08T12:29:24+00:00\\n"
+        "Worker run: 37776929867\\n"
+    )
+    assert verify_active_heartbeat(
+        issue,
+        active_run_id=37776929867,
+        run_started_at="2026-10-08T12:26:00Z",
+        now=now,
+    ) == "fresh"
+    with pytest.raises(PaperRescueError, match="stale"):
+        verify_active_heartbeat(
+            issue.replace("12:29:24", "11:29:24"),
+            active_run_id=37776929867,
+            run_started_at="2026-10-08T12:26:00Z",
+            now=now,
+        )
+    with pytest.raises(PaperRescueError, match="future-dated"):
+        verify_active_heartbeat(
+            issue.replace("12:29:24", "12:40:24"),
+            active_run_id=37776929867,
+            run_started_at="2026-10-08T12:26:00Z",
+            now=now,
+        )
+
+
+def test_heartbeat_startup_grace_never_claims_old_worker_is_current() -> None:
+    now = datetime(2026, 10, 8, 12, 30, tzinfo=UTC)
+    old_issue = (
+        "Updated: 2026-10-08T11:29:24+00:00\\n"
+        "Worker run: 37768727228\\n"
+    )
+    assert verify_active_heartbeat(
+        old_issue,
+        active_run_id=37776929867,
+        run_started_at="2026-10-08T12:27:00Z",
+        now=now,
+    ) == "startup_grace"
+    with pytest.raises(PaperRescueError, match="no current heartbeat"):
+        verify_active_heartbeat(
+            old_issue,
+            active_run_id=37776929867,
+            run_started_at=(now - timedelta(minutes=18)).isoformat(),
+            now=now,
+        )
+
+
+def test_corrupt_heartbeat_and_missing_run_start_fail_closed() -> None:
+    now = datetime(2026, 10, 8, 12, 30, tzinfo=UTC)
+    for invalid in (None, 42, ""):
+        with pytest.raises(PaperRescueError):
+            verify_active_heartbeat(
+                invalid,
+                active_run_id=12,
+                run_started_at=now.isoformat(),
+                now=now,
+            )
+    with pytest.raises(PaperRescueError, match="start timestamp"):
+        verify_active_heartbeat(
+            "Worker run: 12\\n",
+            active_run_id=12,
+            run_started_at=None,
+            now=now,
         )
 
 
