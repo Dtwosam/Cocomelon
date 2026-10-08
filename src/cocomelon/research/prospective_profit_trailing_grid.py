@@ -154,10 +154,11 @@ def _robust_pair(
         ))
         for market in markets
     }
-    positive = lambda value: (
-        value["trailing_absolutely_profitable"] is True
-        and value["trailing_beats_benchmark"] is True
-    )
+    def positive(value: dict[str, object]) -> bool:
+        return (
+            value["trailing_absolutely_profitable"] is True
+            and value["trailing_beats_benchmark"] is True
+        )
     side_ok = all(
         sum(row[0].direction.value == side for row in rows)
         >= MIN_DIRECTION_TRADES
