@@ -61,6 +61,7 @@ def trade(
         mfe=excursion,
         mae=mae,
         exit_reason=exit_reason,
+        holding_duration_ms=500_000,
     )
 
 
@@ -129,6 +130,9 @@ def test_realized_losses_separate_entry_exit_and_friction() -> None:
     assert overall["loss_after_0_5r_favorable_mark"] == 1
     assert overall["loss_after_1r_favorable_mark"] == 1
     assert overall["gross_winners_flipped_by_fees_and_funding"] == 1
+    assert Decimal(overall["entry_signed_slippage"]) == Decimal("0.5")
+    assert Decimal(overall["exit_signed_slippage"]) == Decimal("1.0")
+    assert result["by_side_and_holding_duration"]["short | 5_to_15m"]["trades"] == 3
     assert result["by_side_and_lead_strategy"]["long | trend"]["trades"] == 2
     assert result["by_side_and_lead_strategy"]["short | breakout"]["trades"] == 2
     assert result["by_side_and_lead_strategy"]["short | unknown"]["trades"] == 1
