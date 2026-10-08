@@ -78,9 +78,9 @@ def _cohort(
     funding = _sum(tuple(t.funding_cash_pnl for t in trades))
     net = _sum(tuple(t.net_pnl for t in trades))
     net_r = _sum(tuple(t.net_r for t in trades))
-    slippage = _sum(tuple(
-        t.entry_slippage_amount + t.exit_slippage_amount for t in trades
-    ))
+    entry_slippage = _sum(tuple(t.entry_slippage_amount for t in trades))
+    exit_slippage = _sum(tuple(t.exit_slippage_amount for t in trades))
+    slippage = entry_slippage + exit_slippage
     losses = tuple(t for t in trades if t.net_pnl < ZERO)
     complete = tuple(t for t in trades if _complete_mfe(t) is not None)
     no_initial_move = tuple(
@@ -133,6 +133,8 @@ def _cohort(
         "net_pnl": str(net),
         "gross_realized_pnl": str(gross),
         "signed_slippage": str(slippage),
+        "entry_signed_slippage": str(entry_slippage),
+        "exit_signed_slippage": str(exit_slippage),
         "reference_gross_pnl": str(gross + slippage),
         "fees": str(fees),
         "funding_cash_pnl": str(funding),
@@ -167,6 +169,17 @@ def _cohort(
     }
 
 
+def _holding_bucket(trade: TradeJournalEntry) -> str:
+    # Observed close time only; never an ex-ante entry feature.
+    if trade.holding_duration_ms < 300_000:
+        return "under_5m"
+    if trade.holding_duration_ms < 900_000:
+        return "5_to_15m"
+    if trade.holding_duration_ms < 3_600_000:
+        return "15_to_60m"
+    return "60m_plus"
+
+
 def closed_trade_lifecycle_economics(
     trades: Sequence[TradeJournalEntry],
     fact_store: EvaluationFactStore,
@@ -181,6 +194,7 @@ def closed_trade_lifecycle_economics(
     by_regime: dict[str, list[TradeJournalEntry]] = defaultdict(list)
     by_exit: dict[str, list[TradeJournalEntry]] = defaultdict(list)
     by_side: dict[str, list[TradeJournalEntry]] = defaultdict(list)
+    by_holding: dict[str, list[TradeJournalEntry]] = defaultdict(list)
     unattributed = 0
     for trade in items:
         strategy, trend, volatility, matched = _verified_setup(
@@ -193,6 +207,7 @@ def closed_trade_lifecycle_economics(
         by_regime[f"{side} | {trend} | {volatility}"].append(trade)
         by_exit[f"{side} | {trade.exit_reason}"].append(trade)
         by_side[side].append(trade)
+        by_holding[f"{side} | {_holding_bucket(trade)}"].append(trade)
 
     def groups(
         cohorts: dict[str, list[TradeJournalEntry]],
@@ -217,6 +232,7 @@ def closed_trade_lifecycle_economics(
         "decision_fact_attribution_misses": unattributed,
         "overall": _cohort(items),
         "by_side": groups(by_side),
+        "by_side_and_holding_duration": groups(by_holding),
         "by_side_and_lead_strategy": groups(by_setup),
         "by_side_and_regime": groups(by_regime),
         "by_side_and_exit_reason": groups(by_exit),
