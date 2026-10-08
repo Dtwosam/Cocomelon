@@ -225,6 +225,154 @@ def _robustness(
     }
 
 
+
+MIN_TEMPORAL_TRADES_PER_HALF: Final = 10
+
+
+def _paired_exit_economics(
+    pairs: Sequence[tuple[TradeJournalEntry, ProfitLockExecutionOutcome]],
+) -> dict[str, object]:
+    actual_pnl = ZERO
+    candidate_pnl = ZERO
+    actual_r = ZERO
+    candidate_r = ZERO
+    gained_pnl = ZERO
+    forgone_pnl = ZERO
+    losers_recovered = 0
+    winners_lost = 0
+    winners_preserved = 0
+    unprofitable_both = 0
+    activated = 0
+    triggered = 0
+
+    for trade, outcome in pairs:
+        candidate = outcome.candidate_net_pnl_estimate
+        candidate_r_value = outcome.candidate_net_r_estimate
+        if candidate is None or candidate_r_value is None:
+            raise ProspectiveBreakevenProfitLockError(
+                "exit payoff includes unevaluable shadow close"
+            )
+        if (
+            outcome.actual_net_pnl != trade.net_pnl
+            or outcome.actual_net_r != trade.net_r
+        ):
+            raise ProspectiveBreakevenProfitLockError(
+                "exit payoff lost journal lineage"
+            )
+        if (
+            not candidate.is_finite()
+            or not candidate_r_value.is_finite()
+        ):
+            raise ProspectiveBreakevenProfitLockError(
+                "exit payoff contains non-finite economics"
+            )
+        actual_pnl += trade.net_pnl
+        candidate_pnl += candidate
+        actual_r += trade.net_r
+        candidate_r += candidate_r_value
+        activated += int(outcome.activated)
+        triggered += int(outcome.triggered)
+        gained_pnl += max(ZERO, candidate - trade.net_pnl)
+        forgone_pnl += max(ZERO, trade.net_pnl - candidate)
+        losers_recovered += int(
+            trade.net_pnl <= ZERO and candidate > ZERO
+        )
+        winners_lost += int(
+            trade.net_pnl > ZERO and candidate <= ZERO
+        )
+        winners_preserved += int(
+            trade.net_pnl > ZERO and candidate > ZERO
+        )
+        unprofitable_both += int(
+            trade.net_pnl <= ZERO and candidate <= ZERO
+        )
+
+    return {
+        "trades": len(pairs),
+        "activated": activated,
+        "triggered": triggered,
+        "actual_winners": sum(
+            trade.net_pnl > ZERO for trade, _outcome in pairs
+        ),
+        "candidate_winners": (
+            winners_preserved + losers_recovered
+        ),
+        "losers_recovered_as_winners": losers_recovered,
+        "original_winners_turned_nonprofitable": winners_lost,
+        "original_winners_preserved": winners_preserved,
+        "nonprofitable_under_both": unprofitable_both,
+        "gross_positive_contribution_pnl": str(gained_pnl),
+        "gross_forgone_contribution_pnl": str(forgone_pnl),
+        "actual_net_pnl": str(actual_pnl),
+        "candidate_net_pnl": str(candidate_pnl),
+        "delta_net_pnl": str(candidate_pnl - actual_pnl),
+        "actual_net_r": str(actual_r),
+        "candidate_net_r": str(candidate_r),
+        "delta_net_r": str(candidate_r - actual_r),
+        "candidate_absolutely_profitable": (
+            len(pairs) > 0 and candidate_pnl > ZERO and candidate_r > ZERO
+        ),
+        "paired_improvement_positive": (
+            len(pairs) > 0
+            and candidate_pnl > actual_pnl
+            and candidate_r > actual_r
+        ),
+    }
+
+
+def _chronological_exit_stability(
+    pairs: Sequence[tuple[TradeJournalEntry, ProfitLockExecutionOutcome]],
+) -> dict[str, object]:
+    # Ordering by original entry time is deterministic and does not allow
+    # profitable later closes to be pulled into an earlier training cohort.
+    ordered = tuple(sorted(
+        pairs,
+        key=lambda pair: (
+            pair[0].opened_at_ms,
+            pair[0].closed_at_ms,
+            pair[0].trade_id,
+        ),
+    ))
+    midpoint = len(ordered) // 2
+    halves = (ordered[:midpoint], ordered[midpoint:])
+    rows: list[dict[str, object]] = []
+    for index, half in enumerate(halves):
+        economics = _paired_exit_economics(half)
+        rows.append({
+            "half": index + 1,
+            "first_opened_at_ms": (
+                None if not half else half[0][0].opened_at_ms
+            ),
+            "last_opened_at_ms": (
+                None if not half else half[-1][0].opened_at_ms
+            ),
+            **economics,
+            "passes": (
+                len(half) >= MIN_TEMPORAL_TRADES_PER_HALF
+                and economics["candidate_absolutely_profitable"] is True
+                and economics["paired_improvement_positive"] is True
+            ),
+        })
+    return {
+        "minimum_trades_per_half": MIN_TEMPORAL_TRADES_PER_HALF,
+        "halves": rows,
+        "both_halves_profitable_and_improved": all(
+            item["passes"] is True for item in rows
+        ),
+    }
+
+
+def _exit_by_direction(
+    pairs: Sequence[tuple[TradeJournalEntry, ProfitLockExecutionOutcome]],
+) -> dict[str, dict[str, object]]:
+    return {
+        side: _paired_exit_economics(tuple(
+            pair for pair in pairs if pair[0].direction.value == side
+        ))
+        for side in ("long", "short")
+    }
+
+
 def prospective_breakeven_profit_lock_summary(
     trades: Sequence[TradeJournalEntry],
     execution_shadow_state: object,
@@ -365,6 +513,9 @@ def prospective_breakeven_profit_lock_summary(
         for trade, _outcome in evaluated
     )
     robustness = _robustness(evaluated)
+    payoff_diagnostics = _paired_exit_economics(evaluated)
+    directional_payoff = _exit_by_direction(evaluated)
+    chronological_stability = _chronological_exit_stability(evaluated)
 
     lineage_mismatch = execution_shadow_state.get(
         "lineage_mismatch_closed_trades",
@@ -443,6 +594,9 @@ def prospective_breakeven_profit_lock_summary(
         and delta_positive
         and trade_robust
         and market_robust
+        and chronological_stability[
+            "both_halves_profitable_and_improved"
+        ] is True
     )
 
     return {
@@ -472,6 +626,9 @@ def prospective_breakeven_profit_lock_summary(
         "candidate_net_r": str(candidate_r),
         "delta_net_r": str(candidate_r - actual_r),
         "robustness": robustness,
+        "paired_exit_payoff": payoff_diagnostics,
+        "by_direction": directional_payoff,
+        "chronological_stability": chronological_stability,
         "readiness": {
             "ready_for_review": ready,
             "integrity_clean": integrity_clean,
@@ -480,6 +637,11 @@ def prospective_breakeven_profit_lock_summary(
             "delta_positive": delta_positive,
             "single_trade_robust": trade_robust,
             "single_market_robust": market_robust,
+            "chronologically_stable_absolute_and_incremental": (
+                chronological_stability[
+                    "both_halves_profitable_and_improved"
+                ] is True
+            ),
             "min_economically_evaluated_trades": (
                 MIN_ECONOMICALLY_EVALUATED_TRADES_PER_RULE
             ),
