@@ -5669,3 +5669,36 @@ def test_operational_exit_preview_is_live_and_research_only() -> None:
     assert "a high-water theoretical mark stop" in source.lower()
     assert "### High-water trailing exit preview" in renderer
     assert "Actual paper stops, orders and risk limits are unchanged" in renderer
+
+
+def test_net_reserved_trailing_rule_is_independent_frozen_paper_research() -> None:
+    source = Path(
+        "src/cocomelon/continuous_paper.py"
+    ).read_text(encoding="utf-8")
+    workflow = Path(
+        ".github/workflows/continuous-paper.yml"
+    ).read_text(encoding="utf-8")
+    research = Path(
+        "src/cocomelon/research/prospective_net_reserved_trailing.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'minimum_estimated_net_lock_r=Decimal("0.25")' in source
+    assert 'trail_by_r=Decimal("0.5")' in source
+    assert "NET_RESERVED_TRAILING_SHADOW_STATE_FILENAME" in source
+    assert "rules=(NET_RESERVED_TRAILING_RULE,)" in source
+    assert "net_reserved_trailing_shadow.reconcile_open_positions(" in source
+    assert "net_reserved_trailing_shadow," in source
+    assert "net_reserved_trailing_shadow.shadow.state_payload" in source
+    assert "prospective_net_reserved_trailing_comparison(" in source
+    assert "PROSPECTIVE_NET_RESERVED_TRAILING_FILENAME" in source
+    assert "net-reserved-trailing-execution-shadow-state.json" in workflow
+    assert "prospective-net-reserved-trailing-comparison.json" in workflow
+    assert "Upload net-reserved trailing versus original IOC review" in workflow
+    assert "Report cost-reserved trailing net economics" in workflow
+    assert workflow.count(
+        "src/cocomelon/research/prospective_net_reserved_trailing.py"
+    ) >= 2
+    assert '"selected_winner": None' in research
+    assert '"execution_authority": False' in research
+    assert '"promotion_authority": False' in research
+    assert '"account_level_profitability_proven": False' in research

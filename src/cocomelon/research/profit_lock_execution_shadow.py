@@ -121,6 +121,14 @@ def _rules_payload(
                 {"trail_by_r": str(rule.trail_by_r)}
                 if rule.trail_by_r is not None else {}
             ),
+            **(
+                {
+                    "minimum_estimated_net_lock_r": str(
+                        rule.minimum_estimated_net_lock_r
+                    )
+                }
+                if rule.minimum_estimated_net_lock_r is not None else {}
+            ),
         }
         for rule in rules
     ]
@@ -636,6 +644,41 @@ class ProfitLockExecutionShadow:
                         rule_state.peak_gross_r = peak
                     lock_at_r = max(
                         lock_at_r, peak - rule.trail_by_r
+                    )
+                if rule.minimum_estimated_net_lock_r is not None:
+                    # Ex ante worst-case IOC reserve, NOT realized net
+                    # profit. Frozen at entry and only uses past elapsed
+                    # duration; final cashflow still needs visible fills.
+                    entry_notional = (
+                        state.entry_price * state.initial_quantity
+                    )
+                    fee_reserve = (
+                        entry_notional
+                        * self._config.taker_fee_rate
+                        * Decimal("2")
+                    )
+                    slippage_reserve = (
+                        entry_notional
+                        * self._config.max_ioc_slippage_bps
+                        / Decimal("10000")
+                    )
+                    holding_ms = max(1, now_ms - state.opened_at_ms)
+                    funding_reserve = (
+                        entry_notional
+                        * DEFAULT_PROFIT_LOCK_COSTS
+                        .funding_reserve_fraction_per_hour
+                        * Decimal(holding_ms)
+                        / Decimal(3_600_000)
+                    )
+                    estimated_min_gross_r = (
+                        rule.minimum_estimated_net_lock_r
+                        + (
+                            fee_reserve + slippage_reserve
+                            + funding_reserve
+                        ) / state.planned_risk
+                    )
+                    lock_at_r = max(
+                        lock_at_r, estimated_min_gross_r
                     )
                 lock_px = _lock_price(
                     side=state.side,
