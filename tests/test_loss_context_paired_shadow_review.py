@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -75,6 +76,9 @@ def _checkpoint(
         "prospective_not_before_ms": freeze.prospective_not_before_ms,
         "end_ms": PROSPECTIVE_MS + index * NINE_HOURS_MS,
         "record_count": index * 1_000,
+        "data_gap_closed_count": 0,
+        "data_gap_closed_duration_ms": 0,
+        "data_gap_open_count": 0,
         "last_record_available_at_ms": (
             PROSPECTIVE_MS + index * NINE_HOURS_MS
         ),
@@ -317,3 +321,87 @@ def test_paired_shadow_review_rejects_record_counter_regression(
     ):
         append_review_checkpoint(ledger, second)
     assert ledger.read_bytes() == original
+
+
+def test_paired_review_rejects_forward_market_gaps_above_one_percent(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "review.jsonl"
+    for index in range(1, 10):
+        row = _checkpoint(freeze, index=index)
+        row["data_gap_closed_count"] = 10 * index
+        row["data_gap_closed_duration_ms"] = 2_000_000 * index
+        append_review_checkpoint(ledger, row)
+    report = build_paired_shadow_review(freeze, ledger)
+    assert report["ready_for_review"] is False
+    assert "excessive_forward_market_data_gaps" in report["readiness_failures"]
+    assert report["forward_market_data_gap_duration_ms"] == 16_000_000
+    assert Decimal(report["forward_market_data_gap_fraction"]) > Decimal("0.01")
+
+
+def test_paired_review_refuses_missing_prospective_gap_evidence(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "review.jsonl"
+    for index in range(1, 10):
+        row = _checkpoint(freeze, index=index)
+        if index == 1:
+            for key in (
+                "data_gap_closed_count",
+                "data_gap_closed_duration_ms",
+                "data_gap_open_count",
+            ):
+                row.pop(key)
+        append_review_checkpoint(ledger, row)
+    report = build_paired_shadow_review(freeze, ledger)
+    assert report["ready_for_review"] is False
+    assert "missing_forward_market_data_gap_evidence" in report["readiness_failures"]
+
+
+def test_paired_review_refuses_open_gap_at_final_checkpoint(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "review.jsonl"
+    for index in range(1, 10):
+        row = _checkpoint(freeze, index=index)
+        if index == 9:
+            row["data_gap_open_count"] = 1
+        append_review_checkpoint(ledger, row)
+    report = build_paired_shadow_review(freeze, ledger)
+    assert report["ready_for_review"] is False
+    assert "market_data_gap_still_open" in report["readiness_failures"]
+
+
+def test_paired_review_rejects_partial_gap_evidence(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "review.jsonl"
+    row = _checkpoint(freeze, index=1)
+    row.pop("data_gap_open_count")
+    with pytest.raises(
+        LossContextPairedShadowReviewError,
+        match="partial market-data gap evidence",
+    ):
+        append_review_checkpoint(ledger, row)
+    assert not ledger.exists()
+
+
+def test_paired_review_rejects_gap_counter_regression(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "review.jsonl"
+    first = _checkpoint(freeze, index=1)
+    first["data_gap_closed_duration_ms"] = 1000
+    append_review_checkpoint(ledger, first)
+    second = _checkpoint(freeze, index=2)
+    second["data_gap_closed_duration_ms"] = 999
+    with pytest.raises(
+        LossContextPairedShadowReviewError,
+        match="market-data closed gap duration",
+    ):
+        append_review_checkpoint(ledger, second)
