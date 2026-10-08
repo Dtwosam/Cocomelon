@@ -732,6 +732,15 @@ def test_precommitted_one_half_profit_target_is_positive_on_identical_trades() -
     assert report["execution_authority"] is False
     assert report["promotion_authority"] is False
 
+    paired = report["same_trade_incremental_robustness"]
+    assert paired is not None
+    assert paired["overall"]["one_half_minus_one_r_pnl"] == "40"
+    assert paired["by_direction"]["long"]["one_half_minus_one_r_pnl"] == "20"
+    assert paired["by_direction"]["short"]["one_half_minus_one_r_pnl"] == "20"
+    assert paired["incremental_economic_screen_passes"] is True
+    assert report["higher_target_strict_incremental_screen_passes"] is True
+    assert paired["threshold_selected"] is None
+
 
 def test_one_half_exit_only_compares_same_complete_fill_cohort() -> None:
     trades, target_one_r, baseline = _profit_target_fixture()
@@ -757,6 +766,9 @@ def test_one_half_exit_only_compares_same_complete_fill_cohort() -> None:
     assert report["one_half_minus_one_r_net_pnl"] is None
     assert report["one_half_minus_one_r_net_r"] is None
     assert report["both_precommitted_economic_screens_pass"] is False
+
+    assert report["same_trade_incremental_robustness"] is None
+    assert report["higher_target_strict_incremental_screen_passes"] is False
 
 
 def test_one_half_exit_rejects_winning_threshold_selected_by_rule_drift() -> None:
@@ -909,6 +921,125 @@ def test_threshold_comparison_rejects_forged_one_half_r_payoff() -> None:
     with pytest.raises(
         ProspectiveProfitTargetComparisonError,
         match="IOC cashflow does not reconcile",
+    ):
+        prospective_profit_target_threshold_comparison(
+            trades, first, one_half, baseline
+        )
+
+
+def test_waiting_for_one_half_r_fails_late_negative_incremental_block() -> None:
+    trades, first, baseline = _profit_target_fixture()
+    one_half = _one_half_target_state(tuple(
+        replace(
+            _outcome(
+                trade, candidate_pnl="3" if index < 30 else "-1"
+            ),
+            rule_id="profit_target_at_1_5r",
+        )
+        for index, trade in enumerate(trades)
+    ))
+    result = prospective_profit_target_threshold_comparison(
+        trades, first, one_half, baseline
+    )
+    review = result["same_trade_incremental_robustness"]
+    assert review is not None
+    assert Decimal(review["overall"]["one_half_minus_one_r_pnl"]) > 0
+    assert review["chronological_blocks"][-1][
+        "one_half_minus_one_r_pnl"
+    ] == "-20"
+    assert review["chronological_blocks"][-1]["passes"] is False
+    assert review["chronological_consistency_passes"] is False
+    assert review["incremental_economic_screen_passes"] is False
+    assert result["higher_target_strict_incremental_screen_passes"] is False
+
+
+def test_waiting_for_one_half_r_cannot_hide_losing_short_edge() -> None:
+    trades, first, baseline = _profit_target_fixture()
+    one_half = _one_half_target_state(tuple(
+        replace(
+            _outcome(
+                trade, candidate_pnl="4" if index % 2 == 0 else "0"
+            ),
+            rule_id="profit_target_at_1_5r",
+        )
+        for index, trade in enumerate(trades)
+    ))
+    result = prospective_profit_target_threshold_comparison(
+        trades, first, one_half, baseline
+    )
+    review = result["same_trade_incremental_robustness"]
+    assert review is not None
+    assert Decimal(review["overall"]["one_half_minus_one_r_pnl"]) > 0
+    assert review["by_direction"]["short"]["one_half_minus_one_r_pnl"] == "-20"
+    assert review["direction_consistency_passes"] is False
+    assert review["incremental_economic_screen_passes"] is False
+    assert result["selected_winning_threshold"] is None
+
+
+def test_one_big_late_winner_cannot_create_fake_durable_target_advantage() -> None:
+    trades, first, baseline = _profit_target_fixture()
+    one_half = _one_half_target_state(tuple(
+        replace(
+            _outcome(
+                trade, candidate_pnl="60" if index == 0 else "1"
+            ),
+            rule_id="profit_target_at_1_5r",
+        )
+        for index, trade in enumerate(trades)
+    ))
+    result = prospective_profit_target_threshold_comparison(
+        trades, first, one_half, baseline
+    )
+    review = result["same_trade_incremental_robustness"]
+    assert review is not None
+    assert Decimal(review["overall"]["one_half_minus_one_r_pnl"]) > 0
+    assert review["leave_largest_incremental_winner_out"][
+        "one_half_minus_one_r_pnl"
+    ] == "0"
+    assert review["leave_one_out_consistency_passes"] is False
+    assert review["incremental_economic_screen_passes"] is False
+
+
+def test_single_market_target_outperformance_fails_market_holdout() -> None:
+    trades, first, baseline = _profit_target_fixture()
+    one_half = _one_half_target_state(tuple(
+        replace(
+            _outcome(
+                trade,
+                candidate_pnl="3" if trade.market.canonical == "BTC" else "1",
+            ),
+            rule_id="profit_target_at_1_5r",
+        )
+        for trade in trades
+    ))
+    result = prospective_profit_target_threshold_comparison(
+        trades, first, one_half, baseline
+    )
+    review = result["same_trade_incremental_robustness"]
+    assert review is not None
+    assert Decimal(review["overall"]["one_half_minus_one_r_pnl"]) > 0
+    assert review["leave_one_market_out"]["BTC"][
+        "one_half_minus_one_r_pnl"
+    ] == "0"
+    assert review["leave_one_out_consistency_passes"] is False
+    assert result["higher_target_strict_incremental_screen_passes"] is False
+
+
+def test_higher_target_cannot_trigger_before_lower_target() -> None:
+    trades, first, baseline = _profit_target_fixture()
+    one_half = _one_half_target_state(tuple(
+        replace(
+            _outcome(trade, candidate_pnl="2"),
+            rule_id="profit_target_at_1_5r",
+        )
+        for trade in trades
+    ))
+    one_half["outcomes"][0]["trigger_timestamp_ms"] = (
+        trades[0].opened_at_ms + 19_000
+    )
+    with pytest.raises(
+        ProspectiveProfitTargetComparisonError,
+        match="1.5R target triggered before 1R",
     ):
         prospective_profit_target_threshold_comparison(
             trades, first, one_half, baseline

@@ -565,6 +565,205 @@ def _prospective_profit_target_comparison(
     }
 
 
+def _paired_threshold_economics(
+    pairs: Sequence[
+        tuple[TradeJournalEntry, ProfitLockExecutionOutcome, ProfitLockExecutionOutcome]
+    ],
+) -> dict[str, object]:
+    """Measure 1.5R minus 1R only on each identical, completed trade."""
+    earlier_pnl = ZERO
+    later_pnl = ZERO
+    earlier_r = ZERO
+    later_r = ZERO
+    earlier_only_triggers = 0
+    later_complete_closes = 0
+    earlier_winners_sacrificed = 0
+    earlier_losers_rescued = 0
+    for _trade, earlier, later in pairs:
+        first_pnl = earlier.candidate_net_pnl_estimate
+        second_pnl = later.candidate_net_pnl_estimate
+        first_r = earlier.candidate_net_r_estimate
+        second_r = later.candidate_net_r_estimate
+        if any(
+            value is None for value in
+            (first_pnl, second_pnl, first_r, second_r)
+        ):
+            raise ProspectiveProfitTargetComparisonError(
+                "paired threshold lacks completed net cashflow"
+            )
+        assert (
+            first_pnl is not None and second_pnl is not None
+            and first_r is not None and second_r is not None
+        )
+        earlier_pnl += first_pnl
+        later_pnl += second_pnl
+        earlier_r += first_r
+        later_r += second_r
+        earlier_only_triggers += int(
+            earlier.triggered and not later.triggered
+        )
+        later_complete_closes += int(
+            later.triggered and later.simulated_close_complete
+        )
+        earlier_winners_sacrificed += int(
+            first_pnl > ZERO and second_pnl < first_pnl
+        )
+        earlier_losers_rescued += int(
+            first_pnl <= ZERO and second_pnl > ZERO
+        )
+    delta_pnl = later_pnl - earlier_pnl
+    delta_r = later_r - earlier_r
+    return {
+        "trades": len(pairs),
+        "one_r_net_pnl": str(earlier_pnl),
+        "one_half_r_net_pnl": str(later_pnl),
+        "one_half_minus_one_r_pnl": str(delta_pnl),
+        "one_r_net_r": str(earlier_r),
+        "one_half_r_net_r": str(later_r),
+        "one_half_minus_one_r_net_r": str(delta_r),
+        "earlier_only_triggers": earlier_only_triggers,
+        "later_full_ioc_closes": later_complete_closes,
+        "one_r_winners_reduced_by_waiting": earlier_winners_sacrificed,
+        "one_r_losers_recovered_by_waiting": earlier_losers_rescued,
+        "one_half_r_absolute_net_profitable": (
+            bool(pairs) and later_pnl > ZERO and later_r > ZERO
+        ),
+        "waiting_beats_one_r_net": (
+            bool(pairs) and delta_pnl > ZERO and delta_r > ZERO
+        ),
+    }
+
+
+def _paired_threshold_delta_review(
+    pairs: Sequence[
+        tuple[TradeJournalEntry, ProfitLockExecutionOutcome, ProfitLockExecutionOutcome]
+    ],
+) -> dict[str, object]:
+    """Prospective, paired robustness—not authority to pick a threshold."""
+    observed = tuple(pairs)
+    overall = _paired_threshold_economics(observed)
+    markets = sorted({
+        trade.market.canonical for trade, _, _ in observed
+    })
+    direction = {
+        side: _paired_threshold_economics(tuple(
+            pair for pair in observed
+            if pair[0].direction.value == side
+        ))
+        for side in ("long", "short")
+    }
+    blocks: list[dict[str, object]] = []
+    for index in range(CHRONOLOGICAL_BLOCKS):
+        low = len(observed) * index // CHRONOLOGICAL_BLOCKS
+        high = len(observed) * (index + 1) // CHRONOLOGICAL_BLOCKS
+        portion = observed[low:high]
+        economics = _paired_threshold_economics(portion)
+        blocks.append({
+            "block": index + 1,
+            "first_opened_at_ms": (
+                None if not portion else portion[0][0].opened_at_ms
+            ),
+            "last_opened_at_ms": (
+                None if not portion else portion[-1][0].opened_at_ms
+            ),
+            **economics,
+            "passes": (
+                len(portion) >= MIN_BLOCK_TRADES
+                and economics["waiting_beats_one_r_net"] is True
+                and economics["one_half_r_absolute_net_profitable"] is True
+            ),
+        })
+
+    most_favorable_pair = (
+        None if not observed else max(
+            observed,
+            key=lambda pair: (
+                (
+                    pair[2].candidate_net_pnl_estimate or ZERO
+                ) - (
+                    pair[1].candidate_net_pnl_estimate or ZERO
+                ),
+                pair[0].trade_id,
+            ),
+        )
+    )
+    leave_biggest = _paired_threshold_economics(tuple(
+        pair for pair in observed
+        if most_favorable_pair is None
+        or pair[0].trade_id != most_favorable_pair[0].trade_id
+    ))
+    leave_markets = {
+        market: _paired_threshold_economics(tuple(
+            pair for pair in observed
+            if pair[0].market.canonical != market
+        ))
+        for market in markets
+    }
+    robust = (
+        len(markets) >= MIN_MARKETS
+        and leave_biggest["waiting_beats_one_r_net"] is True
+        and leave_biggest["one_half_r_absolute_net_profitable"] is True
+        and all(
+            v["waiting_beats_one_r_net"] is True
+            and v["one_half_r_absolute_net_profitable"] is True
+            for v in leave_markets.values()
+        )
+    )
+    side_robust = all(
+        sum(
+            pair[0].direction.value == side for pair in observed
+        ) >= MIN_DIRECTION_TRADES
+        and economics["waiting_beats_one_r_net"] is True
+        and economics["one_half_r_absolute_net_profitable"] is True
+        for side, economics in direction.items()
+    )
+    sample_complete = (
+        len(observed) >= MIN_PAIRED_TRADES
+        and len(markets) >= MIN_MARKETS
+        and sum(
+            later.triggered and later.simulated_close_complete
+            for _, _, later in observed
+        ) >= MIN_PROFIT_TARGET_FULL_CLOSES
+        and all(
+            sum(
+                pair[0].direction.value == side
+                for pair in observed
+            ) >= MIN_DIRECTION_TRADES
+            for side in ("long", "short")
+        )
+    )
+    return {
+        "research_only": True,
+        "threshold_selected": None,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "sample_complete": sample_complete,
+        "overall": overall,
+        "by_direction": direction,
+        "chronological_blocks": blocks,
+        "leave_largest_incremental_winner_out": leave_biggest,
+        "leave_one_market_out": leave_markets,
+        "direction_consistency_passes": side_robust,
+        "chronological_consistency_passes": all(
+            block["passes"] is True for block in blocks
+        ),
+        "leave_one_out_consistency_passes": robust,
+        "incremental_economic_screen_passes": (
+            sample_complete
+            and overall["waiting_beats_one_r_net"] is True
+            and overall["one_half_r_absolute_net_profitable"] is True
+            and side_robust
+            and all(block["passes"] is True for block in blocks)
+            and robust
+        ),
+        "warning": (
+            "A positive matched-trade advantage cannot establish "
+            "portfolio profitability, justify choosing a threshold "
+            "from this cohort or grant execution authority."
+        ),
+    }
+
+
 def prospective_profit_target_threshold_comparison(
     trades: Sequence[TradeJournalEntry],
     one_r_shadow_state: object,
@@ -576,10 +775,10 @@ def prospective_profit_target_threshold_comparison(
     The two thresholds are precommitted independent hypotheses, not
     alternative fills to cherry-pick on each position.
     """
-    first_start, _first_outcomes, first_integrity = _verified_outcomes(
+    first_start, first_outcomes, first_integrity = _verified_outcomes(
         one_r_shadow_state, rule_id=TAKE_PROFIT_RULE_ID
     )
-    later_start, _later_outcomes, later_integrity = _verified_outcomes(
+    later_start, later_outcomes, later_integrity = _verified_outcomes(
         one_half_r_shadow_state, rule_id=TAKE_PROFIT_ONE_HALF_RULE_ID
     )
     breakeven_start, _baseline_outcomes, baseline_integrity = (
@@ -633,7 +832,37 @@ def prospective_profit_target_threshold_comparison(
     one_r_net_r: Decimal | None = None
     one_half_net_r: Decimal | None = None
     r_increment: Decimal | None = None
+    paired_delta_review: dict[str, object] | None = None
     if pair_alignment_clean:
+        trade_by_id = {trade.trade_id: trade for trade in trades}
+        pairs = tuple(
+            (
+                trade_by_id[trade_id],
+                first_outcomes[trade_id],
+                later_outcomes[trade_id],
+            )
+            for trade_id in one_r_ids
+        )
+        for trade, first, later in pairs:
+            if later.triggered and (
+                not first.triggered
+                or (
+                    first.trigger_timestamp_ms is not None
+                    and later.trigger_timestamp_ms is not None
+                    and later.trigger_timestamp_ms < first.trigger_timestamp_ms
+                )
+            ):
+                raise ProspectiveProfitTargetComparisonError(
+                    "1.5R target triggered before 1R on identical trade"
+                )
+            if not (
+                first.opening_plan_id == later.opening_plan_id
+                == trade.opening_plan_id
+            ):
+                raise ProspectiveProfitTargetComparisonError(
+                    "target threshold opening plan drift"
+                )
+        paired_delta_review = _paired_threshold_delta_review(pairs)
         original = one_r["overall"]
         alternative = one_half["overall"]
         if not isinstance(original, dict) or not isinstance(alternative, dict):
@@ -688,6 +917,13 @@ def prospective_profit_target_threshold_comparison(
         ),
         "one_half_minus_one_r_net_r": (
             None if r_increment is None else str(r_increment)
+        ),
+        "same_trade_incremental_robustness": paired_delta_review,
+        "higher_target_strict_incremental_screen_passes": (
+            paired_delta_review is not None
+            and paired_delta_review["incremental_economic_screen_passes"]
+            is True
+            and one_half["economic_screen_passes"] is True
         ),
         "both_precommitted_economic_screens_pass": (
             pair_alignment_clean
