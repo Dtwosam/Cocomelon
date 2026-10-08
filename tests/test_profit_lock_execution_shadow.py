@@ -932,3 +932,39 @@ def test_operational_trailing_preview_fails_closed_on_disabled_shadow() -> None:
     assert status["positions"] == []
     assert "state mismatch" in status["error"]
     assert status["execution_authority"] is False
+
+
+def test_operational_trailing_preview_never_scans_closed_shadow_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rule = ProfitLockRule(
+        rule_id="trail_peak_after_1r_by_0_5r",
+        activate_at_r=Decimal("1"),
+        lock_at_r=Decimal("0.5"),
+        trail_by_r=Decimal("0.5"),
+    )
+    position = _position()
+    shadow = ProfitLockExecutionShadow(
+        _config(), started_at_ms=500, rules=(rule,)
+    )
+    shadow.observe_mark(
+        (position,), _mark("120", 1_500), now_ms=1_500
+    )
+
+    def forbidden_historical_summary(
+        _shadow: ProfitLockExecutionShadow,
+    ) -> dict[str, object]:
+        raise AssertionError("operational heartbeat scanned closed outcomes")
+
+    monkeypatch.setattr(
+        ProfitLockExecutionShadow,
+        "summary_payload",
+        forbidden_historical_summary,
+    )
+    sink = _ContinuousProfitLockExecutionShadowSink(
+        shadow, opening_plan_loader=lambda _id: None
+    )
+    preview = _open_trailing_profit_preview(sink, (position,))
+    assert preview["started_at_ms"] == 500
+    assert preview["activated_open_positions"] == 1
+    assert preview["positions"][0]["theoretical_lock_r"] == "1.5"
