@@ -798,3 +798,12 @@ Only **fully resolved** qualifying streaks may contribute to recurring-context d
 A separately frozen, fully covered future cohort may be investigated later under its own eligibility/provenance rules. This repair does **not** waive the old baseline completeness contract or allow picking favorable history. No LONG/SHORT-wide restrictions, active paper strategy changes, risk changes, or live execution.
 
 **LIVE TRADING: DISABLED.**
+
+
+### D-064 — Immutable forward cohort for loss-context evidence, separated from promotion
+
+Historical feature-snapshot gaps are real missing evidence, not permission to reconstruct context or to cherry-pick a favorable retrospective window. Starting with the first paper runtime after this change, create a one-time, content-addressed loss-context **forward-cohort anchor before the paper trader runs**. Capture the source run/commit identity and SHA-256 witness of all already closed journal trades. Carry the identical anchor through exact worker resumes; never re-date it on subsequent workers. A changed/missing pre-cutover journal trade or modified/authority-granting anchor fails research validation.
+
+Only consider trades **opened strictly after** this anchor; exclude any carryover positions opened before it even if they close later. Report both LONG and SHORT, actual net closed-trade economics, market breadth and missing feature/decision context. Research-discovery readiness requires at least 72 elapsed hours, 30 forward closed trades, 4 distinct markets, 6 non-losing controls, and complete source lineage. These are **data-readiness minima**, not profitability claims. The old complete-historical-baseline gate stays mandatory for the existing historical candidate pipeline. This separate cohort does not feed existing candidate freezes, change risk/strategy, grant paper execution or live execution, or waive D-054 paired shadow absolute net account profitability requirements. A distinct future validation/promotion design must be reviewed against genuine out-of-sample economics.
+
+**LIVE TRADING: DISABLED.**
