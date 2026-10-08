@@ -17,6 +17,7 @@ from cocomelon.domain.execution import (
     PositionActionType,
 )
 from cocomelon.domain.market import MarketId
+from cocomelon.domain.strategy import Direction
 from cocomelon.domain.replay import (
     EvidenceClass,
     ReplayRecord,
@@ -337,6 +338,10 @@ class _LaneSnapshot:
     gross_open_notional: Decimal
     available_margin: Decimal
     closed_trade_count: int
+    long_closed_trade_count: int
+    short_closed_trade_count: int
+    long_closed_net_pnl: Decimal
+    short_closed_net_pnl: Decimal
     risk_evaluations: int
     risk_approvals: int
     risk_rejections: int
@@ -359,6 +364,10 @@ class _LaneSnapshot:
             "gross_open_notional": str(self.gross_open_notional),
             "available_margin": str(self.available_margin),
             "closed_trade_count": self.closed_trade_count,
+            "long_closed_trade_count": self.long_closed_trade_count,
+            "short_closed_trade_count": self.short_closed_trade_count,
+            "long_closed_net_pnl": str(self.long_closed_net_pnl),
+            "short_closed_net_pnl": str(self.short_closed_net_pnl),
             "risk_evaluations": self.risk_evaluations,
             "risk_approvals": self.risk_approvals,
             "risk_rejections": self.risk_rejections,
@@ -377,8 +386,12 @@ class _LaneOffsets:
     risk_rejections: int = 0
     opening_execution_attempts: int = 0
     opening_fills: int = 0
+    long_closed_trade_count: int = 0
+    short_closed_trade_count: int = 0
+    long_closed_net_pnl: Decimal = ZERO
+    short_closed_net_pnl: Decimal = ZERO
 
-    def to_dict(self) -> dict[str, int]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "closed_trade_count": self.closed_trade_count,
             "risk_evaluations": self.risk_evaluations,
@@ -386,6 +399,10 @@ class _LaneOffsets:
             "risk_rejections": self.risk_rejections,
             "opening_execution_attempts": self.opening_execution_attempts,
             "opening_fills": self.opening_fills,
+            "long_closed_trade_count": self.long_closed_trade_count,
+            "short_closed_trade_count": self.short_closed_trade_count,
+            "long_closed_net_pnl": str(self.long_closed_net_pnl),
+            "short_closed_net_pnl": str(self.short_closed_net_pnl),
         }
 
     @classmethod
@@ -411,6 +428,36 @@ class _LaneOffsets:
                     f"shadow lane offset {field} must be non-negative"
                 )
             values[field] = value
+        # Legacy checkpoints lack directional trade attribution. The old
+        # total remains unclassified; only new journal rows contribute to
+        # forward LONG/SHORT evidence.
+        side_fields = (
+            "long_closed_trade_count", "short_closed_trade_count",
+            "long_closed_net_pnl", "short_closed_net_pnl",
+        )
+        present = tuple(field in raw for field in side_fields)
+        if any(present) and not all(present):
+            raise ValueError("paired shadow direction offsets incomplete")
+        if all(present):
+            for field in side_fields[:2]:
+                value = raw[field]
+                if type(value) is not int or value < 0:
+                    raise ValueError("paired shadow direction count invalid")
+                values[field] = value
+            for field in side_fields[2:]:
+                try:
+                    pnl = Decimal(str(raw[field]))
+                except (ValueError, ArithmeticError) as exc:
+                    raise ValueError("paired shadow direction net PnL invalid") from exc
+                if not pnl.is_finite():
+                    raise ValueError("paired shadow direction net PnL not finite")
+                values[field] = pnl
+        if (
+            values.get("long_closed_trade_count", 0)
+            + values.get("short_closed_trade_count", 0)
+            > values["closed_trade_count"]
+        ):
+            raise ValueError("paired shadow direction counts exceed total")
         return cls(**values)
 
 
@@ -977,6 +1024,10 @@ class LossContextPairedPortfolioShadow:
             ),
             "cumulative_activity": {
                 "closed_trade_count": snapshot.closed_trade_count,
+                "long_closed_trade_count": snapshot.long_closed_trade_count,
+                "short_closed_trade_count": snapshot.short_closed_trade_count,
+                "long_closed_net_pnl": str(snapshot.long_closed_net_pnl),
+                "short_closed_net_pnl": str(snapshot.short_closed_net_pnl),
                 "risk_evaluations": snapshot.risk_evaluations,
                 "risk_approvals": snapshot.risk_approvals,
                 "risk_rejections": snapshot.risk_rejections,
@@ -1196,6 +1247,22 @@ class LossContextPairedPortfolioShadow:
             available_margin=account.available_margin,
             closed_trade_count=(
                 offsets.closed_trade_count + len(closed)
+            ),
+            long_closed_trade_count=(
+                offsets.long_closed_trade_count
+                + sum(t.direction is Direction.LONG for t in closed)
+            ),
+            short_closed_trade_count=(
+                offsets.short_closed_trade_count
+                + sum(t.direction is Direction.SHORT for t in closed)
+            ),
+            long_closed_net_pnl=(
+                offsets.long_closed_net_pnl
+                + sum((t.net_pnl for t in closed if t.direction is Direction.LONG), ZERO)
+            ),
+            short_closed_net_pnl=(
+                offsets.short_closed_net_pnl
+                + sum((t.net_pnl for t in closed if t.direction is Direction.SHORT), ZERO)
             ),
             risk_evaluations=(
                 offsets.risk_evaluations + activity.risk_evaluations
