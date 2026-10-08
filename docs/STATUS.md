@@ -5023,3 +5023,12 @@ The audit now reports incomplete qualifying streaks explicitly, preserving their
 This repairs an evidence-reporting crash but **does not** certify a historical filter or start a clean paired A/B candidate. The next frontier is examining the missing snapshot lineage and establishing an independently frozen fully covered future cohort without using incomplete legacy history as proof. The D-054 absolute-profitability and account-level comparison gates remain unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Immutable forward-only loss-context coverage cohort — 2026-10-08
+
+Opened an independent research-only prospective coverage lane rather than weakening the failed legacy-history baseline from PR #1012. A one-time frozen, content-addressed anchor is created **after exact worker state restoration and before paper runtime** so the same original cutoff is packed into the fast handoff archive before successor dispatch. Immutable historical trade witness validation rejects missing or changed pre-freeze closed trade identity/net economics. A successful successor dispatch precedes separate lightweight post-handoff review and 90-day artifact upload.
+
+The cohort includes all trades opened after anchor time, excludes pre-cutover in-flight positions, counts both sides and multiple markets, reports realized *closed-trade* net PnL and missing feature facts, and stays discovery-unready until 72h / 30 closed trades / 4 markets / 6 non-loss controls with complete coverage. Even when discovery ready, strategy promotion, account profitability, and execution authority remain **explicitly false**. Legacy historical data gaps and the original historical filter-freeze complete-baseline gate remain unresolved; future prospective paired account-level A/B economics are still required to establish any improvement.
+
+**LIVE TRADING: DISABLED.**
