@@ -8,6 +8,7 @@ import pytest
 from cocomelon.continuous_paper import (
     _ContinuousProfitLockExecutionShadowSink,
     _open_trailing_profit_preview,
+    _safe_open_trailing_profit_preview,
 )
 from cocomelon.domain.execution import (
     InstrumentExecutionSpec,
@@ -968,3 +969,41 @@ def test_operational_trailing_preview_never_scans_closed_shadow_history(
     assert preview["started_at_ms"] == 500
     assert preview["activated_open_positions"] == 1
     assert preview["positions"][0]["theoretical_lock_r"] == "1.5"
+
+
+def test_corrupt_open_trailing_preview_cannot_interrupt_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rule = ProfitLockRule(
+        rule_id="trail_peak_after_1r_by_0_5r",
+        activate_at_r=Decimal("1"),
+        lock_at_r=Decimal("0.5"),
+        trail_by_r=Decimal("0.5"),
+    )
+    shadow = ProfitLockExecutionShadow(
+        _config(), started_at_ms=500, rules=(rule,)
+    )
+
+    def failed_snapshot(
+        _shadow: ProfitLockExecutionShadow,
+        _rule_id: str,
+    ) -> tuple[dict[str, object], ...]:
+        raise ValueError("bad persisted high-water mark")
+
+    monkeypatch.setattr(
+        ProfitLockExecutionShadow,
+        "open_rule_state_payloads",
+        failed_snapshot,
+    )
+    sink = _ContinuousProfitLockExecutionShadowSink(
+        shadow, opening_plan_loader=lambda _id: None
+    )
+    preview = _safe_open_trailing_profit_preview(
+        sink, (_position(),)
+    )
+    assert preview["enabled"] is False
+    assert preview["execution_authority"] is False
+    assert preview["promotion_authority"] is False
+    assert preview["positions"] == []
+    assert "bad persisted high-water mark" in preview["error"]
+    assert sink.shadow is shadow
