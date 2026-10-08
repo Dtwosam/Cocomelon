@@ -99,6 +99,81 @@ def _stale_book_age_lines(raw: object) -> list[str]:
     ]
 
 
+def _paired_paper_trial_lines(raw: object) -> list[str]:
+    """Make paired-account research failures visible in each paper heartbeat.
+
+    This is a health receipt, not a return estimate or promotion decision.
+    Complete after-cost equity evidence lives only in the checkpoint ledger.
+    """
+    lines = [
+        "### Frozen paired paper-account trial",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        return lines + [
+            "- state: `not reported`",
+            "- paired-account returns: `not available in heartbeat`",
+            "",
+        ]
+
+    error = raw.get("restore_error") or raw.get("error")
+    failed = raw.get("failed") is True
+    initialized = raw.get("initialized") is True
+    enabled = raw.get("enabled") is True
+    if error is not None or failed:
+        status = "failed"
+    elif enabled and initialized:
+        status = "active"
+    elif raw.get("portfolio_shadow_candidate_id") and not initialized:
+        status = "initializing"
+    else:
+        status = "not activated"
+
+    def count(name: str) -> int | None:
+        value = raw.get(name)
+        return (
+            value
+            if isinstance(value, int) and not isinstance(value, bool)
+            and value >= 0
+            else None
+        )
+
+    submitted = count("submitted_records")
+    processed = count("processed_records")
+    backlog = (
+        submitted - processed
+        if submitted is not None and processed is not None
+        and submitted >= processed
+        else None
+    )
+    candidate_id = raw.get("portfolio_shadow_candidate_id")
+    if not isinstance(candidate_id, str) or not candidate_id:
+        candidate_id = "none"
+
+    lines.extend([
+        f"- state: `{status}`",
+        f"- frozen trial candidate ID: `{candidate_id}`",
+        (
+            "- stream submitted / processed / pending: "
+            f"`{submitted} / {processed} / {backlog}`"
+        ),
+        (
+            "- shadow queue depth / capacity / overflows: "
+            f"`{count('queue_depth')} / {count('queue_capacity')} / "
+            f"{count('queue_overflows')}`"
+        ),
+        (
+            "- shadow checkpoints: "
+            f"`{count('checkpoint_count')}`"
+        ),
+        f"- research failure: `{error if error is not None else 'none'}`",
+        "- paired-account returns: `verify durable ledger after checkpoint`",
+        "",
+    ])
+    return lines
+
+
 def _cadence_shadow_lines(raw: object) -> list[str]:
     if not isinstance(raw, dict):
         return [
@@ -10847,6 +10922,11 @@ def render_live_status(
             ),
             "",
         ]
+    )
+    lines.extend(
+        _paired_paper_trial_lines(
+            payload.get("loss_context_paired_portfolio_shadow")
+        )
     )
     lines.extend(_cadence_shadow_lines(payload.get("cadence_shadow")))
     lines.extend(
