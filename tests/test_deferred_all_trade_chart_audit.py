@@ -114,7 +114,7 @@ def test_open_gap_never_counts_as_clean() -> None:
 def test_chart_compaction_preserves_intrabar_reversal() -> None:
     marks = [
         {"available_at_ms": i, "mark_px": str(
-            Decimal("100") + (Decimal("35") if i == 53 else Decimal("-20") if i == 54 else Decimal(i) / 100)
+            Decimal("100") + (\n                Decimal("35") if i == 53\n                else Decimal("-20") if i == 54\n                else Decimal(i) / 100\n            )
         )}
         for i in range(800)
     ]
