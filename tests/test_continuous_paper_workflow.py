@@ -128,6 +128,32 @@ def test_guard_ignores_older_queued_run_from_stale_head() -> None:
     assert "continue" in guard
 
 
+def test_exact_successor_ignores_queued_speculative_push_or_schedule() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    guard_at = source.index(
+        "- name: Skip bootstrap/watchdog when a continuous paper run is already active"
+    )
+    checkout_at = source.index("- uses: actions/checkout@v7", guard_at)
+    guard = source[guard_at:checkout_at]
+    pending_start = guard.index('if status in {"queued", "pending"}:')
+    pending_end = guard.index('if status != "in_progress":', pending_start)
+    pending = guard[pending_start:pending_end]
+
+    # At handoff a new push run can be pending behind an old worker's
+    # research tail even though it has never started trading.
+    assert 'os.environ.get("SOURCE_RUN_ID")' in pending
+    assert 'run.get("event") in {"push", "schedule"}' in pending
+    assert "continue" in pending
+    assert pending.index('run.get("event") in {"push", "schedule"}') < pending.index(
+        "run_id < current"
+    )
+    # Only a real exact successor has SOURCE_RUN_ID. Ordinary watchdogs
+    # must still guard all queued work, while truly active traders remain
+    # guarded independently in the in_progress branch.
+    assert 'trader_status in {"queued", "pending", "in_progress"}' in guard
+    assert 'step.get("conclusion") == "skipped"' in guard
+
+
 def test_guard_ignores_post_handoff_research_tails() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     guard_at = source.index(
