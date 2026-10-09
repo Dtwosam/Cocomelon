@@ -964,6 +964,27 @@ class LossContextPairedPortfolioShadow:
             self._candidate_filter,
             candidate_raw.get("admission"),
         )
+        # Reject even signed but contradictory paired scope histories before
+        # processing a single future event, not after recording account PnL.
+        if any(
+            left != right for left, right in (
+                (
+                    self._baseline.unscoped_gap_intervals,
+                    self._candidate.unscoped_gap_intervals,
+                ),
+                (
+                    self._baseline.known_gap_intervals_by_stream,
+                    self._candidate.known_gap_intervals_by_stream,
+                ),
+                (
+                    self._baseline.known_global_gap_intervals_by_stream,
+                    self._candidate.known_global_gap_intervals_by_stream,
+                ),
+            )
+        ):
+            raise RuntimeError(
+                "paired shadow restored market-data gap scope mismatch"
+            )
         self._restored_from_checkpoint = True
         self._restore_warmup_required = True
 
