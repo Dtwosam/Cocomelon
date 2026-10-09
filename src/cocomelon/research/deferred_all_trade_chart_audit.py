@@ -343,8 +343,8 @@ def _all_paper_trade_chart_audit_precise(
 
 def all_paper_trade_chart_audit(
     trades: Sequence[TradeJournalEntry],
-        facts: EvaluationFactStore,
-        path_payloads: Sequence[dict[str, object]],
+    facts: EvaluationFactStore,
+    path_payloads: Sequence[dict[str, object]],
 ) -> dict[str, object]:
     """Aggregate unrounded journal decimals before checking cohort parity."""
     with localcontext(prec=96):
