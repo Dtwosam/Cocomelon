@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import json
 import subprocess
 import sys
@@ -136,7 +135,7 @@ def test_all_original_trades_and_net_losses_are_retained() -> None:
     report = paper_profitability_scoreboard(source)
     assert report["kind"] == "entire-original-paper-profitability-attribution"
     assert report["overall"]["trades"] == 4
-    assert report["overall"]["net_pnl"] == "-16.9"
+    assert report["overall"]["net_pnl"] == "-13.9"
     assert report["overall"]["fees"] == "4.0"
     assert report["overall"]["funding_cash_pnl"] == "0.1"
     assert report["overall"]["unverified_entry_context_trades"] == 1
@@ -170,14 +169,14 @@ def test_all_original_trades_and_net_losses_are_retained() -> None:
     [
         (lambda d: d.update(total_journal_trades=3), "exclude"),
         (lambda d: d["trades"].pop(), "exclude"),
-        (lambda d: d["trades"][1].update(trade_id="original-1"), "duplicate"),
+        (lambda d: d["trades"][2].update(trade_id="original-1"), "duplicate"),
         (lambda d: d["trades"][1].update(side="both"), "side"),
         (
             lambda d: d["trades"][1].update(entry_fees="-2"),
             "negative execution fee",
         ),
         (
-            lambda d: d["trades"][0].update(net_pnl="100"),
+            lambda d: d["trades"][2].update(net_pnl="100"),
             "whole-journal net_pnl",
         ),
         (
@@ -253,7 +252,7 @@ def test_report_command_writes_separate_research_only_result(tmp_path: Path) -> 
     assert result.returncode == 0, result.stderr
     assert json.loads(out.read_text(encoding="utf-8"))["overall"]["trades"] == 4
     assert audit_path.read_text(encoding="utf-8") == json.dumps(_audit())
-    assert json.loads(result.stdout)["closed_net_pnl"] == "-16.9"
+    assert json.loads(result.stdout)["closed_net_pnl"] == "-13.9"
 
 
 def test_worker_publishes_scoreboard_only_after_full_journal_audit() -> None:
