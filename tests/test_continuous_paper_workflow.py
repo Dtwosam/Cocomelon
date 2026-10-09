@@ -440,6 +440,22 @@ def test_upgrade_handoff_rebuilds_capacity_economics_after_successor_dispatch() 
         in source
     )
     assert "RESEARCH ONLY / NO EXECUTION / NO RISK CHANGE" in source
+    capacity_step = source.split(
+        "- name: Rebuild deferred capacity-reflow economics after handoff", 1
+    )[1].split("- name: Fail closed on upgrade handoff source", 1)[0]
+    assert "continue-on-error: true" in capacity_step
+    assert "timeout --signal=TERM --kill-after=30s 1800s" in capacity_step
+    assert 'rebuild_status=("${PIPESTATUS[@]}")' in capacity_step
+    assert "rebuild_status[0] != 0 || rebuild_status[1] != 0" in capacity_step
+    assert "exit 1" in capacity_step
+    assert "no modeled economics certified" in capacity_step
+    assert "steps.fast_resume_dispatch.outcome == 'success'" in capacity_step
+    # Do not apply a research budget to actual paper trading or exact-state
+    # publication.
+    trader_step = source.split(
+        "- name: Run continuous paper trader", 1
+    )[1].split("- name: Measure durable continuous paper state", 1)[0]
+    assert "timeout --signal=TERM --kill-after=30s" not in trader_step
 
     fallback_at = source.index(
         "- name: Queue fallback exact successor continuous paper worker"
