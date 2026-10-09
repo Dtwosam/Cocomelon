@@ -77,12 +77,12 @@ def _economics(
     actual = sum((trade.net_pnl for trade, _, _ in rows), ZERO)
     early = sum((e.candidate_net_pnl_estimate for _, e, _ in rows
                  if e.candidate_net_pnl_estimate is not None), ZERO)
-    late = sum((l.candidate_net_pnl_estimate for _, _, l in rows
-                if l.candidate_net_pnl_estimate is not None), ZERO)
+    late = sum((late_exit.candidate_net_pnl_estimate for _, _, late_exit in rows
+                if late_exit.candidate_net_pnl_estimate is not None), ZERO)
     early_r = sum((e.candidate_net_r_estimate for _, e, _ in rows
                    if e.candidate_net_r_estimate is not None), ZERO)
-    late_r = sum((l.candidate_net_r_estimate for _, _, l in rows
-                  if l.candidate_net_r_estimate is not None), ZERO)
+    late_r = sum((late_exit.candidate_net_r_estimate for _, _, late_exit in rows
+                  if late_exit.candidate_net_r_estimate is not None), ZERO)
     return {
         "matched_trades": len(rows),
         "original_net_pnl": str(actual),
@@ -114,11 +114,11 @@ def _economics(
             for trade, e, _ in rows
         ),
         "late_winners_reduced": sum(
-            l.candidate_net_pnl_estimate is not None
-            and l.candidate_net_pnl_estimate > ZERO
+            late_exit.candidate_net_pnl_estimate is not None
+            and late_exit.candidate_net_pnl_estimate > ZERO
             and e.candidate_net_pnl_estimate is not None
-            and e.candidate_net_pnl_estimate < l.candidate_net_pnl_estimate
-            for _, e, l in rows
+            and e.candidate_net_pnl_estimate < late_exit.candidate_net_pnl_estimate
+            for _, e, late_exit in rows
         ),
     }
 
@@ -225,11 +225,11 @@ def prospective_early_vs_late_trailing(
         len(matched) >= MIN_PAIRED_TRADES
         and len(markets) >= MIN_MARKETS
         and all(
-            side[direction]["matched_trades"] >= MIN_DIRECTION_TRADES
+            int(str(side[direction]["matched_trades"])) >= MIN_DIRECTION_TRADES
             for direction in ("long", "short")
         )
         and sum(e.triggered for _, e, _ in matched) >= 10
-        and sum(l.triggered for _, _, l in matched) >= 5
+        and sum(late_exit.triggered for _, _, late_exit in matched) >= 5
     )
     robust = (
         bool(markets)
