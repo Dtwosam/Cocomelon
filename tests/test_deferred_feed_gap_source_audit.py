@@ -336,7 +336,7 @@ def test_post_handoff_named_witness_needs_persisted_closed_gap() -> None:
     # A live witness alone cannot close a still-open interval.
     unclosed = _checkpoint()
     with pytest.raises(
-        DeferredFeedGapSourceAuditError, match="matching closed checkpoint"
+        DeferredFeedGapSourceAuditError, match="original gap remains unresolved"
     ):
         assess_feed_gap_source_debt(
             unclosed, _charts(), [_fresh_named_witness()]
