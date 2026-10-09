@@ -324,6 +324,31 @@ def assess_feed_gap_source_debt(
         raise DeferredFeedGapSourceAuditError("unrecognized checkpoint schema")
     if state.get("execution_mode") != "paper":
         raise DeferredFeedGapSourceAuditError("checkpoint is not paper only")
+    checkpoint_selection_attested: bool | None = None
+    if selected_at_handoff is not None:
+        # The completed session is a distinct file. Neither it nor the
+        # checkpoint alone can certify the live handoff watchlist: v3's
+        # exact persisted selection must agree with the session summary.
+        checkpoint_selected = state.get("selected_markets")
+        if checkpoint_selected is None:
+            if version == 3:
+                raise DeferredFeedGapSourceAuditError(
+                    "v3 checkpoint is missing handoff selected markets"
+                )
+        else:
+            if (
+                not isinstance(checkpoint_selected, list)
+                or len(checkpoint_selected) != len(selected_at_handoff)
+                or any(
+                    not isinstance(market, str)
+                    for market in checkpoint_selected
+                )
+                or frozenset(checkpoint_selected) != selected_at_handoff
+            ):
+                raise DeferredFeedGapSourceAuditError(
+                    "checkpoint and session selected markets disagree"
+                )
+            checkpoint_selection_attested = True
     latest_ms = _integer(
         state.get("last_available_at_ms"), "checkpoint last available time"
     )
@@ -511,6 +536,7 @@ def assess_feed_gap_source_debt(
         "market_selection_available_at_handoff": (
             selected_at_handoff is not None
         ),
+        "market_selection_checkpoint_attested": checkpoint_selection_attested,
         "selected_market_count_at_handoff": (
             None if selected_at_handoff is None else len(selected_at_handoff)
         ),
