@@ -322,6 +322,9 @@ from cocomelon.research.prospective_delayed_price_confirmation import (
     ProspectiveDelayedPriceConfirmationState,
     prospective_delayed_price_confirmation_summary,
 )
+from cocomelon.research.prospective_early_reserved_trailing import (
+    prospective_early_reserved_trailing_comparison,
+)
 from cocomelon.research.prospective_entry_cost_r import (
     ProspectiveEntryCostRState,
     prospective_entry_cost_r_comparison,
@@ -475,6 +478,19 @@ NET_RESERVED_TRAILING_RULE = ProfitLockRule(
 )
 NET_RESERVED_TRAILING_SHADOW_STATE_FILENAME = (
     "net-reserved-trailing-execution-shadow-state.json"
+)
+EARLY_RESERVED_TRAILING_RULE = ProfitLockRule(
+    rule_id="trail_peak_after_0_5r_by_0_4r_net_reserved_0_05r",
+    activate_at_r=Decimal("0.5"),
+    lock_at_r=Decimal("0.1"),
+    trail_by_r=Decimal("0.4"),
+    minimum_estimated_net_lock_r=Decimal("0.05"),
+)
+EARLY_RESERVED_TRAILING_SHADOW_STATE_FILENAME = (
+    "early-reserved-trailing-execution-shadow-state.json"
+)
+EARLY_RESERVED_TRAILING_COMPARISON_FILENAME = (
+    "prospective-early-reserved-trailing-comparison.json"
 )
 PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-entry-filter-state.json"
@@ -9344,6 +9360,17 @@ async def run_continuous_paper_session(
             opening_plan_loader=execution.store.load_plan,
         )
     )
+    early_reserved_trailing_shadow = (
+        _ContinuousProfitLockExecutionShadowSink(
+            _restore_profit_lock_execution_shadow(
+                root / EARLY_RESERVED_TRAILING_SHADOW_STATE_FILENAME,
+                replay_config.execution,
+                started_at_ms=started_at_ms,
+                rules=(EARLY_RESERVED_TRAILING_RULE,),
+            ),
+            opening_plan_loader=execution.store.load_plan,
+        )
+    )
     delayed_entry_execution_shadow = (
         _ContinuousDelayedEntryExecutionShadowSink(
             _restore_delayed_entry_execution_shadow(
@@ -9390,6 +9417,9 @@ async def run_continuous_paper_session(
         execution.account.positions
     )
     net_reserved_trailing_shadow.reconcile_open_positions(
+        execution.account.positions
+    )
+    early_reserved_trailing_shadow.reconcile_open_positions(
         execution.account.positions
     )
     delayed_entry_execution_shadow.reconcile_open_positions(
@@ -9694,6 +9724,7 @@ async def run_continuous_paper_session(
                     profit_target_one_half_shadow,
                     profit_trailing_shadow,
                     net_reserved_trailing_shadow,
+                    early_reserved_trailing_shadow,
                     delayed_entry_execution_shadow,
                     delayed_entry_120s_execution_shadow,
                     original_stop_book_capture,
@@ -9995,6 +10026,16 @@ async def run_continuous_paper_session(
                         timed_component(
                             "net_reserved_trailing_shadow_state",
                             net_reserved_trailing_shadow.shadow.state_payload,
+                        ),
+                    )
+                )
+            if early_reserved_trailing_shadow.shadow is not None:
+                payloads.append(
+                    (
+                        root / EARLY_RESERVED_TRAILING_SHADOW_STATE_FILENAME,
+                        timed_component(
+                            "early_reserved_trailing_shadow_state",
+                            early_reserved_trailing_shadow.shadow.state_payload,
                         ),
                     )
                 )
@@ -11550,6 +11591,54 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / PROSPECTIVE_NET_RESERVED_TRAILING_FILENAME,
                 net_reserved_trailing_report,
+            )
+            if (
+                early_reserved_trailing_shadow.shadow is None
+                or profit_lock_execution_shadow.shadow is None
+            ):
+                early_reserved_trailing_report = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "ready_for_review": False,
+                    "error": (
+                        early_reserved_trailing_shadow.error
+                        or profit_lock_execution_shadow.error
+                        or "early reserved trailing shadow unavailable"
+                    ),
+                }
+            else:
+                try:
+                    early_shadow = early_reserved_trailing_shadow.shadow
+                    baseline_shadow = profit_lock_execution_shadow.shadow
+                    assert early_shadow is not None
+                    assert baseline_shadow is not None
+                    early_reserved_trailing_report = (
+                        prospective_early_reserved_trailing_comparison(
+                            tuple(journal.iter_trades()),
+                            early_shadow.state_payload(),
+                            baseline_shadow.state_payload(),
+                        )
+                    )
+                except Exception as exc:
+                    early_reserved_trailing_report = {
+                        "enabled": False,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                        "ready_for_review": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                else:
+                    early_reserved_trailing_report = dict(
+                        early_reserved_trailing_report
+                    )
+                    early_reserved_trailing_report["enabled"] = True
+                    early_reserved_trailing_report["error"] = None
+            _write_json_atomic(
+                root / EARLY_RESERVED_TRAILING_COMPARISON_FILENAME,
+                early_reserved_trailing_report,
             )
             full_stack_capacity_reflow = (
                 _prospective_full_stack_capacity_reflow_payload(
