@@ -38,6 +38,8 @@ on:
       - "src/cocomelon/research/prospective_net_reserved_trailing.py"
       - "src/cocomelon/research/prospective_early_reserved_trailing.py"
       - "src/cocomelon/research/prospective_early_vs_late_trailing.py"
+      - "src/cocomelon/research/deferred_early_exit_chart_integrity.py"
+      - "scripts/rebuild_deferred_early_exit_chart_integrity.py"
       - "src/cocomelon/research/prospective_entry_cost_r.py"
       - "src/cocomelon/research/prospective_trend_outside_top10.py"
       - "src/cocomelon/research/prospective_momentum_band_entry.py"
@@ -1570,6 +1572,44 @@ jobs:
           path: |
             continuous-paper-state/all-paper-trade-chart-audit.json
             continuous-paper-state/all-paper-trade-charts.html
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Cross-verify early-versus-late IOC exits against full chart coverage
+        id: deferred_exit_chart_integrity
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_all_trade_chart_audit.outcome == 'success' && hashFiles('continuous-paper-state/prospective-early-vs-late-trailing-comparison.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/rebuild_deferred_early_exit_chart_integrity.py "$STATE_ROOT" \
+            | tee /tmp/deferred-exit-chart-integrity.json
+          test -s "$STATE_ROOT/prospective-early-vs-late-trailing-chart-integrity.json"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          x = json.loads(
+              Path("/tmp/deferred-exit-chart-integrity.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print("## Frozen early-vs-late IOC exit chart integrity")
+          print("- authority: RESEARCH ONLY / NO EXECUTION")
+          print(f"- matched / clean paths: {x['matched_trades']} / {x['clean_mark_paths']}")
+          print(f"- missing / gapped / incomplete: "
+                f"{x['missing_paths']} / {x['gapped_paths']} / {x['incomplete_paths']}")
+          print(f"- clean forward evidence: {x['clean_evidence']}")
+          print(f"- economic screen plus chart integrity: "
+                f"{x['conditional_economic_screen']}")
+          PY
+
+      - name: Upload forward early-vs-late chart coverage gate
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_exit_chart_integrity.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-early-exit-chart-integrity-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/prospective-early-vs-late-trailing-chart-integrity.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
