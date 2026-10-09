@@ -45,8 +45,8 @@ from cocomelon.execution.accounting import PaperPosition
 from cocomelon.execution.funding import FundingAccrual, reconcile_funding_boundary
 from cocomelon.execution.interface import PositionManagement
 from cocomelon.execution.paper import PaperExecutionAdapter
-from cocomelon.hyperliquid.client import INTERVAL_MS
 from cocomelon.features.microstructure import calculate_microstructure_features
+from cocomelon.hyperliquid.client import INTERVAL_MS
 from cocomelon.journal.assembler import (
     JournalInconsistency,
     TradeLifecycleInput,
