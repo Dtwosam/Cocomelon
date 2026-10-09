@@ -9,6 +9,14 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Prevent selective complete-exit charts from masking unmatched forward losses — 2026-10-09
+
+The frozen +0.5R early-vs-+1R late IOC observer compares matched future closed trades, but its deferred chart gate previously considered only that **matched subset** when stating that every chart was clean. If an unpaired forward original trade remained outside the exit observer's complete IOC set, the chart result could appear 100% complete despite that trade never being verified. The reported "unfiltered original" net PnL also reflected only matched exits rather than the entire prospective journal, inviting subset-confusion in downstream interpretation.
+
+The post-handoff chart gate now independently identifies **all original paper journal trades opened on or after the fixed common scoring start**, checks exact parity with the exit observer's declared forward cohort size, and includes **unmatched trade IDs** in the quality report. All-clean evidence requires a nonempty, exactly matched, gap-free **entire forward cohort**. Original full-forward net cash PnL and net R are shown separately from matched-only net cash PnL and net R, without applying selective re-estimation or inventing execution. A malformed declared denominator is rejected; legitimate incomplete IOC evidence stays in the audit but blocks a positive chart-integrity conclusion.
+
+This is a stricter research-only gate, not an exit rule change, chart reconstruction, counterfactual fill, or account promotion. Active paper entries, stops, risk, execution and live-disabled policy remain untouched.
+
 ### Apply the same forward window to paired paper-account profitability — 2026-10-09
 
 The frozen loss-context baseline/challenger review already excluded the **first eligible checkpoint** from matching-context opportunities, directional trade counts, market breadth, and chronological A/B blocks. Its key candidate **absolute account PnL and total A/B advantage** still used last-checkpoint *cumulative* values, however, allowing pre-anchor paper gains to obscure negative results during the reviewed future period. Side attribution also permitted newly closed trades to be missing from both LONG and SHORT forward counts without a readiness failure.
