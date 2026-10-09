@@ -9,6 +9,14 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Causal WebSocket gap recovery timestamps across live paper and offline replay — 2026-10-09
+
+Following the authenticated 151-trade chart review, a concrete feed-gap event-time bug was identified in both `_record_from_gap` (continuous-paper mainnet websocket) and `_record_from_row` (validated JSONL replay): **a known recovery event was assigned the original gap's `started_ms` as its availability timestamp**, despite `ended_ms` only becoming known at recovery. The live record pump often masked this by clamping stale records to the most recently processed observation; offline replay instead risked reordering the closure to the start, so historical exit evidence could use feed recovery **before it actually occurred**.
+
+A gap **opening** remains available at `started_ms`; a gap **closing** now first becomes available at `ended_ms`. Recording identity remains unchanged. The recorder partitions gap events by the UTC **start date**, so the replay validator also checks that actual recorded partition date rather than comparing it with the recovery's later availability date; closures crossing midnight retain valid immutable recording verification. Explicit tests cover same-source stream open/close records, a recovery across midnight, replay windows ending before closure, the continuous paper record/checkpoint encode/decode path, and SHA-verified recorder segment loading.
+
+The fix does not retrospectively mark any unresolved gap as closed, fabricate a recovered stream, or change actual PnL, trading signals, risk controls, stops or execution. Legacy anonymous gaps carried through worker checkpoints remain conservative unknowns. Chart-based strategy/exit promotion remains blocked until independent prospective after-cost and clean path evidence exists. **Live trading is still disabled.**
+
 ### First authenticated 151-trade full-journal outcome and unresolved market gaps — 2026-10-09
 
 Completed paper run **37918245618** delivered both trusted artifacts: `continuous-paper-all-trade-charts-37918245618-1` and `continuous-paper-long-loss-attribution-37918245618-1`. These are the first completed real persisted-journal outputs from PR #1051's exact Decimal repair. All **151** paper trades reconcile to realized **-$350.2064** after cost, with **69 LONG trades -$255.9187** and **82 SHORT trades -$94.2877**; **144** entry contexts are verified and **7** early snapshots remain unrecoverable. The journal paid **$116.2917** in fees, so fees are a drag but the **-$235.8624 gross realized PnL** is itself negative. Exit marks are not fill prices; there is no demonstrated edge.
