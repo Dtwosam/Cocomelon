@@ -4,7 +4,7 @@ import html
 import json
 import os
 from collections.abc import Sequence
-from decimal import Decimal, localcontext, InvalidOperation
+from decimal import Decimal, InvalidOperation, localcontext
 from pathlib import Path
 from typing import Final
 
