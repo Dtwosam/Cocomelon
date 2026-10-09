@@ -290,8 +290,33 @@ def assess_feed_gap_source_debt(
     checkpoint: object,
     charts: object,
     witnesses: object | None = None,
+    *,
+    selected_markets: object | None = None,
 ) -> dict[str, object]:
     """Diagnose current unresolved feed sources, not historical price recovery."""
+    selected_at_handoff: frozenset[str] | None = None
+    if selected_markets is not None:
+        if not isinstance(selected_markets, (list, tuple)):
+            raise DeferredFeedGapSourceAuditError(
+                "paper handoff selected markets must be an array"
+            )
+        validated: list[str] = []
+        for name in selected_markets:
+            if (
+                not isinstance(name, str)
+                or not name.strip()
+                or name.strip() != name
+                or _market_wire_name_for_gap_stream(f"l2Book:{name}") != name
+            ):
+                raise DeferredFeedGapSourceAuditError(
+                    "paper handoff selected market identity invalid"
+                )
+            validated.append(name)
+        if len(validated) != len(set(validated)):
+            raise DeferredFeedGapSourceAuditError(
+                "paper handoff selected markets have duplicates"
+            )
+        selected_at_handoff = frozenset(validated)
     state = _object(checkpoint, "paper runtime checkpoint")
     chart = _object(charts, "authenticated full trade chart")
     version = _integer(state.get("schema_version"), "checkpoint schema")
@@ -372,6 +397,16 @@ def assess_feed_gap_source_debt(
                     _market_wire_name_for_gap_stream(stream_id)
                     if scope == "market_specific" else None
                 ),
+                # This is a watchlist-at-handoff label, NOT proof that the
+                # venue actually delivered a fresh L2 event for that source.
+                "selected_market_at_handoff": (
+                    None if scope != "market_specific"
+                    or selected_at_handoff is None
+                    else (
+                        _market_wire_name_for_gap_stream(stream_id)
+                        in selected_at_handoff
+                    )
+                ),
                 "interval_count": len(intervals),
                 "open_gap_count": len(open_starts),
                 "closed_gap_count": len(intervals) - len(open_starts),
@@ -407,6 +442,18 @@ def assess_feed_gap_source_debt(
         row for row in by_source
         if row["source_identity_identifiable"] is True
         and cast(int, row["open_gap_count"]) > 0
+    ]
+    selected_repair = [
+        row for row in named_repair_priority
+        if row["selected_market_at_handoff"] is True
+    ]
+    unselected_repair = [
+        row for row in named_repair_priority
+        if row["selected_market_at_handoff"] is False
+    ]
+    shared_repair = [
+        row for row in named_repair_priority
+        if row["scope"] == "global_shared_or_unknown"
     ]
     recovery_proof = _confirmed_named_recovery_witnesses(
         witnesses,
@@ -461,11 +508,32 @@ def assess_feed_gap_source_debt(
         ),
         "named_unresolved_source_count": len(named_repair_priority),
         "named_source_repair_priority": named_repair_priority,
+        "market_selection_available_at_handoff": (
+            selected_at_handoff is not None
+        ),
+        "selected_market_count_at_handoff": (
+            None if selected_at_handoff is None else len(selected_at_handoff)
+        ),
+        "selected_named_repair_priority": selected_repair,
+        "unselected_named_repair_priority": unselected_repair,
+        "shared_named_repair_priority": shared_repair,
+        "named_open_starts_in_selected_markets": sum(
+            cast(int, row["open_gap_count"]) for row in selected_repair
+        ),
+        "named_open_starts_in_unselected_markets": sum(
+            cast(int, row["open_gap_count"]) for row in unselected_repair
+        ),
+        "named_open_starts_in_shared_feeds": sum(
+            cast(int, row["open_gap_count"]) for row in shared_repair
+        ),
         "source_priority_definition": (
             "Named sources with unresolved histories are separately ranked "
-            "for operational investigation. Anonymous legacy outages remain "
-            "unattributable even if they affect more charts. Overlap counts "
-            "are not additive, causal proof, or executable exit prices."
+            "for operational investigation. Selected-at-handoff markets "
+            "only identify possible current subscription priorities, never "
+            "verified live source recovery. Unselected and unknown market "
+            "histories remain unresolved. Anonymous legacy outages remain "
+            "unattributable. Overlap counts are not additive, causal proof, "
+            "or executable exit prices."
         ),
         "current_checkpoint_not_retrospective_chart_recovery": True,
         "caution": (
@@ -511,7 +579,12 @@ def write_deferred_feed_gap_source_audit(root: str | Path) -> Path:
         raise DeferredFeedGapSourceAuditError(
             "feed source diagnosis requires completed paper handoff"
         )
-    report = assess_feed_gap_source_debt(state, chart, witness_rows)
+    report = assess_feed_gap_source_debt(
+        state,
+        chart,
+        witness_rows,
+        selected_markets=session.get("selected_markets"),
+    )
     destination = state_root / OUTPUT_NAME
     tmp = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
     try:

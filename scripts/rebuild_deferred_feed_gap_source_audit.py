@@ -41,6 +41,26 @@ def main() -> None:
             report["legacy_lineage_blocks_chart_source_certification"]
         ),
         "named_unresolved_source_count": report["named_unresolved_source_count"],
+        "market_selection_available_at_handoff": (
+            report["market_selection_available_at_handoff"]
+        ),
+        "selected_market_count_at_handoff": (
+            report["selected_market_count_at_handoff"]
+        ),
+        "named_open_starts_in_selected_markets": (
+            report["named_open_starts_in_selected_markets"]
+        ),
+        "named_open_starts_in_unselected_markets": (
+            report["named_open_starts_in_unselected_markets"]
+        ),
+        "named_open_starts_in_shared_feeds": (
+            report["named_open_starts_in_shared_feeds"]
+        ),
+        "selected_named_repair_priority": [
+            {"stream_id": item["stream_id"],
+             "open_gap_count": item["open_gap_count"]}
+            for item in report["selected_named_repair_priority"][:5]
+        ],
         "named_recovery_witness_ledger_present": (
             report["named_recovery_witness_ledger_present"]
         ),

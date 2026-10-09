@@ -1272,6 +1272,18 @@ jobs:
               f"{report['named_unresolved_source_count']}"
           )
           print(
+              "- Watchlist selection observed / selected markets: "
+              f"{report['market_selection_available_at_handoff']} / "
+              f"{report['selected_market_count_at_handoff']}"
+          )
+          print(
+              "- Still-open named starts in selected / unselected / "
+              "shared feeds (no inferred healing): "
+              f"{report['named_open_starts_in_selected_markets']} / "
+              f"{report['named_open_starts_in_unselected_markets']} / "
+              f"{report['named_open_starts_in_shared_feeds']}"
+          )
+          print(
               "- Authenticated after-handoff named source event witnesses / "
               "checkpoint-confirmed closures: "
               f"{report['named_recovery_witness_ledger_present']} / "

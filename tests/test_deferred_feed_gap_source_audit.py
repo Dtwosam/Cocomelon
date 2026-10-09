@@ -416,3 +416,81 @@ def test_writer_requires_complete_fsynced_witness_rows(
         DeferredFeedGapSourceAuditError, match="incomplete trailing row"
     ):
         write_deferred_feed_gap_source_audit(root)
+
+
+def test_named_debt_separates_selected_from_unselected_handoff_markets() -> None:
+    report = assess_feed_gap_source_debt(
+        _checkpoint(), _charts(), selected_markets=["BTC"]
+    )
+    assert report["market_selection_available_at_handoff"] is True
+    assert report["selected_market_count_at_handoff"] == 1
+    assert report["named_open_starts_in_selected_markets"] == 1
+    assert report["named_open_starts_in_unselected_markets"] == 1
+    assert report["named_open_starts_in_shared_feeds"] == 2
+    assert [row["stream_id"] for row in report["selected_named_repair_priority"]] == [
+        "l2Book:BTC"
+    ]
+    assert [row["stream_id"] for row in report["unselected_named_repair_priority"]] == [
+        "candle:ETH:1m"
+    ]
+    assert len(report["shared_named_repair_priority"]) == 2
+    by_source = {row["stream_id"]: row for row in report["by_source"]}
+    assert by_source["l2Book:BTC"]["selected_market_at_handoff"] is True
+    assert by_source["candle:ETH:1m"]["selected_market_at_handoff"] is False
+    assert by_source["allMids"]["selected_market_at_handoff"] is None
+    assert by_source["<legacy_unattributed>"]["selected_market_at_handoff"] is None
+    # All original records remain. Classification is not chart repair.
+    assert report["total_unresolved_source_gap_starts"] == 5
+    assert report["legacy_unattributable_open_gap_count"] == 1
+    assert report["current_checkpoint_not_retrospective_chart_recovery"]
+
+
+def test_without_trusted_watchlist_no_unselected_market_inference() -> None:
+    report = assess_feed_gap_source_debt(_checkpoint(), _charts())
+    assert report["market_selection_available_at_handoff"] is False
+    assert report["selected_market_count_at_handoff"] is None
+    assert report["named_open_starts_in_selected_markets"] == 0
+    assert report["named_open_starts_in_unselected_markets"] == 0
+    assert report["named_open_starts_in_shared_feeds"] == 2
+    assert report["named_unresolved_source_count"] == 4
+    assert all(
+        row["selected_market_at_handoff"] is None
+        for row in report["by_source"]
+    )
+
+
+@pytest.mark.parametrize("selected", (
+    "BTC", [None], [" BTC"], ["BTC", "BTC"], ["BTC:"],
+    ["BTC:ETH:INVALID"], [3], {"BTC": True},
+))
+def test_untrusted_handoff_watchlist_cannot_label_sources(
+    selected: object,
+) -> None:
+    with pytest.raises(DeferredFeedGapSourceAuditError, match="selected market"):
+        assess_feed_gap_source_debt(
+            _checkpoint(), _charts(), selected_markets=selected
+        )
+
+
+def test_completed_handoff_writer_uses_real_selected_snapshot(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "runtime-state.json").write_text(
+        json.dumps(_checkpoint()), encoding="utf-8"
+    )
+    (tmp_path / "all-paper-trade-chart-audit.json").write_text(
+        json.dumps(_charts()), encoding="utf-8"
+    )
+    (tmp_path / "session-summary.json").write_text(
+        json.dumps({
+            "exit_reason": "upgrade_requested",
+            "selected_markets": ["BTC"],
+        }), encoding="utf-8"
+    )
+    destination = write_deferred_feed_gap_source_audit(tmp_path)
+    report = json.loads(destination.read_text(encoding="utf-8"))
+    assert report["market_selection_available_at_handoff"] is True
+    assert report["selected_market_count_at_handoff"] == 1
+    assert report["named_open_starts_in_selected_markets"] == 1
+    assert report["named_open_starts_in_unselected_markets"] == 1
+    assert report["legacy_unattributable_open_gap_count"] == 1
