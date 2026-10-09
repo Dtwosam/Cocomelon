@@ -12,6 +12,8 @@ from types import SimpleNamespace
 import pytest
 
 from cocomelon.continuous_paper import (
+    LOSS_CONTEXT_PAIRED_SHADOW_LEGACY_ROOT,
+    LOSS_CONTEXT_PAIRED_SHADOW_ROOT,
     RUN_ID,
     UPGRADE_DEFERRED_RESEARCH_FILENAMES,
     ContinuousPaperConfig,
