@@ -1253,6 +1253,16 @@ jobs:
           print(f"- inherited pre-entry unresolved charts: "
                 f"{report['unresolved_pre_entry_charts']} / "
                 f"{report['closed_trades']}")
+          print("- Source priorities by potentially affected incomplete charts:")
+          for item in report["top_incomplete_chart_sources"]:
+              print(
+                  f"  - {item['scope']} / {item['stream_id']}: "
+                  f"{item['incomplete_charts']} incomplete charts overlapping "
+                  f"unresolved source outages across "
+                  f"{item['original_trades_overlapping_unresolved']} originals"
+              )
+          print("- Overlap counts are not additive or causal; source repair "
+                "requires independently verified new feed recovery.")
           print("- IMPORTANT: current source checkpoint cannot retroactively "
                 "clear gaps on previously closed trades.")
           PY
