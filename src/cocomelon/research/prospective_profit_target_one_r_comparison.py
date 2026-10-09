@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
@@ -251,7 +251,7 @@ def _verify_trade_exit_cashflow(
         )
 
 
-def _economics(
+def _economics_precise(
     pairs: Sequence[
         tuple[TradeJournalEntry, ProfitLockExecutionOutcome, ProfitLockExecutionOutcome]
     ],
@@ -301,6 +301,16 @@ def _economics(
             and target_r > breakeven_r
         ),
     }
+
+
+def _economics(
+    pairs: Sequence[
+        tuple[TradeJournalEntry, ProfitLockExecutionOutcome, ProfitLockExecutionOutcome]
+    ],
+) -> dict[str, object]:
+    """Exact candidate/breakeven/original after-cost cohort aggregates."""
+    with localcontext(prec=96):
+        return _economics_precise(pairs)
 
 
 def prospective_profit_target_one_r_comparison(
@@ -615,7 +625,7 @@ def _prospective_profit_target_comparison(
     }
 
 
-def _paired_threshold_economics(
+def _paired_threshold_economics_precise(
     pairs: Sequence[
         tuple[TradeJournalEntry, ProfitLockExecutionOutcome, ProfitLockExecutionOutcome]
     ],
@@ -682,6 +692,16 @@ def _paired_threshold_economics(
             bool(pairs) and delta_pnl > ZERO and delta_r > ZERO
         ),
     }
+
+
+def _paired_threshold_economics(
+    pairs: Sequence[
+        tuple[TradeJournalEntry, ProfitLockExecutionOutcome, ProfitLockExecutionOutcome]
+    ],
+) -> dict[str, object]:
+    """Use journal-grade precision for frozen +1.5R versus +1R proof."""
+    with localcontext(prec=96):
+        return _paired_threshold_economics_precise(pairs)
 
 
 def _paired_threshold_delta_review(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 
@@ -1659,3 +1660,64 @@ def test_entry_cost_r_gate_restore_rejects_hindsight_threshold_change() -> None:
         ProspectiveEntryCostRError, match="policy or cost reserve drift"
     ):
         ProspectiveEntryCostRState.from_payload(modified)
+
+
+def test_frozen_profit_targets_preserve_tiny_positive_edge_under_cancellation() -> None:
+    """Big offsetting booked trades must not erase real small after-cost gains."""
+    from cocomelon.research.prospective_profit_target_one_r_comparison import (
+        _economics as target_economics,
+    )
+    from cocomelon.research.prospective_profit_target_one_r_comparison import (
+        _paired_threshold_economics as threshold_economics,
+    )
+
+    pairs = []
+    for original, one_r, one_half_r, breakeven in (
+        ("10000", "10000", "10000", "10000"),
+        ("0.000000000000000000000001",
+         "0.000000000000000000000001",
+         "0.000000000000000000000002",
+         "0.000000000000000000000001"),
+        ("-10000", "-10000", "-10000", "-10000"),
+    ):
+        trade = SimpleNamespace(net_pnl=Decimal(original), net_r=Decimal(original))
+        first = SimpleNamespace(
+            candidate_net_pnl_estimate=Decimal(one_r),
+            candidate_net_r_estimate=Decimal(one_r),
+            triggered=True,
+            simulated_close_complete=True,
+        )
+        second = SimpleNamespace(
+            candidate_net_pnl_estimate=Decimal(one_half_r),
+            candidate_net_r_estimate=Decimal(one_half_r),
+            triggered=True,
+            simulated_close_complete=True,
+        )
+        control = SimpleNamespace(
+            candidate_net_pnl_estimate=Decimal(breakeven),
+            candidate_net_r_estimate=Decimal(breakeven),
+        )
+        pairs.append((trade, first, second, control))
+
+    one_r = target_economics(tuple(
+        (trade, first, control) for trade, first, _, control in pairs
+    ))
+    assert one_r["actual_net_pnl"] == "1E-24"
+    assert one_r["target_net_pnl"] == "1E-24"
+    assert one_r["breakeven_net_pnl"] == "1E-24"
+
+    one_half = target_economics(tuple(
+        (trade, second, control) for trade, _, second, control in pairs
+    ))
+    assert one_half["target_net_pnl"] == "2E-24"
+    assert one_half["target_vs_actual_pnl"] == "1E-24"
+    assert one_half["target_beats_both_controls"] is True
+
+    paired = threshold_economics(tuple(
+        (trade, first, second) for trade, first, second, _ in pairs
+    ))
+    assert paired["one_r_net_pnl"] == "1E-24"
+    assert paired["one_half_r_net_pnl"] == "2E-24"
+    assert paired["one_half_minus_one_r_pnl"] == "1E-24"
+    assert paired["one_half_minus_one_r_net_r"] == "1E-24"
+    assert paired["waiting_beats_one_r_net"] is True
