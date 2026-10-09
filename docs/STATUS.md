@@ -9,6 +9,12 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Require durable fresh-event witnesses before declaring WebSocket gap recovery — 2026-10-09
+
+A named feed gap must not be marked recovered before its normalized recovery event is accepted by the downstream pipeline. Previously, the individual WebSocket supervisor emitted the `recovered` gap **before** forwarding that event, and the redundant stream mux could also close an aggregate outage **before** draining a recovered lane's buffered event. A failed event sink could therefore create a recovery claim without matching persisted event evidence. The mux also accepted stand-alone recovery notices with no post-outage event witness.
+
+Publish the normalized event first. The redundant mux tracks successful event-delivery witnesses *per named source and lane* after an aggregate outage starts, and refuses to close that outage on a bare recovery notice, old duplicate, or failed buffered event. Keep an open gap if its closure sink fails. Regression tests cover disconnect → delivered event → recovery ordering, rejected downstream delivery, marker-only recovery, and failed standby backfill. These changes neither heal anonymous legacy intervals nor certify older trade charts; paper trading strategy, prices, and risk settings are unchanged.
+
 ### Apply journal-grade precision to the frozen +1R / +1.5R and breakeven exit controls — 2026-10-09
 
 Following the exact 96-digit +0.5R/+1R trailing and chart-integrity repair, the adjacent precommitted profit-target observers still summed booked full-trade net cash and risk-normalized R under Decimal's 28-digit default. The independent +1R and +1.5R targets, common breakeven control, and paired +1.5R-minus-+1R threshold review can each spuriously lose a tiny true advantage when intermediate large offsetting amounts round, even with otherwise fully verified IOC fills and costs.
