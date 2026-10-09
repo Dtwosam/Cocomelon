@@ -9,6 +9,10 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Independently reject stale exchange timestamps in named recovery receipts — 2026-10-09
+
+The durable witness ledger records both exchange-event and local receive times, but its first deferred auditor only checked that exchange timestamps were not in the future. Enforce the v1 paper source recovery contract **again during deferred audit**: any exchange-stamped witness at least **5,000 ms** old on receipt is not fresh proof, even if some old closed interval overlaps its claimed source start. Receive-only sources still require a post-checkpoint authentic mainnet WebSocket arrival, not REST or replay evidence. No historical prices, source identities, trade entries, risk controls or live permissions change.
+
 ### Keep auditable event receipts for every inherited named-gap closure — 2026-10-09
 
 An interval that becomes closed in a checkpoint does not retain the individual public WebSocket event that justified that transition. Keep an append-only, fsynced `named-gap-recovery-witnesses.jsonl` alongside paper state. Each receipt records the exact restored source, original gap start, predecessor checkpoint cutoff, accepted event identity, exchange and receive timestamps, and explicitly marks itself as **not yet independently checkpoint-verified**. Persist this event witness *before* applying the gap closure; if witness persistence fails, the source remains open. Do not create a retroactive history from either REST snapshots or synthetic events.
