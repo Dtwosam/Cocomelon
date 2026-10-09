@@ -1666,6 +1666,8 @@ def test_frozen_profit_targets_preserve_tiny_positive_edge_under_cancellation() 
     """Big offsetting booked trades must not erase real small after-cost gains."""
     from cocomelon.research.prospective_profit_target_one_r_comparison import (
         _economics as target_economics,
+    )
+    from cocomelon.research.prospective_profit_target_one_r_comparison import (
         _paired_threshold_economics as threshold_economics,
     )
 
