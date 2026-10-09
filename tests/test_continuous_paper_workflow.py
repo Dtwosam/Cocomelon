@@ -170,11 +170,12 @@ def test_guard_ignores_post_handoff_research_tails() -> None:
     assert '"Run continuous paper trader"' in guard
     assert 'trader_status = steps.get("Run continuous paper trader")' in guard
     assert 'trader_status in {"queued", "pending", "in_progress"}' in guard
-    assert (
-        "The workflow may remain in_progress for deferred research"
-        in guard
-    )
-    assert "after trading has stopped" in guard
+    assert "Deferred research alone never blocks an exact successor" in guard
+    assert 'trader_status == "completed"' in guard
+    assert 'and not os.environ.get("SOURCE_RUN_ID")' in guard
+    assert "handoff_pending or handoff_dispatched" in guard
+    assert "Queue exact successor from fast resume" in guard
+    assert "Queue fallback exact successor continuous paper worker" in guard
 
 
 def test_successor_dispatch_requires_visible_exact_receipt() -> None:
@@ -266,7 +267,7 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
     assert "compression-level: 6" in source
     assert source.count(
         "bash scripts/restore_continuous_paper_state.sh"
-    ) == 4
+    ) == 5
     assert "RESUME_ARTIFACT_NAME" in source
     assert "STATE_ARTIFACT_NAME" in source
     assert "fast resume restore failed; waiting for exact durable fallback" in source
@@ -1890,7 +1891,7 @@ def test_skipped_push_guard_never_blocks_exact_successor() -> None:
     assert "continue" in guard[guard.index("if skipped_checkout:"):]
     assert "trader_status in" in guard
     assert 'trader_status in {"queued", "pending", "in_progress"}' in guard
-    assert "after trading has stopped" in guard
+    assert "Deferred research alone never blocks an exact successor" in guard
 
     # A skipped push used to sleep for 75 seconds after recording
     # skip=true. The newly dispatched successor could observe its
@@ -2033,3 +2034,55 @@ def test_deferred_feed_source_provenance_runs_only_after_safe_chart_audit() -> N
     assert "continuous-paper-feed-gap-source-audit-" in source
     assert "continuous-paper-state/deferred-feed-gap-source-audit.json" in source
     assert "continuous-paper-state/named-gap-recovery-witnesses.jsonl" in source
+
+
+
+def test_speculative_push_cannot_take_lease_while_exact_handoff_is_pending() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    start = source.index(
+        "- name: Skip bootstrap/watchdog when a continuous paper run is already active"
+    )
+    end = source.index("- uses: actions/checkout@v7", start)
+    guard = source[start:end]
+    assert guard.index(
+        'trader_status in {"queued", "pending", "in_progress"}'
+    ) < guard.index('trader_status == "completed"')
+    assert 'and not os.environ.get("SOURCE_RUN_ID")' in guard
+    for step in (
+        "Pack fast continuous paper resume state",
+        "Upload fast continuous paper resume state",
+        "Queue exact successor from fast resume",
+        "Queue fallback exact successor continuous paper worker",
+    ):
+        assert step in guard
+    assert 'step.get("conclusion") == "success"' in guard
+    assert 'step.get("status") in {' in guard
+    assert "handoff_pending or handoff_dispatched" in guard
+    assert "speculative recovery yields to" in guard
+    assert guard.index("if skipped_checkout:") < guard.index(
+        'trader_status == "completed"'
+    )
+
+
+def test_manual_recovery_prefers_latest_verified_fast_or_durable_source() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    start = source.index(
+        "- name: Restore latest trusted state for watchdog/manual recovery"
+    )
+    end = source.index(
+        "- name: Restore immutable loss-context shadow candidate for runtime",
+        start,
+    )
+    restore = source[start:end]
+    assert '"continuous-paper-resume-"' in restore
+    assert '"continuous-paper-state-"' in restore
+    assert 'key=lambda item: item.get("created_at", "")' in restore
+    assert "reverse=True" in restore
+    assert '"Run continuous paper trader" not in successful_steps' in restore
+    assert '"Upload fast continuous paper resume state"' in restore
+    assert '"Upload durable continuous paper state"' in restore
+    assert '"Pack durable continuous paper state"' in restore
+    assert "continuous-paper-resume.tar.zst" in restore
+    assert "ARTIFACT_MEMBER" in restore
+    assert 'if [ "$ARTIFACT_MEMBER" = "continuous-paper-resume.tar.zst" ]; then' in restore
+    assert 'bash scripts/restore_continuous_paper_state.sh' in restore
