@@ -182,7 +182,9 @@ def _record_from_row(row: Mapping[str, object]) -> ReplayRecord:
         }
         return ReplayRecord(
             record_kind=SourceRecordKind.DATA_GAP,
-            available_at_ms=started_ms,
+            # A closure is not observable until the recovery is received.
+            # Closed gaps must never replay at their earlier start.
+            available_at_ms=started_ms if ended_ms is None else ended_ms,
             source=source,
             schema_version=schema_version,
             market=None,
