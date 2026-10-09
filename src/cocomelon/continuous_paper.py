@@ -2378,7 +2378,11 @@ def _record_from_gap(gap: DataGap) -> ReplayRecord:
     }
     return ReplayRecord(
         record_kind=SourceRecordKind.DATA_GAP,
-        available_at_ms=gap.started_ms,
+        # A recovered gap is only known on its closing observation.
+        # Replaying it at the original start would leak future coverage.
+        available_at_ms=(
+            gap.started_ms if gap.ended_ms is None else gap.ended_ms
+        ),
         source=gap.source,
         schema_version=gap.schema_version,
         market=None,

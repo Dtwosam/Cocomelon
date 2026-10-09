@@ -2531,7 +2531,7 @@ def test_gap_record_preserves_recovered_interval() -> None:
     )
     record = _record_from_gap(gap)
     assert record.record_kind is SourceRecordKind.DATA_GAP
-    assert record.available_at_ms == 1_000
+    assert record.available_at_ms == 1_500
     assert record.payload == {
         "ended_ms": 1_500,
         "reason": "recovered",
@@ -5774,3 +5774,34 @@ def test_frozen_outside_top10_trend_hypothesis_persists_and_stays_nontrading() -
     assert '"ready_for_review": False' in model
     assert '"account_level_profitability_proven": False' in model
     assert '"selected_winner": None' in model
+
+
+def test_continuous_gap_recovery_observable_only_at_real_close_time() -> None:
+    started_ms = 1_000_000
+    recovered_ms = started_ms + 65_000
+    open_record = _record_from_gap(DataGap(
+        stream_id="l2Book:BTC",
+        started_ms=started_ms,
+        ended_ms=None,
+        reason="disconnect",
+    ))
+    closed_record = _record_from_gap(DataGap(
+        stream_id="l2Book:BTC",
+        started_ms=started_ms,
+        ended_ms=recovered_ms,
+        reason="recovered",
+    ))
+    assert open_record.record_kind is SourceRecordKind.DATA_GAP
+    assert closed_record.record_kind is SourceRecordKind.DATA_GAP
+    assert open_record.available_at_ms == started_ms
+    assert closed_record.available_at_ms == recovered_ms
+    assert closed_record.payload == {
+        "stream_id": "l2Book:BTC",
+        "started_ms": started_ms,
+        "ended_ms": recovered_ms,
+        "reason": "recovered",
+    }
+    # Durable checkpoint serialization preserves actual availability time.
+    restored = _record_from_payload(_record_payload(closed_record))
+    assert restored.available_at_ms == recovered_ms
+    assert restored.payload == closed_record.payload
