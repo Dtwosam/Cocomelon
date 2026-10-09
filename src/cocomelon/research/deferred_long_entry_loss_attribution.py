@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from collections import defaultdict
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, localcontext, InvalidOperation
 from pathlib import Path
 from typing import Final, cast
 
@@ -97,7 +97,7 @@ def _group(rows: list[dict[str, object]], global_blocks: dict[str, int]) -> dict
     }
 
 
-def assess_long_entry_loss_attribution(source: object) -> dict[str, object]:
+def _assess_long_entry_loss_attribution_precise(source: object) -> dict[str, object]:
     """Full-journal diagnostic. Never turn hindsight into a paper entry rule."""
     data = _obj(source, "trade chart audit")
     if data.get("definition") != (
@@ -300,6 +300,15 @@ def assess_long_entry_loss_attribution(source: object) -> dict[str, object]:
             "drawdown gates are necessary for any entry or exit change."
         ),
     }
+
+
+
+def assess_long_entry_loss_attribution(
+    source: object,
+) -> dict[str, object]:
+    """Aggregate unrounded journal decimals before checking cohort parity."""
+    with localcontext(prec=96):
+        return _assess_long_entry_loss_attribution_precise(source)
 
 
 def write_long_entry_loss_attribution(state_root: str | Path) -> Path:
