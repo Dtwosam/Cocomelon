@@ -9,11 +9,14 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from cocomelon.config import MAINNET_API_URL, Settings
-from cocomelon.domain.candle_intervals import CANDLE_INTERVAL_MS as INTERVAL_MS
+from cocomelon.domain.candle_intervals import CANDLE_INTERVAL_MS
 from cocomelon.domain.market import MarketId
 from cocomelon.hyperliquid.rate_limit import RollingRateBudget
 
 JsonTransport = Callable[[str, dict[str, object], float], object]
+
+# Explicit public re-export: offline users still import the legacy constant.
+INTERVAL_MS = CANDLE_INTERVAL_MS
 
 
 class Budget(Protocol):
