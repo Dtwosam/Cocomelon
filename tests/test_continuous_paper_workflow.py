@@ -1371,7 +1371,10 @@ def test_continuous_paper_actions_api_calls_back_off_before_failing() -> None:
     checkout_at = source.index("- uses: actions/checkout@v7", guard_at)
     guard = source[guard_at:checkout_at]
     assert "guard_runs_loaded=false" in guard
-    assert "for attempt in $(seq 1 8)" in guard
+    assert "for guard_delay in 0 15 30 60 120 240 480 600 600 600 600 600" in guard
+    assert 'sleep "$guard_delay"' in guard
+    assert "guard_runs_loaded=true" in guard
+    assert 'if [ "$guard_runs_loaded" != "true" ]; then' in guard
     assert "continuous-paper guard API unavailable" in guard
     assert "continuous-paper guard job API unavailable" in guard
     assert "time.sleep(10)" in guard
