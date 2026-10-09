@@ -9,6 +9,12 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### End-to-end completed-handoff chart and LONG-loss regression — 2026-10-09
+
+Add a durable-store integration test for the research-only handoff chain: a real `JournalStore` with signed after-cost LONG/SHORT trades, `EvaluationFactStore`, at-decision feature snapshots, fresh/stale opening-rank evidence, signed market-mark paths, and the completed `session-summary.json`. Exercise `write_deferred_trade_charts` and then `write_long_entry_loss_attribution` against the exact files the paper workflow uses, rather than testing either analyzer against only a manufactured JSON schema. Assert all three trades remain in both cash reconciliation and loss denominators, including a clean observed chart, an incomplete chart and a missing chart, along with two verified at-entry contexts (one stale rank) and an unresolved historical feature. Verify LONG vs SHORT net PnL, realized losing trade buckets, non-promotional flags and that a crashed handoff cannot publish either artifact.
+
+This is a diagnostic correctness test, not new trading logic, profitability evidence, or a strategy promotion. The live worker and independent prospective paired accounts must continue uninterrupted; no real-money trading is enabled.
+
 ### Verify causality and rank freshness before diagnosing losing entries — 2026-10-09
 
 A research-only at-entry provenance gap was found in the shared historical loss-streak context resolver. Although it already checks market/side/feature lineage and that features were observable at the trade's opening, it had not checked that a strategy **decision timestamp** was at or before the opening or that the feature was available before the *decision itself*. It also classified arbitrarily old opening-rank observations as top-3/top-10/outside-10, despite the frozen prospective rank studies allowing a maximum rank age of five minutes.
