@@ -251,6 +251,7 @@ def assess_feed_gap_source_debt(
             by_source.append({
                 "scope": scope,
                 "stream_id": stream_id,
+                "source_identity_identifiable": scope != "legacy_unattributed",
                 "market": (
                     _market_wire_name_for_gap_stream(stream_id)
                     if scope == "market_specific" else None
@@ -283,6 +284,14 @@ def assess_feed_gap_source_debt(
     unresolved_count = sum(
         cast(int, row["open_gap_count"]) for row in by_source
     )
+    unknown_legacy = next(
+        row for row in by_source if row["scope"] == "legacy_unattributed"
+    )
+    named_repair_priority = [
+        row for row in by_source
+        if row["source_identity_identifiable"] is True
+        and cast(int, row["open_gap_count"]) > 0
+    ]
     return {
         "definition": "post_handoff_paper_feed_gap_source_debt_v1",
         "checkpoint_schema_version": version,
@@ -315,10 +324,26 @@ def assess_feed_gap_source_debt(
             cast(int, row["open_gap_count"]) > 0 for row in by_source
         ),
         "by_source": by_source,
+        "legacy_unattributable_open_gap_count": (
+            unknown_legacy["open_gap_count"]
+        ),
+        "legacy_unattributable_affected_incomplete_charts": (
+            unknown_legacy["incomplete_charts_overlapping_unresolved_source_gap"]
+        ),
+        "legacy_lineage_blocks_chart_source_certification": (
+            cast(
+                int, unknown_legacy[
+                    "incomplete_charts_overlapping_unresolved_source_gap"
+                ]
+            ) > 0
+        ),
+        "named_unresolved_source_count": len(named_repair_priority),
+        "named_source_repair_priority": named_repair_priority,
         "source_priority_definition": (
-            "Descending incomplete original charts overlapping unresolved "
-            "persisted source gaps, not causality and not additive across "
-            "topics or evidence of executable profits."
+            "Named sources with unresolved histories are separately ranked "
+            "for operational investigation. Anonymous legacy outages remain "
+            "unattributable even if they affect more charts. Overlap counts "
+            "are not additive, causal proof, or executable exit prices."
         ),
         "current_checkpoint_not_retrospective_chart_recovery": True,
         "caution": (
