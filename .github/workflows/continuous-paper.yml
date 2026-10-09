@@ -1369,7 +1369,7 @@ jobs:
           compression-level: 6
 
       - name: Upload paired loss-context portfolio shadow state
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-paired-portfolio-shadow-summary.json') != '' }}
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-paired-portfolio-shadow-summary.json') != '' && hashFiles('continuous-paper-state/loss-context-paired-portfolio-shadow-scoped-v2/paired-shadow-state.json') != '' }}
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
@@ -1452,7 +1452,7 @@ jobs:
           PY
 
       - name: Upload paired loss-context portfolio shadow review
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-paired-shadow-review-report.json') != '' }}
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.loss_context_paired_shadow_review.outcome == 'success' && hashFiles('continuous-paper-state/loss-context-paired-shadow-review-report.json') != '' }}
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
