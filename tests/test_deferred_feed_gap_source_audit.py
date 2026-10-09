@@ -419,9 +419,12 @@ def test_writer_requires_complete_fsynced_witness_rows(
 
 
 def test_named_debt_separates_selected_from_unselected_handoff_markets() -> None:
+    checkpoint = _checkpoint()
+    checkpoint["selected_markets"] = ["BTC"]
     report = assess_feed_gap_source_debt(
-        _checkpoint(), _charts(), selected_markets=["BTC"]
+        checkpoint, _charts(), selected_markets=["BTC"]
     )
+    assert report["market_selection_checkpoint_attested"] is True
     assert report["market_selection_available_at_handoff"] is True
     assert report["selected_market_count_at_handoff"] == 1
     assert report["named_open_starts_in_selected_markets"] == 1
@@ -448,6 +451,7 @@ def test_named_debt_separates_selected_from_unselected_handoff_markets() -> None
 def test_without_trusted_watchlist_no_unselected_market_inference() -> None:
     report = assess_feed_gap_source_debt(_checkpoint(), _charts())
     assert report["market_selection_available_at_handoff"] is False
+    assert report["market_selection_checkpoint_attested"] is None
     assert report["selected_market_count_at_handoff"] is None
     assert report["named_open_starts_in_selected_markets"] == 0
     assert report["named_open_starts_in_unselected_markets"] == 0
@@ -475,8 +479,10 @@ def test_untrusted_handoff_watchlist_cannot_label_sources(
 def test_completed_handoff_writer_uses_real_selected_snapshot(
     tmp_path: Path,
 ) -> None:
+    checkpoint = _checkpoint()
+    checkpoint["selected_markets"] = ["BTC"]
     (tmp_path / "runtime-state.json").write_text(
-        json.dumps(_checkpoint()), encoding="utf-8"
+        json.dumps(checkpoint), encoding="utf-8"
     )
     (tmp_path / "all-paper-trade-chart-audit.json").write_text(
         json.dumps(_charts()), encoding="utf-8"
@@ -489,8 +495,51 @@ def test_completed_handoff_writer_uses_real_selected_snapshot(
     )
     destination = write_deferred_feed_gap_source_audit(tmp_path)
     report = json.loads(destination.read_text(encoding="utf-8"))
+    assert report["market_selection_checkpoint_attested"] is True
     assert report["market_selection_available_at_handoff"] is True
     assert report["selected_market_count_at_handoff"] == 1
     assert report["named_open_starts_in_selected_markets"] == 1
     assert report["named_open_starts_in_unselected_markets"] == 1
+    assert report["legacy_unattributable_open_gap_count"] == 1
+
+
+@pytest.mark.parametrize(
+    "checkpoint_selection",
+    (["ETH"], ["BTC", "ETH"], [], "BTC", ["BTC", "BTC"]),
+)
+def test_v3_checkpoint_watchlist_disagreement_fails_closed(
+    checkpoint_selection: object,
+) -> None:
+    state = _checkpoint()
+    state["selected_markets"] = checkpoint_selection
+    with pytest.raises(
+        DeferredFeedGapSourceAuditError,
+        match="checkpoint and session selected markets disagree",
+    ):
+        assess_feed_gap_source_debt(
+            state, _charts(), selected_markets=["BTC"]
+        )
+
+
+def test_v3_missing_checkpoint_watchlist_fails_closed() -> None:
+    with pytest.raises(
+        DeferredFeedGapSourceAuditError,
+        match="v3 checkpoint is missing handoff selected markets",
+    ):
+        assess_feed_gap_source_debt(
+            _checkpoint(), _charts(), selected_markets=["BTC"]
+        )
+
+
+def test_legacy_checkpoint_absent_watchlist_is_not_attested() -> None:
+    state = _checkpoint()
+    state["schema_version"] = 1
+    state.pop("known_gap_intervals_by_stream")
+    state.pop("known_global_gap_intervals_by_stream")
+    report = assess_feed_gap_source_debt(
+        state, _charts(), selected_markets=["BTC"]
+    )
+    assert report["market_selection_available_at_handoff"] is True
+    assert report["market_selection_checkpoint_attested"] is None
+    assert report["named_unresolved_source_count"] == 0
     assert report["legacy_unattributable_open_gap_count"] == 1
