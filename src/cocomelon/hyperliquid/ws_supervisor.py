@@ -447,7 +447,7 @@ class WebSocketSupervisor:
             await self._gap_sink(gap)
 
     async def _close_gap_if_needed(self, stream_id: str, now_ms: int) -> None:
-        gap = self._open_gaps.pop(stream_id, None)
+        gap = self._open_gaps.get(stream_id)
         if gap is None:
             return
         await self._emit_gap(
@@ -458,6 +458,8 @@ class WebSocketSupervisor:
                 reason="recovered",
             )
         )
+        # A failed durable gap sink cannot silently erase unresolved lineage.
+        self._open_gaps.pop(stream_id, None)
 
     async def _dispatch(self, raw: object) -> None:
         now_ms = self._clock_ms()
@@ -512,7 +514,11 @@ class WebSocketSupervisor:
             )
             if l2_is_stale:
                 await self._open_l2_stale_gaps_if_needed(now_ms)
-            else:
+            # A recovered source must have delivered its normalized event
+            # downstream before the durable gap is declared healed. If the
+            # event sink fails, the open gap remains unresolved.
+            await self._emit_event(event)
+            if not l2_is_stale:
                 await self._close_gap_if_needed(
                     stream_id,
                     now_ms,
@@ -529,7 +535,6 @@ class WebSocketSupervisor:
                     )
                     if not self._pending_l2_targeted_recovery_streams:
                         self._reset_targeted_l2_recovery()
-            await self._emit_event(event)
 
     def _reset_l2_freshness_for_session(
         self,
