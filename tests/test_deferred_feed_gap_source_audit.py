@@ -51,6 +51,7 @@ def _checkpoint() -> dict[str, object]:
         "execution_mode": "paper",
         "live_orders": False,
         "last_available_at_ms": 1000,
+        "selected_markets": ["BTC", "SOL"],
         "known_gap_intervals": [[100, None]],
         "known_gap_intervals_by_stream": {
             "l2Book:BTC": [[200, None], [300, 330]],
@@ -80,6 +81,17 @@ def test_stream_scope_provenance_survives_without_recovering_legacy_gaps() -> No
     assert report["legacy_unattributable_affected_incomplete_charts"] == 2
     assert report["legacy_lineage_blocks_chart_source_certification"] is True
     assert report["named_unresolved_source_count"] == 4
+    assert report["current_selection_witness_present"] is True
+    assert report["current_selected_market_count"] == 2
+    assert report["named_unresolved_sources_on_selected_markets"] == 1
+    assert report["named_unresolved_sources_outside_selected_markets"] == 1
+    assert report["named_unresolved_sources_without_selection_attribution"] == 2
+    assert report["named_unresolved_gap_starts_on_selected_markets"] == 1
+    assert report["named_unresolved_gap_starts_outside_selected_markets"] == 1
+    assert report["named_unresolved_gap_starts_without_selection_attribution"] == 2
+    assert [
+        item["stream_id"] for item in report["top_selected_market_repair_sources"]
+    ] == ["l2Book:BTC"]
     assert all(
         item["source_identity_identifiable"] is True
         and item["scope"] != "legacy_unattributed"
@@ -92,6 +104,10 @@ def test_stream_scope_provenance_survives_without_recovering_legacy_gaps() -> No
         row["stream_id"]: row for row in report["by_source"]
     }
     assert named["l2Book:BTC"]["market"] == "BTC"
+    assert named["l2Book:BTC"]["market_in_current_selection"] is True
+    assert named["candle:ETH:1m"]["market_in_current_selection"] is False
+    assert named["allMids"]["market_in_current_selection"] is None
+    assert named["<legacy_unattributed>"]["market_in_current_selection"] is None
     assert named["l2Book:BTC"]["closed_gap_count"] == 1
     assert named["l2Book:BTC"][
         "original_trades_overlapping_unresolved_source_gap"
@@ -416,3 +432,92 @@ def test_writer_requires_complete_fsynced_witness_rows(
         DeferredFeedGapSourceAuditError, match="incomplete trailing row"
     ):
         write_deferred_feed_gap_source_audit(root)
+
+
+
+def test_missing_market_selection_does_not_invent_off_watchlist_debt() -> None:
+    state = _checkpoint()
+    state.pop("selected_markets")
+    report = assess_feed_gap_source_debt(state, _charts())
+    assert report["current_selection_witness_present"] is False
+    assert report["current_selected_market_count"] is None
+    assert report["named_unresolved_sources_on_selected_markets"] == 0
+    assert report["named_unresolved_sources_outside_selected_markets"] == 0
+    assert report["named_unresolved_sources_without_selection_attribution"] == 4
+    assert report["named_unresolved_gap_starts_without_selection_attribution"] == 4
+    assert report["top_selected_market_repair_sources"] == []
+    assert all(
+        row["market_in_current_selection"] is None
+        for row in report["by_source"]
+    )
+    assert report["legacy_unattributable_open_gap_count"] == 1
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    (
+        None,
+        [],
+        "BTC",
+        [True, "BTC"],
+        ["BTC", "BTC"],
+        [" BTC"],
+        ["ETH "],
+        [""],
+        ["HIP:BTC:bad"],
+        [":BTC"],
+        ["HIP:"],
+    ),
+)
+def test_corrupt_selected_market_provenance_fails_closed(
+    invalid: object,
+) -> None:
+    state = _checkpoint()
+    state["selected_markets"] = invalid
+    with pytest.raises(
+        DeferredFeedGapSourceAuditError,
+        match="checkpoint selected market",
+    ):
+        assess_feed_gap_source_debt(state, _charts())
+
+
+def test_hip3_market_selection_is_exact_and_not_subscription_proof() -> None:
+    state = _checkpoint()
+    state["selected_markets"] = ["xyz:BTC", "ETH"]
+    state["known_gap_intervals_by_stream"] = {
+        "l2Book:xyz:BTC": [[200, None]],
+        "l2Book:BTC": [[250, None]],
+        "l2Book:ETH": [[300, None]],
+        "l2Book:xyz:ETH": [[350, None]],
+    }
+    report = assess_feed_gap_source_debt(state, _charts())
+    named = {row["stream_id"]: row for row in report["by_source"]}
+    assert named["l2Book:xyz:BTC"]["market_in_current_selection"] is True
+    assert named["l2Book:BTC"]["market_in_current_selection"] is False
+    assert named["l2Book:ETH"]["market_in_current_selection"] is True
+    assert named["l2Book:xyz:ETH"]["market_in_current_selection"] is False
+    assert report["named_unresolved_sources_on_selected_markets"] == 2
+    assert report["named_unresolved_sources_outside_selected_markets"] == 2
+    # Selection does not turn a named gap into proven subscribed recovery.
+    assert report["total_unresolved_source_gap_starts"] == 7
+    assert report["current_checkpoint_not_retrospective_chart_recovery"]
+    assert report["execution_authority"] is False
+
+
+def test_no_trades_affected_does_not_erase_off_watchlist_gap_sources() -> None:
+    state = _checkpoint()
+    state["selected_markets"] = ["BTC"]
+    state["known_gap_intervals_by_stream"] = {
+        "l2Book:DOGE": [[950, None]],
+        "l2Book:BTC": [[950, None]],
+    }
+    state["known_global_gap_intervals_by_stream"] = {}
+    report = assess_feed_gap_source_debt(state, _charts())
+    assert report["named_unresolved_sources_outside_selected_markets"] == 1
+    assert report["named_unresolved_gap_starts_outside_selected_markets"] == 1
+    assert report["named_unresolved_sources_on_selected_markets"] == 1
+    assert report["top_selected_market_repair_sources"][0]["stream_id"] == (
+        "l2Book:BTC"
+    )
+    assert report["chart_total_journal_trades"] == 3
+    assert report["legacy_unattributable_open_gap_count"] == 1
