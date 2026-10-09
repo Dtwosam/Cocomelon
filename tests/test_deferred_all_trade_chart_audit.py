@@ -213,3 +213,62 @@ def test_exact_chart_and_lifecycle_cash_parity_with_high_precision_trades() -> N
     assert Decimal(audit["economics"]["overall"]["net_pnl"]) == Decimal("2E-27")
     assert Decimal(audit["trades"][-1]["cumulative_closed_net_pnl"]) == Decimal("2E-27")
     assert audit["missing_chart_path_trade_ids"] == ["t1", "t2", "t3", "t4"]
+
+
+
+def test_unresolved_gap_start_provenance_exposes_chart_evidence_blackout() -> None:
+    candidate = _path(1)
+    # A pre-entry orphaned gap start must not be guessed closed merely
+    # because dozens of later marks are present. Duplicate starts are one.
+    candidate["known_gap_intervals"] = [
+        [500, None], [500, None], [500, 750],
+        [1_030, None], [1_200, None],
+    ]
+    report = all_paper_trade_chart_audit((_trade(1),), EmptyFacts(), (candidate,))
+    row = report["trades"][0]
+    assert row["chart_mark_count"] >= 2
+    assert row["chart_longest_unobserved_mark_ms"] <= 300_000
+    assert row["chart_known_gap_duration_ms"] is None
+    assert row["chart_unresolved_gap_starts_before_entry"] == 1
+    assert row["chart_unresolved_gap_starts_during_position"] == 1
+    assert row["chart_coverage_complete"] is False
+    assert report["unresolved_open_gap_affected_trades"] == 1
+    assert report["unresolved_gap_before_entry_affected_trades"] == 1
+    assert report["unresolved_gap_during_position_affected_trades"] == 1
+    assert report["clean_mark_cadence_but_unresolved_gap_trades"] == 1
+    assert report["chronological_chart_coverage_quartiles"] == [
+        {
+            "trades": 1, "complete_chart_paths": 0,
+            "unresolved_gap_paths": 1, "unresolved_pre_entry_gap_paths": 1,
+            "missing_chart_paths": 0,
+        },
+        *([
+            {
+                "trades": 0, "complete_chart_paths": 0,
+                "unresolved_gap_paths": 0,
+                "unresolved_pre_entry_gap_paths": 0,
+                "missing_chart_paths": 0,
+            }
+        ] * 3),
+    ]
+    assert "Unresolved known gaps before/during entry" in render_trade_charts(report)
+
+
+def test_only_closed_out_of_position_gaps_preserve_complete_chart() -> None:
+    candidate = _path(1)
+    candidate["known_gap_intervals"] = [[500, 800], [1_200, 1_300]]
+    report = all_paper_trade_chart_audit((_trade(1),), EmptyFacts(), (candidate,))
+    row = report["trades"][0]
+    assert row["chart_coverage_complete"] is True
+    assert row["chart_known_gap_duration_ms"] == 0
+    assert row["chart_unresolved_gap_starts_before_entry"] == 0
+    assert row["chart_unresolved_gap_starts_during_position"] == 0
+    assert report["unresolved_open_gap_affected_trades"] == 0
+    assert report["complete_chart_paths"] == 1
+
+
+def test_unresolved_gap_cannot_hide_a_later_forged_gap_interval() -> None:
+    candidate = _path(1)
+    candidate["known_gap_intervals"] = [[500, None], [1_020, "fake"]]
+    with pytest.raises(AllPaperTradeChartAuditError, match="gap times"):
+        all_paper_trade_chart_audit((_trade(1),), EmptyFacts(), (candidate,))

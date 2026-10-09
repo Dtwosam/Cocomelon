@@ -40,6 +40,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         "path_complete": report["complete_chart_paths"],
         "path_missing": len(report["missing_chart_path_trade_ids"]),
         "bad_or_gapped_paths": report["incomplete_or_gapped_chart_paths"],
+        "unresolved_open_gap_paths": report["unresolved_open_gap_affected_trades"],
+        "unresolved_pre_entry_gap_paths": (
+            report["unresolved_gap_before_entry_affected_trades"]
+        ),
+        "unresolved_during_position_gap_paths": (
+            report["unresolved_gap_during_position_affected_trades"]
+        ),
+        "clean_mark_cadence_but_unresolved_gap_paths": (
+            report["clean_mark_cadence_but_unresolved_gap_trades"]
+        ),
+        "chronological_chart_coverage_quartiles": (
+            report["chronological_chart_coverage_quartiles"]
+        ),
         "execution_authority": report["execution_authority"],
     }, sort_keys=True))
     return 0

@@ -1203,6 +1203,13 @@ jobs:
           print(f"- closed-trade fees: ${data['fees']}")
           print(f"- complete / missing / incomplete or gapped charts: "
                 f"{data['path_complete']} / {data['path_missing']} / {data['bad_or_gapped_paths']}")
+          print(f"- unresolved open-gap affected charts: "
+                f"{data['unresolved_open_gap_paths']}") 
+          print(f"- unresolved gaps started before entry / during position: "
+                f"{data['unresolved_pre_entry_gap_paths']} / "
+                f"{data['unresolved_during_position_gap_paths']}")
+          print(f"- sufficiently frequent marks but unresolved source gap: "
+                f"{data['clean_mark_cadence_but_unresolved_gap_paths']}")
           print("- CAUTION: recorded in-position marks only; NOT full OHLC "
                 "history, counterfactual fills or strategy promotion authority")
           PY
