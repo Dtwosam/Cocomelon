@@ -9,6 +9,12 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Apply journal-grade precision to the frozen +1R / +1.5R and breakeven exit controls — 2026-10-09
+
+Following the exact 96-digit +0.5R/+1R trailing and chart-integrity repair, the adjacent precommitted profit-target observers still summed booked full-trade net cash and risk-normalized R under Decimal's 28-digit default. The independent +1R and +1.5R targets, common breakeven control, and paired +1.5R-minus-+1R threshold review can each spuriously lose a tiny true advantage when intermediate large offsetting amounts round, even with otherwise fully verified IOC fills and costs.
+
+Compute only these downstream observational economics in a local 96-digit context. Preserve the originally booked journal values, independently serialized fill estimates, fixed candidates, all directional / chronological / leave-one-market-out sample gates, and the prohibition on choosing a threshold from in-sample results. Exact Decimal cancellation regressions require 1e-24 differences to survive in dollar PnL and net R in both target and paired-threshold reports. **No active trading, execution, leverage, stops, prices, fee assumptions, order type, or promotion authority changes.**
+
 ### Preserve exact precision in matched IOC exit economics and journal chart gate — 2026-10-09
 
 The all-trade paper journal/chart and LONG-loss audits compute entire journal totals with a local 96-digit Decimal context because separately rounded 28-digit sums cannot be compared exactly to full-journal after-cost entries. Two downstream frozen +0.5R versus +1R trailing researchers still summed candidate/original returns and chart-gate cashflows under the default 28-digit context. A small positive advantage between large offsetting trade values could round away, or chart full-journal totals could spuriously fail exact parity with an authoritative audit.
