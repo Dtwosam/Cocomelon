@@ -142,7 +142,10 @@ def test_empty_required_summary_is_not_authenticated(tmp_path: Path) -> None:
     ("mutate", "expected_reason"),
     [
         (
-            lambda doc: doc.update(risk_rejected_integrity_clean=False, risk_rejected_missing_rank=67),
+            lambda doc: doc.update(
+                risk_rejected_integrity_clean=False,
+                risk_rejected_missing_rank=67,
+            ),
             "risk_rejected_integrity_not_clean",
         ),
         (
