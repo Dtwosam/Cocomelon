@@ -5810,7 +5810,7 @@ def test_continuous_gap_recovery_observable_only_at_real_close_time() -> None:
 
 
 
-def test_scoped_paper_checkpoint_v2_preserves_uncertain_legacy_and_asset_streams(
+def test_paper_checkpoint_v3_preserves_independent_global_and_asset_streams(
     tmp_path: Path,
 ) -> None:
     state_path = tmp_path / "checkpoint-scoped.json"
@@ -5822,25 +5822,77 @@ def test_scoped_paper_checkpoint_v2_preserves_uncertain_legacy_and_asset_streams
                 "activeAssetCtx:BTC": ((10, 20),),
                 "l2Book:ETH": ((30, None),),
             },
+            known_global_gap_intervals_by_stream={
+                "allMids": ((40, 50),),
+                "unrecognizedTopic": ((40, None),),
+            },
         ),
         last_available_at_ms=123,
         selected_markets=(MarketId("", "BTC"), MarketId("", "ETH")),
     )
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["known_gap_intervals"] == [[5, None]]
     assert payload["known_gap_intervals_by_stream"] == {
         "activeAssetCtx:BTC": [[10, 20]],
         "l2Book:ETH": [[30, None]],
     }
+    assert payload["known_global_gap_intervals_by_stream"] == {
+        "allMids": [[40, 50]],
+        "unrecognizedTopic": [[40, None]],
+    }
     state_path.write_text(json.dumps(payload), encoding="utf-8")
-    checkpoints, unscoped, scoped, last_ms = _load_checkpoint(state_path)
+    checkpoints, unscoped, scoped, global_scoped, last_ms = _load_checkpoint(state_path)
     assert checkpoints == ()
     assert unscoped == ((5, None),)
     assert scoped == {
         "activeAssetCtx:BTC": ((10, 20),),
         "l2Book:ETH": ((30, None),),
     }
+    assert global_scoped == {
+        "allMids": ((40, 50),),
+        "unrecognizedTopic": ((40, None),),
+    }
     assert last_ms == 123
+
+    # Historical v2 carries only unattributed legacy and market-scoped gaps.
+    # New workers must never pretend the old global starts have source IDs.
+    old_v2 = dict(payload)
+    old_v2["schema_version"] = 2
+    del old_v2["known_global_gap_intervals_by_stream"]
+    state_path.write_text(json.dumps(old_v2), encoding="utf-8")
+    _, old_unscoped, old_scoped, old_global, old_last_ms = _load_checkpoint(
+        state_path
+    )
+    assert old_unscoped == ((5, None),)
+    assert old_scoped == scoped
+    assert old_global == {}
+    assert old_last_ms == 123
+
+    old_v1 = dict(old_v2)
+    old_v1["schema_version"] = 1
+    del old_v1["known_gap_intervals_by_stream"]
+    state_path.write_text(json.dumps(old_v1), encoding="utf-8")
+    _, v1_unscoped, v1_scoped, v1_global, v1_last_ms = _load_checkpoint(
+        state_path
+    )
+    assert v1_unscoped == ((5, None),)
+    assert v1_scoped == {}
+    assert v1_global == {}
+    assert v1_last_ms == 123
+
+    payload["known_global_gap_intervals_by_stream"] = {
+        "allMids": [[40, True]],
+    }
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="global gap interval"):
+        _load_checkpoint(state_path)
+    del payload["known_global_gap_intervals_by_stream"]
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="global gap mapping"):
+        _load_checkpoint(state_path)
+    payload["known_global_gap_intervals_by_stream"] = {
+        "allMids": [[40, 50]],
+    }
 
     payload["known_gap_intervals_by_stream"] = {
         "l2Book:ETH": [[30, "forged-recovery"]],
