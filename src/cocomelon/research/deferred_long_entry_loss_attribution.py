@@ -253,8 +253,8 @@ def assess_long_entry_loss_attribution(source: object) -> dict[str, object]:
     }
     for side in ("long", "short"):
         if (
-            sum((int(v["trades"]) for v in by_category[side].values()), 0)
-            != int(sides[side]["losers"])
+            sum((_int(v["trades"], "category count") for v in by_category[side].values()), 0)
+            != _int(sides[side]["losers"], "side losers")
             or sum((
                 _dec(v["net_pnl"], "category net")
                 for v in by_category[side].values()
@@ -267,7 +267,7 @@ def assess_long_entry_loss_attribution(source: object) -> dict[str, object]:
         for name, members in sorted(by_setup.items())
     }
     if (
-        sum((int(group["trades"]) for group in setups.values()), 0) != count
+        sum((_int(group["trades"], "setup count") for group in setups.values()), 0) != count
         or sum((_dec(group["net_pnl"], "setup net") for group in setups.values()), ZERO)
         != total_net
     ):
