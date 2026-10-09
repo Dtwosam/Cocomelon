@@ -40,6 +40,11 @@ def test_optional_chart_and_markout_research_have_bounded_worker_occupancy() -> 
         assert "steps.fallback_resume_dispatch.outcome == 'success'" in block
         assert "shell: bash" in block
 
+    chart_upload = _step(source, "Upload all closed paper-trade economics and charts")
+    assert "steps.deferred_all_trade_chart_audit.outcome == 'success'" in chart_upload
+    full_stack_upload = _step(source, "Upload full-stack fast-markout research summary")
+    assert "steps.deferred_full_stack_markout_rebuild.outcome == 'success'" in full_stack_upload
+
     # A timeout remains a failed optional step, and cannot interfere with the
     # trader or the state and successor-creation steps preceding the research.
     trader = _step(source, "Run continuous paper trader")
