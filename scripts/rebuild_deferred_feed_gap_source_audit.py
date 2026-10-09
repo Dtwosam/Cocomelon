@@ -34,6 +34,26 @@ def main() -> None:
             report["sources_with_unresolved_gaps"]
         ),
         "open_gaps_by_scope": report["open_gap_count_by_scope"],
+        "legacy_unattributable_open_gap_count": (
+            report["legacy_unattributable_open_gap_count"]
+        ),
+        "legacy_lineage_blocks_chart_source_certification": (
+            report["legacy_lineage_blocks_chart_source_certification"]
+        ),
+        "named_unresolved_source_count": report["named_unresolved_source_count"],
+        "top_named_repair_sources": [
+            {
+                "scope": item["scope"],
+                "stream_id": item["stream_id"],
+                "incomplete_charts": (
+                    item["incomplete_charts_overlapping_unresolved_source_gap"]
+                ),
+                "original_trades_overlapping_unresolved": (
+                    item["original_trades_overlapping_unresolved_source_gap"]
+                ),
+            }
+            for item in report["named_source_repair_priority"][:5]
+        ],
         "top_incomplete_chart_sources": [
             {
                 "scope": item["scope"],
