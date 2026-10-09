@@ -52,6 +52,7 @@ def _sources() -> tuple[dict[str, object], dict[str, object]]:
         "economic_screen_passes": True,
         "matched_trade_count": 2,
         "matched_trade_ids": ["long-1", "short-1"],
+        "future_original_closed_trades": 2,
         "common_scoring_start_ms": 1000,
         "overall": {
             "matched_trades": 2,
@@ -90,6 +91,8 @@ def test_all_clean_forward_trades_reconcile_original_cashflow_and_r() -> None:
     exits, charts = _sources()
     result = assess_early_exit_chart_integrity(exits, charts)
     assert result["matched_forward_trades"] == 2
+    assert result["total_original_forward_trades"] == 2
+    assert result["unmatched_original_forward_trade_ids"] == []
     assert result["verified_clean_chart_trades"] == 2
     assert result["chart_integrity_complete"] is True
     assert result["economic_screen_with_chart_integrity"] is True
@@ -124,6 +127,77 @@ def test_missing_incomplete_and_gapped_charts_never_make_exit_ready(
     assert result[expected] == ["short-1"]
     assert result["matched_forward_trades"] == 2
     assert result["unfiltered_original_net_pnl"] == "-0.5"
+
+
+
+def test_exit_chart_gate_rejects_cherry_picked_clean_simulated_subset() -> None:
+    exits, charts = _sources()
+    # Only the winning original received an executable complete IOC outcome.
+    # The losing original still belongs in the untouched journal denominator.
+    exits["matched_trade_ids"] = ["long-1"]
+    exits["matched_trade_count"] = 1
+    original = exits["overall"]
+    by_side = exits["by_direction"]
+    assert isinstance(original, dict)
+    assert isinstance(by_side, dict)
+    original["matched_trades"] = 1
+    original["original_net_pnl"] = "1.5"
+    original["original_net_r"] = "0.15"
+    short = by_side["short"]
+    assert isinstance(short, dict)
+    short["matched_trades"] = 0
+    short["original_net_pnl"] = "0"
+    short["original_net_r"] = "0"
+    report = assess_early_exit_chart_integrity(exits, charts)
+    assert report["total_original_forward_trades"] == 2
+    assert report["matched_forward_trades"] == 1
+    assert report["unmatched_original_forward_trade_ids"] == ["short-1"]
+    assert report["verified_clean_chart_trades"] == 1
+    assert report["chart_integrity_complete"] is False
+    assert report["economic_screen_with_chart_integrity"] is False
+    assert report["unfiltered_original_net_pnl"] == "-0.5"
+    assert report["unfiltered_original_net_r"] == "-0.05"
+    assert report["matched_original_net_pnl"] == "1.5"
+
+
+def test_exit_chart_gate_rejects_forged_full_forward_denominator() -> None:
+    exits, charts = _sources()
+    exits["future_original_closed_trades"] = 1
+    with pytest.raises(
+        DeferredEarlyExitChartIntegrityError,
+        match="forward original sample does not reconcile",
+    ):
+        assess_early_exit_chart_integrity(exits, charts)
+
+
+def test_empty_forward_sample_cannot_be_claimed_all_clean() -> None:
+    exits, charts = _sources()
+    exits["common_scoring_start_ms"] = 3000
+    exits["future_original_closed_trades"] = 0
+    exits["matched_trade_ids"] = []
+    exits["matched_trade_count"] = 0
+    overall = exits["overall"]
+    sides = exits["by_direction"]
+    assert isinstance(overall, dict)
+    assert isinstance(sides, dict)
+    overall.update({
+        "matched_trades": 0,
+        "original_net_pnl": "0",
+        "original_net_r": "0",
+    })
+    for key in ("long", "short"):
+        side = sides[key]
+        assert isinstance(side, dict)
+        side.update({
+            "matched_trades": 0,
+            "original_net_pnl": "0",
+            "original_net_r": "0",
+        })
+    report = assess_early_exit_chart_integrity(exits, charts)
+    assert report["total_original_forward_trades"] == 0
+    assert report["chart_integrity_complete"] is False
+    assert report["economic_screen_with_chart_integrity"] is False
+
 
 
 def test_original_r_reconciliation_blocks_false_profit_claim() -> None:
@@ -188,7 +262,7 @@ def test_reject_duplicate_or_pre_frozen_original_sample() -> None:
     exits["common_scoring_start_ms"] = 1400
     with pytest.raises(
         DeferredEarlyExitChartIntegrityError,
-        match="outside frozen",
+        match="forward original sample does not reconcile",
     ):
         assess_early_exit_chart_integrity(exits, charts)
 
