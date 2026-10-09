@@ -75,6 +75,7 @@ def _economics(
     ],
 ) -> dict[str, object]:
     actual = sum((trade.net_pnl for trade, _, _ in rows), ZERO)
+    actual_r = sum((trade.net_r for trade, _, _ in rows), ZERO)
     early = sum((e.candidate_net_pnl_estimate for _, e, _ in rows
                  if e.candidate_net_pnl_estimate is not None), ZERO)
     late = sum((late_exit.candidate_net_pnl_estimate for _, _, late_exit in rows
@@ -86,6 +87,7 @@ def _economics(
     return {
         "matched_trades": len(rows),
         "original_net_pnl": str(actual),
+        "original_net_r": str(actual_r),
         "early_net_pnl": str(early),
         "late_net_pnl": str(late),
         "early_vs_late_net_pnl": str(early - late),
@@ -94,12 +96,15 @@ def _economics(
         "early_net_r": str(early_r),
         "late_net_r": str(late_r),
         "early_vs_late_net_r": str(early_r - late_r),
+        "early_vs_original_net_r": str(early_r - actual_r),
+        "late_vs_original_net_r": str(late_r - actual_r),
         "early_is_profitable": bool(rows) and early > ZERO and early_r > ZERO,
         "early_beats_late_and_original": (
             bool(rows)
             and early > late
             and early > actual
             and early_r > late_r
+            and early_r > actual_r
         ),
         "original_winners_reduced": sum(
             trade.net_pnl > ZERO
