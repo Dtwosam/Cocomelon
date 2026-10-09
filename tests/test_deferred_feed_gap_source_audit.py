@@ -596,3 +596,69 @@ def test_all_old_gaps_still_count_when_far_before_checkpoint() -> None:
     )
     assert report["older_open_gaps_by_scope"] == report["open_gap_count_by_scope"]
     assert report["named_unresolved_source_count"] == 4
+
+
+@pytest.mark.parametrize(
+    ("exchange_age_ms", "accepted"),
+    [
+        (0, True),
+        (4_999, True),
+        (5_000, False),
+        (5_001, False),
+        (7_000, False),
+    ],
+)
+def test_independent_witness_exchange_freshness_at_frozen_v1_boundary(
+    exchange_age_ms: int, accepted: bool,
+) -> None:
+    state = _checkpoint()
+    state["last_available_at_ms"] = 10_000
+    state["known_gap_intervals_by_stream"] = {
+        "l2Book:BTC": [[200, 8_000]]
+    }
+    witness = _fresh_named_witness()
+    witness["witness_receive_ms"] = 8_000
+    witness["witness_exchange_ms"] = 8_000 - exchange_age_ms
+    if not accepted:
+        with pytest.raises(
+            DeferredFeedGapSourceAuditError,
+            match="exchange price event is stale",
+        ):
+            assess_feed_gap_source_debt(state, _charts(), [witness])
+    else:
+        report = assess_feed_gap_source_debt(
+            state, _charts(), [witness]
+        )
+        assert report["named_recovery_checkpoint_confirmed"] == 1
+
+
+def test_independent_witness_allow_authentic_receive_only_shared_feed() -> None:
+    state = _checkpoint()
+    state["last_available_at_ms"] = 10_000
+    state["known_global_gap_intervals_by_stream"] = {
+        "allMids": [[200, 8_000]]
+    }
+    witness = _fresh_named_witness()
+    witness["stream_id"] = "allMids"
+    witness["witness_event_key"] = "allMids:8000"
+    witness["witness_exchange_ms"] = None
+    witness["witness_receive_ms"] = 8_000
+    report = assess_feed_gap_source_debt(state, _charts(), [witness])
+    assert report["named_recovery_checkpoint_confirmed"] == 1
+    assert report["named_recovery_witness_sources"] == 1
+
+
+def test_independent_witness_rejects_future_exchange_even_inside_5s() -> None:
+    state = _checkpoint()
+    state["last_available_at_ms"] = 10_000
+    state["known_gap_intervals_by_stream"] = {
+        "l2Book:BTC": [[200, 8_000]]
+    }
+    witness = _fresh_named_witness()
+    witness["witness_receive_ms"] = 8_000
+    witness["witness_exchange_ms"] = 8_001
+    with pytest.raises(
+        DeferredFeedGapSourceAuditError,
+        match="arrived before exchange event",
+    ):
+        assess_feed_gap_source_debt(state, _charts(), [witness])
