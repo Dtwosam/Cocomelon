@@ -1917,3 +1917,26 @@ def test_guarded_recovery_prefers_finished_trader_upload_over_older_account() ->
     assert "ARTIFACT_HEAD_SHA" in recovery
     assert "bash scripts/restore_continuous_paper_state.sh" in recovery
 
+
+
+
+def test_paper_upgrade_watchdog_pathspec_is_one_shell_command() -> None:
+    """Regression: naked filenames were executed on each heartbeat."""
+    from pathlib import Path
+
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github" / "workflows" / "continuous-paper.yml"
+    ).read_text(encoding="utf-8")
+    beginning = workflow.index('changed_runtime="$(')
+    end = workflow.index(')"', beginning)
+    snippet = workflow[beginning:end]
+    lines = snippet.splitlines()
+    assert len(lines) >= 4
+    assert lines[1].lstrip().startswith("git diff --name-only ")
+    for line in lines[1:-1]:
+        assert line.rstrip().endswith("\\"), (
+            "upgrade pathspec split into an unintended executable shell command"
+        )
+    assert "src/cocomelon/research/prospective_early_reserved_trailing.py" in snippet
+    assert "src/cocomelon/research/prospective_early_vs_late_trailing.py" in snippet
