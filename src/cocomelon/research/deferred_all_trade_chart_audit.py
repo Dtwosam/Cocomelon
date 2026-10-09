@@ -6,7 +6,7 @@ import os
 from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation, localcontext
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.evaluation.store import EvaluationFactStore
@@ -387,12 +387,12 @@ def _all_paper_trade_chart_audit_precise(
                 row["chart_coverage_complete"] is True for row in members
             ),
             "unresolved_gap_paths": sum(
-                int(row["chart_unresolved_gap_starts_before_entry"])
-                + int(row["chart_unresolved_gap_starts_during_position"]) > 0
+                cast(int, row["chart_unresolved_gap_starts_before_entry"])
+                + cast(int, row["chart_unresolved_gap_starts_during_position"]) > 0
                 for row in members
             ),
             "unresolved_pre_entry_gap_paths": sum(
-                int(row["chart_unresolved_gap_starts_before_entry"]) > 0
+                cast(int, row["chart_unresolved_gap_starts_before_entry"]) > 0
                 for row in members
             ),
             "missing_chart_paths": sum(
