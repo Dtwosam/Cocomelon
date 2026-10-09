@@ -189,7 +189,8 @@ def test_failed_recovered_lane_delivery_cannot_heal_aggregate_gap() -> None:
 
         mux = RedundantStreamMux(event_sink=event_sink, gap_sink=gap_sink)
         await mux.on_event(0, _trade(1, 1_000, 10))
-        await mux.on_event(1, _trade(1, 1_000, 12))
+        # Lane 1 is not yet session-ready, so the failed primary has
+        # no standby; later packets on lane 1 must remain buffered.
         await mux.on_gap(0, DataGap("trades:BTC", 2_000, None, "disconnect"))
         await mux.on_gap(1, DataGap("trades:BTC", 2_100, None, "disconnect"))
 
