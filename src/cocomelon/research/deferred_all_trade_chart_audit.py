@@ -4,7 +4,7 @@ import html
 import json
 import os
 from collections.abc import Sequence
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, localcontext, InvalidOperation
 from pathlib import Path
 from typing import Final
 
@@ -178,7 +178,7 @@ def _path_gap_ms(path: dict[str, object], opened: int, closed: int) -> int | Non
     return total
 
 
-def all_paper_trade_chart_audit(
+def _all_paper_trade_chart_audit_precise(
     trades: Sequence[TradeJournalEntry],
     facts: EvaluationFactStore,
     path_payloads: Sequence[dict[str, object]],
@@ -338,6 +338,17 @@ def all_paper_trade_chart_audit(
         "economics": economics,
         "trades": rows,
     }
+
+
+
+def all_paper_trade_chart_audit(
+    trades: Sequence[TradeJournalEntry],
+        facts: EvaluationFactStore,
+        path_payloads: Sequence[dict[str, object]],
+) -> dict[str, object]:
+    """Aggregate unrounded journal decimals before checking cohort parity."""
+    with localcontext(prec=96):
+        return _all_paper_trade_chart_audit_precise(trades, facts, path_payloads)
 
 
 def render_trade_charts(report: dict[str, object]) -> str:
