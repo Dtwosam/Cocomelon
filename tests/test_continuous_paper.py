@@ -16,6 +16,7 @@ from cocomelon.continuous_paper import (
     UPGRADE_DEFERRED_RESEARCH_FILENAMES,
     ContinuousPaperConfig,
     _account_lifecycle_bridge_payload,
+    _checkpoint_payload,
     _clean_evidence_runway_payload,
     _clear_upgrade_deferred_research,
     _closed_trade_concentration_payload,
@@ -4871,10 +4872,11 @@ def test_legacy_checkpoint_without_position_actions_remains_loadable(
         encoding="utf-8",
     )
 
-    checkpoints, gaps, last_available_at_ms = _load_checkpoint(path)
+    checkpoints, gaps, by_stream, last_available_at_ms = _load_checkpoint(path)
 
     assert last_available_at_ms == 123
     assert gaps == ()
+    assert by_stream == {}
     assert len(checkpoints) == 1
     assert checkpoints[0].position_actions == ()
 
@@ -5805,3 +5807,49 @@ def test_continuous_gap_recovery_observable_only_at_real_close_time() -> None:
     restored = _record_from_payload(_record_payload(closed_record))
     assert restored.available_at_ms == recovered_ms
     assert restored.payload == closed_record.payload
+
+
+
+def test_scoped_paper_checkpoint_v2_preserves_uncertain_legacy_and_asset_streams(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "checkpoint-scoped.json"
+    payload = _checkpoint_payload(
+        SimpleNamespace(
+            open_lifecycle_checkpoints=(),
+            unscoped_gap_intervals=((5, None),),
+            known_gap_intervals_by_stream={
+                "activeAssetCtx:BTC": ((10, 20),),
+                "l2Book:ETH": ((30, None),),
+            },
+        ),
+        last_available_at_ms=123,
+        selected_markets=(MarketId("", "BTC"), MarketId("", "ETH")),
+    )
+    assert payload["schema_version"] == 2
+    assert payload["known_gap_intervals"] == [[5, None]]
+    assert payload["known_gap_intervals_by_stream"] == {
+        "activeAssetCtx:BTC": [[10, 20]],
+        "l2Book:ETH": [[30, None]],
+    }
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+    checkpoints, unscoped, scoped, last_ms = _load_checkpoint(state_path)
+    assert checkpoints == ()
+    assert unscoped == ((5, None),)
+    assert scoped == {
+        "activeAssetCtx:BTC": ((10, 20),),
+        "l2Book:ETH": ((30, None),),
+    }
+    assert last_ms == 123
+
+    payload["known_gap_intervals_by_stream"] = {
+        "l2Book:ETH": [[30, "forged-recovery"]],
+    }
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="scoped gap interval"):
+        _load_checkpoint(state_path)
+
+    del payload["known_gap_intervals_by_stream"]
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="scoped gap mapping"):
+        _load_checkpoint(state_path)
