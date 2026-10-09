@@ -11,6 +11,7 @@ OUTPUT_NAME: Final = "deferred-feed-gap-source-audit.json"
 CHART_NAME: Final = "all-paper-trade-chart-audit.json"
 CHECKPOINT_NAME: Final = "runtime-state.json"
 SESSION_NAME: Final = "session-summary.json"
+WITNESS_NAME: Final = "named-gap-recovery-witnesses.jsonl"
 _HANDOFF_REASONS: Final = {"duration_elapsed", "upgrade_requested"}
 
 
@@ -171,9 +172,114 @@ def _source_trade_exposure(
     }
 
 
+def _confirmed_named_recovery_witnesses(
+    raw: object,
+    *,
+    named_gaps: dict[str, list[tuple[int, int | None]]],
+    latest_ms: int,
+) -> dict[str, object]:
+    """Validate event witnesses against the *persisted* closed checkpoint.
+
+    The ledger only claims a real accepted market event; every successfully
+    audited recovery must independently intersect a saved named closed gap.
+    Compacted intervals may absorb several older starts, so this is source
+    coverage confirmation, not an exact per-trade or price reconstruction.
+    """
+    if raw is None:
+        return {
+            "named_recovery_witness_ledger_present": False,
+            "named_recovery_witness_records": 0,
+            "named_recovery_checkpoint_confirmed": 0,
+            "named_recovery_witness_sources": 0,
+        }
+    if not isinstance(raw, list):
+        raise DeferredFeedGapSourceAuditError(
+            "named recovery witness ledger must be an array"
+        )
+    fields = {
+        "definition", "checkpoint_last_available_at_ms", "stream_id",
+        "gap_start_ms", "witness_receive_ms", "witness_exchange_ms",
+        "witness_event_key", "witness_event_source",
+        "observed_event_before_gap_closure",
+        "independently_verified_checkpoint_closure",
+        "historical_price_reconstruction", "research_only",
+    }
+    unique: set[tuple[str, int, int, str]] = set()
+    sources: set[str] = set()
+    for row in raw:
+        witness = _object(row, "named recovery witness")
+        if set(witness) != fields or (
+            witness.get("definition")
+            != "post_handoff_named_ws_recovery_witness_v1"
+            or witness.get("witness_event_source") != "hyperliquid-mainnet-ws"
+            or witness.get("observed_event_before_gap_closure") is not True
+            or witness.get("independently_verified_checkpoint_closure") is not False
+            or witness.get("historical_price_reconstruction") is not False
+            or witness.get("research_only") is not True
+        ):
+            raise DeferredFeedGapSourceAuditError(
+                "named recovery witness identity or authority mismatch"
+            )
+        stream_id = witness.get("stream_id")
+        event_key = witness.get("witness_event_key")
+        if (
+            not isinstance(stream_id, str) or not stream_id.strip()
+            or not isinstance(event_key, str) or not event_key.strip()
+            or stream_id not in named_gaps
+        ):
+            raise DeferredFeedGapSourceAuditError(
+                "named recovery witness has no known source identity"
+            )
+        source_start = _integer(witness.get("gap_start_ms"), "witness gap start")
+        checkpoint_ms = _integer(
+            witness.get("checkpoint_last_available_at_ms"),
+            "witness predecessor timestamp",
+        )
+        received_ms = _integer(
+            witness.get("witness_receive_ms"), "witness receive time"
+        )
+        exchange_raw = witness.get("witness_exchange_ms")
+        if exchange_raw is not None:
+            exchange_ms = _integer(exchange_raw, "witness exchange time")
+            if exchange_ms > received_ms:
+                raise DeferredFeedGapSourceAuditError(
+                    "named recovery source arrived before exchange event"
+                )
+        elif stream_id.startswith("l2Book:"):
+            raise DeferredFeedGapSourceAuditError(
+                "L2 named recovery witness lacks exchange event time"
+            )
+        if not (
+            source_start <= checkpoint_ms < received_ms <= latest_ms
+        ):
+            raise DeferredFeedGapSourceAuditError(
+                "named recovery witness exceeds handoff chronology"
+            )
+        # A witness is not itself a recovery. It must be covered by a
+        # checkpoint interval that is genuinely closed for this exact source.
+        if not any(
+            end is not None
+            and start <= source_start
+            and end >= received_ms
+            for start, end in named_gaps[stream_id]
+        ):
+            raise DeferredFeedGapSourceAuditError(
+                "named recovery witness lacks matching closed checkpoint gap"
+            )
+        unique.add((stream_id, source_start, received_ms, event_key))
+        sources.add(stream_id)
+    return {
+        "named_recovery_witness_ledger_present": True,
+        "named_recovery_witness_records": len(raw),
+        "named_recovery_checkpoint_confirmed": len(unique),
+        "named_recovery_witness_sources": len(sources),
+    }
+
+
 def assess_feed_gap_source_debt(
     checkpoint: object,
     charts: object,
+    witnesses: object | None = None,
 ) -> dict[str, object]:
     """Diagnose current unresolved feed sources, not historical price recovery."""
     state = _object(checkpoint, "paper runtime checkpoint")
