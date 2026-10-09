@@ -170,6 +170,10 @@ def prospective_short_breakout_rank_comparison(
             unresolved[reason or "missing_verified_context"] += 1
         elif context.get("rank_evidence_status") != "fresh":
             unresolved[str(context.get("rank_evidence_status"))] += 1
+        elif context.get("lead_strategy") in (None, "", "unknown"):
+            # Historical decision facts can exist without a recognized lead.
+            # That is not a verified non-breakout opportunity.
+            unresolved["unverified_lead_strategy"] += 1
         else:
             ordinal = context.get("rank_ordinal")
             if type(ordinal) is not int or ordinal <= 0:
