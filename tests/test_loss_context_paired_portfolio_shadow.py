@@ -1055,3 +1055,37 @@ def test_v2_shadow_rejects_wrong_gap_scope_and_invalid_interval_values(
             selected_markets=(MARKET,), state_root=state_root,
             startup_timestamp_ms=EVALUATED_AT_MS + 1,
         )
+
+
+
+def test_v2_shadow_refuses_divergent_restored_market_source_histories(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    state_root = tmp_path / "paired"
+    first = LossContextPairedPortfolioShadow(
+        freeze=_freeze(), replay_config=config,
+        selected_markets=(MARKET,), state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+    )
+    try:
+        first.checkpoint(end_ms=EVALUATED_AT_MS)
+    finally:
+        first.close()
+
+    state_path = state_root / "paired-shadow-state.json"
+    payload = json.loads(state_path.read_text(encoding="utf-8"))
+    payload["candidate"]["known_gap_intervals_by_stream"] = {
+        "l2Book:TEST": [[100, None]],
+    }
+    payload.pop("state_digest")
+    payload["state_digest"] = _state_digest(payload)
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(
+        RuntimeError, match="restored market-data gap scope mismatch",
+    ):
+        LossContextPairedPortfolioShadow(
+            freeze=_freeze(), replay_config=config,
+            selected_markets=(MARKET,), state_root=state_root,
+            startup_timestamp_ms=EVALUATED_AT_MS + 1,
+        )
