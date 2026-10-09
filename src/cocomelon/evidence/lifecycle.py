@@ -299,7 +299,9 @@ def _scoped_market_gap_stream(stream_id: str) -> bool:
 def _gap_stream_matches_market(stream_id: str, market: MarketId) -> bool:
     kind, _separator, name = stream_id.partition(":")
     if kind == "candle":
-        name = name.split(":", 1)[0]
+        # HIP-3 market names themselves contain "dex:coin"; strip only
+        # the *final* candle interval suffix, not the first colon.
+        name = name.rsplit(":", 1)[0]
     return name == market.wire_name
 
 
