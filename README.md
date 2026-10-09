@@ -22,7 +22,7 @@ The objective is not to maximize trade count or leverage. The objective is to di
 
 ## Read first
 
-2. [`docs/PROFITABILITY_PRIORITY.md`](docs/PROFITABILITY_PRIORITY.md) — **read first: current money-first mandate, evidence and next actions**.
+1. [`docs/PROFITABILITY_PRIORITY.md`](docs/PROFITABILITY_PRIORITY.md) — **read first: current money-first mandate, evidence and next actions**.
 2. [`AGENTS.md`](AGENTS.md) — rules every coding agent/chat must obey.
 3. [`docs/MASTER_SPEC.md`](docs/MASTER_SPEC.md) — canonical product and architecture specification.
 4. [`docs/DECISIONS.md`](docs/DECISIONS.md) — locked architectural/product decisions and rationale.
