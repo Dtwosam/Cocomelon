@@ -9,27 +9,14 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from cocomelon.config import MAINNET_API_URL, Settings
+from cocomelon.domain.candle_intervals import CANDLE_INTERVAL_MS
 from cocomelon.domain.market import MarketId
 from cocomelon.hyperliquid.rate_limit import RollingRateBudget
 
 JsonTransport = Callable[[str, dict[str, object], float], object]
 
-INTERVAL_MS = {
-    "1m": 60_000,
-    "3m": 180_000,
-    "5m": 300_000,
-    "15m": 900_000,
-    "30m": 1_800_000,
-    "1h": 3_600_000,
-    "2h": 7_200_000,
-    "4h": 14_400_000,
-    "8h": 28_800_000,
-    "12h": 43_200_000,
-    "1d": 86_400_000,
-    "3d": 259_200_000,
-    "1w": 604_800_000,
-    "1M": 2_592_000_000,
-}
+# Explicit public re-export: offline users still import the legacy constant.
+INTERVAL_MS = CANDLE_INTERVAL_MS
 
 
 class Budget(Protocol):

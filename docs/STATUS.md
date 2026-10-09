@@ -9,6 +9,14 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Reject ambiguous stream identities from chart-gap attribution — 2026-10-09
+
+After the market-specific witness isolation, a residual integrity hazard remained: a syntactically malformed but recognized-prefix topic such as `l2Book:BTC:bad:extra` or `candle:BTC:1m:extra` could be stored in a per-stream bucket that matches **no actual market**, causing a real source gap to disappear from every trade's chart. A missing `l2Book` or candle market label must instead remain **conservatively unknown across markets**, just like an unrecognized shared topic. Normalize per-asset topic identity through `MarketId.from_wire_name`, constrain candle intervals to the supported `CANDLE_INTERVAL_MS` values shared by the online client and the network-free offline evidence domain, and retain HIP-3 dex-qualified `dex:coin` namespaces. The shared constants preserve the historical replay prohibition on imports from online API clients.
+
+A durable-pipeline regression exercises a **real closed paper LONG lifecycle** with verified received mark records and each of: unrelated ETH book loss (not assigned to BTC), BTC book loss (assigned), malformed feed names, unrecognized candle intervals and unknown global topics (all assigned conservatively). A second test ensures malformed scope cannot enter the restart checkpoint's trusted stream mapping. No recovery, mark or after-cost cashflow is fabricated.
+
+This is an additive hardening of the source-provenance correctness work in #1057; existing unscoped legacy uncertainty stays unchanged. The frozen trend/rank paired trial still lacks enough independent after-cost closed trades for promotion, and the live execution pathway stays disabled.
+
 ### Source-scoped data-gap witnesses for future real-chart fidelity — 2026-10-09
 
 Following the authenticated **151-trade** chart audit and causality repair, inspection confirmed a second root cause of the pervasive incomplete chart cohorts: `BaselineReplayPipeline.on_record` had been collecting **every WebSocket data-gap interval into one global list across all subscribed markets**, and passing that aggregate into each trade's MFE/MAE analysis and persisted opening-to-close market-mark record. As a result, an `l2Book:ETH` source outage could contaminate an unrelated `BTC` trade's in-position chart and mark-excursion completeness even if the BTC stream had observed data.
