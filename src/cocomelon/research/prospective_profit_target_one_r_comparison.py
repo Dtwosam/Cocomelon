@@ -21,6 +21,9 @@ TRAILING_PROFIT_RULE_ID: Final = "trail_peak_after_1r_by_0_5r"
 NET_RESERVED_TRAILING_RULE_ID: Final = (
     "trail_peak_after_1r_by_0_5r_net_reserved_0_25r"
 )
+EARLY_RESERVED_TRAILING_RULE_ID: Final = (
+    "trail_peak_after_0_5r_by_0_4r_net_reserved_0_05r"
+)
 BREAKEVEN_RULE_ID: Final = "breakeven_after_0_5r"
 MIN_PAIRED_TRADES: Final = 40
 MIN_DIRECTION_TRADES: Final = 10
@@ -77,6 +80,14 @@ def _verified_outcomes(
             "trail_by_r": "0.5",
             "minimum_estimated_net_lock_r": "0.25",
         }]
+    elif rule_id == EARLY_RESERVED_TRAILING_RULE_ID:
+        expected_rules = [{
+            "rule_id": EARLY_RESERVED_TRAILING_RULE_ID,
+            "activate_at_r": "0.5",
+            "lock_at_r": "0.1",
+            "trail_by_r": "0.4",
+            "minimum_estimated_net_lock_r": "0.05",
+        }]
     elif rule_id == BREAKEVEN_RULE_ID:
         expected_rules = [{
             "rule_id": rule.rule_id,
@@ -110,6 +121,7 @@ def _verified_outcomes(
                 TAKE_PROFIT_ONE_HALF_RULE_ID,
                 TRAILING_PROFIT_RULE_ID,
                 NET_RESERVED_TRAILING_RULE_ID,
+                EARLY_RESERVED_TRAILING_RULE_ID,
             }
             and outcome.rule_id != rule_id
         ):
