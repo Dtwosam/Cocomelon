@@ -48,7 +48,7 @@ def test_long_trend_5m_workflow_uses_authenticated_durable_state() -> None:
     assert "continuous-paper-state-" in source
     assert "latest_evidence_eligible_with_state_artifact" in source
     assert (
-        "no authenticated durable paper state is available"
+        "no authenticated LONG-trend source within 512 MiB"
         in source
     )
     assert 'run.get("head_branch") != "main"' in source
