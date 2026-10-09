@@ -79,6 +79,7 @@ def _checkpoint(
         "data_gap_closed_count": 0,
         "data_gap_closed_duration_ms": 0,
         "data_gap_open_count": 0,
+        "gap_scope_lineage_clean": True,
         "last_record_available_at_ms": (
             PROSPECTIVE_MS + index * NINE_HOURS_MS
         ),
@@ -596,5 +597,54 @@ def test_paired_review_rejects_side_count_greater_than_total(
     with pytest.raises(
         LossContextPairedShadowReviewError,
         match="side counts exceed closed trades",
+    ):
+        append_review_checkpoint(tmp_path / "review.jsonl", row)
+
+
+def test_paired_review_legacy_flattened_gap_lineage_is_never_promotable(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "review.jsonl"
+    for index in range(1, 10):
+        row = _checkpoint(freeze, index=index)
+        # Rows written by paired shadow v1 had source-scoped gaps
+        # collapsed into an anonymous global union. Positive A/B
+        # economics cannot certify this historical experiment.
+        row.pop("gap_scope_lineage_clean")
+        append_review_checkpoint(ledger, row)
+    report = build_paired_shadow_review(freeze, ledger)
+    assert report["gap_scope_lineage_clean"] is False
+    assert report["ready_for_review"] is False
+    assert "unverifiable_legacy_gap_scope_lineage" in (
+        report["readiness_failures"]
+    )
+
+
+def test_paired_review_mixed_clean_and_legacy_gap_scope_stays_blocked(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "review.jsonl"
+    for index in range(1, 10):
+        row = _checkpoint(freeze, index=index)
+        if index == 1:
+            row["gap_scope_lineage_clean"] = False
+        append_review_checkpoint(ledger, row)
+    report = build_paired_shadow_review(freeze, ledger)
+    assert report["gap_scope_lineage_clean"] is False
+    assert report["ready_for_review"] is False
+    assert "unverifiable_legacy_gap_scope_lineage" in (
+        report["readiness_failures"]
+    )
+
+
+def test_paired_review_rejects_forged_gap_scope_boolean(
+    tmp_path: Path,
+) -> None:
+    row = _checkpoint(_freeze(), index=1)
+    row["gap_scope_lineage_clean"] = "true"
+    with pytest.raises(
+        LossContextPairedShadowReviewError, match="gap scope lineage witness",
     ):
         append_review_checkpoint(tmp_path / "review.jsonl", row)
