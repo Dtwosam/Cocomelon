@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
@@ -69,7 +69,7 @@ def _valid_complete_exit(
     )
 
 
-def _economics(
+def _economics_precise(
     rows: Sequence[
         tuple[TradeJournalEntry, ProfitLockExecutionOutcome, ProfitLockExecutionOutcome]
     ],
@@ -126,6 +126,16 @@ def _economics(
             for _, e, late_exit in rows
         ),
     }
+
+
+def _economics(
+    rows: Sequence[
+        tuple[TradeJournalEntry, ProfitLockExecutionOutcome, ProfitLockExecutionOutcome]
+    ],
+) -> dict[str, object]:
+    """Avoid 28-digit summation drift across forward cohorts and controls."""
+    with localcontext(prec=96):
+        return _economics_precise(rows)
 
 
 def prospective_early_vs_late_trailing(
