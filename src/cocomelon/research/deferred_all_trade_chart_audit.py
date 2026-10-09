@@ -178,6 +178,38 @@ def _path_gap_ms(path: dict[str, object], opened: int, closed: int) -> int | Non
     return total
 
 
+def _unresolved_gap_start_counts(
+    path: dict[str, object],
+    opened: int,
+    closed: int,
+) -> tuple[int, int]:
+    """Count distinct unclosed gap starts without implying any recovery.
+
+    A repeated gap start may appear alongside many closed intervals. An
+    unresolved start before entry and one during the position have very
+    different provenance; neither can be overwritten by later price marks.
+    """
+    raw = path.get("known_gap_intervals")
+    if not isinstance(raw, list):
+        raise AllPaperTradeChartAuditError("trade path missing gap witness")
+    unresolved: set[int] = set()
+    for item in raw:
+        if not isinstance(item, list) or len(item) != 2:
+            raise AllPaperTradeChartAuditError("invalid trade path gap")
+        started, ended = item
+        if (
+            type(started) is not int or started < 0
+            or (ended is not None and type(ended) is not int)
+            or (ended is not None and ended < started)
+        ):
+            raise AllPaperTradeChartAuditError("invalid trade path gap times")
+        if ended is None and started < closed:
+            unresolved.add(started)
+    before = sum(started < opened for started in unresolved)
+    during = sum(opened <= started < closed for started in unresolved)
+    return before, during
+
+
 def _all_paper_trade_chart_audit_precise(
     trades: Sequence[TradeJournalEntry],
     facts: EvaluationFactStore,
@@ -199,11 +231,17 @@ def _all_paper_trade_chart_audit_precise(
     gap_affected = 0
     empty_marks = 0
     silent_gap_affected = 0
+    unresolved_gap_affected = 0
+    unresolved_gap_before_entry_affected = 0
+    unresolved_gap_during_position_affected = 0
+    clean_mark_cadence_but_unresolved = 0
     cumulative_net = ZERO
     for trade in ordered:
         candidate = paths.get(trade.trade_id)
         compact: list[list[object]] = []
         gap_ms: int | None = None
+        pre_entry_unresolved = 0
+        during_position_unresolved = 0
         longest_unobserved_ms: int | None = None
         silent_intervals: list[list[int]] = []
         known_intervals: list[list[int]] = []
@@ -241,6 +279,29 @@ def _all_paper_trade_chart_audit_precise(
             known_intervals = _clipped_known_gap_intervals(
                 candidate, trade.opened_at_ms, trade.closed_at_ms
             )
+            pre_entry_unresolved, during_position_unresolved = (
+                _unresolved_gap_start_counts(
+                    candidate, trade.opened_at_ms, trade.closed_at_ms
+                )
+            )
+            if pre_entry_unresolved or during_position_unresolved:
+                unresolved_gap_affected += 1
+                if pre_entry_unresolved:
+                    unresolved_gap_before_entry_affected += 1
+                if during_position_unresolved:
+                    unresolved_gap_during_position_affected += 1
+                if (
+                    len(compact) >= 2
+                    and longest_unobserved_ms is not None
+                    and longest_unobserved_ms <= MAX_UNOBSERVED_MARK_INTERVAL_MS
+                ):
+                    clean_mark_cadence_but_unresolved += 1
+            if (gap_ms is None) != bool(
+                pre_entry_unresolved or during_position_unresolved
+            ):
+                raise AllPaperTradeChartAuditError(
+                    "unresolved known gap witness does not reconcile"
+                )
             complete = (
                 candidate.get("path_complete") is True
                 and len(compact) >= 2
@@ -292,6 +353,8 @@ def _all_paper_trade_chart_audit_precise(
             "chart_path_present": candidate is not None,
             "chart_coverage_complete": complete,
             "chart_known_gap_duration_ms": gap_ms,
+            "chart_unresolved_gap_starts_before_entry": pre_entry_unresolved,
+            "chart_unresolved_gap_starts_during_position": during_position_unresolved,
             "chart_known_gap_intervals_ms": known_intervals,
             "chart_longest_unobserved_mark_ms": longest_unobserved_ms,
             "chart_silent_gap_intervals_ms": silent_intervals,
@@ -310,6 +373,32 @@ def _all_paper_trade_chart_audit_precise(
     overall = economics["overall"]
     if not isinstance(overall, dict) or _dec(overall["net_pnl"], "net") != cumulative_net:
         raise AllPaperTradeChartAuditError("all-trade net PnL does not reconcile")
+    # Globally anchored chronological blocks; do not choose a favorable
+    # historical period separately for each setup or chart-quality cohort.
+    chronological_quartiles: list[dict[str, int]] = []
+    for quartile in range(4):
+        members = [
+            row for index, row in enumerate(rows)
+            if min(3, 4 * index // max(1, len(rows))) == quartile
+        ]
+        chronological_quartiles.append({
+            "trades": len(members),
+            "complete_chart_paths": sum(
+                row["chart_coverage_complete"] is True for row in members
+            ),
+            "unresolved_gap_paths": sum(
+                int(row["chart_unresolved_gap_starts_before_entry"])
+                + int(row["chart_unresolved_gap_starts_during_position"]) > 0
+                for row in members
+            ),
+            "unresolved_pre_entry_gap_paths": sum(
+                int(row["chart_unresolved_gap_starts_before_entry"]) > 0
+                for row in members
+            ),
+            "missing_chart_paths": sum(
+                row["chart_path_present"] is False for row in members
+            ),
+        })
     return {
         "definition": "entire_closed_paper_journal_with_observed_in_position_mark_charts_v1",
         "research_only": True,
@@ -334,6 +423,17 @@ def _all_paper_trade_chart_audit_precise(
         "path_gap_affected_trades": gap_affected,
         "path_without_marks_trades": empty_marks,
         "silent_mark_gap_affected_trades": silent_gap_affected,
+        "unresolved_open_gap_affected_trades": unresolved_gap_affected,
+        "unresolved_gap_before_entry_affected_trades": (
+            unresolved_gap_before_entry_affected
+        ),
+        "unresolved_gap_during_position_affected_trades": (
+            unresolved_gap_during_position_affected
+        ),
+        "clean_mark_cadence_but_unresolved_gap_trades": (
+            clean_mark_cadence_but_unresolved
+        ),
+        "chronological_chart_coverage_quartiles": chronological_quartiles,
         "maximum_unobserved_mark_interval_ms": MAX_UNOBSERVED_MARK_INTERVAL_MS,
         "economics": economics,
         "trades": rows,
@@ -391,6 +491,9 @@ function render(){svg.replaceChildren();const r=rows[Number(sel.value)||0];if(!r
  ' | Funding $'+r.funding_cash_pnl+
  '\\nPath complete: '+r.chart_coverage_complete+' | Marks: '+r.chart_mark_count+
  ' | Known data gap ms: '+r.chart_known_gap_duration_ms+
+ ' | Unresolved known gaps before/during entry: '+
+ r.chart_unresolved_gap_starts_before_entry+' / '+
+ r.chart_unresolved_gap_starts_during_position+
  ' | Longest unobserved price ms: '+r.chart_longest_unobserved_mark_ms+
  ' | Peak favorable R: '+r.mfe_r+' | Peak adverse R: '+r.mae_r;
  if (r.entry_context) meta.textContent +=
