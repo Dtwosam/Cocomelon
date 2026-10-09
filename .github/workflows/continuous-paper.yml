@@ -1271,6 +1271,13 @@ jobs:
               "- Named unresolved source streams eligible for investigation: "
               f"{report['named_unresolved_source_count']}"
           )
+          print(
+              "- Authenticated after-handoff named source event witnesses / "
+              "checkpoint-confirmed closures: "
+              f"{report['named_recovery_witness_ledger_present']} / "
+              f"{report['named_recovery_checkpoint_confirmed']} across "
+              f"{report['named_recovery_witness_sources']} source streams"
+          )
           print("- Top named sources (legacy cannot be attributed retroactively):")
           for item in report["top_named_repair_sources"]:
               print(
@@ -1299,7 +1306,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: continuous-paper-feed-gap-source-audit-${{ github.run_id }}-${{ github.run_attempt }}
-          path: continuous-paper-state/deferred-feed-gap-source-audit.json
+          path: |
+            continuous-paper-state/deferred-feed-gap-source-audit.json
+            continuous-paper-state/named-gap-recovery-witnesses.jsonl
           if-no-files-found: error
           retention-days: 90
           compression-level: 6

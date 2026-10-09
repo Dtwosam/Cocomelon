@@ -52,7 +52,11 @@ from cocomelon.evidence.recording import (
     market_snapshot_record_event,
 )
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
-from cocomelon.evidence.restored_gap_recovery import RestoredNamedGapRecovery
+from cocomelon.evidence.restored_gap_recovery import (
+    WITNESS_FILENAME,
+    RestoredNamedGapRecovery,
+    append_restored_named_gap_witness,
+)
 from cocomelon.execution.accounting import PaperPosition
 from cocomelon.execution.funding import (
     FundingAccrual,
@@ -10530,6 +10534,15 @@ async def run_continuous_paper_session(
                     event,
                     observed_at_ms=utc_now_ms(),
                     gap_sink=lambda gap: pump.process(_record_from_gap(gap)),
+                    witness_sink=lambda witness, gap, checkpoint_ms: (
+                        asyncio.to_thread(
+                            append_restored_named_gap_witness,
+                            root / WITNESS_FILENAME,
+                            event=witness,
+                            gap=gap,
+                            checkpoint_ms=checkpoint_ms,
+                        )
+                    ),
                 )
 
             async def gap_sink(gap: DataGap) -> None:

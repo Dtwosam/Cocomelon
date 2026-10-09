@@ -298,3 +298,121 @@ def test_named_repair_priority_can_exist_with_no_legacy_uncertainty() -> None:
         item["source_identity_identifiable"]
         for item in report["named_source_repair_priority"]
     )
+
+
+def _fresh_named_witness() -> dict[str, object]:
+    return {
+        "definition": "post_handoff_named_ws_recovery_witness_v1",
+        "checkpoint_last_available_at_ms": 500,
+        "stream_id": "l2Book:BTC",
+        "gap_start_ms": 200,
+        "witness_receive_ms": 650,
+        "witness_exchange_ms": 640,
+        "witness_event_key": "l2Book:BTC:650",
+        "witness_event_source": "hyperliquid-mainnet-ws",
+        "observed_event_before_gap_closure": True,
+        "independently_verified_checkpoint_closure": False,
+        "historical_price_reconstruction": False,
+        "research_only": True,
+    }
+
+
+def test_post_handoff_named_witness_needs_persisted_closed_gap() -> None:
+    state = _checkpoint()
+    state["known_gap_intervals_by_stream"] = {
+        "l2Book:BTC": [[200, 650]],
+        "candle:ETH:1m": [[400, None]],
+    }
+    report = assess_feed_gap_source_debt(
+        state, _charts(), [_fresh_named_witness()]
+    )
+    assert report["named_recovery_witness_ledger_present"] is True
+    assert report["named_recovery_witness_records"] == 1
+    assert report["named_recovery_checkpoint_confirmed"] == 1
+    assert report["named_recovery_witness_sources"] == 1
+    assert report["legacy_unattributable_open_gap_count"] == 1
+    assert report["current_checkpoint_not_retrospective_chart_recovery"]
+
+    # A live witness alone cannot close a still-open interval.
+    unclosed = _checkpoint()
+    with pytest.raises(
+        DeferredFeedGapSourceAuditError, match="original gap remains unresolved"
+    ):
+        assess_feed_gap_source_debt(
+            unclosed, _charts(), [_fresh_named_witness()]
+        )
+
+
+def test_overlapping_old_closed_interval_cannot_hide_unresolved_start() -> None:
+    state = _checkpoint()
+    # An old closed outage spans the new witness, but the original exact
+    # checkpoint gap start is still unresolved. This is no recovery.
+    state["known_gap_intervals_by_stream"] = {
+        "l2Book:BTC": [[100, 700], [200, None]]
+    }
+    with pytest.raises(
+        DeferredFeedGapSourceAuditError, match="original gap remains unresolved"
+    ):
+        assess_feed_gap_source_debt(
+            state, _charts(), [_fresh_named_witness()]
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("stream_id", "l2Book:SOL"),
+        ("witness_event_source", "hyperliquid-mainnet-rest"),
+        ("witness_receive_ms", 1001),
+        ("witness_exchange_ms", None),
+        ("checkpoint_last_available_at_ms", 700),
+        ("gap_start_ms", 100),
+        ("historical_price_reconstruction", True),
+        ("independently_verified_checkpoint_closure", True),
+    ],
+)
+def test_forged_or_uncertified_named_recovery_receipts_fail_closed(
+    field: str, invalid: object,
+) -> None:
+    state = _checkpoint()
+    state["known_gap_intervals_by_stream"] = {
+        "l2Book:BTC": [[200, 650]],
+    }
+    witness = _fresh_named_witness()
+    witness[field] = invalid
+    with pytest.raises(DeferredFeedGapSourceAuditError):
+        assess_feed_gap_source_debt(state, _charts(), [witness])
+
+
+def test_writer_requires_complete_fsynced_witness_rows(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path
+    state = _checkpoint()
+    state["known_gap_intervals_by_stream"] = {
+        "l2Book:BTC": [[200, 650]]
+    }
+    (root / "runtime-state.json").write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+    (root / "all-paper-trade-chart-audit.json").write_text(
+        json.dumps(_charts()), encoding="utf-8"
+    )
+    (root / "session-summary.json").write_text(
+        json.dumps({"exit_reason": "upgrade_requested"}), encoding="utf-8"
+    )
+    witness_path = root / "named-gap-recovery-witnesses.jsonl"
+    witness_path.write_text(
+        json.dumps(_fresh_named_witness()) + "\n", encoding="utf-8"
+    )
+    report_path = write_deferred_feed_gap_source_audit(root)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["named_recovery_checkpoint_confirmed"] == 1
+
+    witness_path.write_text(
+        json.dumps(_fresh_named_witness()), encoding="utf-8"
+    )
+    with pytest.raises(
+        DeferredFeedGapSourceAuditError, match="incomplete trailing row"
+    ):
+        write_deferred_feed_gap_source_audit(root)

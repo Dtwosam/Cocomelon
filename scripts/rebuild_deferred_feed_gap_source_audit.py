@@ -41,6 +41,15 @@ def main() -> None:
             report["legacy_lineage_blocks_chart_source_certification"]
         ),
         "named_unresolved_source_count": report["named_unresolved_source_count"],
+        "named_recovery_witness_ledger_present": (
+            report["named_recovery_witness_ledger_present"]
+        ),
+        "named_recovery_checkpoint_confirmed": (
+            report["named_recovery_checkpoint_confirmed"]
+        ),
+        "named_recovery_witness_sources": (
+            report["named_recovery_witness_sources"]
+        ),
         "top_named_repair_sources": [
             {
                 "scope": item["scope"],

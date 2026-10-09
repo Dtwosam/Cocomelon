@@ -2013,4 +2013,5 @@ def test_deferred_feed_source_provenance_runs_only_after_safe_chart_audit() -> N
     assert "steps.deferred_feed_gap_source_audit.outcome == 'success'" in source
     assert "scripts/rebuild_deferred_feed_gap_source_audit.py" in source
     assert "continuous-paper-feed-gap-source-audit-" in source
-    assert "path: continuous-paper-state/deferred-feed-gap-source-audit.json" in source
+    assert "continuous-paper-state/deferred-feed-gap-source-audit.json" in source
+    assert "continuous-paper-state/named-gap-recovery-witnesses.jsonl" in source
