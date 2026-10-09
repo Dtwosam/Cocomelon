@@ -181,7 +181,7 @@ def closed_trade_entry_exit_context(
         for dimension, groups in dimensions.items()
     }
     for dimension, groups in by_dimension.items():
-        count = sum(int(group["trades"]) for group in groups.values())
+        count = sum(int(str(group["trades"])) for group in groups.values())
         net = sum((Decimal(str(group["net_pnl"])) for group in groups.values()), ZERO)
         if count != len(ordered) or net != Decimal(str(overall["net_pnl"])):
             raise ClosedTradeEntryExitContextError(
