@@ -724,12 +724,24 @@ def build_paired_shadow_review(
             short_count = end[1] - start[1]
             long_net = end[2] - start[2]
             short_net = end[3] - start[3]
+            # Older checkpoint offsets can contain legitimately unclassified
+            # pre-upgrade trades. Only new trades after the same frozen
+            # evidence anchor may earn directional promotion credit.
+            forward_closed = (
+                _lane_closed_trades(latest, lane)
+                - _lane_closed_trades(anchor, lane)
+            )
+            attributed_closed = long_count + short_count
             side_performance[lane] = {
                 "long_closed_trades": long_count,
                 "short_closed_trades": short_count,
+                "attributed_forward_closed_trades": attributed_closed,
+                "total_forward_closed_trades": forward_closed,
                 "long_realized_net_pnl": str(long_net),
                 "short_realized_net_pnl": str(short_net),
             }
+            if attributed_closed != forward_closed:
+                reasons.append(f"{lane}_incomplete_forward_direction_attribution")
             if long_count < MIN_CLOSED_TRADES_PER_DIRECTION:
                 reasons.append(f"{lane}_insufficient_long_closed_trades")
             if short_count < MIN_CLOSED_TRADES_PER_DIRECTION:
@@ -787,21 +799,31 @@ def build_paired_shadow_review(
             - _lane_closed_trades(anchor, "candidate")
         )
         candidate_lane = _mapping(latest.get("candidate"), "candidate")
-        candidate_total_pnl = _decimal(
-            candidate_lane.get("total_account_pnl"),
-            "candidate.total_account_pnl",
+        anchor_candidate_lane = _mapping(
+            anchor.get("candidate"), "anchor.candidate"
         )
-        candidate_realized_net = _decimal(
-            candidate_lane.get("realized_net_pnl"),
-            "candidate.realized_net_pnl",
+        # All denominators exclude the first eligible checkpoint. Test
+        # absolute after-cost account edge and A/B advantage on precisely
+        # that same forward interval, not cumulative pre-anchor gains.
+        candidate_total_pnl = (
+            _decimal(candidate_lane.get("total_account_pnl"),
+                     "candidate.total_account_pnl")
+            - _decimal(anchor_candidate_lane.get("total_account_pnl"),
+                       "anchor.candidate.total_account_pnl")
         )
-        total_advantage = _metric(
-            latest,
-            "candidate_minus_baseline_total_account_pnl",
+        candidate_realized_net = (
+            _decimal(candidate_lane.get("realized_net_pnl"),
+                     "candidate.realized_net_pnl")
+            - _decimal(anchor_candidate_lane.get("realized_net_pnl"),
+                       "anchor.candidate.realized_net_pnl")
         )
-        realized_advantage = _metric(
-            latest,
-            "candidate_minus_baseline_realized_net_pnl",
+        total_advantage = (
+            _metric(latest, "candidate_minus_baseline_total_account_pnl")
+            - _metric(anchor, "candidate_minus_baseline_total_account_pnl")
+        )
+        realized_advantage = (
+            _metric(latest, "candidate_minus_baseline_realized_net_pnl")
+            - _metric(anchor, "candidate_minus_baseline_realized_net_pnl")
         )
         drawdown_delta = _metric(
             latest,
@@ -876,6 +898,27 @@ def build_paired_shadow_review(
         "candidate_closed_trade_count": candidate_closed,
         "candidate_total_account_pnl": str(candidate_total_pnl),
         "candidate_realized_net_pnl": str(candidate_realized_net),
+        "candidate_account_economics_window": "after_first_eligible_checkpoint",
+        "candidate_cumulative_total_account_pnl": (
+            None if latest is None else str(
+                _decimal(
+                    _mapping(latest.get("candidate"), "candidate").get(
+                        "total_account_pnl"
+                    ),
+                    "candidate.total_account_pnl",
+                )
+            )
+        ),
+        "candidate_cumulative_realized_net_pnl": (
+            None if latest is None else str(
+                _decimal(
+                    _mapping(latest.get("candidate"), "candidate").get(
+                        "realized_net_pnl"
+                    ),
+                    "candidate.realized_net_pnl",
+                )
+            )
+        ),
         "candidate_minus_baseline_total_account_pnl": str(
             total_advantage
         ),
@@ -910,6 +953,8 @@ def build_paired_shadow_review(
             "min_markets_per_block": MIN_MARKETS_PER_BLOCK,
             "positive_candidate_absolute_pnl_required": True,
             "positive_candidate_advantage_required": True,
+            "complete_attribution_for_forward_closed_trades_required": True,
+            "account_profit_and_advantage_measured_after_anchor": True,
             "candidate_drawdown_not_worse_required": True,
             "positive_advantage_in_every_block_required": True,
         },
