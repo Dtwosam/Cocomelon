@@ -1286,6 +1286,14 @@ jobs:
               f"{report['named_open_starts_in_shared_feeds']}"
           )
           print(
+              "- Starts within 5s of final checkpoint (still unresolved): "
+              f"{report['checkpoint_adjacent_open_gaps_by_scope']}"
+          )
+          print(
+              "- Older unresolved sources by scope: "
+              f"{report['older_open_gaps_by_scope']}"
+          )
+          print(
               "- Authenticated after-handoff named source event witnesses / "
               "checkpoint-confirmed closures: "
               f"{report['named_recovery_witness_ledger_present']} / "
