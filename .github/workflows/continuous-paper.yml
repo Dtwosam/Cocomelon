@@ -3055,9 +3055,21 @@ jobs:
             echo "deferred capacity rebuild not needed for exit reason: $exit_reason"
             exit 0
           fi
-          python scripts/rebuild_deferred_full_stack_capacity_reflow.py \
+          # This is NONCRITICAL research after the exact next paper worker
+          # already launched. Never let a runaway capacity reflow own a
+          # GitHub runner for hours or delay other continuity/CI checks.
+          # Any timeout must be visibly unsuccessful, not a valid trial.
+          set +e
+          timeout --signal=TERM --kill-after=30s 1800s \
+            python scripts/rebuild_deferred_full_stack_capacity_reflow.py \
             "$STATE_ROOT" \
             | tee /tmp/deferred-capacity-reflow-rebuild.json
+          rebuild_status=("${PIPESTATUS[@]}")
+          set -e
+          if (( rebuild_status[0] != 0 || rebuild_status[1] != 0 )); then
+            echo "::warning::Optional deferred capacity reflow failed or exceeded 30-minute limit; no modeled economics certified."
+            exit 1
+          fi
           test -s \
             "$STATE_ROOT/prospective-full-stack-capacity-reflow-summary.json"
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
