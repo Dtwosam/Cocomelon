@@ -30,6 +30,8 @@ from cocomelon.research.learning_feature_snapshots import (
 REPORT_FILENAME: Final = "all-paper-trade-chart-audit.json"
 CHART_FILENAME: Final = "all-paper-trade-charts.html"
 MAX_MARKS_PER_TRADE: Final = 144
+# A missing feed heartbeat may never have produced an explicit gap event.
+MAX_UNOBSERVED_MARK_INTERVAL_MS: Final = 300_000
 ZERO: Final = Decimal("0")
 _HANDOFF_REASONS: Final = frozenset({"duration_elapsed", "upgrade_requested"})
 
@@ -82,6 +84,72 @@ def _compact_marks(marks: object) -> list[list[object]]:
     return [[timestamp, str(px)] for timestamp, px in selected]
 
 
+def _unobserved_mark_intervals(
+    marks: object,
+    opened: int,
+    closed: int,
+) -> tuple[int | None, list[list[int]]]:
+    """Audit the *full* mark sequence, not the 144-point display sample.
+
+    Account for absent evidence at both ends of the position as well as
+    silent intra-position periods without an explicit feed-health gap.
+    This is an evidence-quality limit, never a simulated exit price.
+    """
+    if not isinstance(marks, list):
+        raise AllPaperTradeChartAuditError("trade marks must be an array")
+    if not marks:
+        return None, []
+    previous = opened
+    longest = 0
+    silent: list[list[int]] = []
+    for mark in marks:
+        if not isinstance(mark, dict):
+            raise AllPaperTradeChartAuditError("trade mark invalid")
+        timestamp = mark.get("available_at_ms")
+        if (
+            type(timestamp) is not int
+            or timestamp < previous
+            or timestamp > closed
+        ):
+            raise AllPaperTradeChartAuditError(
+                "trade marks out of order or outside position lifetime"
+            )
+        elapsed = timestamp - previous
+        longest = max(longest, elapsed)
+        if elapsed > MAX_UNOBSERVED_MARK_INTERVAL_MS:
+            silent.append([previous, timestamp])
+        previous = timestamp
+    elapsed = closed - previous
+    longest = max(longest, elapsed)
+    if elapsed > MAX_UNOBSERVED_MARK_INTERVAL_MS:
+        silent.append([previous, closed])
+    return longest, silent
+
+
+def _clipped_known_gap_intervals(
+    path: dict[str, object],
+    opened: int,
+    closed: int,
+) -> list[list[int]]:
+    """Expose only actual in-position gaps, including unresolved open gaps."""
+    intervals = path.get("known_gap_intervals")
+    if not isinstance(intervals, list):
+        raise AllPaperTradeChartAuditError("trade path missing gap witness")
+    clipped: list[list[int]] = []
+    for item in intervals:
+        if not isinstance(item, list) or len(item) != 2:
+            raise AllPaperTradeChartAuditError("invalid trade path gap")
+        a, b = item
+        if type(a) is not int or (b is not None and type(b) is not int):
+            raise AllPaperTradeChartAuditError("invalid trade path gap times")
+        if b is not None and b < a:
+            raise AllPaperTradeChartAuditError("reversed trade path gap")
+        end = closed if b is None else b
+        if a < closed and end > opened:
+            clipped.append([max(a, opened), min(end, closed)])
+    return sorted(clipped)
+
+
 def _path_gap_ms(path: dict[str, object], opened: int, closed: int) -> int | None:
     intervals = path.get("known_gap_intervals")
     if not isinstance(intervals, list):
@@ -130,11 +198,15 @@ def all_paper_trade_chart_audit(
     complete_path_count = 0
     gap_affected = 0
     empty_marks = 0
+    silent_gap_affected = 0
     cumulative_net = ZERO
     for trade in ordered:
         candidate = paths.get(trade.trade_id)
         compact: list[list[object]] = []
         gap_ms: int | None = None
+        longest_unobserved_ms: int | None = None
+        silent_intervals: list[list[int]] = []
+        known_intervals: list[list[int]] = []
         complete = False
         if candidate is not None:
             expected = {
@@ -156,15 +228,28 @@ def all_paper_trade_chart_audit(
                     raise AllPaperTradeChartAuditError(
                         f"trade/chart lifecycle mismatch: {field}"
                     )
-            compact = _compact_marks(candidate.get("marks"))
+            raw_marks = candidate.get("marks")
+            compact = _compact_marks(raw_marks)
+            longest_unobserved_ms, silent_intervals = (
+                _unobserved_mark_intervals(
+                    raw_marks, trade.opened_at_ms, trade.closed_at_ms
+                )
+            )
             gap_ms = _path_gap_ms(
+                candidate, trade.opened_at_ms, trade.closed_at_ms
+            )
+            known_intervals = _clipped_known_gap_intervals(
                 candidate, trade.opened_at_ms, trade.closed_at_ms
             )
             complete = (
                 candidate.get("path_complete") is True
-                and bool(compact)
+                and len(compact) >= 2
                 and gap_ms == 0
+                and longest_unobserved_ms is not None
+                and longest_unobserved_ms <= MAX_UNOBSERVED_MARK_INTERVAL_MS
             )
+            if silent_intervals:
+                silent_gap_affected += 1
             if gap_ms is None or gap_ms > 0:
                 gap_affected += 1
             if not compact:
@@ -207,6 +292,9 @@ def all_paper_trade_chart_audit(
             "chart_path_present": candidate is not None,
             "chart_coverage_complete": complete,
             "chart_known_gap_duration_ms": gap_ms,
+            "chart_known_gap_intervals_ms": known_intervals,
+            "chart_longest_unobserved_mark_ms": longest_unobserved_ms,
+            "chart_silent_gap_intervals_ms": silent_intervals,
             "chart_mark_count": (
                 0 if candidate is None
                 else len(candidate["marks"]) if isinstance(candidate["marks"], list)
@@ -245,6 +333,8 @@ def all_paper_trade_chart_audit(
         ),
         "path_gap_affected_trades": gap_affected,
         "path_without_marks_trades": empty_marks,
+        "silent_mark_gap_affected_trades": silent_gap_affected,
+        "maximum_unobserved_mark_interval_ms": MAX_UNOBSERVED_MARK_INTERVAL_MS,
         "economics": economics,
         "trades": rows,
     }
@@ -268,7 +358,8 @@ h1{font-size:26px}select{background:#1e293b;color:#f8fafc;padding:10px;max-width
 <h1>Cocomelon · All """ + headline + """ closed paper trades</h1>
 <p class="note">Historical research only. Price lines are sampled, recorded
 IN-POSITION mark prices—not OHLC candles or executable limit fills.
-Incomplete or missing chart evidence is disclosed, never filled in.</p>
+Missing data, including silent gaps longer than five minutes, is shown as gaps,
+never as interpolated price movement.</p>
 <label for="trade">Trade</label> <select id="trade"></select>
 <p id="meta"></p><svg id="chart" viewBox="0 0 1000 420"
  role="img" aria-label="Recorded mark price chart"></svg>
@@ -289,6 +380,7 @@ function render(){svg.replaceChildren();const r=rows[Number(sel.value)||0];if(!r
  ' | Funding $'+r.funding_cash_pnl+
  '\\nPath complete: '+r.chart_coverage_complete+' | Marks: '+r.chart_mark_count+
  ' | Known data gap ms: '+r.chart_known_gap_duration_ms+
+ ' | Longest unobserved price ms: '+r.chart_longest_unobserved_mark_ms+
  ' | Peak favorable R: '+r.mfe_r+' | Peak adverse R: '+r.mae_r;
  if (r.entry_context) meta.textContent +=
    ' | Entry strategy: '+r.entry_context.lead_strategy+
@@ -299,16 +391,30 @@ function render(){svg.replaceChildren();const r=rows[Number(sel.value)||0];if(!r
  const p=r.chart_mark_samples.map(a=>[Number(a[0]),Number(a[1])]);
  const levels=[Number(r.entry_price),Number(r.initial_stop),Number(r.exit_price)];
  const prices=p.map(a=>a[1]).concat(levels);const lo=Math.min(...prices),hi=Math.max(...prices);
- const span=Math.max(hi-lo,Math.abs(hi)*0.000001);const x0=p.length?p[0][0]:r.opened_at_ms;
- const x1=p.length?p[p.length-1][0]:r.closed_at_ms;
+ const span=Math.max(hi-lo,Math.abs(hi)*0.000001);
+ const x0=Number(r.opened_at_ms),x1=Number(r.closed_at_ms);
  const x=t=>40+920*(t-x0)/Math.max(1,x1-x0);
  const y=v=>385-335*(v-lo+span*0.08)/(span*1.16);
  const colors=['#60a5fa','#f87171','#f8fafc'];
  levels.forEach((v,i)=>{S('line',{x1:40,x2:960,y1:y(v),y2:y(v),
  stroke:colors[i],'stroke-dasharray':'6 5','stroke-width':1.6});});
- if(p.length) S('polyline',{points:p.map(a=>x(a[0])+','+y(a[1])).join(' '),
- fill:'none',stroke:'#4ade80','stroke-width':2});
- else {const n=S('text',{x:65,y:80,fill:'#fca5a5'});
+ const gaps=r.chart_known_gap_intervals_ms.concat(r.chart_silent_gap_intervals_ms);
+ gaps.forEach(g=>S('rect',{x:x(g[0]),y:40,width:Math.max(0,x(g[1])-x(g[0])),
+ height:350,fill:'#fca5a5','fill-opacity':0.15}));
+ const crossesGap=(a,b)=>gaps.some(g=>g[0]<b&&g[1]>a);
+ let segment=[];
+ function drawSegment(){
+   if(segment.length>1) S('polyline',{points:segment.map(a=>x(a[0])+','+y(a[1])).join(' '),
+     fill:'none',stroke:'#4ade80','stroke-width':2});
+   else if(segment.length===1) S('circle',{cx:x(segment[0][0]),
+     cy:y(segment[0][1]),r:3,fill:'#4ade80'});
+ }
+ p.forEach((mark,i)=>{
+   if(i>0&&crossesGap(p[i-1][0],mark[0])){drawSegment();segment=[];}
+   segment.push(mark);
+ });
+ drawSegment();
+ if(!p.length){const n=S('text',{x:65,y:80,fill:'#fca5a5'});
  n.textContent='No recorded chart path for this trade';}
 }sel.addEventListener('change',render);render();</script></html>
 """
