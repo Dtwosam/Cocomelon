@@ -44,6 +44,9 @@ def main() -> None:
         "market_selection_available_at_handoff": (
             report["market_selection_available_at_handoff"]
         ),
+        "market_selection_checkpoint_attested": (
+            report["market_selection_checkpoint_attested"]
+        ),
         "selected_market_count_at_handoff": (
             report["selected_market_count_at_handoff"]
         ),

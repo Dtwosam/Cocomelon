@@ -1272,8 +1272,10 @@ jobs:
               f"{report['named_unresolved_source_count']}"
           )
           print(
-              "- Watchlist selection observed / selected markets: "
+              "- Watchlist selection observed / checkpoint attested / "
+              "selected markets: "
               f"{report['market_selection_available_at_handoff']} / "
+              f"{report['market_selection_checkpoint_attested']} / "
               f"{report['selected_market_count_at_handoff']}"
           )
           print(
