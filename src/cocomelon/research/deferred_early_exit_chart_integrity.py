@@ -158,6 +158,33 @@ def assess_early_exit_chart_integrity(
     frozen_ms = _int(
         exits.get("common_scoring_start_ms"), "frozen paired exit start"
     )
+    # A clean chart on only the convenient matched IOC outcomes is not
+    # evidence that the *entire* frozen original-paper population was clean.
+    # Reconstruct the denominator from the independent complete journal.
+    forward_rows: dict[str, dict[str, object]] = {}
+    forward_net_pnl = ZERO
+    forward_net_r = ZERO
+    for trade_id, item in rows.items():
+        opened_ms = _int(item.get("opened_at_ms"), "original trade opening")
+        closed_ms = _int(item.get("closed_at_ms"), "original trade close")
+        if closed_ms < opened_ms:
+            raise DeferredEarlyExitChartIntegrityError(
+                "original journal trade lifecycle is invalid"
+            )
+        if opened_ms < frozen_ms:
+            continue
+        forward_rows[trade_id] = item
+        forward_net_pnl += _dec(item.get("net_pnl"), "forward original net PnL")
+        forward_net_r += _dec(item.get("net_r"), "forward original net R")
+    claimed_forward = _int(
+        exits.get("future_original_closed_trades"),
+        "frozen full original-paper forward trade count",
+    )
+    if claimed_forward != len(forward_rows):
+        raise DeferredEarlyExitChartIntegrityError(
+            "paired exit forward original sample does not reconcile to journal"
+        )
+    unmatched_forward = sorted(set(forward_rows) - set(selected))
     overall = _object(exits.get("overall"), "paired exit economics")
     side = _object(exits.get("by_direction"), "paired exit sides")
     if _int(overall.get("matched_trades"), "economic matches") != matches:
@@ -239,7 +266,12 @@ def assess_early_exit_chart_integrity(
             raise DeferredEarlyExitChartIntegrityError(
                 f"{direction} paired exit journal economics mismatch"
             )
-    all_clean = len(clean) == matches
+    all_clean = (
+        bool(matches)
+        and not unmatched_forward
+        and len(clean) == matches
+        and matches == len(forward_rows)
+    )
     return {
         "definition": "forward_matched_exit_chart_coverage_gate_v1",
         "research_only": True,
@@ -249,14 +281,18 @@ def assess_early_exit_chart_integrity(
         "changes_risk_limits": False,
         "independent_portfolio_trial": False,
         "paired_start_ms": frozen_ms,
+        "total_original_forward_trades": len(forward_rows),
         "matched_forward_trades": matches,
+        "unmatched_original_forward_trade_ids": unmatched_forward,
         "verified_clean_chart_trades": len(clean),
         "missing_chart_trade_ids": sorted(missing),
         "known_data_gap_trade_ids": sorted(gapped),
         "incomplete_chart_trade_ids": sorted(incomplete),
         "chart_integrity_complete": all_clean,
-        "unfiltered_original_net_pnl": str(total_pnl),
-        "unfiltered_original_net_r": str(total_r),
+        "unfiltered_original_net_pnl": str(forward_net_pnl),
+        "unfiltered_original_net_r": str(forward_net_r),
+        "matched_original_net_pnl": str(total_pnl),
+        "matched_original_net_r": str(total_r),
         "original_exit_economic_screen_passes": (
             exits.get("economic_screen_passes") is True
         ),
@@ -265,7 +301,8 @@ def assess_early_exit_chart_integrity(
         ),
         "ready_for_review": False,
         "caution": (
-            "All matched trades remain in the forward after-cost comparison. "
+            "Full original forward cohort is retained, including unmatched " 
+            "IOC outcomes; subset-only charts cannot claim completeness. "
             "No profits are re-estimated from mark extrema. Missing, incomplete "
             "or gapped charts disqualify claims of clean execution comparisons. "
             "Even all-clean matched-exit research does not replay portfolio "
