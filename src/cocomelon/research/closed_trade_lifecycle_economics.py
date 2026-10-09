@@ -241,7 +241,7 @@ def _closed_trade_lifecycle_economics_precise(
 
 def closed_trade_lifecycle_economics(
     trades: Sequence[TradeJournalEntry],
-        fact_store: EvaluationFactStore,
+    fact_store: EvaluationFactStore,
 ) -> dict[str, object]:
     """Aggregate unrounded journal decimals before checking cohort parity."""
     with localcontext(prec=96):
