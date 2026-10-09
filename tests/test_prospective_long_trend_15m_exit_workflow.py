@@ -131,3 +131,42 @@ def test_long_trend_15m_freeze_timestamp_is_literal_and_auditable() -> None:
         '"weekly_drawdown_only_reopened_pure_long_trend"'
         in source
     )
+
+
+def test_15m_prefers_authenticated_compact_source_with_exact_legacy_fallback() -> None:
+    source = _source()
+    resolver = source.split(
+        "      - name: Resolve exact artifact-bearing paper state", 1
+    )[1].split("      - name: Download authenticated durable state", 1)[0]
+    download = source.split(
+        "      - name: Download authenticated durable state", 1
+    )[1].split("      - name: Evaluate exact LONG trend 15m candidate", 1)[0]
+    compact = "continuous-paper-long-trend-exact-source-"
+    legacy = "continuous-paper-state-"
+
+    assert compact in resolver
+    assert legacy in resolver
+    assert resolver.index('os.environ["ARTIFACT_COMPACT_NAME"]') < (
+        resolver.index('os.environ["ARTIFACT_DURABLE_NAME"]')
+    )
+    assert "len(matches) > 1" in resolver
+    assert 'item.get("expired") is False' in resolver
+    assert 'run.get("run_attempt")' in resolver
+    assert "ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}" in download
+    assert "sha256sum" in download
+    assert download.index("state artifact digest mismatch") < (
+        download.index('if [[ "$ARTIFACT_NAME" ==')
+    )
+    assert "continuous-paper-long-trend-exact-source.tar" in download
+    assert 'tar -tf "$compact_tar"' in download
+    assert 'tar -xf "$compact_tar"' in download
+    assert 'tar -xf "$tar_path"' in download
+    for required in (
+        "prospective-full-stack-forward-markout-summary.json",
+        "prospective-long-trend-execution-shadow-source.json",
+        "opening-opportunities/records",
+        "opening-opportunity-exit-books/records",
+        "replacement-funding-boundaries/records",
+    ):
+        assert required in download
+    assert "actions: write" not in source

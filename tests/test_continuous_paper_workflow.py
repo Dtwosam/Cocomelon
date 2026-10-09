@@ -2102,3 +2102,44 @@ def test_manual_recovery_prefers_latest_verified_fast_or_durable_source() -> Non
     assert "ARTIFACT_MEMBER" in restore
     assert 'if [ "$ARTIFACT_MEMBER" = "continuous-paper-resume.tar.zst" ]; then' in restore
     assert 'bash scripts/restore_continuous_paper_state.sh' in restore
+
+
+
+def test_compact_long_trend_exact_research_source_is_isolated_after_paper_handoff() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    successor = source.index("- name: Queue exact successor from fast resume")
+    manifest = source.index("- name: Verify compact exact LONG trend research source")
+    pack = source.index("- name: Pack compact exact LONG trend research source")
+    upload = source.index("- name: Upload compact exact LONG trend research source")
+    durable = source.index("- name: Pack durable continuous paper state")
+    fallback = source.index("- name: Queue fallback exact successor continuous paper worker")
+    chart_audit = source.index(
+        "- name: Audit all closed paper trades and recorded entry-to-exit charts"
+    )
+    assert successor < durable < fallback < manifest < pack < upload < chart_audit
+    selection = source[manifest:chart_audit]
+    assert 'continue-on-error: true' in selection
+    assert "steps.compact_long_trend_source_manifest.outcome == 'success'" in selection
+    assert "steps.fast_resume_dispatch.outcome == 'success'" in selection
+    assert "steps.fallback_resume_dispatch.outcome == 'success'" in selection
+    assert "steps.compact_long_trend_source_pack.outcome == 'success'" in selection
+    assert "tar -cf continuous-paper-long-trend-exact-source.tar" in selection
+    assert "tar -tf continuous-paper-long-trend-exact-source.tar" in selection
+    assert "path: continuous-paper-long-trend-exact-source.tar" in selection
+    assert (
+        "continuous-paper-long-trend-exact-source-"
+        "${{ github.run_id }}-${{ github.run_attempt }}"
+    ) in selection
+    assert "actions/upload-artifact@v7" in selection
+    for name in (
+        "prospective-full-stack-forward-markout-summary.json",
+        "prospective-long-trend-execution-shadow-source.json",
+        "opening-opportunities/records",
+        "opening-opportunity-exit-books/records",
+        "replacement-funding-boundaries/records",
+    ):
+        assert name in selection
+    assert "continuous-paper-state.tar" not in selection
+    assert "facts.sqlite3" not in selection
+    assert "execution_mode: live" not in selection
+    assert "live_orders: true" not in selection
