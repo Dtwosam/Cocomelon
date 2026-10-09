@@ -9,6 +9,14 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Apply the same forward window to paired paper-account profitability — 2026-10-09
+
+The frozen loss-context baseline/challenger review already excluded the **first eligible checkpoint** from matching-context opportunities, directional trade counts, market breadth, and chronological A/B blocks. Its key candidate **absolute account PnL and total A/B advantage** still used last-checkpoint *cumulative* values, however, allowing pre-anchor paper gains to obscure negative results during the reviewed future period. Side attribution also permitted newly closed trades to be missing from both LONG and SHORT forward counts without a readiness failure.
+
+Review profitability and realized net cash flows are now differences **after the same first eligible forward checkpoint**, consistent with their denominators and fixed three-block chronology. The report retains explicitly labeled cumulative latest snapshots for visibility, but only matched-forward period results can meet the promotion-readiness gates. It also requires complete LONG/SHORT attribution for **every newly closed forward trade** in both lanes, while preserving legitimate historical unclassified pre-upgrade offsets. Do not equate cumulative realized account cash (which may include open-position funding) with solely the completed trade-side net figures.
+
+Regression cases cover apparently positive cumulative account performance concealing a negative prospective window, unattributed *new* closed trades, retained legacy historical unknowns, and ordinary positive forward controls. Frozen candidate identity, observed actual paper account, strategy/risk/stop code, and disabled live trading are unchanged.
+
 ### Preserve independent global feed recoveries across paper handoff — 2026-10-09
 
 A separate provenance collision survived the market-scoping fixes: the remaining shared/unknown data-gap events (`allMids`, malformed topics, or future unknown feeds) were combined into one source-anonymous list. If two such streams failed at the same millisecond, recovery for the first could close the other's still-open gap. That could incorrectly clean subsequent trade-chart coverage and distort prospective trailing/stop analysis.
