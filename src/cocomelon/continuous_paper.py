@@ -399,6 +399,10 @@ from cocomelon.research.prospective_trade_quality import (
     ProspectiveTradeQualityState,
     prospective_trade_quality_summary,
 )
+from cocomelon.research.prospective_short_breakout_rank import (
+    ProspectiveShortBreakoutRankState,
+    prospective_short_breakout_rank_comparison,
+)
 from cocomelon.research.prospective_trend_outside_top10 import (
     ProspectiveTrendOutsideTop10State,
     prospective_trend_outside_top10_comparison,
@@ -506,6 +510,12 @@ PROSPECTIVE_ENTRY_COST_R_STATE_FILENAME = (
 )
 PROSPECTIVE_ENTRY_COST_R_COMPARISON_FILENAME = (
     "prospective-entry-cost-r-comparison.json"
+)
+PROSPECTIVE_SHORT_BREAKOUT_RANK_STATE_FILENAME = (
+    "prospective-short-breakout-rank-state.json"
+)
+PROSPECTIVE_SHORT_BREAKOUT_RANK_COMPARISON_FILENAME = (
+    "prospective-short-breakout-rank-comparison.json"
 )
 PROSPECTIVE_TREND_OUTSIDE_TOP10_STATE_FILENAME = (
     "prospective-trend-outside-top10-state.json"
@@ -2805,6 +2815,23 @@ def _restore_entry_mid_markout_shadow(
             f"{type(exc).__name__}: {exc}"
         )
     return shadow
+
+
+def _restore_prospective_short_breakout_rank(
+    path: Path,
+    *,
+    frozen_at_ms: int,
+) -> tuple[ProspectiveShortBreakoutRankState, str | None]:
+    if not path.exists():
+        return ProspectiveShortBreakoutRankState(frozen_at_ms=frozen_at_ms), None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return ProspectiveShortBreakoutRankState.from_payload(raw), None
+    except Exception as exc:
+        return (
+            ProspectiveShortBreakoutRankState(frozen_at_ms=frozen_at_ms),
+            f"{type(exc).__name__}: {exc}",
+        )
 
 
 def _restore_prospective_trend_outside_top10(
@@ -9506,6 +9533,13 @@ async def run_continuous_paper_session(
         execution.account.positions
     )
     (
+        prospective_short_breakout_rank_state,
+        prospective_short_breakout_rank_restore_error,
+    ) = _restore_prospective_short_breakout_rank(
+        root / PROSPECTIVE_SHORT_BREAKOUT_RANK_STATE_FILENAME,
+        frozen_at_ms=started_at_ms,
+    )
+    (
         prospective_trend_outside_top10_state,
         prospective_trend_outside_top10_restore_error,
     ) = _restore_prospective_trend_outside_top10(
@@ -10283,6 +10317,12 @@ async def run_continuous_paper_session(
                     ),
                 )
             )
+            # Never rewrite an invalid historical freeze on restart.
+            if prospective_short_breakout_rank_restore_error is None:
+                payloads.append((
+                    root / PROSPECTIVE_SHORT_BREAKOUT_RANK_STATE_FILENAME,
+                    prospective_short_breakout_rank_state.payload(),
+                ))
             return tuple(payloads), cadence_revision_to_persist
 
         def persist_checkpoint_sync() -> None:
@@ -11221,6 +11261,45 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / PROSPECTIVE_TREND_OUTSIDE_TOP10_COMPARISON_FILENAME,
                 trend_outside_top10_report,
+            )
+            if prospective_short_breakout_rank_restore_error is not None:
+                short_breakout_rank_report: dict[str, object] = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "candidate_id": prospective_short_breakout_rank_state.candidate_id,
+                    "error": "original prospective SHORT breakout freeze unavailable",
+                    "state_restore_error": prospective_short_breakout_rank_restore_error,
+                }
+            else:
+                try:
+                    short_breakout_rank_report = (
+                        prospective_short_breakout_rank_comparison(
+                            tuple(journal.iter_trades()),
+                            facts,
+                            feature_store,
+                            opening_rank_store,
+                            prospective_short_breakout_rank_state,
+                        )
+                    )
+                except Exception as exc:
+                    short_breakout_rank_report = {
+                        "enabled": False,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                        "candidate_id": prospective_short_breakout_rank_state.candidate_id,
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "state_restore_error": None,
+                    }
+                else:
+                    short_breakout_rank_report = dict(short_breakout_rank_report)
+                    short_breakout_rank_report["enabled"] = True
+                    short_breakout_rank_report["error"] = None
+            _write_json_atomic(
+                root / PROSPECTIVE_SHORT_BREAKOUT_RANK_COMPARISON_FILENAME,
+                short_breakout_rank_report,
             )
             full_stack_combined = _prospective_combined_entry_filter_payload(
                 journal,
