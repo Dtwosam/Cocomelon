@@ -9,6 +9,12 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Earlier post-handoff full-journal LONG loss evidence — 2026-10-09
+
+Move the original **four unchanged read-only workflow steps** for full-journal chart reconstruction, chart artifact upload, LONG/SHORT entry-vs-exit loss attribution, and attribution artifact upload to *immediately after* the exact successor dispatch gate, before post-handoff paired-shadow reports or potentially long full-stack markout rebuilds. Earlier order left the decisive after-cost journal analysis queued behind many unrelated research tasks. On the completed paper run 37918245618, a safe successor was already trading while the old run was still rebuilding markouts and the two full-journal artifacts had not yet appeared.
+
+This does not bypass any data integrity gates: the chart rebuild still requires an authenticated completed handoff, a successful exact successor dispatch and a readable session summary; LONG loss attribution still requires successful chart output; and the later early-versus-late IOC exit-chart cross-check still requires successful chart reconstruction. Existing `continue-on-error` still prevents research failures from threatening the persistent paper account or its successor. A workflow regression asserts the strict phase ordering, uniqueness, and successor/producer dependencies. No trading parameters, entries, exits, positions or live trading permissions changed.
+
 ### End-to-end completed-handoff chart and LONG-loss regression — 2026-10-09
 
 Add a durable-store integration test for the research-only handoff chain: a real `JournalStore` with signed after-cost LONG/SHORT trades, `EvaluationFactStore`, at-decision feature snapshots, fresh/stale opening-rank evidence, signed market-mark paths, and the completed `session-summary.json`. Exercise `write_deferred_trade_charts` and then `write_long_entry_loss_attribution` against the exact files the paper workflow uses, rather than testing either analyzer against only a manufactured JSON schema. Assert all three trades remain in both cash reconciliation and loss denominators, including a clean observed chart, an incomplete chart and a missing chart, along with two verified at-entry contexts (one stale rank) and an unresolved historical feature. Verify LONG vs SHORT net PnL, realized losing trade buckets, non-promotional flags and that a crashed handoff cannot publish either artifact.
