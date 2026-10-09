@@ -1253,6 +1253,23 @@ jobs:
           print(f"- inherited pre-entry unresolved charts: "
                 f"{report['unresolved_pre_entry_charts']} / "
                 f"{report['closed_trades']}")
+          print(
+              "- Anonymous historical gap starts / inherited-chart blocker: "
+              f"{report['legacy_unattributable_open_gap_count']} / "
+              f"{report['legacy_lineage_blocks_chart_source_certification']}"
+          )
+          print(
+              "- Named unresolved source streams eligible for investigation: "
+              f"{report['named_unresolved_source_count']}"
+          )
+          print("- Top named sources (legacy cannot be attributed retroactively):")
+          for item in report["top_named_repair_sources"]:
+              print(
+                  f"  - {item['scope']} / {item['stream_id']}: "
+                  f"{item['incomplete_charts']} incomplete original charts, "
+                  f"{item['original_trades_overlapping_unresolved']} "
+                  "trades intersecting unresolved source history"
+              )
           print("- Source priorities by potentially affected incomplete charts:")
           for item in report["top_incomplete_chart_sources"]:
               print(

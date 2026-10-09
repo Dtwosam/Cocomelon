@@ -76,6 +76,18 @@ def test_stream_scope_provenance_survives_without_recovering_legacy_gaps() -> No
     }
     assert report["sources_with_unresolved_gaps"] == 5
     assert report["total_unresolved_source_gap_starts"] == 5
+    assert report["legacy_unattributable_open_gap_count"] == 1
+    assert report["legacy_unattributable_affected_incomplete_charts"] == 2
+    assert report["legacy_lineage_blocks_chart_source_certification"] is True
+    assert report["named_unresolved_source_count"] == 4
+    assert all(
+        item["source_identity_identifiable"] is True
+        and item["scope"] != "legacy_unattributed"
+        for item in report["named_source_repair_priority"]
+    )
+    assert report["named_source_repair_priority"][0]["stream_id"] in {
+        "allMids", "l2Book:BTC:malformed:extra"
+    }
     named = {
         row["stream_id"]: row for row in report["by_source"]
     }
@@ -260,3 +272,29 @@ def test_open_source_priority_is_non_additive_and_no_price_execution_claim() -> 
     assert "not additive" in report["source_priority_definition"]
     assert report["current_checkpoint_not_retrospective_chart_recovery"] is True
     assert report["promotion_authority"] is False
+
+
+def test_named_repair_priority_never_erases_anonymous_legacy_debt() -> None:
+    state = _checkpoint()
+    state["known_gap_intervals"] = [[100, None], [120, None]]
+    state["known_gap_intervals_by_stream"] = {}
+    state["known_global_gap_intervals_by_stream"] = {}
+    report = assess_feed_gap_source_debt(state, _charts())
+    assert report["legacy_unattributable_open_gap_count"] == 2
+    assert report["legacy_unattributable_affected_incomplete_charts"] == 2
+    assert report["legacy_lineage_blocks_chart_source_certification"] is True
+    assert report["named_unresolved_source_count"] == 0
+    assert report["named_source_repair_priority"] == []
+
+
+def test_named_repair_priority_can_exist_with_no_legacy_uncertainty() -> None:
+    state = _checkpoint()
+    state["known_gap_intervals"] = []
+    report = assess_feed_gap_source_debt(state, _charts())
+    assert report["legacy_unattributable_open_gap_count"] == 0
+    assert report["legacy_lineage_blocks_chart_source_certification"] is False
+    assert report["named_unresolved_source_count"] == 4
+    assert all(
+        item["source_identity_identifiable"]
+        for item in report["named_source_repair_priority"]
+    )
