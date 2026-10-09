@@ -543,3 +543,56 @@ def test_legacy_checkpoint_absent_watchlist_is_not_attested() -> None:
     assert report["market_selection_checkpoint_attested"] is None
     assert report["named_unresolved_source_count"] == 0
     assert report["legacy_unattributable_open_gap_count"] == 1
+
+
+def test_checkpoint_adjacent_gap_burst_is_not_erased_or_called_recovered() -> None:
+    state = _checkpoint()
+    state["last_available_at_ms"] = 10_000
+    state["known_gap_intervals_by_stream"] = {
+        "l2Book:BTC": [
+            [200, None], [4_999, None], [5_000, None], [9_999, None],
+        ],
+        "candle:ETH:1m": [[400, None]],
+    }
+    state["known_global_gap_intervals_by_stream"] = {
+        "allMids": [[500, None], [9_999, None]]
+    }
+    report = assess_feed_gap_source_debt(state, _charts())
+    assert report["checkpoint_adjacent_window_ms"] == 5_000
+    assert report["checkpoint_adjacent_open_gaps_by_scope"] == {
+        "legacy_unattributed": 0,
+        "global_shared_or_unknown": 1,
+        "market_specific": 2,
+    }
+    assert report["older_open_gaps_by_scope"] == {
+        "legacy_unattributed": 1,
+        "global_shared_or_unknown": 1,
+        "market_specific": 3,
+    }
+    assert report["checkpoint_adjacent_named_source_count"] == 2
+    assert report["open_gap_count_by_scope"] == {
+        "legacy_unattributed": 1,
+        "global_shared_or_unknown": 2,
+        "market_specific": 5,
+    }
+    assert report["total_unresolved_source_gap_starts"] == 8
+    by_stream = {r["stream_id"]: r for r in report["by_source"]}
+    assert by_stream["l2Book:BTC"]["checkpoint_adjacent_open_gap_starts"] == 2
+    assert by_stream["l2Book:BTC"]["older_open_gap_starts"] == 2
+    assert by_stream["allMids"]["checkpoint_adjacent_open_gap_starts"] == 1
+    assert by_stream["<legacy_unattributed>"]["older_open_gap_starts"] == 1
+    assert report["current_checkpoint_not_retrospective_chart_recovery"] is True
+    assert report["promotion_authority"] is False
+    assert report["execution_authority"] is False
+
+
+def test_all_old_gaps_still_count_when_far_before_checkpoint() -> None:
+    state = _checkpoint()
+    state["last_available_at_ms"] = 2_000_000
+    report = assess_feed_gap_source_debt(state, _charts())
+    assert all(
+        count == 0
+        for count in report["checkpoint_adjacent_open_gaps_by_scope"].values()
+    )
+    assert report["older_open_gaps_by_scope"] == report["open_gap_count_by_scope"]
+    assert report["named_unresolved_source_count"] == 4
