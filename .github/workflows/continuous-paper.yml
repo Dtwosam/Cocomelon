@@ -1305,6 +1305,7 @@ jobs:
         id: deferred_all_trade_chart_audit
         if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/session-summary.json') != '' }}
         continue-on-error: true
+        timeout-minutes: 30
         shell: bash
         run: |
           set -euo pipefail
@@ -1621,6 +1622,7 @@ jobs:
         id: deferred_full_stack_markout_rebuild
         if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/session-summary.json') != '' }}
         continue-on-error: true
+        timeout-minutes: 30
         shell: bash
         run: |
           set -euo pipefail
@@ -1668,7 +1670,9 @@ jobs:
           PY
 
       - name: Upload full-stack fast-markout research summary
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-full-stack-forward-markout-summary.json') != '' }}
+        # A timed-out rebuild may leave a prior checkpoint's summary on disk.
+        # Do not publish it as successful research for the current worker.
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_full_stack_markout_rebuild.outcome == 'success' && hashFiles('continuous-paper-state/prospective-full-stack-forward-markout-summary.json') != '' }}
         uses: actions/upload-artifact@v7
         with:
           name: continuous-paper-full-stack-forward-markout-${{ github.run_id }}-${{ github.run_attempt }}
