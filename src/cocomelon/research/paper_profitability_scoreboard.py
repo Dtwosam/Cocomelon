@@ -283,11 +283,14 @@ def paper_profitability_scoreboard(raw: object) -> dict[str, object]:
         entry = _object(
             audit.get("verified_entry_exit_context"), "entry context audit"
         )
+        unresolved = _integer(
+            overall["unverified_entry_context_trades"],
+            "unverified original entry contexts",
+        )
         if (
             entry.get("entry_context_verified_trades")
-            != count - overall["unverified_entry_context_trades"]
-            or entry.get("entry_context_unresolved_trades")
-            != overall["unverified_entry_context_trades"]
+            != count - unresolved
+            or entry.get("entry_context_unresolved_trades") != unresolved
         ):
             raise PaperProfitabilityScoreboardError(
                 "verified entry context counts do not reconcile"
