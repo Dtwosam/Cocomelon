@@ -34,6 +34,16 @@ def main() -> None:
             report["sources_with_unresolved_gaps"]
         ),
         "open_gaps_by_scope": report["open_gap_count_by_scope"],
+        "checkpoint_adjacent_window_ms": (
+            report["checkpoint_adjacent_window_ms"]
+        ),
+        "checkpoint_adjacent_open_gaps_by_scope": (
+            report["checkpoint_adjacent_open_gaps_by_scope"]
+        ),
+        "older_open_gaps_by_scope": report["older_open_gaps_by_scope"],
+        "checkpoint_adjacent_named_source_count": (
+            report["checkpoint_adjacent_named_source_count"]
+        ),
         "legacy_unattributable_open_gap_count": (
             report["legacy_unattributable_open_gap_count"]
         ),
