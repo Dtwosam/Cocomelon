@@ -221,9 +221,9 @@ def _closed_trade_entry_exit_context_precise(
 
 def closed_trade_entry_exit_context(
     trades: Sequence[TradeJournalEntry],
-        facts: EvaluationFactStore,
-        features: LearningFeatureSnapshotStore,
-        ranks: ContinuousPaperOpeningRankStore,
+    facts: EvaluationFactStore,
+    features: LearningFeatureSnapshotStore,
+    ranks: ContinuousPaperOpeningRankStore,
 ) -> dict[str, object]:
     """Aggregate unrounded journal decimals before checking cohort parity."""
     with localcontext(prec=96):
