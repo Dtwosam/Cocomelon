@@ -9,6 +9,14 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Do not let push/watchdog fallback preempt a queued exact paper-state successor — 2026-10-09
+
+An older-head push run (**37982966703**) obtained a startup lease while its legitimate predecessor (**37981546174**) had completed trading but was still publishing its exact fast-resume/durable state. The exact workflow-dispatched successor (**37983282012**) then reported a skipped trader because the speculative push was already active. The push fallback previously searched only durable state artifacts, not newer fast-resume artifacts, so it could resurrect an older signed account and silently lose the intervening paper and feed-gap history. No post-hoc source reconstruction or false continuity claim is allowed.
+
+The startup lease now treats a prior completed trader with **in-flight or successfully dispatched** exact fast/fallback successor as active for speculative push/manual recovery, while **real exact-source-bound successors** may still ignore a predecessor's deferred research tail. Manual/watchdog restore enumerates both verified **fast resume** and durable state artifacts, chooses the newest successfully uploaded item from a paper trader that independently completed successfully, and passes the exact archive member and source SHA to the existing identity-checked restore script. A completed workflow without a successful trader/upload is not a valid state source. If no trusted artifact exists, account startup remains subject to the existing explicitly logged fresh-paper-only rule; no archived state is fabricated. These safeguards are prospective: the older push's pre-fix resume source cannot be certified simply because new code merged.
+
+Strategy, market subscriptions, existing risk guards, immutable candidate rules, execution mode and real-money trading authorization remain unchanged.
+
 ### Start an independent clean-v2 paired paper trial after preserving the contaminated v1 archive — 2026-10-09
 
 State v2 corrects future market gap provenance, but the existing v1 experiment already has **6,215 globally flattened source-gap intervals per lane, 642 unresolved**, and no possible trustworthy attribution back to original markets. The existing v1 shadow candidate also has negative forward realized and full-account relative PnL. Do not simply bless its economic sample by changing a schema number or retroactively removing its inherited gaps.
