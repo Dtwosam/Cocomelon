@@ -325,6 +325,9 @@ from cocomelon.research.prospective_delayed_price_confirmation import (
 from cocomelon.research.prospective_early_reserved_trailing import (
     prospective_early_reserved_trailing_comparison,
 )
+from cocomelon.research.prospective_early_vs_late_trailing import (
+    prospective_early_vs_late_trailing,
+)
 from cocomelon.research.prospective_entry_cost_r import (
     ProspectiveEntryCostRState,
     prospective_entry_cost_r_comparison,
@@ -491,6 +494,9 @@ EARLY_RESERVED_TRAILING_SHADOW_STATE_FILENAME = (
 )
 EARLY_RESERVED_TRAILING_COMPARISON_FILENAME = (
     "prospective-early-reserved-trailing-comparison.json"
+)
+EARLY_VS_LATE_TRAILING_COMPARISON_FILENAME = (
+    "prospective-early-vs-late-trailing-comparison.json"
 )
 PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-entry-filter-state.json"
@@ -11639,6 +11645,50 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / EARLY_RESERVED_TRAILING_COMPARISON_FILENAME,
                 early_reserved_trailing_report,
+            )
+            if (
+                early_reserved_trailing_shadow.shadow is None
+                or net_reserved_trailing_shadow.shadow is None
+            ):
+                early_late_report: dict[str, object] = {
+                    "enabled": False,
+                    "research_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                    "ready_for_review": False,
+                    "error": (
+                        early_reserved_trailing_shadow.error
+                        or net_reserved_trailing_shadow.error
+                        or "paired early/late IOC exit evidence unavailable"
+                    ),
+                }
+            else:
+                try:
+                    early_pair = early_reserved_trailing_shadow.shadow
+                    late_pair = net_reserved_trailing_shadow.shadow
+                    assert early_pair is not None
+                    assert late_pair is not None
+                    early_late_report = prospective_early_vs_late_trailing(
+                        tuple(journal.iter_trades()),
+                        early_pair.state_payload(),
+                        late_pair.state_payload(),
+                    )
+                except Exception as exc:
+                    early_late_report = {
+                        "enabled": False,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                        "ready_for_review": False,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                else:
+                    early_late_report = dict(early_late_report)
+                    early_late_report["enabled"] = True
+                    early_late_report["error"] = None
+            _write_json_atomic(
+                root / EARLY_VS_LATE_TRAILING_COMPARISON_FILENAME,
+                early_late_report,
             )
             full_stack_capacity_reflow = (
                 _prospective_full_stack_capacity_reflow_payload(
