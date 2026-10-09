@@ -6,7 +6,6 @@ or turn failed/incomplete analyses into profitable evidence.
 
 from pathlib import Path
 
-
 WORKFLOW = (
     Path(__file__).resolve().parents[1]
     / ".github"
