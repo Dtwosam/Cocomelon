@@ -7,6 +7,8 @@ from decimal import Decimal, InvalidOperation, localcontext
 from pathlib import Path
 from typing import Final, cast
 
+from cocomelon.domain.journal import AUTHORITATIVE_CONTEXT
+
 SOURCE_NAME: Final = "all-paper-trade-chart-audit.json"
 OUTPUT_NAME: Final = "long-entry-loss-attribution.json"
 ZERO: Final = Decimal("0")
@@ -143,11 +145,17 @@ def _assess_long_entry_loss_attribution_precise(source: object) -> dict[str, obj
         net = _dec(row.get("net_pnl"), "net")
         _dec(row.get("net_r"), "net R")
         gross = _dec(row.get("gross_realized_pnl"), "gross")
-        fees = _dec(row.get("entry_fees"), "entry fees") + _dec(
-            row.get("exit_fees"), "exit fees"
-        )
+        entry_fee = _dec(row.get("entry_fees"), "entry fees")
+        exit_fee = _dec(row.get("exit_fees"), "exit fees")
         funding = _dec(row.get("funding_cash_pnl"), "funding")
-        if fees < ZERO or gross - fees + funding != net:
+        if entry_fee < ZERO or exit_fee < ZERO:
+            raise LongEntryLossAttributionError("negative booked execution fee")
+        # The journal validates each booked trade with the engine's fixed
+        # 28-digit context and the exact operation ordering below. Only
+        # *aggregation* of booked results uses the wider audit context.
+        with localcontext(AUTHORITATIVE_CONTEXT):
+            expected_net = gross - entry_fee - exit_fee + funding
+        if expected_net != net:
             raise LongEntryLossAttributionError("trade cashflow mismatch")
         context = row.get("entry_context")
         if context is not None:
