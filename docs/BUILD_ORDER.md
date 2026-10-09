@@ -2,6 +2,8 @@
 
 This is the approved construction sequence. Do not skip ahead merely because later phases are more exciting.
 
+**Current active profitability focus (2026-10-10):** phases 0–9 are implemented; ongoing Phase 10 research and continuous paper trading have **negative recorded after-cost account PnL**. Read [`PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md) **first** for verified snapshots and the autonomous next economic experiment. Phase 12/13 live activation remains **BLOCKED**. Completing another engineering phase or green CI alone is not a strategy edge; prioritize untouched forward net profit and independent paper-account champion/challenger results.
+
 Each phase must leave the repository in a working, testable state. `docs/STATUS.md` records the active phase and evidence that the prior phase passed.
 
 ## Phase 0 — Governance and source-of-truth anchor

@@ -31,6 +31,8 @@ The finished system is expected to independently:
 
 The economic objective is positive **net risk-adjusted expectancy**, not maximum trade frequency, win rate, leverage, or gross PnL.
 
+**Current implementation priority (2026-10-10):** The working mainnet-paper baseline has not shown positive net expectancy. New contributors/chats must read [`PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md) for the live-reference checklist, frozen forward research priorities and criteria for economic progress. This status-linked guide does not override any permanent risk or live-promotion rule in this specification.
+
 No component or metric may claim guaranteed profitability.
 
 ## 2. Trading horizon

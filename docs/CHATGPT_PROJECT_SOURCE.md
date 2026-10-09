@@ -2,9 +2,9 @@
 
 **Purpose:** Portable bootstrap context for continuing Cocomelon across ChatGPT chats. Live GitHub state and authoritative repository docs always outrank this summary.
 
-**Snapshot updated:** 2026-09-26  
+**Snapshot updated:** 2026-10-10  
 **Repository:** `Dtwosam/Cocomelon`  
-**Current verified `main` at snapshot:** `7a3c943ed9dbcf4464e64b22e6c1d16427734c8b` — snapshot only; always refresh live `main` before acting  
+**Current verified `main` at snapshot:** `ec7285b2c6e00c9e722283479396c038a6fcd643` — snapshot only; always refresh live `main` before acting  
 **CI rule:** exact-head PR CI and post-merge `main` CI must be checked live; do not rely on an old pinned run ID  
 **Venue:** Hyperliquid perpetual futures  
 **Observation:** genuine public Hyperliquid mainnet  
@@ -12,6 +12,16 @@
 **Hyperliquid testnet:** forbidden  
 **Live trading:** **DISABLED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
+
+---
+
+## 0A. NON-NEGOTIABLE NEW-CHAT CONTINUATION: MAKE THE TRADER PROFITABLE AFTER COSTS
+
+**User directive (2026-10-10): continue building autonomously; do not ask routine approvals; focus on achieving a profitable trader, and permanently foreground that goal.** The first reading/action is [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). It has a ranked live research plan; **never substitute repeated infrastructure PRs for a demonstrated economic improvement**.
+
+**Verified snapshot only — 2026-10-09 23:40 UTC:** live Issue #469 worker `38002307902`, 155 closed original *paper* trades, **$9,682.45 equity, -$317.55 cumulative net (-3.18%)** from $10,000; fees ~$119.22 and funding ~$2.05 already reflected in net PnL. **NO POSITIVE EDGE / LIVE DISABLED.** The repo's code head at this doc edit was `ec7285b` with post-merge CI green, but the older-head worker has not yet adopted every change. The snapshot is stale by design: **fetch Issue #469, `main`, workflow jobs/artifacts first every chat**.
+
+**First profitability tasks:** rank whole-journal realized losses after costs without dropping missing-source losers; wait for the **existing frozen** prospective SHORT breakout top-3 forward readout (historical 4 vs 8 trades cannot justify promotion); review clean-v2 independent paired paper-account challenger relative to unchanged baseline; fix only authenticated rank/feed/compact-source defects that prevent those economic answers. Treat 5m LONG trend 5 exact closures (-~$1.83 net), 15m 0 exact closures, dirty 1,578-row full-stack source (67 missing ranks) as **failing / insufficient**, not profitable. Tests/merges are engineering progress; **positive, repeatable after-fee/funding whole-account performance is the milestone**. No real-money activation or risk relaxation.
 
 ---
 

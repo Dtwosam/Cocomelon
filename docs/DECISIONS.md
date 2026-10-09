@@ -1055,3 +1055,14 @@ A GitHub Actions step reported `in_progress` proves only that the step has not r
 A newly admitted worker whose heartbeat still belongs to its predecessor receives a labeled, bounded **15-minute startup grace**. Any expired, malformed, absent, mismatched or impossibly dated evidence fails the *watchdog* visibly. It **never** grants a second trader lease, cancels an active worker, dispatches a replacement over potentially open paper positions, weakens market-data freshness, rewrites state or relaxes strategy gates. Liveness reports and exact-state execution safety remain separate.
 
 **LIVE TRADING: DISABLED.**
+
+
+## D-090 — Profitability-first autonomous continuation and economic truth at every handoff
+
+**Decision (explicit user direction, 2026-10-10):** Autonomously prioritize building a truly profitable Hyperliquid trader. Every new chat and contributor must first read [`PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md), check GitHub Issue #469 and the exact active worker, and choose the next bounded action for its ability to improve **verified after-cost whole-account returns** or unblock a named evidence defect. Do not request routine approvals or default to low-impact infrastructure work when there is a concrete economic hypothesis ready to measure.
+
+**Why:** 155 ordinary paper closes had accumulated roughly **-$317.55** after costs by the authenticated 2026-10-09 23:40 UTC heartbeat, despite substantial operational progress. Faster pipelines and passing CI are not positive strategy expectancy. The timestamp is deliberately historical and must never replace the latest live account and journal data.
+
+**Required evidence and behavior:** Report baseline and challenger net dollars after fees/funding, same forward time window and execution assumptions, the number of original trades and eligible exact closes, both directions and market concentration, chronological and leave-one-market robustness, drawdown and any feed/rank/source-integrity caveat. Hypothetical no-trade skip arithmetic alone does not capture replacement entries, exposure, or correlated risk and cannot change the champion. Retain original losing trades and missingness in the full-account denominator. Prefer the existing frozen SHORT-breakout top-three experiment and independent clean paired paper account before creating another retrospective rule.
+
+**Boundary:** This prioritization does **not** relax any already-frozen prospective windows, sample-size gates, market-data provenance constraints, risk veto, execution safety, or D-018 live-trading dual-activation. It introduces no strategy/risk order changes, no wallet action, no live activation and no permission to claim guaranteed profits. Paper and research remain separate until independent forward promotion evidence is sufficient.

@@ -1,5 +1,9 @@
 # AGENTS.md — Cocomelon Repository Rules
 
+> **MANDATORY NEW-CHAT / NEW-CONTRIBUTOR DIRECTIVE — PROFITABILITY FIRST (2026-10-10).**
+> Read [`docs/PROFITABILITY_PRIORITY.md`](docs/PROFITABILITY_PRIORITY.md) **before selecting any work**. The existing paper strategy has **not** demonstrated positive net expectancy; infrastructure success is not profit. Prefer a real after-fee/funding whole-account profitability question, the frozen forward SHORT breakout rank trial, and clean paired-account evidence over another general observability PR. Do not ask for routine approvals; implement, test and ship safe research autonomously. **Paper only; live orders disabled, and no economic/risk gate may be relaxed.** Refresh GitHub Issue #469 and `main` before quoting live PnL; the doc's numbers are only a timestamped snapshot.
+
+
 This file is mandatory reading for every coding agent, assistant, or human contributor before changing the repository.
 
 ## 1. Source-of-truth hierarchy

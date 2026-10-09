@@ -1,13 +1,25 @@
 # Cocomelon Project Status
 
-**Last updated:** 2026-10-09  
+**Last updated:** 2026-10-10  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified implementation baseline:** `a54c7ed8dc773b056135c51983a7f4351bb82057`  
-**Latest verified development CI:** post-merge CI run `35750670396` on `a54c7ed8dc773b056135c51983a7f4351bb82057` — success  
+**Verified implementation baseline at this documentation snapshot:** `ec7285b2c6e00c9e722283479396c038a6fcd643`  
+**Latest verified development CI at snapshot:** post-merge CI run `38004974014` on `ec7285b2c6e00c9e722283479396c038a6fcd643` — success  
 **Live trading:** **DISABLED**  
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
+
+## READ FIRST — PROFITABILITY PRIORITY, NOT ANOTHER INFRASTRUCTURE LOOP
+
+**Standing user instruction (2026-10-10): build the Hyperliquid paper trader autonomously toward positive after-cost profitability, and make that goal impossible to miss in the next chat.** The canonical [`PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md) gives the next-chat checklist, forward experiment priorities, evidence gates and instructions. **Open that file before selecting the next change.**
+
+**Last verified heartbeat** (Issue [#469](https://github.com/Dtwosam/Cocomelon/issues/469), **2026-10-09 23:40:16 UTC**): worker `38002307902` using old head `d9accd5`; **155 original closed paper trades**, equity **$9,682.45**, **-$317.55** total recorded net PnL (-3.18%), **no open positions**; live orders disabled. Gross realized about -$200.37, fees $119.22, funding $2.05. The net total already includes reported transaction costs. **No profitable edge verified.** This is not a real-time snapshot; refresh the issue and authenticated durable account before making current claims.
+
+**Merged engineering progress:** #1083 bounded optional research; #1084 improved exact compact source selection; #1085 added source preflight receipts; #1086 rejected >512 MiB legacy LONG-trend ZIP downloads; #1087 required content-clean full-stack LONG-trend source and cryptographic integrity before compact research packaging. Exact-head and post-merge tests were green through `ec7285b`. **Do not equate these merges with a deployed strategy improvement**; running workers retain their start SHA. The first post-handoff #1085 diagnostic artifact was still pending at this snapshot.
+
+**Next money-focused work, in order:** (1) use authenticated original closed journal to measure after-fee losses by side, lead strategy and opening rank; (2) follow the frozen top-3 SHORT breakout prospective filter `prospective-short-breakout-only-top3-v1` to its untouched forward threshold and then independent paired full-account economics, with no rank/loser exclusions; (3) review the independent clean-v2 loss-context paired-account trial against the same-window baseline; (4) repair only evidence gaps proven to prevent these outcomes. The historical SHORT rank split (4 top-3 trades +~$86.31 vs 8 rank>=4 -~$54.73) was **retrospectively selected and not sufficient for promotion**. The previous 5m LONG+trend exact exit is -~$1.83 across 5 closes and the 15m horizon has 0; both fail. A full-stack summary had 1,578 risk-rejected rows, 67 missing rank observations and `integrity_clean=false`: do not certify its results. No trading/risk/live changes are permitted on these observations.
+
+**At every handoff:** verify live GitHub `main`, Issue #469, original vs shadow paper accounts, exact eligible forward sample and post-merge CI. Report **net dollars, costs, samples, challenger vs baseline, gate, and next economic step**, not merely PR counts. Full historical detail follows below; historical sections are not a live report.
 
 ### Do not let push/watchdog fallback preempt a queued exact paper-state successor — 2026-10-09
 
