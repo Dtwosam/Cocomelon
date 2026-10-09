@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from decimal import Decimal
 import json
 from pathlib import Path
 
@@ -159,3 +160,33 @@ def test_refuses_promotional_or_partial_source() -> None:
         source[key] = value
         with pytest.raises(LongEntryLossAttributionError):
             assess_long_entry_loss_attribution(source)
+
+
+
+def test_precise_long_and_short_sums_match_reordered_original_journal() -> None:
+    source = _source()
+    values = (
+        "100000000000000000000",
+        "0.000000000000000000000000001",
+        "-100000000000000000000",
+        "0.000000000000000000000000001",
+    )
+    for row, amount in zip(source["trades"][:4], values, strict=True):
+        row["net_pnl"] = amount
+        row["gross_realized_pnl"] = str(
+            Decimal(amount) + Decimal("0.5")
+        )
+        entry = row["entry_context"]
+        if entry is not None:
+            entry["net_pnl"] = amount
+    expected = "3.500000000000000000000000002"
+    source["economics"]["overall"]["net_pnl"] = expected
+    source["verified_entry_exit_context"]["overall"]["net_pnl"] = expected
+    report = assess_long_entry_loss_attribution(source)
+    assert Decimal(report["total_realized_closed_net_pnl"]) == Decimal(expected)
+    assert Decimal(report["by_side"]["long"]["net_pnl"]) == Decimal("2E-27")
+    assert Decimal(report["by_side"]["short"]["net_pnl"]) == Decimal("3.5")
+    assert sum(
+        (Decimal(group["net_pnl"]) for group in
+         report["by_entry_strategy_and_rank"].values()), Decimal("0")
+    ) == Decimal(expected)
