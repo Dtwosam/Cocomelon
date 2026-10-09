@@ -262,7 +262,7 @@ def test_reject_duplicate_or_pre_frozen_original_sample() -> None:
     exits["common_scoring_start_ms"] = 1400
     with pytest.raises(
         DeferredEarlyExitChartIntegrityError,
-        match="outside frozen",
+        match="forward original sample does not reconcile",
     ):
         assess_early_exit_chart_integrity(exits, charts)
 
