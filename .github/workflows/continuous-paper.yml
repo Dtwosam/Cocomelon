@@ -1179,6 +1179,80 @@ jobs:
           echo "successor_run_id=$successor_run_id" >> "$GITHUB_OUTPUT"
           echo "fallback exact successor dispatch receipt: $successor_run_id"
 
+      - name: Audit all closed paper trades and recorded entry-to-exit charts
+        id: deferred_all_trade_chart_audit
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/session-summary.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/rebuild_deferred_all_trade_chart_audit.py "$STATE_ROOT" \
+            | tee /tmp/all-paper-trade-chart-audit.json
+          test -s "$STATE_ROOT/all-paper-trade-chart-audit.json"
+          test -s "$STATE_ROOT/all-paper-trade-charts.html"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          data = json.loads(
+              Path("/tmp/all-paper-trade-chart-audit.json").read_text(encoding="utf-8")
+          )
+          print("## Entire closed trade journal + recorded mark charts")
+          print("- authority: RESEARCH ONLY / NO EXECUTION")
+          print(f"- journal trades included: {data['all_journal_trades']}")
+          print(f"- after-cost closed PnL: ${data['realized_net_pnl']}")
+          print(f"- closed-trade fees: ${data['fees']}")
+          print(f"- complete / missing / incomplete or gapped charts: "
+                f"{data['path_complete']} / {data['path_missing']} / {data['bad_or_gapped_paths']}")
+          print("- CAUTION: recorded in-position marks only; NOT full OHLC "
+                "history, counterfactual fills or strategy promotion authority")
+          PY
+
+      - name: Upload all closed paper-trade economics and charts
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_all_trade_chart_audit.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-all-trade-charts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            continuous-paper-state/all-paper-trade-chart-audit.json
+            continuous-paper-state/all-paper-trade-charts.html
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Attribute full-journal LONG losses to entry and exit evidence
+        id: deferred_long_loss_attribution
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_all_trade_chart_audit.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/rebuild_deferred_long_entry_loss_attribution.py "$STATE_ROOT" \
+            | tee /tmp/deferred-long-loss-attribution.json
+          test -s "$STATE_ROOT/long-entry-loss-attribution.json"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          x = json.loads(Path("/tmp/deferred-long-loss-attribution.json").read_text(encoding="utf-8"))
+          print("## All-paper LONG entry vs exit loss attribution")
+          print("- authority: RESEARCH ONLY / NO EXECUTION")
+          print(f"- full closed journal / entry context verified: {x['closed_trades']} / {x['context_verified']}")
+          print(f"- LONG actual net PnL / R: {x['long_net_pnl']} / {x['long_net_r']}")
+          print(f"- SHORT actual net PnL / R: {x['short_net_pnl']} / {x['short_net_r']}")
+          print("- Historical rank/strategy cohorts describe losses but cannot choose an entry filter.")
+          PY
+
+      - name: Upload all-paper LONG loss attribution
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_long_loss_attribution.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-long-loss-attribution-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/long-entry-loss-attribution.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Upload paired loss-context portfolio shadow state
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/loss-context-paired-portfolio-shadow-summary.json') != '' }}
         continue-on-error: true
@@ -1531,80 +1605,6 @@ jobs:
         with:
           name: continuous-paper-loss-streak-context-${{ github.run_id }}-${{ github.run_attempt }}
           path: continuous-paper-state/loss-streak-context-audit-summary.json
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 6
-
-      - name: Audit all closed paper trades and recorded entry-to-exit charts
-        id: deferred_all_trade_chart_audit
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/session-summary.json') != '' }}
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/rebuild_deferred_all_trade_chart_audit.py "$STATE_ROOT" \
-            | tee /tmp/all-paper-trade-chart-audit.json
-          test -s "$STATE_ROOT/all-paper-trade-chart-audit.json"
-          test -s "$STATE_ROOT/all-paper-trade-charts.html"
-          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json
-          from pathlib import Path
-          data = json.loads(
-              Path("/tmp/all-paper-trade-chart-audit.json").read_text(encoding="utf-8")
-          )
-          print("## Entire closed trade journal + recorded mark charts")
-          print("- authority: RESEARCH ONLY / NO EXECUTION")
-          print(f"- journal trades included: {data['all_journal_trades']}")
-          print(f"- after-cost closed PnL: ${data['realized_net_pnl']}")
-          print(f"- closed-trade fees: ${data['fees']}")
-          print(f"- complete / missing / incomplete or gapped charts: "
-                f"{data['path_complete']} / {data['path_missing']} / {data['bad_or_gapped_paths']}")
-          print("- CAUTION: recorded in-position marks only; NOT full OHLC "
-                "history, counterfactual fills or strategy promotion authority")
-          PY
-
-      - name: Upload all closed paper-trade economics and charts
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_all_trade_chart_audit.outcome == 'success' }}
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-all-trade-charts-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            continuous-paper-state/all-paper-trade-chart-audit.json
-            continuous-paper-state/all-paper-trade-charts.html
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 6
-
-      - name: Attribute full-journal LONG losses to entry and exit evidence
-        id: deferred_long_loss_attribution
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_all_trade_chart_audit.outcome == 'success' }}
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/rebuild_deferred_long_entry_loss_attribution.py "$STATE_ROOT" \
-            | tee /tmp/deferred-long-loss-attribution.json
-          test -s "$STATE_ROOT/long-entry-loss-attribution.json"
-          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json
-          from pathlib import Path
-          x = json.loads(Path("/tmp/deferred-long-loss-attribution.json").read_text(encoding="utf-8"))
-          print("## All-paper LONG entry vs exit loss attribution")
-          print("- authority: RESEARCH ONLY / NO EXECUTION")
-          print(f"- full closed journal / entry context verified: {x['closed_trades']} / {x['context_verified']}")
-          print(f"- LONG actual net PnL / R: {x['long_net_pnl']} / {x['long_net_r']}")
-          print(f"- SHORT actual net PnL / R: {x['short_net_pnl']} / {x['short_net_r']}")
-          print("- Historical rank/strategy cohorts describe losses but cannot choose an entry filter.")
-          PY
-
-      - name: Upload all-paper LONG loss attribution
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_long_loss_attribution.outcome == 'success' }}
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-long-loss-attribution-${{ github.run_id }}-${{ github.run_attempt }}
-          path: continuous-paper-state/long-entry-loss-attribution.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
