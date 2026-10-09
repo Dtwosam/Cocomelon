@@ -366,8 +366,51 @@ jobs:
               if trader_status in {"queued", "pending", "in_progress"}:
                   print(run_id)
                   break
-              # The workflow may remain in_progress for deferred research
-              # after trading has stopped. That tail must not block recovery.
+              if (
+                  trader_status == "completed"
+                  and not os.environ.get("SOURCE_RUN_ID")
+              ):
+                  # Fast exact resume is published and dispatched AFTER the
+                  # trader exits. A speculative push must not steal the lease
+                  # during compression/upload/dispatch or its subsequent
+                  # deferred audit tail. Such a push could restore an older
+                  # durable state instead of the newest fast predecessor.
+                  # A source-bound exact successor remains exempt.
+                  handoff_step_names = {
+                      "Pack fast continuous paper resume state",
+                      "Upload fast continuous paper resume state",
+                      "Queue exact successor from fast resume",
+                      "Queue fallback exact successor continuous paper worker",
+                  }
+                  handoff_steps = [
+                      step for step in paper_jobs[0].get("steps", [])
+                      if step.get("name") in handoff_step_names
+                  ]
+                  handoff_pending = any(
+                      step.get("status") in {
+                          "queued", "pending", "in_progress",
+                      }
+                      for step in handoff_steps
+                  )
+                  handoff_dispatched = any(
+                      step.get("name") in {
+                          "Queue exact successor from fast resume",
+                          "Queue fallback exact successor continuous paper worker",
+                      }
+                      and step.get("conclusion") == "success"
+                      for step in handoff_steps
+                  )
+                  if handoff_pending or handoff_dispatched:
+                      print(
+                          "::notice::speculative recovery yields to "
+                          f"predecessor {run_id} exact-state handoff",
+                          file=sys.stderr,
+                      )
+                      print(run_id)
+                      break
+              # Deferred research alone never blocks an exact successor;
+              # a speculative fallback may proceed only after ALL attempted
+              # exact successor dispatches have failed or been skipped.
           PY
           )"
           if [ -n "$ACTIVE" ]; then
