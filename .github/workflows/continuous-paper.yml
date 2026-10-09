@@ -570,13 +570,17 @@ jobs:
           import subprocess
           from pathlib import Path
 
-          payload = json.loads(Path("/tmp/all-artifacts.json").read_text(encoding="utf-8"))
+          payload = json.loads(
+              Path("/tmp/all-artifacts.json").read_text(encoding="utf-8")
+          )
           artifacts = sorted(
               (
-                  item
-                  for item in payload.get("artifacts", [])
+                  item for item in payload.get("artifacts", [])
                   if isinstance(item.get("name"), str)
-                  and item["name"].startswith("continuous-paper-state-")
+                  and item["name"].startswith((
+                      "continuous-paper-resume-",
+                      "continuous-paper-state-",
+                  ))
                   and item.get("expired") is False
                   and isinstance(item.get("workflow_run"), dict)
                   and item["workflow_run"].get("head_branch") == "main"
@@ -600,58 +604,71 @@ jobs:
                   and run.get("head_branch") == "main"
                   and (run.get("head_repository") or {}).get("full_name")
                   == os.environ["GITHUB_REPOSITORY"]
-              ):
-                  continue
-              if run.get("status") == "in_progress":
-                  # Post-handoff research can keep a workflow in_progress
-                  # for hours AFTER the trader and durable state upload
-                  # have succeeded. Those artifacts are valid recovery
-                  # sources and must beat older completed snapshots.
-                  jobs_response = subprocess.run(
-                      [
-                          "gh", "api",
-                          f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}/jobs?per_page=100",
-                      ],
-                      check=True,
-                      capture_output=True,
-                      text=True,
+                  and (
+                      run.get("status") == "in_progress"
+                      or (
+                          run.get("status") == "completed"
+                          and run.get("conclusion") in {"success", "failure"}
+                      )
                   )
-                  jobs = json.loads(jobs_response.stdout).get("jobs", [])
-                  paper_jobs = [
-                      job for job in jobs if job.get("name") == "paper"
-                  ]
-                  if len(paper_jobs) != 1:
-                      continue
-                  successful_steps = {
-                      step.get("name")
-                      for step in paper_jobs[0].get("steps", [])
-                      if step.get("status") == "completed"
-                      and step.get("conclusion") == "success"
-                  }
-                  if not {
-                      "Run continuous paper trader",
-                      "Pack durable continuous paper state",
-                      "Upload durable continuous paper state",
-                  } <= successful_steps:
-                      continue
-              elif not (
-                  run.get("status") == "completed"
-                  and run.get("conclusion") in {"success", "failure"}
               ):
                   continue
               head_sha = run.get("head_sha")
               if not isinstance(head_sha, str) or len(head_sha) != 40:
                   continue
-              print(f"{artifact['id']} {head_sha}")
+              # Only independently verified completed trader + upload
+              # steps make an archive a safe candidate. This applies even
+              # to otherwise successful/completed workflows.
+              jobs_response = subprocess.run(
+                  [
+                      "gh", "api",
+                      f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}/jobs?per_page=100",
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              jobs = json.loads(jobs_response.stdout).get("jobs", [])
+              paper_jobs = [job for job in jobs if job.get("name") == "paper"]
+              if len(paper_jobs) != 1:
+                  continue
+              successful_steps = {
+                  step.get("name")
+                  for step in paper_jobs[0].get("steps", [])
+                  if step.get("status") == "completed"
+                  and step.get("conclusion") == "success"
+              }
+              if "Run continuous paper trader" not in successful_steps:
+                  continue
+              if artifact["name"].startswith("continuous-paper-resume-"):
+                  if "Upload fast continuous paper resume state" not in successful_steps:
+                      continue
+                  member = "continuous-paper-resume.tar.zst"
+              else:
+                  if not {
+                      "Pack durable continuous paper state",
+                      "Upload durable continuous paper state",
+                  } <= successful_steps:
+                      continue
+                  member = "-"
+              print(f"{artifact['id']} {head_sha} {member}")
               break
           PY
           )"
           if [ -n "$ARTIFACT_SELECTION" ]; then
-            read -r ARTIFACT_ID ARTIFACT_HEAD_SHA <<< "$ARTIFACT_SELECTION"
-            bash scripts/restore_continuous_paper_state.sh \
-              "$ARTIFACT_ID" \
-              "$ARTIFACT_HEAD_SHA" \
-              "$STATE_ROOT"
+            read -r ARTIFACT_ID ARTIFACT_HEAD_SHA ARTIFACT_MEMBER <<< "$ARTIFACT_SELECTION"
+            if [ "$ARTIFACT_MEMBER" = "continuous-paper-resume.tar.zst" ]; then
+              bash scripts/restore_continuous_paper_state.sh \
+                "$ARTIFACT_ID" \
+                "$ARTIFACT_HEAD_SHA" \
+                "$STATE_ROOT" \
+                "$ARTIFACT_MEMBER"
+            else
+              bash scripts/restore_continuous_paper_state.sh \
+                "$ARTIFACT_ID" \
+                "$ARTIFACT_HEAD_SHA" \
+                "$STATE_ROOT"
+            fi
           else
             echo "No prior trusted continuous-paper state; starting a fresh paper account."
           fi
