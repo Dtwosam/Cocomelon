@@ -2113,7 +2113,9 @@ def test_compact_long_trend_exact_research_source_is_isolated_after_paper_handof
     upload = source.index("- name: Upload compact exact LONG trend research source")
     durable = source.index("- name: Pack durable continuous paper state")
     fallback = source.index("- name: Queue fallback exact successor continuous paper worker")
-    chart_audit = source.index("- name: Audit all closed paper trades and recorded entry-to-exit charts")
+    chart_audit = source.index(
+        "- name: Audit all closed paper trades and recorded entry-to-exit charts"
+    )
     assert successor < durable < fallback < manifest < pack < upload < chart_audit
     selection = source[manifest:chart_audit]
     assert 'continue-on-error: true' in selection
