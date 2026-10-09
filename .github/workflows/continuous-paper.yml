@@ -1259,15 +1259,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -s "$STATE_ROOT/prospective-full-stack-forward-markout-summary.json"
-          test -s "$STATE_ROOT/prospective-long-trend-execution-shadow-source.json"
-          for records in \
-            opening-opportunities/records \
-            opening-opportunity-exit-books/records \
-            replacement-funding-boundaries/records
-          do
-            test -d "$STATE_ROOT/$records"
-          done
+          python scripts/verify_compact_long_trend_exact_source.py \
+            "$STATE_ROOT" \
+            --json-out compact-long-trend-source-preflight.json
+
+      # Report missing genuine inputs without converting a failed
+      # source verification into a passing research artifact.
+      - name: Upload compact LONG trend source preflight diagnostics
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('compact-long-trend-source-preflight.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-long-trend-exact-source-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: compact-long-trend-source-preflight.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
 
       - name: Pack compact exact LONG trend research source
         id: compact_long_trend_source_pack
