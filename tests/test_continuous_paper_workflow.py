@@ -1605,6 +1605,7 @@ def test_loss_context_paired_shadow_runtime_handoff_is_non_blocking() -> None:
     shadow_upload = source[shadow_upload_at:review_at]
     assert "continue-on-error: true" in shadow_upload
     assert "loss-context-paired-portfolio-shadow-summary.json" in shadow_upload
+    assert "scoped-v2/paired-shadow-state.json" in shadow_upload
     assert (
         "continuous-paper-state/"
         "loss-context-paired-portfolio-shadow-scoped-v2"
@@ -1627,6 +1628,11 @@ def test_loss_context_paired_shadow_runtime_handoff_is_non_blocking() -> None:
     assert "candidate-minus-baseline total / realized / max-DD delta" in review
     assert "ready for review / failures" in review
     assert "RESEARCH REVIEW ONLY / NO STRATEGY CHANGE" in review
+
+    review_upload = source[review_upload_at:deferred_research_at]
+    assert (
+        "steps.loss_context_paired_shadow_review.outcome == 'success'"
+    ) in review_upload
 
 
 
