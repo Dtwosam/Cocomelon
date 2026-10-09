@@ -174,3 +174,26 @@ def test_sum_only_frozen_cashflows_without_rounding_away_net_edge() -> None:
     assert economics["original_net_pnl"] == "1E-24"
     assert economics["candidate_skip_only_net_pnl"] == "1E-24"
     assert economics["candidate_absolute_positive"] is True
+
+
+def test_unidentified_lead_strategy_keeps_original_loser_uncredited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = research.ProspectiveShortBreakoutRankState(frozen_at_ms=50)
+    trade = _trade("unknown-lead", opened=state.started_at_ms, pnl="-15")
+    monkeypatch.setattr(
+        research, "try_resolve_entry_context_row",
+        lambda *args: (_context(9, lead="unknown"), None),
+    )
+    report = research.prospective_short_breakout_rank_comparison(
+        (trade,), None, None, None, state  # type: ignore[arg-type]
+    )
+    overall = report["overall"]
+    assert isinstance(overall, dict)
+    assert overall["original_net_pnl"] == "-15"
+    assert overall["candidate_skip_only_net_pnl"] == "-15"
+    assert overall["skipped"] == 0
+    assert report["unverified_original_entry_context_by_reason"] == {
+        "unverified_lead_strategy": 1
+    }
+    assert report["integrity_complete"] is False
