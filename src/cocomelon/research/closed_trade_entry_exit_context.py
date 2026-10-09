@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from collections.abc import Sequence
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
@@ -108,7 +108,7 @@ def _cohort(trades: Sequence[TradeJournalEntry]) -> dict[str, object]:
     }
 
 
-def closed_trade_entry_exit_context(
+def _closed_trade_entry_exit_context_precise(
     trades: Sequence[TradeJournalEntry],
     facts: EvaluationFactStore,
     features: LearningFeatureSnapshotStore,
@@ -217,3 +217,14 @@ def closed_trade_entry_exit_context(
             "an independently frozen forward fill-aware paired portfolio trial."
         ),
     }
+
+
+def closed_trade_entry_exit_context(
+    trades: Sequence[TradeJournalEntry],
+        facts: EvaluationFactStore,
+        features: LearningFeatureSnapshotStore,
+        ranks: ContinuousPaperOpeningRankStore,
+) -> dict[str, object]:
+    """Aggregate unrounded journal decimals before checking cohort parity."""
+    with localcontext(prec=96):
+        return _closed_trade_entry_exit_context_precise(trades, facts, features, ranks)
