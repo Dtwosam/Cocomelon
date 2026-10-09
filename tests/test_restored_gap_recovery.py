@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -28,7 +28,7 @@ def _event(
         kind=kind,
         market=coin,
         exchange_time_ms=exchange_ms,
-        receive_time=datetime.fromtimestamp(received_ms / 1_000, tz=UTC),
+        receive_time=BASE + timedelta(milliseconds=received_ms - BASE_MS),
         schema_version=1,
         source=source,
         event_key=f"{kind}:{market}:{received_ms}",
