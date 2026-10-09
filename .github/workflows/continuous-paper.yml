@@ -1618,7 +1618,9 @@ jobs:
           PY
 
       - name: Upload full-stack fast-markout research summary
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-full-stack-forward-markout-summary.json') != '' }}
+        # A timed-out rebuild may leave a prior checkpoint's summary on disk.
+        # Do not publish it as successful research for the current worker.
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_full_stack_markout_rebuild.outcome == 'success' && hashFiles('continuous-paper-state/prospective-full-stack-forward-markout-summary.json') != '' }}
         uses: actions/upload-artifact@v7
         with:
           name: continuous-paper-full-stack-forward-markout-${{ github.run_id }}-${{ github.run_attempt }}
