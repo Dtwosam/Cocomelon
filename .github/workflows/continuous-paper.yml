@@ -2923,6 +2923,7 @@ jobs:
             continuous-paper-state/profit-target-one-half-r-execution-shadow-state.json
             continuous-paper-state/profit-trailing-one-r-execution-shadow-state.json
             continuous-paper-state/net-reserved-trailing-execution-shadow-state.json
+            continuous-paper-state/early-reserved-trailing-execution-shadow-state.json
             continuous-paper-state/prospective-breakeven-profit-lock-state.json
             continuous-paper-state/prospective-momentum-band-entry-state.json
             continuous-paper-state/prospective-momentum-pullback-entry-state.json
@@ -2940,6 +2941,7 @@ jobs:
             continuous-paper-state/prospective-profit-trailing-comparison.json
             continuous-paper-state/prospective-profit-trailing-grid-comparison.json
             continuous-paper-state/prospective-net-reserved-trailing-comparison.json
+            continuous-paper-state/prospective-early-reserved-trailing-comparison.json
             continuous-paper-state/prospective-entry-cost-r-state.json
             continuous-paper-state/prospective-entry-cost-r-comparison.json
             continuous-paper-state/prospective-trend-outside-top10-state.json
@@ -3441,6 +3443,48 @@ jobs:
                       f"{item['candidate_net_pnl']} / "
                       f"{item['delta_net_pnl']}"
                   )
+          PY
+
+      - name: Upload earlier cost-reserved trailing-exit challenger
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-early-reserved-trailing-comparison.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-early-reserved-trailing-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            continuous-paper-state/prospective-early-reserved-trailing-comparison.json
+            continuous-paper-state/early-reserved-trailing-execution-shadow-state.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Report prospective earlier profit-protection economics
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/prospective-early-reserved-trailing-comparison.json') != '' }}
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          path = Path(
+              "continuous-paper-state/"
+              "prospective-early-reserved-trailing-comparison.json"
+          )
+          data = json.loads(path.read_text(encoding="utf-8"))
+          print("## Early +0.5R trailing profit protection: research only")
+          print("- Primary paper entries/exits/risk: unchanged")
+          if data.get("error"):
+              print(f"- observer error: {data['error']}")
+          else:
+              print(f"- future matched trades: {data['matched_trades']}")
+              print(f"- order-book IOC full closes: {data['target_full_ioc_closes']}")
+              print(f"- complete evidence: {data['integrity_clean']}")
+              print(f"- forward after-cost screen: {data['economic_screen_passes']}")
+              for side, row in data["by_direction"].items():
+                  print(
+                      f"- {side.upper()} trades: {row['trades']}; "
+                      f"candidate/actual PnL: "
+                      f"{row['target_net_pnl']} / {row['actual_net_pnl']}"
+                  )
+          print("- Matched trades are NOT independent paper portfolios")
           PY
 
       - name: Upload net-reserved trailing versus original IOC review
