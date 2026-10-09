@@ -4,7 +4,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal, localcontext
-from typing import Final
+from typing import Final, cast
 
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.evaluation.store import EvaluationFactStore
@@ -228,11 +228,11 @@ def prospective_short_breakout_rank_comparison(
     screen = (
         complete
         and len(rows) >= MIN_FUTURE
-        and overall["skipped"] >= MIN_SKIPPED
+        and cast(int, overall["skipped"]) >= MIN_SKIPPED
         and len(markets) >= MIN_MARKETS
         and len(market_skips) >= MIN_MARKETS
         and all(
-            by_direction[side]["trades"] >= MIN_SIDE
+            cast(int, by_direction[side]["trades"]) >= MIN_SIDE
             and by_direction[side]["candidate_absolute_positive"] is True
             for side in ("long", "short")
         )
