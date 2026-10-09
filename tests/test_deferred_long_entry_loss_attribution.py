@@ -190,3 +190,29 @@ def test_precise_long_and_short_sums_match_reordered_original_journal() -> None:
         (Decimal(group["net_pnl"]) for group in
          report["by_entry_strategy_and_rank"].values()), Decimal("0")
     ) == Decimal(expected)
+
+
+
+def test_booked_trade_net_uses_authoritative_28_digit_arithmetic() -> None:
+    # A tiny fee is legitimately absorbed by the *booked trade* rounding
+    # context. Repricing its closed PnL at 96 digits would reject valid
+    # immutable journal data, even though portfolio sums need 96 digits.
+    source = _source()
+    trade = source["trades"][0]
+    trade["gross_realized_pnl"] = "100000000000000000000"
+    trade["entry_fees"] = "0.000000000000000000000000001"
+    trade["exit_fees"] = "0"
+    trade["net_pnl"] = "100000000000000000000"
+    trade["entry_context"]["net_pnl"] = trade["net_pnl"]
+    new_total = "99999999999999999998.2"
+    source["economics"]["overall"]["net_pnl"] = new_total
+    source["verified_entry_exit_context"]["overall"]["net_pnl"] = new_total
+    report = assess_long_entry_loss_attribution(source)
+    assert report["total_realized_closed_net_pnl"] == new_total
+    assert report["source_trades"] == 5
+
+    # A materially inconsistent booked net still fails closed.
+    source["trades"][0]["net_pnl"] = "99999999999999999999"
+    source["trades"][0]["entry_context"]["net_pnl"] = source["trades"][0]["net_pnl"]
+    with pytest.raises(LongEntryLossAttributionError, match="cashflow mismatch"):
+        assess_long_entry_loss_attribution(source)
