@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Sequence
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
@@ -180,7 +180,7 @@ def _holding_bucket(trade: TradeJournalEntry) -> str:
     return "60m_plus"
 
 
-def closed_trade_lifecycle_economics(
+def _closed_trade_lifecycle_economics_precise(
     trades: Sequence[TradeJournalEntry],
     fact_store: EvaluationFactStore,
 ) -> dict[str, object]:
@@ -237,3 +237,12 @@ def closed_trade_lifecycle_economics(
         "by_side_and_regime": groups(by_regime),
         "by_side_and_exit_reason": groups(by_exit),
     }
+
+
+def closed_trade_lifecycle_economics(
+    trades: Sequence[TradeJournalEntry],
+        fact_store: EvaluationFactStore,
+) -> dict[str, object]:
+    """Aggregate unrounded journal decimals before checking cohort parity."""
+    with localcontext(prec=96):
+        return _closed_trade_lifecycle_economics_precise(trades, fact_store)
