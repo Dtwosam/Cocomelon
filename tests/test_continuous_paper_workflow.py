@@ -1991,3 +1991,23 @@ def test_full_journal_chart_and_long_loss_evidence_runs_immediately_after_handof
             exit_chart_gate,
         )
     ]
+
+
+def test_deferred_feed_source_provenance_runs_only_after_safe_chart_audit() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    sections = [
+        "Audit all closed paper trades and recorded entry-to-exit charts",
+        "Upload all closed paper-trade economics and charts",
+        "Diagnose unresolved source streams behind paper chart gaps",
+        "Upload paper feed source debt by exact stream",
+        "Attribute full-journal LONG losses to entry and exit evidence",
+    ]
+    positions = [source.index(label) for label in sections]
+    assert positions == sorted(positions)
+    assert all(source.count(label) == 1 for label in sections)
+    assert "steps.deferred_all_trade_chart_audit.outcome == 'success'" in source
+    assert "id: deferred_feed_gap_source_audit" in source
+    assert "steps.deferred_feed_gap_source_audit.outcome == 'success'" in source
+    assert "scripts/rebuild_deferred_feed_gap_source_audit.py" in source
+    assert "continuous-paper-feed-gap-source-audit-" in source
+    assert "path: continuous-paper-state/deferred-feed-gap-source-audit.json" in source

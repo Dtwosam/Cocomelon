@@ -1227,6 +1227,46 @@ jobs:
           retention-days: 90
           compression-level: 6
 
+      - name: Diagnose unresolved source streams behind paper chart gaps
+        id: deferred_feed_gap_source_audit
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_all_trade_chart_audit.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/rebuild_deferred_feed_gap_source_audit.py "$STATE_ROOT" \
+            | tee /tmp/deferred-feed-gap-source-audit.json
+          test -s "$STATE_ROOT/deferred-feed-gap-source-audit.json"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          report = json.loads(
+              Path("/tmp/deferred-feed-gap-source-audit.json").read_text(encoding="utf-8")
+          )
+          print("## Authenticated paper feed source gap debt")
+          print("- authority: RESEARCH ONLY / NO EXECUTION")
+          print(f"- unresolved sources / starts: "
+                f"{report['sources_with_unresolved_gaps']} / "
+                f"{report['unresolved_source_gap_starts']}")
+          print(f"- source scope: {report['open_gaps_by_scope']}")
+          print(f"- inherited pre-entry unresolved charts: "
+                f"{report['unresolved_pre_entry_charts']} / "
+                f"{report['closed_trades']}")
+          print("- IMPORTANT: current source checkpoint cannot retroactively "
+                "clear gaps on previously closed trades.")
+          PY
+
+      - name: Upload paper feed source debt by exact stream
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_feed_gap_source_audit.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-feed-gap-source-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/deferred-feed-gap-source-audit.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Attribute full-journal LONG losses to entry and exit evidence
         id: deferred_long_loss_attribution
         if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_all_trade_chart_audit.outcome == 'success' }}
