@@ -1173,3 +1173,85 @@ def test_market_scoped_candle_gaps_respect_hip3_dex_qualification(
     assert pipeline.known_gap_intervals_for_market(OTHER_MARKET) == ()
     execution.close()
     facts.close()
+
+
+
+@pytest.mark.parametrize(
+    ("source_stream", "expected_shared_or_same_market"),
+    [
+        ("l2Book:ETH", False),
+        ("l2Book:BTC", True),
+        ("l2Book::BTC", True),
+        ("l2Book:BTC:invalid:extra", True),
+        ("candle:BTC:1m:extra", True),
+        ("unknown-market-topic", True),
+    ],
+)
+def test_real_closed_trade_sink_does_not_inherit_unrelated_market_gaps(
+    tmp_path: Path,
+    source_stream: str,
+    expected_shared_or_same_market: bool,
+) -> None:
+    """Verify the actual journal chart producer, not only a helper."""
+    captured: list[tuple[TradeJournalEntry, tuple[tuple[int, int | None], ...]]] = []
+
+    class Sink:
+        def record(
+            self,
+            trade: TradeJournalEntry,
+            mark_observations: tuple[ReplayRecord, ...],
+            known_gap_intervals: tuple[tuple[int, int | None], ...],
+        ) -> bool:
+            captured.append((trade, tuple(known_gap_intervals)))
+            return True
+
+    pipeline, execution, facts = _pipeline(
+        tmp_path,
+        suffix=f"gap-provenance-{source_stream.replace(':', '-')}",
+        closed_lifecycle_sink=Sink(),
+    )
+    gap_started = FUNDING_RECEIVE_MS + 100
+    _run_records(
+        pipeline,
+        (
+            _snapshot_record(),
+            _trigger_record(),
+            _book(OPEN_BOOK_MS, bid="99.9", ask="100.1"),
+            _asset_ctx(ORACLE_MS, mark="100", oracle="100"),
+            _funding(),
+            _gap_record(
+                gap_started, None, event_key=f"source-gap-{source_stream}",
+                stream_id=source_stream,
+            ),
+            _asset_ctx(STOP_MARK_MS, mark="94", oracle="94"),
+            _book(CLOSE_BOOK_MS, bid="93.9", ask="94.0"),
+        ),
+    )
+    assert len(captured) == 1
+    assert captured[0][0].market == MARKET
+    assert captured[0][1] == (
+        ((gap_started, None),) if expected_shared_or_same_market else ()
+    )
+    execution.close()
+    facts.close()
+
+
+def test_invalid_market_stream_cannot_be_restored_as_scoped_and_dropped(
+    tmp_path: Path,
+) -> None:
+    pipeline, execution, facts = _pipeline(
+        tmp_path, suffix="malformed-stream-restore",
+    )
+    for bad_stream in (
+        "l2Book::BTC",
+        "l2Book:BTC:invalid:extra",
+        "candle:BTC:1m:extra",
+        "candle::1m",
+        "newSharedTopic:BTC",
+    ):
+        with pytest.raises(ReplayInvariantError, match="market-scoped"):
+            pipeline.restore_gap_intervals_by_stream({
+                bad_stream: ((EVALUATED_AT_MS, None),),
+            })
+    execution.close()
+    facts.close()
