@@ -168,7 +168,13 @@ class RedundantStreamMux:
         buffer = self._buffers[(lane, stream_id)]
         while buffer:
             delivered = await self._emit_candidate(stream_id, buffer[0])
-            if delivered and stream_id in self._aggregate_gap_starts:
+            if (
+                delivered
+                and stream_id in self._aggregate_gap_starts
+                and self._receive_ms(buffer[0]) >= (
+                    self._aggregate_gap_starts[stream_id]
+                )
+            ):
                 self._recovery_witness_lanes[stream_id].add(lane)
             buffer.popleft()
 
@@ -239,7 +245,13 @@ class RedundantStreamMux:
             await self._switch(stream_id, lane)
         if lane == self.active_lane(stream_id):
             delivered = await self._emit_candidate(stream_id, event)
-            if delivered and stream_id in self._aggregate_gap_starts:
+            if (
+                delivered
+                and stream_id in self._aggregate_gap_starts
+                and self._receive_ms(event) >= (
+                    self._aggregate_gap_starts[stream_id]
+                )
+            ):
                 self._recovery_witness_lanes[stream_id].add(lane)
         else:
             self._buffer(lane, stream_id, event)
