@@ -200,6 +200,35 @@ def test_failed_gap_sink_keeps_uncommitted_start_for_retry() -> None:
     asyncio.run(run())
 
 
+def test_concurrent_acceptance_cannot_double_close_same_source() -> None:
+    async def run() -> None:
+        recovery = _recovery(
+            market={"l2Book:BTC": ((BASE_MS - 10_000, None),)},
+            shared={},
+        )
+        gaps: list[DataGap] = []
+
+        async def sink(gap: DataGap) -> None:
+            await asyncio.sleep(0)
+            gaps.append(gap)
+
+        counts = await asyncio.gather(
+            recovery.accept_recorded_event(
+                _event(), observed_at_ms=BASE_MS + 2_100,
+                gap_sink=sink,
+            ),
+            recovery.accept_recorded_event(
+                _event(), observed_at_ms=BASE_MS + 2_100,
+                gap_sink=sink,
+            ),
+        )
+        assert sorted(counts) == [0, 1]
+        assert len(gaps) == 1
+        assert recovery.pending_named_starts == {}
+
+    asyncio.run(run())
+
+
 def test_receive_only_mainnet_topic_requires_forward_checkpoint_receipt() -> None:
     async def run() -> None:
         recovery = _recovery(
