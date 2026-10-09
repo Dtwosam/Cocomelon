@@ -1253,6 +1253,7 @@ jobs:
         id: deferred_all_trade_chart_audit
         if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/session-summary.json') != '' }}
         continue-on-error: true
+        timeout-minutes: 30
         shell: bash
         run: |
           set -euo pipefail
@@ -1569,6 +1570,7 @@ jobs:
         id: deferred_full_stack_markout_rebuild
         if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/session-summary.json') != '' }}
         continue-on-error: true
+        timeout-minutes: 30
         shell: bash
         run: |
           set -euo pipefail
