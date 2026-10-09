@@ -255,8 +255,18 @@ def _confirmed_named_recovery_witnesses(
             raise DeferredFeedGapSourceAuditError(
                 "named recovery witness exceeds handoff chronology"
             )
-        # A witness is not itself a recovery. It must be covered by a
-        # checkpoint interval that is genuinely closed for this exact source.
+        # A witness is not itself a recovery. A separate old closed
+        # interval can overlap this start while the exact inherited outage
+        # is STILL OPEN. That is never a valid recovery certificate.
+        if any(
+            start == source_start and end is None
+            for start, end in named_gaps[stream_id]
+        ):
+            raise DeferredFeedGapSourceAuditError(
+                "named recovery witness original gap remains unresolved"
+            )
+        # A compacted closed interval may absorb several original starts.
+        # Coverage is necessary only AFTER ruling out the exact open start.
         if not any(
             end is not None
             and start <= source_start
