@@ -99,6 +99,17 @@ jobs:
                   selected = matches[0]
           if selected is None:
               raise SystemExit(0)
+          size = selected.get("size_in_bytes")
+          if type(size) is not int or size <= 0:
+              raise SystemExit("exact artifact size is absent or invalid")
+          if (
+              selected.get("name") == os.environ["ARTIFACT_DURABLE_NAME"]
+              and size > 512 * 1024 * 1024
+          ):
+              # An oversized legacy download must not exhaust research
+              # runner capacity. Wait for a genuine compact source; do
+              # not repackage or invent missing market-data records.
+              raise SystemExit(0)
           digest = selected.get("digest")
           if (
               not isinstance(digest, str)
@@ -282,7 +293,7 @@ jobs:
           fi
 
           if [ -z "$artifact_line" ]; then
-            echo "no authenticated durable paper state is available" >&2
+            echo "no authenticated LONG-trend source within 512 MiB legacy download budget; require exact compact artifact" >&2
             exit 1
           fi
           if ! paper_run_is_evidence_eligible "$run_id" "$run_attempt"; then
