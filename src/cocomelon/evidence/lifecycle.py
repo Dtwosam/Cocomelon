@@ -45,6 +45,7 @@ from cocomelon.execution.accounting import PaperPosition
 from cocomelon.execution.funding import FundingAccrual, reconcile_funding_boundary
 from cocomelon.execution.interface import PositionManagement
 from cocomelon.execution.paper import PaperExecutionAdapter
+from cocomelon.hyperliquid.client import INTERVAL_MS
 from cocomelon.features.microstructure import calculate_microstructure_features
 from cocomelon.journal.assembler import (
     JournalInconsistency,
@@ -292,7 +293,7 @@ def _market_wire_name_for_gap_stream(stream_id: str) -> str | None:
         return None
     if kind == "candle":
         market_name, sep, interval = name.rpartition(":")
-        if not sep or not interval or ":" in interval or interval.strip() != interval:
+        if not sep or interval not in INTERVAL_MS:
             return None
         name = market_name
     parts = name.split(":")
