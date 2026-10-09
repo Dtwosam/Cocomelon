@@ -22,7 +22,23 @@ def _charts() -> dict[str, object]:
         "promotion_authority": False,
         "total_journal_trades": 3,
         "trades_included_in_economics": 3,
-        "trades": [{}, {}, {}],
+        "trades": [
+            {
+                "trade_id": "btc-early", "market": "BTC",
+                "opened_at_ms": 150, "closed_at_ms": 250,
+                "chart_coverage_complete": False,
+            },
+            {
+                "trade_id": "eth-middle", "market": "ETH",
+                "opened_at_ms": 450, "closed_at_ms": 700,
+                "chart_coverage_complete": False,
+            },
+            {
+                "trade_id": "sol-late", "market": "SOL",
+                "opened_at_ms": 750, "closed_at_ms": 900,
+                "chart_coverage_complete": True,
+            },
+        ],
         "complete_chart_paths": 1,
         "unresolved_gap_before_entry_affected_trades": 2,
         "clean_mark_cadence_but_unresolved_gap_trades": 1,
@@ -65,6 +81,27 @@ def test_stream_scope_provenance_survives_without_recovering_legacy_gaps() -> No
     }
     assert named["l2Book:BTC"]["market"] == "BTC"
     assert named["l2Book:BTC"]["closed_gap_count"] == 1
+    assert named["l2Book:BTC"][
+        "original_trades_overlapping_unresolved_source_gap"
+    ] == 1
+    assert named["l2Book:BTC"][
+        "incomplete_charts_overlapping_unresolved_source_gap"
+    ] == 1
+    assert named["candle:ETH:1m"][
+        "original_trades_overlapping_unresolved_source_gap"
+    ] == 1
+    assert named["allMids"][
+        "original_trades_overlapping_unresolved_source_gap"
+    ] == 2
+    assert named["allMids"][
+        "incomplete_charts_overlapping_unresolved_source_gap"
+    ] == 1
+    assert named["<legacy_unattributed>"][
+        "incomplete_charts_overlapping_unresolved_source_gap"
+    ] == 2
+    assert named["<legacy_unattributed>"][
+        "original_trades_overlapping_unresolved_source_gap"
+    ] == 3
     assert named["l2Book:BTC"]["closed_gap_duration_ms"] == 30
     assert named["allMids"]["market"] is None
     assert named["l2Book:BTC:malformed:extra"]["scope"] == (
@@ -164,3 +201,62 @@ def test_post_handoff_writer_rejects_unfinished_session(
     report = json.loads(dest.read_text(encoding="utf-8"))
     assert report["sources_with_unresolved_gaps"] == 5
     assert report["research_only"] is True
+
+
+def test_resolved_gaps_and_unrelated_coin_never_count_as_open_source_debt() -> None:
+    state = _checkpoint()
+    state["known_gap_intervals_by_stream"] = {
+        "l2Book:BTC": [[300, 330]],  # historical gap, no active BTC overlap
+        "l2Book:DOGE": [[100, None]],  # no DOGE original positions
+    }
+    state["known_gap_intervals"] = []
+    state["known_global_gap_intervals_by_stream"] = {}
+    report = assess_feed_gap_source_debt(state, _charts())
+    by_source = {row["stream_id"]: row for row in report["by_source"]}
+    assert by_source["l2Book:BTC"][
+        "original_trades_overlapping_any_source_gap"
+    ] == 0
+    assert by_source["l2Book:BTC"][
+        "original_trades_overlapping_unresolved_source_gap"
+    ] == 0
+    assert by_source["l2Book:DOGE"]["possible_market_trades"] == 0
+    assert by_source["l2Book:DOGE"][
+        "incomplete_charts_overlapping_unresolved_source_gap"
+    ] == 0
+    assert report["sources_with_unresolved_gaps"] == 1
+
+
+@pytest.mark.parametrize(
+    ("invalid_key", "replacement"),
+    (
+        ("trade_id", "btc-early"),
+        ("market", ""),
+        ("opened_at_ms", True),
+        ("closed_at_ms", 100),
+        ("chart_coverage_complete", "yes"),
+    ),
+)
+def test_source_priority_rejects_invalid_original_trade_witness(
+    invalid_key: str, replacement: object,
+) -> None:
+    charts = _charts()
+    rows = charts["trades"]
+    assert isinstance(rows, list)
+    rows[1][invalid_key] = replacement
+    with pytest.raises(DeferredFeedGapSourceAuditError):
+        assess_feed_gap_source_debt(_checkpoint(), charts)
+
+
+def test_open_source_priority_is_non_additive_and_no_price_execution_claim() -> None:
+    report = assess_feed_gap_source_debt(_checkpoint(), _charts())
+    by_source = report["by_source"]
+    assert isinstance(by_source, list)
+    assert by_source[0]["stream_id"] == "<legacy_unattributed>"
+    # The same ETH/SOL original is present for multiple overlapping streams.
+    assert sum(
+        item["original_trades_overlapping_unresolved_source_gap"]
+        for item in by_source
+    ) > report["chart_total_journal_trades"]
+    assert "not additive" in report["source_priority_definition"]
+    assert report["current_checkpoint_not_retrospective_chart_recovery"] is True
+    assert report["promotion_authority"] is False

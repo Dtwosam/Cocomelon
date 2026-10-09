@@ -84,6 +84,93 @@ def _scoped(
     return result
 
 
+
+def _chart_trade_witnesses(
+    trades: list[object],
+) -> tuple[tuple[str, int, int, bool], ...]:
+    """Validate original chart identities without treating marks as fills."""
+    witnesses: list[tuple[str, int, int, bool]] = []
+    trade_ids: set[str] = set()
+    for raw in trades:
+        row = _object(raw, "closed chart trade")
+        trade_id = row.get("trade_id")
+        market = row.get("market")
+        if (
+            not isinstance(trade_id, str) or not trade_id.strip()
+            or trade_id in trade_ids
+            or not isinstance(market, str) or not market.strip()
+        ):
+            raise DeferredFeedGapSourceAuditError(
+                "closed chart trade identity missing or duplicated"
+            )
+        opened = _integer(row.get("opened_at_ms"), "chart opening")
+        closed = _integer(row.get("closed_at_ms"), "chart close")
+        if closed < opened:
+            raise DeferredFeedGapSourceAuditError(
+                "closed chart trade chronology invalid"
+            )
+        coverage = row.get("chart_coverage_complete")
+        if type(coverage) is not bool:
+            raise DeferredFeedGapSourceAuditError(
+                "closed chart coverage witness must be boolean"
+            )
+        trade_ids.add(trade_id)
+        witnesses.append((market, opened, closed, coverage))
+    return tuple(witnesses)
+
+
+def _overlap(
+    intervals: list[tuple[int, int | None]],
+    opened_ms: int,
+    closed_ms: int,
+    *,
+    unresolved_only: bool,
+) -> bool:
+    """Closed trade intersects a real nonzero time span of source outage."""
+    return any(
+        start < closed_ms
+        and (end is None or end > opened_ms)
+        and (not unresolved_only or end is None)
+        for start, end in intervals
+    )
+
+
+def _source_trade_exposure(
+    intervals: list[tuple[int, int | None]],
+    *,
+    market: str | None,
+    trades: tuple[tuple[str, int, int, bool], ...],
+) -> dict[str, int]:
+    """Potential chart exposure, NEVER a counterfactual execution count.
+
+    Each source may affect the same closed trade; counts are not additive
+    across streams. Market-specific outages cannot contaminate other coins.
+    """
+    possible = [
+        (opened, closed, complete)
+        for trade_market, opened, closed, complete in trades
+        if market is None or trade_market == market
+    ]
+    overlapping = [
+        (opened, closed, complete)
+        for opened, closed, complete in possible
+        if _overlap(intervals, opened, closed, unresolved_only=False)
+    ]
+    unresolved = [
+        (opened, closed, complete)
+        for opened, closed, complete in possible
+        if _overlap(intervals, opened, closed, unresolved_only=True)
+    ]
+    return {
+        "possible_market_trades": len(possible),
+        "original_trades_overlapping_any_source_gap": len(overlapping),
+        "original_trades_overlapping_unresolved_source_gap": len(unresolved),
+        "incomplete_charts_overlapping_unresolved_source_gap": sum(
+            not complete for _, _, complete in unresolved
+        ),
+    }
+
+
 def assess_feed_gap_source_debt(
     checkpoint: object,
     charts: object,
@@ -116,6 +203,7 @@ def assess_feed_gap_source_debt(
                     "chart economic count") != count
     ):
         raise DeferredFeedGapSourceAuditError("chart source omitted closed trades")
+    trade_witnesses = _chart_trade_witnesses(trades)
 
     legacy = _intervals(
         state.get("known_gap_intervals", []),
@@ -173,9 +261,21 @@ def assess_feed_gap_source_debt(
                 "oldest_unresolved_gap_start_ms": min(open_starts, default=None),
                 "newest_unresolved_gap_start_ms": max(open_starts, default=None),
                 "closed_gap_duration_ms": closed_durations,
+                **_source_trade_exposure(
+                    intervals,
+                    market=(
+                        _market_wire_name_for_gap_stream(stream_id)
+                        if scope == "market_specific" else None
+                    ),
+                    trades=trade_witnesses,
+                ),
             })
     by_source.sort(
         key=lambda item: (
+            -cast(
+                int, item["incomplete_charts_overlapping_unresolved_source_gap"]
+            ),
+            -cast(int, item["original_trades_overlapping_unresolved_source_gap"]),
             -cast(int, item["open_gap_count"]),
             str(item["scope"]), str(item["stream_id"]),
         )
@@ -215,11 +315,17 @@ def assess_feed_gap_source_debt(
             cast(int, row["open_gap_count"]) > 0 for row in by_source
         ),
         "by_source": by_source,
+        "source_priority_definition": (
+            "Descending incomplete original charts overlapping unresolved "
+            "persisted source gaps, not causality and not additive across "
+            "topics or evidence of executable profits."
+        ),
         "current_checkpoint_not_retrospective_chart_recovery": True,
         "caution": (
             "Checkpoint source gaps describe unresolved sources at handoff. "
-            "They do not certify any earlier closed trade chart and cannot "
-            "clear missing source evidence without authentic recovery events."
+            "These potential source/trade intersections overlap across "
+            "topics, are not causal attribution, and cannot certify any "
+            "previously closed chart without authentic recovery evidence."
         ),
         "research_only": True,
         "execution_authority": False,

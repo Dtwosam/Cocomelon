@@ -34,6 +34,19 @@ def main() -> None:
             report["sources_with_unresolved_gaps"]
         ),
         "open_gaps_by_scope": report["open_gap_count_by_scope"],
+        "top_incomplete_chart_sources": [
+            {
+                "scope": item["scope"],
+                "stream_id": item["stream_id"],
+                "incomplete_charts": (
+                    item["incomplete_charts_overlapping_unresolved_source_gap"]
+                ),
+                "original_trades_overlapping_unresolved": (
+                    item["original_trades_overlapping_unresolved_source_gap"]
+                ),
+            }
+            for item in report["by_source"][:5]
+        ],
         "research_only": True,
         "execution_authority": False,
     }, sort_keys=True))
