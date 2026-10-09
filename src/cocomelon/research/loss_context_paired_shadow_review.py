@@ -233,6 +233,11 @@ def _unattributed_block_count(row: dict[str, object]) -> int:
 
 
 def _validate_row_authority(row: dict[str, object]) -> None:
+    scope_lineage_clean = row.get("gap_scope_lineage_clean")
+    if scope_lineage_clean is not None and type(scope_lineage_clean) is not bool:
+        raise LossContextPairedShadowReviewError(
+            "paired review gap scope lineage witness invalid"
+        )
     for field in ("research_only", "shadow_only"):
         if row.get(field) is not True:
             raise LossContextPairedShadowReviewError(
@@ -689,6 +694,14 @@ def build_paired_shadow_review(
     )
 
     reasons: list[str] = []
+    # A pre-v2 shadow flattened every source-scoped gap into anonymous
+    # global debt on resume. Its historical A/B and coverage evidence
+    # cannot certify any future strategy, even when newer rows are clean.
+    gap_scope_lineage_clean = bool(eligible) and all(
+        row.get("gap_scope_lineage_clean") is True for row in eligible
+    )
+    if not gap_scope_lineage_clean:
+        reasons.append("unverifiable_legacy_gap_scope_lineage")
     if duration_ms < MIN_REVIEW_DURATION_MS:
         reasons.append("insufficient_future_duration")
     if len(eligible) < MIN_REVIEW_CHECKPOINTS:
@@ -882,6 +895,7 @@ def build_paired_shadow_review(
             None if forward_gap_fraction is None else str(forward_gap_fraction)
         ),
         "latest_open_market_data_gaps": latest_open_gaps,
+        "gap_scope_lineage_clean": gap_scope_lineage_clean,
         "forward_closed_trade_economics_by_direction": side_performance,
         "matching_context_blocks": matching,
         "unattributed_legacy_matching_context_blocks": (
