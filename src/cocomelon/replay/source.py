@@ -132,7 +132,13 @@ def _validate_partition(
         return relative.parent.as_posix()
 
     if record_type == SourceRecordKind.DATA_GAP.value:
-        if len(parts) != 3 or parts[0] != "gaps" or parts[1] != observed_date:
+        # The recorder partitions gaps by their *start* date, even when a
+        # recovery becomes observable on a subsequent UTC date.
+        started_ms = _integer(row.get("started_ms"), "started_ms")
+        start_date = datetime.fromtimestamp(
+            started_ms / 1000, tz=UTC
+        ).date().isoformat()
+        if len(parts) != 3 or parts[0] != "gaps" or parts[1] != start_date:
             raise RecordingValidationError("data gap row does not match partition identity")
         return relative.parent.as_posix()
 
