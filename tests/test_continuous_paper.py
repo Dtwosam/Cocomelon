@@ -4872,11 +4872,14 @@ def test_legacy_checkpoint_without_position_actions_remains_loadable(
         encoding="utf-8",
     )
 
-    checkpoints, gaps, by_stream, last_available_at_ms = _load_checkpoint(path)
+    checkpoints, gaps, by_stream, global_by_stream, last_available_at_ms = (
+        _load_checkpoint(path)
+    )
 
     assert last_available_at_ms == 123
     assert gaps == ()
     assert by_stream == {}
+    assert global_by_stream == {}
     assert len(checkpoints) == 1
     assert checkpoints[0].position_actions == ()
 
