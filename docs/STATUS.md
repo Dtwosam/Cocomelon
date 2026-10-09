@@ -33,6 +33,12 @@ Paired shadow state v2 separately checkpoints original anonymous, market-scoped 
 
 The baseline paper account, live market ingestion, orders, fees, entry/exit policy, risk budgets and all real-money permissions remain untouched. Correctly preserving future scoped feed evidence is **not** proof the challenger makes money: its latest legitimate after-cost forward comparison still loses against the baseline.
 
+### Bound optional capacity-reflow reconstruction after exact successor handoff — 2026-10-09
+
+Two predecessors (worker runs **37982966703** and **37983875396**) spent over an hour each in the optional deferred full-stack capacity-reflow rebuild **after** their paper trading had ended and fast/durable successor archives had been dispatched. This monopolized GitHub-hosted CI capacity without advancing the account. That reconstruction is *research only* and its step already uses `continue-on-error`; it must never delay unrelated evidence, worker liveness, or safety checks indefinitely.
+
+Impose a **30-minute** budget on that single optional Python reconstruction (with a bounded SIGTERM/SIGKILL cleanup). On timeout, or any reconstruction/tee error, the step fails visibly and explicitly certifies **no** candidate capacity-reflow economics. The successor state, archived paper account, original journal, price marks, trading step, and exact dispatch are untouched; the downstream handoff checks remain separate. This is an operational research-throughput limit, not permission to skip safety checks or promote a challenger.
+
 ### Distinguish checkpoint-adjacent source-gap bursts from older outages — 2026-10-09
 
 The first completed post-witness audit (worker **37973628696**) preserved 72 named market-specific open starts; 21 different L2 sources opened new intervals at the **same** 19:07:44.751 UTC timestamp, 86ms before the last persisted record. A common timestamp strongly suggests coordinated lifecycle activity, but neither a safe shutdown nor successful recovery follows from timing alone.
