@@ -280,29 +280,40 @@ def _compact_gap_intervals(
 
 
 
-def _scoped_market_gap_stream(stream_id: str) -> bool:
-    """Only recognized, unambiguous per-asset topics may be scoped.
+def _market_wire_name_for_gap_stream(stream_id: str) -> str | None:
+    """Parse only unambiguous per-asset feed topics.
 
-    Unknown and shared feed topics stay account-wide: a gap must never
-    be silently dropped because a new or malformed stream name appeared.
+    A malformed or new topic is a shared/unknown data-quality event, not
+    evidence that can be discarded just because it matches no open trade.
+    HIP-3 markets use dex:coin, while candles add a *final* interval.
     """
-    kind, separator, name = stream_id.partition(":")
-    if not separator or not name:
-        return False
-    if kind in {"l2Book", "activeAssetCtx", "trades"}:
-        return True
+    kind, sep, name = stream_id.partition(":")
+    if not sep or kind not in {"l2Book", "activeAssetCtx", "trades", "candle"}:
+        return None
     if kind == "candle":
-        return ":" in name and all(name.split(":", 1))
-    return False
+        market_name, sep, interval = name.rpartition(":")
+        if not sep or not interval or ":" in interval or interval.strip() != interval:
+            return None
+        name = market_name
+    parts = name.split(":")
+    if len(parts) not in {1, 2} or any(
+        not part or part.strip() != part for part in parts
+    ):
+        return None
+    try:
+        if len(parts) == 1:
+            return MarketId.from_wire_name("", name).wire_name
+        return MarketId.from_wire_name(parts[0], name).wire_name
+    except ValueError:
+        return None
+
+
+def _scoped_market_gap_stream(stream_id: str) -> bool:
+    return _market_wire_name_for_gap_stream(stream_id) is not None
 
 
 def _gap_stream_matches_market(stream_id: str, market: MarketId) -> bool:
-    kind, _separator, name = stream_id.partition(":")
-    if kind == "candle":
-        # HIP-3 market names themselves contain "dex:coin"; strip only
-        # the *final* candle interval suffix, not the first colon.
-        name = name.rsplit(":", 1)[0]
-    return name == market.wire_name
+    return _market_wire_name_for_gap_stream(stream_id) == market.wire_name
 
 
 class BaselineReplayPipeline:
