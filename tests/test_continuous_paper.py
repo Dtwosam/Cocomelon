@@ -5908,3 +5908,24 @@ def test_paper_checkpoint_v3_preserves_independent_global_and_asset_streams(
     state_path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(ValueError, match="scoped gap mapping"):
         _load_checkpoint(state_path)
+
+
+def test_frozen_short_breakout_rank_research_wired_into_paper_handoff() -> None:
+    from pathlib import Path
+
+    source = Path("src/cocomelon/continuous_paper.py").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/continuous-paper.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "prospective_short_breakout_rank_comparison(" in source
+    assert "_restore_prospective_short_breakout_rank(" in source
+    assert "ProspectiveShortBreakoutRankState.from_payload(raw)" in source
+    assert "prospective_short_breakout_rank_restore_error is None" in source
+    assert "prospective_short_breakout_rank_state.payload()" in source
+    assert "PROSPECTIVE_SHORT_BREAKOUT_RANK_STATE_FILENAME" in source
+    assert "PROSPECTIVE_SHORT_BREAKOUT_RANK_COMPARISON_FILENAME" in source
+    assert "feature_store,\n                            opening_rank_store," in source
+    assert "prospective-short-breakout-rank-comparison.json" in workflow
+    assert '      - "src/cocomelon/research/prospective_short_breakout_rank.py"' in workflow
+    assert "continuous-paper-short-breakout-rank-" in workflow
+    assert "no order or position authority" in workflow
