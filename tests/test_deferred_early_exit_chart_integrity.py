@@ -296,3 +296,51 @@ def test_early_exit_must_beat_original_after_cost_r_not_only_dollars() -> None:
     more_orig.net_r = Decimal("0.5")
     improved = _economics(((more_orig, early, late),))
     assert improved["early_beats_late_and_original"] is True
+
+
+def test_forward_journal_and_matched_cashflows_keep_96_digit_precision() -> None:
+    """Chart audit uses 96 digits; a default-context consumer loses a tiny win."""
+    exits, charts = _sources()
+    rows = charts["trades"]
+    assert isinstance(rows, list)
+    rows[0]["net_pnl"] = "10000"
+    rows[0]["net_r"] = "10000"
+    rows[1]["net_pnl"] = "0.000000000000000000000001"
+    rows[1]["net_r"] = "0.000000000000000000000001"
+    third = deepcopy(rows[0])
+    third.update({
+        "trade_id": "long-2",
+        "opened_at_ms": 1300,
+        "closed_at_ms": 2100,
+        "net_pnl": "-10000",
+        "net_r": "-10000",
+    })
+    rows.append(third)
+    charts["total_journal_trades"] = 3
+    charts["trades_included_in_economics"] = 3
+    charts["economics"] = {"overall": {"net_pnl": "1E-24"}}
+    exits["matched_trade_ids"] = ["long-1", "short-1", "long-2"]
+    exits["matched_trade_count"] = 3
+    exits["future_original_closed_trades"] = 3
+    exits["overall"] = {
+        "matched_trades": 3,
+        "original_net_pnl": "1E-24",
+        "original_net_r": "1E-24",
+    }
+    exits["by_direction"] = {
+        "long": {
+            "matched_trades": 2,
+            "original_net_pnl": "0",
+            "original_net_r": "0",
+        },
+        "short": {
+            "matched_trades": 1,
+            "original_net_pnl": "1E-24",
+            "original_net_r": "1E-24",
+        },
+    }
+    result = assess_early_exit_chart_integrity(exits, charts)
+    assert result["chart_integrity_complete"] is True
+    assert result["unfiltered_original_net_pnl"] == "1E-24"
+    assert result["matched_original_net_pnl"] == "1E-24"
+    assert result["unfiltered_original_net_r"] == "1E-24"

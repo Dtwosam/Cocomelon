@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, localcontext
 from pathlib import Path
 from typing import Final, cast
 
@@ -62,7 +62,7 @@ def _side(value: object) -> str:
     return str(value)
 
 
-def assess_early_exit_chart_integrity(
+def _assess_early_exit_chart_integrity_precise(
     exit_report: object,
     chart_report: object,
 ) -> dict[str, object]:
@@ -309,6 +309,17 @@ def assess_early_exit_chart_integrity(
             "capital availability, later entries, margin or drawdown."
         ),
     }
+
+
+def assess_early_exit_chart_integrity(
+    exit_report: object,
+    chart_report: object,
+) -> dict[str, object]:
+    """Exact forward-journal sums match the 96-digit chart source audit."""
+    with localcontext(prec=96):
+        return _assess_early_exit_chart_integrity_precise(
+            exit_report, chart_report
+        )
 
 
 def rebuild_deferred_early_exit_chart_integrity(

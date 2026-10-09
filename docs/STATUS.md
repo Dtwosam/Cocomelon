@@ -9,6 +9,12 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Preserve exact precision in matched IOC exit economics and journal chart gate — 2026-10-09
+
+The all-trade paper journal/chart and LONG-loss audits compute entire journal totals with a local 96-digit Decimal context because separately rounded 28-digit sums cannot be compared exactly to full-journal after-cost entries. Two downstream frozen +0.5R versus +1R trailing researchers still summed candidate/original returns and chart-gate cashflows under the default 28-digit context. A small positive advantage between large offsetting trade values could round away, or chart full-journal totals could spuriously fail exact parity with an authoritative audit.
+
+Apply independent local 96-digit contexts to the early/late paired IOC economic summaries and the entire deferred forward trade-chart quality gate. Keep actual original booked net PnL, candidate fill-derived PnL, net R, economic threshold policy, all frozen candidate IDs, and original chart population unchanged. Regression tests use real Decimal cancellation where intermediate sums otherwise lose a positive 1e-24 net edge, including both chart and IOC arithmetic. This repair fixes research decisions and reconciliation only; it does not alter paper or live execution, exits, capital, stop policies or risk.
+
 ### Prevent selective complete-exit charts from masking unmatched forward losses — 2026-10-09
 
 The frozen +0.5R early-vs-+1R late IOC observer compares matched future closed trades, but its deferred chart gate previously considered only that **matched subset** when stating that every chart was clean. If an unpaired forward original trade remained outside the exit observer's complete IOC set, the chart result could appear 100% complete despite that trade never being verified. The reported "unfiltered original" net PnL also reflected only matched exits rather than the entire prospective journal, inviting subset-confusion in downstream interpretation.
