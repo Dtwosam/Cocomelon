@@ -398,7 +398,13 @@ def assess_feed_gap_source_debt(
         if row["source_identity_identifiable"] is True
         and cast(int, row["open_gap_count"]) > 0
     ]
+    recovery_proof = _confirmed_named_recovery_witnesses(
+        witnesses,
+        named_gaps={**market_streams, **global_streams},
+        latest_ms=latest_ms,
+    )
     return {
+        **recovery_proof,
         "definition": "post_handoff_paper_feed_gap_source_debt_v1",
         "checkpoint_schema_version": version,
         "checkpoint_last_available_at_ms": latest_ms,
@@ -476,6 +482,17 @@ def write_deferred_feed_gap_source_audit(root: str | Path) -> Path:
         )
         state = json.loads((state_root / CHECKPOINT_NAME).read_text(encoding="utf-8"))
         chart = json.loads((state_root / CHART_NAME).read_text(encoding="utf-8"))
+        witness_path = state_root / WITNESS_NAME
+        witness_rows: list[object] | None = None
+        if witness_path.exists():
+            witness_text = witness_path.read_text(encoding="utf-8")
+            if witness_text and not witness_text.endswith("\n"):
+                raise DeferredFeedGapSourceAuditError(
+                    "named recovery witness ledger has an incomplete trailing row"
+                )
+            witness_rows = [
+                json.loads(line) for line in witness_text.splitlines()
+            ]
     except (OSError, ValueError) as exc:
         raise DeferredFeedGapSourceAuditError(
             "missing or invalid post-handoff paper source"
@@ -484,7 +501,7 @@ def write_deferred_feed_gap_source_audit(root: str | Path) -> Path:
         raise DeferredFeedGapSourceAuditError(
             "feed source diagnosis requires completed paper handoff"
         )
-    report = assess_feed_gap_source_debt(state, chart)
+    report = assess_feed_gap_source_debt(state, chart, witness_rows)
     destination = state_root / OUTPUT_NAME
     tmp = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
     try:
