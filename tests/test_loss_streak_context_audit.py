@@ -25,7 +25,9 @@ from cocomelon.research.loss_context_candidate import (
     build_loss_context_candidate_freeze,
 )
 from cocomelon.research.loss_streak_context_audit import (
+    LossStreakContextAuditError,
     loss_streak_context_audit,
+    try_resolve_entry_context_row,
 )
 
 RUN_ID = "continuous-paper-mainnet-v1"
@@ -1042,3 +1044,107 @@ def test_complete_entry_features_report_zero_attribution_gaps(
     assert gaps["unresolved_strictly_before_first_resolved"] is False
     assert gaps["requires_exact_source_recovery_for_full_baseline"] is False
     assert report["baseline_normalization_complete"] is True
+
+
+
+@pytest.mark.parametrize("invalid_decision", ["after_open", "before_feature"])
+def test_loss_entry_attribution_refuses_future_decision_or_unavailable_feature(
+    tmp_path: Path,
+    invalid_decision: str,
+) -> None:
+    """No future signal may make a retrospectively losing setup appear valid."""
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    features = LearningFeatureSnapshotStore(tmp_path / "features")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    opened = 1_000_000
+    feature = _feature(as_of_ms=opened - 1_000)
+    trade = _trade(
+        suffix=invalid_decision, feature=feature,
+        opened_at_ms=opened, pnl="-5",
+    )
+    try:
+        features.record(feature)
+        ranks.record(_rank(trade))
+        fact = _fact(trade)
+        bad_time = (
+            opened + 1 if invalid_decision == "after_open"
+            else feature.source_received_at_ms - 1
+        )
+        facts.record_decision_fact(replace(fact, timestamp_ms=bad_time))
+        with pytest.raises(LossStreakContextAuditError, match="future"):
+            try_resolve_entry_context_row(trade, facts, features, ranks)
+    finally:
+        facts.close()
+
+
+@pytest.mark.parametrize("age_ms,expected_band", [
+    (300_000, "outside10"),
+    (300_001, "stale"),
+])
+def test_loss_entry_attribution_refuses_stale_rank_as_proven_rank(
+    tmp_path: Path,
+    age_ms: int,
+    expected_band: str,
+) -> None:
+    opened = 1_000_000
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    features = LearningFeatureSnapshotStore(tmp_path / "features")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    feature = _feature(as_of_ms=opened - 1_000)
+    trade = _trade(
+        suffix=f"age-{age_ms}", feature=feature,
+        opened_at_ms=opened, pnl="-3",
+    )
+    try:
+        features.record(feature)
+        facts.record_decision_fact(_fact(trade, strategy="trend"))
+        ranks.record(replace(
+            _rank(trade, ordinal=15),
+            rank_observed_at_ms=opened - age_ms,
+            rank_age_ms=age_ms,
+        ))
+        result, reason = try_resolve_entry_context_row(
+            trade, facts, features, ranks,
+        )
+        assert reason is None
+        assert result is not None
+        assert result["rank_band"] == expected_band
+        assert result["rank_age_ms"] == age_ms
+        assert result["rank_evidence_status"] == (
+            "fresh" if age_ms == 300_000 else "stale"
+        )
+        assert result["rank_ordinal"] == (15 if age_ms == 300_000 else None)
+        assert result["rank_score"] == (
+            "0.9" if age_ms == 300_000 else None
+        )
+        assert result["net_pnl"] == "-3"
+    finally:
+        facts.close()
+
+
+def test_missing_rank_stays_distinct_from_stale_but_keeps_trade(
+    tmp_path: Path,
+) -> None:
+    opened = 1_000_000
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    features = LearningFeatureSnapshotStore(tmp_path / "features")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    feature = _feature(as_of_ms=opened - 1_000)
+    trade = _trade(
+        suffix="rank-missing", feature=feature,
+        opened_at_ms=opened, pnl="-4",
+    )
+    try:
+        features.record(feature)
+        facts.record_decision_fact(_fact(trade))
+        row, error = try_resolve_entry_context_row(
+            trade, facts, features, ranks,
+        )
+        assert error is None
+        assert row is not None
+        assert row["rank_band"] == "missing"
+        assert row["rank_evidence_status"] == "missing"
+        assert row["rank_ordinal"] is None
+        assert row["net_pnl"] == "-4"
+    finally:
+        facts.close()

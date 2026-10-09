@@ -18,6 +18,9 @@ from cocomelon.research.learning_feature_snapshots import (
 )
 
 ZERO: Final = Decimal("0")
+# Match prospective top-10 evidence admissibility; stale ordinals cannot
+# establish a trade's entry rank in retrospective loss discovery.
+MAX_VERIFIED_ENTRY_RANK_AGE_MS: Final = 300_000
 LOSS_STREAK_CONTEXT_SCHEMA_VERSION = 4
 DEFAULT_MIN_STREAK_LENGTH = 3
 DOMINANT_SHARE_MIN = Decimal("0.75")
@@ -68,6 +71,8 @@ def _sign(value: Decimal | None) -> str:
 def _rank_band(rank: ContinuousPaperOpeningRankEvidence | None) -> str:
     if rank is None:
         return "missing"
+    if rank.rank_age_ms > MAX_VERIFIED_ENTRY_RANK_AGE_MS:
+        return "stale"
     if rank.ordinal <= 3:
         return "top3"
     if rank.ordinal <= 10:
@@ -117,9 +122,12 @@ def _try_resolve(
         fact.market != trade.market
         or fact.direction is not trade.direction
         or fact.feature_snapshot_id != trade.feature_snapshot_id
+        or fact.replay_run_id != run_id
+        or fact.strategy_decision_id != trade.strategy_decision_id
+        or fact.timestamp_ms > trade.opened_at_ms
     ):
         raise LossStreakContextAuditError(
-            "loss-streak decision lineage mismatch"
+            "loss-streak decision lineage mismatch or future decision"
         )
 
     verified = features.load(trade.feature_snapshot_id)
@@ -136,6 +144,13 @@ def _try_resolve(
     ):
         raise LossStreakContextAuditError(
             "loss-streak feature is from after entry"
+        )
+    if (
+        feature.as_of_ms > fact.timestamp_ms
+        or feature.source_received_at_ms > fact.timestamp_ms
+    ):
+        raise LossStreakContextAuditError(
+            "loss-streak decision used an unavailable future feature"
         )
 
     rank = ranks.load(trade.opening_plan_id)
@@ -185,9 +200,23 @@ def _row(item: _ResolvedLoss) -> dict[str, object]:
             None if feature.spread_bps is None else str(feature.spread_bps)
         ),
         "book_age_ms": feature.book_age_ms,
-        "rank_ordinal": None if rank is None else rank.ordinal,
-        "rank_score": None if rank is None else str(rank.score),
+        "rank_ordinal": (
+            None if rank is None
+            or rank.rank_age_ms > MAX_VERIFIED_ENTRY_RANK_AGE_MS
+            else rank.ordinal
+        ),
+        "rank_score": (
+            None if rank is None
+            or rank.rank_age_ms > MAX_VERIFIED_ENTRY_RANK_AGE_MS
+            else str(rank.score)
+        ),
         "rank_band": _rank_band(rank),
+        "rank_age_ms": None if rank is None else rank.rank_age_ms,
+        "rank_evidence_status": (
+            "missing" if rank is None else
+            "stale" if rank.rank_age_ms > MAX_VERIFIED_ENTRY_RANK_AGE_MS
+            else "fresh"
+        ),
     }
 
 

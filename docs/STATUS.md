@@ -9,6 +9,14 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Verify causality and rank freshness before diagnosing losing entries — 2026-10-09
+
+A research-only at-entry provenance gap was found in the shared historical loss-streak context resolver. Although it already checks market/side/feature lineage and that features were observable at the trade's opening, it had not checked that a strategy **decision timestamp** was at or before the opening or that the feature was available before the *decision itself*. It also classified arbitrarily old opening-rank observations as top-3/top-10/outside-10, despite the frozen prospective rank studies allowing a maximum rank age of five minutes.
+
+Research now fails closed when a saved decision has an inconsistent ID, replay run, future timestamp, or a decision that references a feature that arrived only *after* the decision. Old rank evidence is not silently excluded from realized PnL: the entire original trade stays in every economic cohort, with its rank labeled `stale` (distinct from truly `missing`); ordinal and score are withheld from rank-based discovery. A rank of exactly five minutes remains accepted. Tests use durable stores, synthetic valid trades and tampered decision timestamps, covering both sides of the rank freshness boundary and unavailable/missing ranks. This is a **provenance correction**, not a newly optimized entry rule.
+
+The frozen outside-top-10 trend hypothesis is not retroactively updated based on these tests; historical discoveries must be independently precommitted and evaluated with fill-aware prospective separate paper accounts. The active paper bot, limits, fees, stops and live disabled setting are unchanged.
+
 ### Restore auditable LONG losses by fixing Decimal cohort reconciliation — 2026-10-09
 
 Authenticated GitHub Actions output from completed paper worker 37912255405 revealed that its deferred full-journal chart audit actually **failed** with `ClosedTradeEntryExitContextError: entry context cohort reconciliation failure: by_side_strategy_and_rank`. The step uses `continue-on-error`, so the overall workflow may continue even though the **raw evidence producer failed** and no all-trade chart artifact is uploaded. Consequently the newly merged LONG loss attribution from PR #1050 and chart-based +0.5R/+1R comparisons have **not** yet generated reliable current artifacts; do not claim their economic conclusions exist.
