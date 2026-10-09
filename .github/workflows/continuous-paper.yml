@@ -1378,14 +1378,14 @@ jobs:
             continuous-paper-state/loss-context-portfolio-shadow-freeze.json
             continuous-paper-state/targeted-trend-rank-paired-portfolio-freeze.json
             continuous-paper-state/loss-context-paired-portfolio-shadow-summary.json
-            continuous-paper-state/loss-context-paired-portfolio-shadow
+            continuous-paper-state/loss-context-paired-portfolio-shadow-scoped-v2
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
 
       - name: Review paired loss-context portfolio shadow
         id: loss_context_paired_shadow_review
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && (hashFiles('continuous-paper-state/targeted-trend-rank-paired-portfolio-freeze.json') != '' || hashFiles('continuous-paper-state/loss-context-portfolio-shadow-freeze.json') != '') && hashFiles('continuous-paper-state/loss-context-paired-portfolio-shadow/review-ledger.jsonl') != '' }}
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && (hashFiles('continuous-paper-state/targeted-trend-rank-paired-portfolio-freeze.json') != '' || hashFiles('continuous-paper-state/loss-context-portfolio-shadow-freeze.json') != '') && hashFiles('continuous-paper-state/loss-context-paired-portfolio-shadow-scoped-v2/review-ledger.jsonl') != '' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -1396,7 +1396,7 @@ jobs:
           fi
           cocomelon-loss-context-paired-shadow-review \
             --freeze "$freeze_file" \
-            --ledger "$STATE_ROOT/loss-context-paired-portfolio-shadow/review-ledger.jsonl" \
+            --ledger "$STATE_ROOT/loss-context-paired-portfolio-shadow-scoped-v2/review-ledger.jsonl" \
             --output "$STATE_ROOT/loss-context-paired-shadow-review-report.json" \
             | tee /tmp/loss-context-paired-shadow-review.json
           test -s "$STATE_ROOT/loss-context-paired-shadow-review-report.json"
