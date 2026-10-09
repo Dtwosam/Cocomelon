@@ -59,6 +59,9 @@ class RedundantStreamMux:
         self._observed_lanes: dict[str, set[int]] = defaultdict(set)
         self._session_ready_lanes: set[int] = set()
         self._aggregate_gap_starts: dict[str, int] = {}
+        # A recovered notification alone is not a replayable price event.
+        # Require an actually accepted normalized event from the healed lane.
+        self._recovery_witness_lanes: dict[str, set[int]] = defaultdict(set)
         self._seen_keys: dict[str, set[str]] = defaultdict(set)
         self._seen_queues: dict[str, deque[str]] = defaultdict(deque)
         self._last_emitted: dict[str, StreamEvent] = {}
@@ -132,14 +135,15 @@ class RedundantStreamMux:
             return event.receive_time <= previous.receive_time
         return False
 
-    async def _emit_candidate(self, stream_id: str, event: StreamEvent) -> None:
+    async def _emit_candidate(self, stream_id: str, event: StreamEvent) -> bool:
         if self._is_older_than_last_emitted(stream_id, event):
-            return
+            return False
         if self._is_duplicate(stream_id, event):
-            return
+            return False
         await self._event_sink(event)
         self._last_emitted[stream_id] = event
         self._remember_key(stream_id, event.event_key)
+        return True
 
     def _buffer(self, lane: int, stream_id: str, event: StreamEvent) -> None:
         buffer = self._buffers[(lane, stream_id)]
@@ -163,7 +167,16 @@ class RedundantStreamMux:
         self._failover_count += 1
         buffer = self._buffers[(lane, stream_id)]
         while buffer:
-            await self._emit_candidate(stream_id, buffer.popleft())
+            delivered = await self._emit_candidate(stream_id, buffer[0])
+            if (
+                delivered
+                and stream_id in self._aggregate_gap_starts
+                and self._receive_ms(buffer[0]) >= (
+                    self._aggregate_gap_starts[stream_id]
+                )
+            ):
+                self._recovery_witness_lanes[stream_id].add(lane)
+            buffer.popleft()
 
     def _available_lane(self, stream_id: str, *, excluding: int) -> int | None:
         for lane in range(self._lane_count):
@@ -190,6 +203,7 @@ class RedundantStreamMux:
         starts = self._lane_gap_starts[stream_id]
         aggregate_start = max(starts.values(), default=started_ms)
         self._aggregate_gap_starts[stream_id] = aggregate_start
+        self._recovery_witness_lanes.pop(stream_id, None)
         await self._gap_sink(
             DataGap(
                 stream_id=stream_id,
@@ -205,7 +219,7 @@ class RedundantStreamMux:
         *,
         recovered_ms: int,
     ) -> None:
-        started_ms = self._aggregate_gap_starts.pop(stream_id, None)
+        started_ms = self._aggregate_gap_starts.get(stream_id)
         if started_ms is None:
             return
         await self._gap_sink(
@@ -216,24 +230,37 @@ class RedundantStreamMux:
                 reason="recovered",
             )
         )
+        # A failed recorder write must never clear our recovery debt.
+        self._aggregate_gap_starts.pop(stream_id, None)
+        self._recovery_witness_lanes.pop(stream_id, None)
 
     async def on_event(self, lane: int, event: StreamEvent) -> None:
         self._require_lane(lane)
         stream_id = event_stream_id(event)
         self._session_ready_lanes.add(lane)
         self._observed_lanes[stream_id].add(lane)
-        if lane not in self._lane_gap_starts[stream_id]:
-            await self._close_aggregate_gap_if_needed(
-                stream_id,
-                recovered_ms=self._receive_ms(event),
-            )
+        recovered_lane = lane not in self._lane_gap_starts[stream_id]
         current = self.active_lane(stream_id)
         if not self._lane_is_available(stream_id, current):
             await self._switch(stream_id, lane)
         if lane == self.active_lane(stream_id):
-            await self._emit_candidate(stream_id, event)
-            return
-        self._buffer(lane, stream_id, event)
+            delivered = await self._emit_candidate(stream_id, event)
+            if (
+                delivered
+                and stream_id in self._aggregate_gap_starts
+                and self._receive_ms(event) >= (
+                    self._aggregate_gap_starts[stream_id]
+                )
+            ):
+                self._recovery_witness_lanes[stream_id].add(lane)
+        else:
+            self._buffer(lane, stream_id, event)
+        if recovered_lane and lane in self._recovery_witness_lanes[stream_id]:
+            # A healthy socket alone cannot prove replayable market coverage.
+            await self._close_aggregate_gap_if_needed(
+                stream_id,
+                recovered_ms=self._receive_ms(event),
+            )
 
     async def on_gap(self, lane: int, gap: DataGap) -> None:
         self._require_lane(lane)
@@ -245,13 +272,16 @@ class RedundantStreamMux:
             self._session_ready_lanes.add(lane)
             self._observed_lanes[stream_id].add(lane)
             recovered_ms = gap.ended_ms if gap.ended_ms is not None else gap.started_ms
-            await self._close_aggregate_gap_if_needed(
-                stream_id,
-                recovered_ms=recovered_ms,
-            )
             current = self.active_lane(stream_id)
             if not self._lane_is_available(stream_id, current):
+                # Deliver the recovered lane's buffered witness before
+                # promising durable continuity for the aggregate stream.
                 await self._switch(stream_id, lane)
+            if lane in self._recovery_witness_lanes[stream_id]:
+                await self._close_aggregate_gap_if_needed(
+                    stream_id,
+                    recovered_ms=recovered_ms,
+                )
             return
 
         if gap.is_open:
