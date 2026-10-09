@@ -19,10 +19,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     report_path, chart_path, report = write_deferred_trade_charts(args.state_root)
     economics = report["economics"]
     overall = economics["overall"]
+    verified = report["verified_entry_exit_context"]
     print(json.dumps({
         "report": str(report_path),
         "charts": str(chart_path),
         "all_journal_trades": report["total_journal_trades"],
+        "verified_entry_contexts": verified["entry_context_verified_trades"],
+        "unresolved_entry_contexts": verified["entry_context_unresolved_trades"],
+        "stopped_losing_trades": verified["overall"]["mark_stop_losing_exits"],
+        "losses_with_favorable_0_5r": (
+            verified["overall"]["losses_after_0_5r_favorable_move"]
+        ),
+        "losses_no_favorable_0_25r": (
+            verified["overall"]["losses_no_0_25r_favorable_move"]
+        ),
         "verified_trades": report["trades_included_in_economics"],
         "realized_net_pnl": overall["net_pnl"],
         "fees": overall["fees"],
