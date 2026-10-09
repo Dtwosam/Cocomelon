@@ -19,6 +19,12 @@ This is **not a change to entry/exit policy**, paper execution, live execution, 
 
 **LIVE TRADING: DISABLED.**
 
+### Continuous-paper main branch upgrade watchdog shell repair — 2026-10-09
+
+Authenticated paper-worker log lines repeatedly showed two explicit shell errors while checking for changed runtime files: \`prospective_early_reserved_trailing.py: Permission denied\` and \`prospective_early_vs_late_trailing.py: Permission denied\`. The workflow's \`git diff --name-only\` command had been broken into *three* physical shell lines without backslash continuations. Its second and third filename lists were executed as commands on each heartbeat, potentially suppressing reliable post-merge safe upgrade detection. Restore explicit line continuations and guard their presence with a static workflow regression. Existing market data, book freshness, paper positions, strategy and risk decisions are untouched; do not assume past failed handoff checks will retroactively succeed. Confirm the next actual worker sees main-branch changes, requests graceful handoff, and restores the same journal account.
+
+**LIVE TRADING: DISABLED.**
+
 ### Full-journal LONG entry-vs-exit root-cause audit — 2026-10-09
 
 Research extension following chart gap hardening in PR #1049. The post-successor-dispatch trade-chart source now feeds a separate read-only closed-journal LONG/SHORT loss attribution artifact. It verifies *every* trade ID, each trade's full realized net cashflow (gross less entry/exit fees plus funding), chart and verified at-entry feature provenance, overall economic totals, two-direction accounting, and the completeness of mutually exclusive loss categories. All historical trades, including missing entry contexts and missing/gapped charts, stay in the denominators.
