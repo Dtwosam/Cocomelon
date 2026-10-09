@@ -1357,6 +1357,57 @@ jobs:
           retention-days: 90
           compression-level: 6
 
+      - name: Reconcile original paper after-cost profitability cohorts
+        id: paper_profitability_scoreboard
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_all_trade_chart_audit.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/report_paper_profitability_scoreboard.py \
+            "$STATE_ROOT/all-paper-trade-chart-audit.json" \
+            --json-out "$STATE_ROOT/all-paper-profitability-scoreboard.json" \
+            > /tmp/paper-profitability-scoreboard-headline.json
+          test -s "$STATE_ROOT/all-paper-profitability-scoreboard.json"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          report = json.loads(
+              Path("continuous-paper-state/all-paper-profitability-scoreboard.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          o = report["overall"]
+          print("## ORIGINAL executed paper-account after-cost profitability")
+          print("- RESEARCH ONLY / NO TRADING OR PROMOTION AUTHORITY")
+          print(f"- Original closed trades: {o['trades']}")
+          print(f"- Booked net realized PnL: ${o['net_pnl']}")
+          print(f"- Recorded fees / funding: ${o['fees']} / ${o['funding_cash_pnl']}")
+          print(f"- Missing verified entry context: {o['unverified_entry_context_trades']}")
+          print(f"- Incomplete original trade charts: {o['incomplete_chart_trades']}")
+          print("- Side/strategy net losers (retrospective attribution only):")
+          for group in report["side_strategy_cohorts"][:5]:
+              c = group["cohort"]
+              print(
+                  f"  - {c['side']} / {c['lead_strategy']}: "
+                  f"{group['trades']} trades / ${group['net_pnl']} booked net"
+              )
+          print("- WARNING: not a prospective rule; no skipped-trade cashflow, "
+                "replacement capital, or model promotion is inferred")
+          PY
+
+      - name: Upload original paper after-cost profitability scoreboard
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.paper_profitability_scoreboard.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-profitability-scoreboard-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/all-paper-profitability-scoreboard.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Diagnose unresolved source streams behind paper chart gaps
         id: deferred_feed_gap_source_audit
         if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_all_trade_chart_audit.outcome == 'success' }}
