@@ -267,7 +267,7 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
     assert "compression-level: 6" in source
     assert source.count(
         "bash scripts/restore_continuous_paper_state.sh"
-    ) == 4
+    ) == 5
     assert "RESUME_ARTIFACT_NAME" in source
     assert "STATE_ARTIFACT_NAME" in source
     assert "fast resume restore failed; waiting for exact durable fallback" in source
@@ -1891,7 +1891,7 @@ def test_skipped_push_guard_never_blocks_exact_successor() -> None:
     assert "continue" in guard[guard.index("if skipped_checkout:"):]
     assert "trader_status in" in guard
     assert 'trader_status in {"queued", "pending", "in_progress"}' in guard
-    assert "after trading has stopped" in guard
+    assert "Deferred research alone never blocks an exact successor" in guard
 
     # A skipped push used to sleep for 75 seconds after recording
     # skip=true. The newly dispatched successor could observe its
