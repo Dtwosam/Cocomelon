@@ -15,7 +15,6 @@ from cocomelon.research.prospective_profit_target_one_r_comparison import (
     MIN_MARKETS,
     MIN_PAIRED_TRADES,
     NET_RESERVED_TRAILING_RULE_ID,
-    ProspectiveProfitTargetComparisonError,
     _verified_outcomes,
     _verify_trade_exit_cashflow,
 )
@@ -166,7 +165,9 @@ def prospective_early_vs_late_trailing(
         late = late_outcomes.get(trade.trade_id)
         if early is None or late is None:
             continue
-        if not (_valid_complete_exit(trade, early) and _valid_complete_exit(trade, late)):
+        valid_early = _valid_complete_exit(trade, early)
+        valid_late = _valid_complete_exit(trade, late)
+        if not valid_early or not valid_late:
             incomplete.append(trade.trade_id)
             continue
         matched.append((trade, early, late))
