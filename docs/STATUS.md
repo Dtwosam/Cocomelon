@@ -9,6 +9,12 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Distinguish checkpoint-adjacent source-gap bursts from older outages — 2026-10-09
+
+The first completed post-witness audit (worker **37973628696**) preserved 72 named market-specific open starts; 21 different L2 sources opened new intervals at the **same** 19:07:44.751 UTC timestamp, 86ms before the last persisted record. A common timestamp strongly suggests coordinated lifecycle activity, but neither a safe shutdown nor successful recovery follows from timing alone.
+
+The source audit now separately counts still-open starts within **five seconds of the last checkpoint observation** and older starts, by legacy/market/shared scope and exact source. Both are counted in the unresolved total and remain chart-uncertainty evidence until a valid accepted source event closes the exact named interval. The timing label is not proof of handoff, venue connectivity, trade causation, or recovery; it only helps avoid confusing synchronous boundary-adjacent bursts with long-standing unexplained source failures. The market watchlist split and fresh event-witness audit remain independent.
+
 ### Separate currently selected feed debt from historical unselected market gaps — 2026-10-09
 
 A market-specific gap can remain unresolved because the coin is no longer part of the paper worker's selected watchlist, even when recovery of other *currently selected* streams is proven. The handoff source-priority audit reads the completed session's saved `selected_markets` snapshot and reports selected-market, unselected-market, and shared/unknown named starts separately. For current v3 checkpoint state it also requires the independently stored selected-market snapshot to agree exactly, failing closed on absence or mismatch rather than manufacturing actionable feed priorities. It never treats missing watchlist data as an empty selection, never uses an unselected market to infer a healed source, and does not change which markets the trader subscribes to. The exact source and market gap history remains unchanged. This is an operational triage label at handoff only: being selected does not certify that a feed produced fresh events, and legacy anonymous gaps remain permanently unattributed unless authentic source evidence becomes available.
