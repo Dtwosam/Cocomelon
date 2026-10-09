@@ -9,6 +9,10 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Separate currently selected feed debt from historical unselected market gaps — 2026-10-09
+
+A market-specific gap can remain unresolved because the coin is no longer part of the paper worker's selected watchlist, even when recovery of other *currently selected* streams is proven. The handoff source-priority audit now reads only the completed session's explicitly saved `selected_markets` snapshot and reports selected-market, unselected-market, and shared/unknown named starts separately. It never treats missing watchlist data as an empty selection, never uses an unselected market to infer a healed source, and does not change which markets the trader subscribes to. The exact source and market gap history remains unchanged. This is an operational triage label at handoff only: being selected does not certify that a feed produced fresh events, and legacy anonymous gaps remain permanently unattributed unless authentic source evidence becomes available.
+
 ### Keep auditable event receipts for every inherited named-gap closure — 2026-10-09
 
 An interval that becomes closed in a checkpoint does not retain the individual public WebSocket event that justified that transition. Keep an append-only, fsynced `named-gap-recovery-witnesses.jsonl` alongside paper state. Each receipt records the exact restored source, original gap start, predecessor checkpoint cutoff, accepted event identity, exchange and receive timestamps, and explicitly marks itself as **not yet independently checkpoint-verified**. Persist this event witness *before* applying the gap closure; if witness persistence fails, the source remains open. Do not create a retroactive history from either REST snapshots or synthetic events.
