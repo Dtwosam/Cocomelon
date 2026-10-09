@@ -387,6 +387,12 @@ class BaselineReplayPipeline:
         self._gap_intervals_by_stream: dict[
             str, list[tuple[int, int | None]]
         ] = {}
+        # Unrecognized/shared streams are global for chart coverage, but
+        # recoveries must only close the exact source that actually recovered.
+        # Legacy unattributed checkpoints above stay permanently uncertain.
+        self._global_gap_intervals_by_stream: dict[
+            str, list[tuple[int, int | None]]
+        ] = {}
         self._recorded_account_states: set[str] = set()
         self._initial_observation_emitted = False
         self._decision_epochs = 0
@@ -790,7 +796,7 @@ class BaselineReplayPipeline:
 
     @property
     def unscoped_gap_intervals(self) -> tuple[tuple[int, int | None], ...]:
-        """Immutable/legacy intervals that have no trustworthy market ID."""
+        """Legacy intervals with no trustworthy source or recovery identity."""
         return tuple(self._gap_intervals)
 
     @property
@@ -803,6 +809,16 @@ class BaselineReplayPipeline:
         }
 
     @property
+    def known_global_gap_intervals_by_stream(
+        self,
+    ) -> dict[str, tuple[tuple[int, int | None], ...]]:
+        """Shared/unknown feeds whose recoveries have independent lineage."""
+        return {
+            key: tuple(intervals)
+            for key, intervals in sorted(self._global_gap_intervals_by_stream.items())
+        }
+
+    @property
     def known_gap_intervals(self) -> tuple[tuple[int, int | None], ...]:
         """Conservative global union for legacy observers and gap-readiness."""
         return tuple(_compact_gap_intervals(
@@ -810,12 +826,17 @@ class BaselineReplayPipeline:
             + tuple(interval
                     for records in self._gap_intervals_by_stream.values()
                     for interval in records)
+            + tuple(interval
+                    for records in self._global_gap_intervals_by_stream.values()
+                    for interval in records)
         ))
 
     def known_gap_intervals_for_market(
         self, market: MarketId,
     ) -> tuple[tuple[int, int | None], ...]:
         relevant = list(self._gap_intervals)
+        for intervals in self._global_gap_intervals_by_stream.values():
+            relevant.extend(intervals)
         for stream_id, intervals in self._gap_intervals_by_stream.items():
             if _gap_stream_matches_market(stream_id, market):
                 relevant.extend(intervals)
@@ -856,6 +877,31 @@ class BaselineReplayPipeline:
                 validated.append((started_ms, ended_ms))
             restored[stream_id] = _compact_gap_intervals(validated)
         self._gap_intervals_by_stream = restored
+
+    def restore_global_gap_intervals_by_stream(
+        self, gaps: dict[str, tuple[tuple[int, int | None], ...]],
+    ) -> None:
+        """Restore named shared feed failures, never relabel legacy gaps."""
+        restored: dict[str, list[tuple[int, int | None]]] = {}
+        for stream_id, intervals in gaps.items():
+            if (
+                not isinstance(stream_id, str)
+                or not stream_id.strip()
+                or _scoped_market_gap_stream(stream_id)
+            ):
+                raise ReplayInvariantError("restored global gap stream is invalid")
+            validated: list[tuple[int, int | None]] = []
+            for started_ms, ended_ms in intervals:
+                if (
+                    type(started_ms) is not int or started_ms < 0
+                    or (ended_ms is not None and (
+                        type(ended_ms) is not int or ended_ms < started_ms
+                    ))
+                ):
+                    raise ReplayInvariantError("restored global gap interval invalid")
+                validated.append((started_ms, ended_ms))
+            restored[stream_id] = _compact_gap_intervals(validated)
+        self._global_gap_intervals_by_stream = restored
 
     def _new_exposure_allowed(self, timestamp_ms: int) -> bool:
         cutoff_ms = self._new_exposure_cutoff_ms
@@ -1452,8 +1498,11 @@ class BaselineReplayPipeline:
                     stream_id, [],
                 )
             else:
-                # Includes allMids and unknown topics: conservatively global.
-                intervals = self._gap_intervals
+                # Shared/unknown topics invalidate all markets, but a
+                # recovery of one topic must not heal another topic's gap.
+                intervals = self._global_gap_intervals_by_stream.setdefault(
+                    stream_id, [],
+                )
             interval = (started_raw, ended_raw)
             if ended_raw is None:
                 if started_raw < 0:
