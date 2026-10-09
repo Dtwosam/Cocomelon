@@ -416,3 +416,32 @@ def test_writer_requires_complete_fsynced_witness_rows(
         DeferredFeedGapSourceAuditError, match="incomplete trailing row"
     ):
         write_deferred_feed_gap_source_audit(root)
+
+
+
+def test_forged_stale_exchange_event_cannot_certify_named_recovery() -> None:
+    state = _checkpoint()
+    state["last_available_at_ms"] = 10_000
+    state["known_gap_intervals_by_stream"] = {
+        "l2Book:BTC": [[200, 8_000]]
+    }
+    witness = _fresh_named_witness()
+    witness["witness_receive_ms"] = 8_000
+    witness["witness_exchange_ms"] = 1_000
+    with pytest.raises(
+        DeferredFeedGapSourceAuditError, match="exchange price event is stale"
+    ):
+        assess_feed_gap_source_debt(state, _charts(), [witness])
+
+
+def test_fresh_exchange_event_inside_v1_ceiling_is_confirmable() -> None:
+    state = _checkpoint()
+    state["last_available_at_ms"] = 10_000
+    state["known_gap_intervals_by_stream"] = {
+        "l2Book:BTC": [[200, 8_000]]
+    }
+    witness = _fresh_named_witness()
+    witness["witness_receive_ms"] = 8_000
+    witness["witness_exchange_ms"] = 7_999
+    report = assess_feed_gap_source_debt(state, _charts(), [witness])
+    assert report["named_recovery_checkpoint_confirmed"] == 1
