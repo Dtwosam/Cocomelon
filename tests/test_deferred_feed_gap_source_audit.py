@@ -351,7 +351,7 @@ def test_post_handoff_named_witness_needs_persisted_closed_gap() -> None:
         ("witness_receive_ms", 1001),
         ("witness_exchange_ms", None),
         ("checkpoint_last_available_at_ms", 700),
-        ("gap_start_ms", 300),
+        ("gap_start_ms", 100),
         ("historical_price_reconstruction", True),
         ("independently_verified_checkpoint_closure", True),
     ],
