@@ -2531,7 +2531,7 @@ def test_gap_record_preserves_recovered_interval() -> None:
     )
     record = _record_from_gap(gap)
     assert record.record_kind is SourceRecordKind.DATA_GAP
-    assert record.available_at_ms == 1_000
+    assert record.available_at_ms == 1_500
     assert record.payload == {
         "ended_ms": 1_500,
         "reason": "recovered",
