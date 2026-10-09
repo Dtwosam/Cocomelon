@@ -1123,6 +1123,75 @@ def test_stream_scoped_data_gaps_keep_unrelated_trade_market_clean(
     facts.close()
 
 
+
+def test_same_timestamp_global_feed_recovery_cannot_heal_another_stream(
+    tmp_path: Path,
+) -> None:
+    """Two shared feeds may fail simultaneously but recover independently."""
+    pipeline, execution, facts = _pipeline(
+        tmp_path, suffix="independent-global-feed-recovery",
+    )
+    started = EVALUATED_AT_MS + 1_000
+    for stream_id in ("allMids", "unrecognizedTopic"):
+        opened = _gap_record(
+            started, None, event_key=f"{stream_id}-opened",
+            stream_id=stream_id,
+        )
+        pipeline.on_record(opened, opened.available_at_ms)
+    assert pipeline.known_global_gap_intervals_by_stream == {
+        "allMids": ((started, None),),
+        "unrecognizedTopic": ((started, None),),
+    }
+
+    recovery = _gap_record(
+        started, started + 500, event_key="allmids-recovered",
+        stream_id="allMids",
+    )
+    pipeline.on_record(recovery, recovery.available_at_ms)
+    assert pipeline.known_global_gap_intervals_by_stream == {
+        "allMids": ((started, started + 500),),
+        "unrecognizedTopic": ((started, None),),
+    }
+    assert (started, None) in pipeline.known_gap_intervals_for_market(MARKET)
+    assert (started, None) in pipeline.known_gap_intervals_for_market(
+        OTHER_MARKET
+    )
+
+    # A v2 legacy orphan has no trustworthy source ID, even when a new
+    # same-timestamp recovery arrives. Do not silently reattach it.
+    pipeline.restore_gap_intervals(((started, None),))
+    completed = _gap_record(
+        started, started + 700, event_key="unknown-recovered",
+        stream_id="unrecognizedTopic",
+    )
+    pipeline.on_record(completed, completed.available_at_ms)
+    assert pipeline.unscoped_gap_intervals == ((started, None),)
+    assert (started, None) in pipeline.known_gap_intervals_for_market(MARKET)
+
+    restored, restored_execution, restored_facts = _pipeline(
+        tmp_path, suffix="independent-global-gap-restore",
+    )
+    restored.restore_global_gap_intervals_by_stream(
+        pipeline.known_global_gap_intervals_by_stream
+    )
+    assert restored.known_global_gap_intervals_by_stream == {
+        "allMids": ((started, started + 500),),
+        "unrecognizedTopic": ((started, started + 700),),
+    }
+    with pytest.raises(ReplayInvariantError, match="global gap stream"):
+        restored.restore_global_gap_intervals_by_stream({
+            "l2Book:BTC": ((started, None),),
+        })
+    with pytest.raises(ReplayInvariantError, match="global gap interval"):
+        restored.restore_global_gap_intervals_by_stream({
+            "allMids": ((started, True),),
+        })
+    execution.close()
+    facts.close()
+    restored_execution.close()
+    restored_facts.close()
+
+
 def test_scoped_gaps_survive_restore_without_promotion_from_legacy(
     tmp_path: Path,
 ) -> None:

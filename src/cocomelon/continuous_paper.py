@@ -2482,7 +2482,7 @@ def _checkpoint_payload(
             }
         )
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "run_id": RUN_ID,
         "last_available_at_ms": last_available_at_ms,
         "selected_markets": [market.canonical for market in selected_markets],
@@ -2494,6 +2494,10 @@ def _checkpoint_payload(
         "known_gap_intervals_by_stream": {
             stream_id: [[start, end] for start, end in intervals]
             for stream_id, intervals in pipeline.known_gap_intervals_by_stream.items()
+        },
+        "known_global_gap_intervals_by_stream": {
+            stream_id: [[start, end] for start, end in intervals]
+            for stream_id, intervals in pipeline.known_global_gap_intervals_by_stream.items()
         },
         "execution_mode": "paper",
         "live_orders": False,
@@ -2572,12 +2576,13 @@ def _load_checkpoint(path: Path) -> tuple[
     tuple[OpenLifecycleCheckpoint, ...],
     tuple[tuple[int, int | None], ...],
     dict[str, tuple[tuple[int, int | None], ...]],
+    dict[str, tuple[tuple[int, int | None], ...]],
     int,
 ]:
     if not path.exists():
-        return (), (), {}, 0
+        return (), (), {}, {}, 0
     raw = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict) or raw.get("schema_version") not in {1, 2}:
+    if not isinstance(raw, dict) or raw.get("schema_version") not in {1, 2, 3}:
         raise ValueError("continuous paper checkpoint is invalid")
     if raw.get("run_id") != RUN_ID or raw.get("execution_mode") != "paper":
         raise ValueError("continuous paper checkpoint authority mismatch")
@@ -2619,7 +2624,7 @@ def _load_checkpoint(path: Path) -> tuple[
             raise ValueError("continuous paper gap interval is invalid")
         gaps.append((int(item[0]), None if item[1] is None else int(item[1])))
     by_stream: dict[str, tuple[tuple[int, int | None], ...]] = {}
-    if raw["schema_version"] == 2:
+    if raw["schema_version"] in {2, 3}:
         scoped_raw = raw.get("known_gap_intervals_by_stream")
         if not isinstance(scoped_raw, dict):
             raise ValueError("continuous paper scoped gap mapping missing")
@@ -2639,10 +2644,34 @@ def _load_checkpoint(path: Path) -> tuple[
                     raise ValueError("continuous paper scoped gap interval invalid")
                 pairs.append((item[0], item[1]))
             by_stream[key] = tuple(pairs)
+    global_by_stream: dict[str, tuple[tuple[int, int | None], ...]] = {}
+    if raw["schema_version"] == 3:
+        global_raw = raw.get("known_global_gap_intervals_by_stream")
+        if not isinstance(global_raw, dict):
+            raise ValueError("continuous paper global gap mapping missing")
+        for key, raw_intervals in global_raw.items():
+            if (
+                not isinstance(key, str) or not key.strip()
+                or not isinstance(raw_intervals, list)
+            ):
+                raise ValueError("continuous paper global gap mapping invalid")
+            pairs = []
+            for item in raw_intervals:
+                if (
+                    not isinstance(item, list) or len(item) != 2
+                    or type(item[0]) is not int or item[0] < 0
+                    or (item[1] is not None and (
+                        type(item[1]) is not int or item[1] < item[0]
+                    ))
+                ):
+                    raise ValueError("continuous paper global gap interval invalid")
+                pairs.append((item[0], item[1]))
+            global_by_stream[key] = tuple(pairs)
     return (
         tuple(checkpoints),
         tuple(gaps),
         by_stream,
+        global_by_stream,
         int(raw.get("last_available_at_ms", 0)),
     )
 
@@ -8931,6 +8960,7 @@ async def run_continuous_paper_session(
         checkpoints,
         gap_intervals,
         gap_intervals_by_stream,
+        global_gap_intervals_by_stream,
         restored_available_at_ms,
     ) = _load_checkpoint(checkpoint_path)
     record_startup_component("checkpoint_load", component_started)
@@ -9783,6 +9813,9 @@ async def run_continuous_paper_session(
         component_started = time.perf_counter()
         pipeline.restore_gap_intervals(gap_intervals)
         pipeline.restore_gap_intervals_by_stream(gap_intervals_by_stream)
+        pipeline.restore_global_gap_intervals_by_stream(
+            global_gap_intervals_by_stream
+        )
         _restore_open_lifecycles(pipeline, execution, checkpoints)
         record_startup_component(
             "open_lifecycle_restore",
