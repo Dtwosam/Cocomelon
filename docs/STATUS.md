@@ -9,6 +9,12 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Close inherited *named* feed outages only with accepted fresh post-handoff evidence — 2026-10-09
+
+The recorded v3 checkpoint carries individual unresolved per-market and named-global source gaps across handoffs. A fresh WebSocket supervisor/mux starts with no memory of their original open-start identities; therefore even a genuinely resumed subscribed source could leave those *persisted* gaps open forever. Do not guess an end timestamp from restart, wall-clock elapsed time, or a different market's feed.
+
+Preserve each exact source ID and unresolved start from the restored checkpoint. Only after the redundant mux **successfully delivers** a new post-checkpoint, mainnet-public normalized event to the paper record pump may a named start receive a durable closure at that event's actual receive timestamp. Reject stale exchange-timestamped events, untrusted REST/replay sources, old startup receipts, future timestamps, and long-delayed observations. Recovery persistence uses the same serialized paper record pump, retains unresolved starts on any failed write, and avoids duplicate closures from concurrent redundant lanes. Non-restored or anonymous legacy gaps are never attributed or repaired. A successful *current source recovery* does not backfill missing prices, certify earlier trade charts, or imply a profitable entry/exit rule. Strategy, risk limits, paper fills, and live-trading authority remain unchanged.
+
 ### Keep exact paper handoffs safe through installation API quota resets — 2026-10-09
 
 The successor dispatched from paper worker **37966212269** could not inspect the active-worker lease because GitHub returned repeated **HTTP 403 installation API rate-limit** errors. Run **37967379015** exhausted its old eight-attempt/15-second guard and never reached the exact archived-state restore; a controlled rerun later passed the guard. That is an operations availability problem, not proof of a strategy or execution defect.
