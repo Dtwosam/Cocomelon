@@ -189,3 +189,27 @@ def test_open_known_feed_gap_is_clipped_and_chart_line_breaks() -> None:
     assert row["chart_known_gap_intervals_ms"] == [[1030, 1100]]
     assert row["chart_coverage_complete"] is False
     assert "drawSegment()" in render_trade_charts(report)
+
+
+
+def test_exact_chart_and_lifecycle_cash_parity_with_high_precision_trades() -> None:
+    amounts = (
+        Decimal("100000000000000000000"),
+        Decimal("0.000000000000000000000000001"),
+        Decimal("-100000000000000000000"),
+        Decimal("0.000000000000000000000000001"),
+    )
+    trades = []
+    for i, amount in enumerate(amounts, 1):
+        trade = _trade(i)
+        trade.gross_realized_pnl = amount
+        trade.net_pnl = amount
+        trade.entry_fees = Decimal("0")
+        trade.exit_fees = Decimal("0")
+        trade.funding_cash_pnl = Decimal("0")
+        trades.append(trade)
+    audit = all_paper_trade_chart_audit(tuple(trades), EmptyFacts(), ())
+    assert audit["trades_included_in_economics"] == 4
+    assert Decimal(audit["economics"]["overall"]["net_pnl"]) == Decimal("2E-27")
+    assert Decimal(audit["trades"][-1]["cumulative_closed_net_pnl"]) == Decimal("2E-27")
+    assert audit["missing_chart_path_trade_ids"] == ["t1", "t2", "t3", "t4"]
