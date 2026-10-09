@@ -67,6 +67,7 @@ def _gap_record(
     ended_ms: int | None,
     *,
     event_key: str,
+    stream_id: str = "l2Book:BTC",
 ) -> ReplayRecord:
     return ReplayRecord(
         record_kind=SourceRecordKind.DATA_GAP,
@@ -81,7 +82,7 @@ def _gap_record(
                 "ended_ms": ended_ms,
                 "reason": "fixture",
                 "started_ms": started_ms,
-                "stream_id": "l2Book:BTC",
+                "stream_id": stream_id,
             },
             sort_keys=True,
         ),
@@ -368,8 +369,17 @@ def test_closed_gap_update_preserves_restored_open_identity_and_compacts(
         closed_gap.available_at_ms,
     )
 
-    assert pipeline.known_gap_intervals == (
-        (EVALUATED_AT_MS - 1_000, EVALUATED_AT_MS + 300),
+    # A stream-aware recovery must not retroactively assert that a legacy
+    # globally unscoped open gap was the same source as l2Book:BTC.
+    assert pipeline.unscoped_gap_intervals == (
+        (EVALUATED_AT_MS - 1_000, EVALUATED_AT_MS + 150),
+        (open_started_ms, None),
+    )
+    assert pipeline.known_gap_intervals_by_stream == {
+        "l2Book:BTC": ((open_started_ms, EVALUATED_AT_MS + 300),)
+    }
+    assert (open_started_ms, None) in pipeline.known_gap_intervals_for_market(
+        OTHER_MARKET
     )
 
     execution.close()
@@ -1063,5 +1073,80 @@ def test_restored_open_lifecycle_reuses_oracle_for_funding_boundary(
     assert restored.funding_inconsistent is False
     assert execution.account.cumulative_funding < Decimal("0")
 
+    execution.close()
+    facts.close()
+
+
+
+def test_stream_scoped_data_gaps_keep_unrelated_trade_market_clean(
+    tmp_path: Path,
+) -> None:
+    pipeline, execution, facts = _pipeline(
+        tmp_path, suffix="cross-market-data-gap",
+    )
+    opened = EVALUATED_AT_MS + 1_000
+    # ETH book stale while BTC's own price book and mark feed remain normal.
+    eth_gap = _gap_record(
+        opened, None, event_key="eth-open",
+        stream_id="l2Book:ETH",
+    )
+    pipeline.on_record(eth_gap, eth_gap.available_at_ms)
+    assert pipeline.known_gap_intervals_for_market(MARKET) == ()
+    assert pipeline.known_gap_intervals_for_market(OTHER_MARKET) == (
+        (opened, None),
+    )
+    assert pipeline.known_gap_intervals == ((opened, None),)
+
+    closed_eth = _gap_record(
+        opened, opened + 1000,
+        event_key="eth-recovered",
+        stream_id="l2Book:ETH",
+    )
+    pipeline.on_record(closed_eth, closed_eth.payload["ended_ms"])
+    assert pipeline.known_gap_intervals_for_market(MARKET) == ()
+    assert pipeline.known_gap_intervals_for_market(OTHER_MARKET) == (
+        (opened, opened + 1000),
+    )
+
+    # A shared allMids failure cannot be assigned to one market, so it
+    # remains a conservative unknown for both BTC and ETH.
+    global_gap = _gap_record(
+        opened + 1500, None, event_key="global-open",
+        stream_id="allMids",
+    )
+    pipeline.on_record(global_gap, global_gap.available_at_ms)
+    assert (opened + 1500, None) in pipeline.known_gap_intervals_for_market(MARKET)
+    assert (opened + 1500, None) in pipeline.known_gap_intervals_for_market(
+        OTHER_MARKET
+    )
+    execution.close()
+    facts.close()
+
+
+def test_scoped_gaps_survive_restore_without_promotion_from_legacy(
+    tmp_path: Path,
+) -> None:
+    pipeline, execution, facts = _pipeline(
+        tmp_path, suffix="scoped-roundtrip",
+    )
+    pipeline.restore_gap_intervals(((10, None),))
+    pipeline.restore_gap_intervals_by_stream({
+        "l2Book:ETH": ((20, 25), (30, None)),
+        "activeAssetCtx:BTC": ((40, 45),),
+    })
+    assert pipeline.known_gap_intervals_by_stream == {
+        "activeAssetCtx:BTC": ((40, 45),),
+        "l2Book:ETH": ((20, 25), (30, None)),
+    }
+    assert pipeline.known_gap_intervals_for_market(MARKET) == (
+        (10, None), (40, 45),
+    )
+    assert pipeline.known_gap_intervals_for_market(OTHER_MARKET) == (
+        (10, None), (20, 25), (30, None),
+    )
+    with pytest.raises(ReplayInvariantError, match="market-scoped"):
+        pipeline.restore_gap_intervals_by_stream({
+            "unrecognized_feed": ((50, None),),
+        })
     execution.close()
     facts.close()
