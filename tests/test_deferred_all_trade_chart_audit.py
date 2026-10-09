@@ -128,3 +128,64 @@ def test_chart_compaction_preserves_intrabar_reversal() -> None:
     assert [54, "80"] in result
     assert result[0][0] == 0
     assert result[-1][0] == 799
+
+
+
+def test_silent_feed_hole_is_not_mistaken_for_clean_exit_evidence() -> None:
+    trade = _trade()
+    trade.closed_at_ms = 910_000
+    trade.holding_duration_ms = 909_000
+    path = _path()
+    path["closed_at_ms"] = 910_000
+    path["marks"] = [
+        {"available_at_ms": 1_000, "mark_px": "10"},
+        {"available_at_ms": 905_000, "mark_px": "9"},
+    ]
+    report = all_paper_trade_chart_audit((trade,), EmptyFacts(), (path,))
+    row = report["trades"][0]
+    assert row["chart_known_gap_duration_ms"] == 0
+    assert row["chart_longest_unobserved_mark_ms"] == 904_000
+    assert row["chart_silent_gap_intervals_ms"] == [[1000, 905_000]]
+    assert row["chart_coverage_complete"] is False
+    assert report["complete_chart_paths"] == 0
+    assert report["silent_mark_gap_affected_trades"] == 1
+    assert report["economics"]["overall"]["net_pnl"] == "-2.4"
+    page = render_trade_charts(report)
+    assert "crossesGap" in page
+    assert "chart_silent_gap_intervals_ms" in page
+
+
+def test_missing_terminal_mark_coverage_invalidates_trade_chart() -> None:
+    trade = _trade()
+    trade.closed_at_ms = 910_000
+    path = _path()
+    path["closed_at_ms"] = 910_000
+    report = all_paper_trade_chart_audit((trade,), EmptyFacts(), (path,))
+    assert report["trades"][0]["chart_coverage_complete"] is False
+    assert report["trades"][0]["chart_longest_unobserved_mark_ms"] > 300_000
+
+
+def test_single_mark_cannot_establish_complete_price_path() -> None:
+    path = _path()
+    path["marks"] = [path["marks"][0]]
+    report = all_paper_trade_chart_audit((_trade(),), EmptyFacts(), (path,))
+    assert report["trades"][0]["chart_mark_count"] == 1
+    assert report["complete_chart_paths"] == 0
+
+
+def test_chart_rejects_out_of_lifecycle_or_reversed_marks() -> None:
+    invalid = _path()
+    invalid["marks"][1]["available_at_ms"] = 999
+    with pytest.raises(AllPaperTradeChartAuditError, match="out of order"):
+        all_paper_trade_chart_audit((_trade(),), EmptyFacts(), (invalid,))
+
+
+def test_open_known_feed_gap_is_clipped_and_chart_line_breaks() -> None:
+    path = _path()
+    path["known_gap_intervals"] = [[1030, None]]
+    report = all_paper_trade_chart_audit((_trade(),), EmptyFacts(), (path,))
+    row = report["trades"][0]
+    assert row["chart_known_gap_duration_ms"] is None
+    assert row["chart_known_gap_intervals_ms"] == [[1030, 1100]]
+    assert row["chart_coverage_complete"] is False
+    assert "drawSegment()" in render_trade_charts(report)
