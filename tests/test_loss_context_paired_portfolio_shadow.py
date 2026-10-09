@@ -25,6 +25,10 @@ from cocomelon.research.historical_discovery_freeze import (
 from cocomelon.research.loss_context_paired_portfolio_shadow import (
     LossContextPairedPortfolioShadow,
     _LaneOffsets,
+    _state_digest,
+)
+from cocomelon.research.loss_context_paired_shadow_review import (
+    build_paired_shadow_review,
 )
 from cocomelon.research.loss_context_portfolio_shadow_candidate import (
     LossContextPortfolioShadowFreeze,
@@ -834,3 +838,220 @@ def test_directional_offsets_are_durable_and_legacy_trades_not_reclassified() ->
     impossible["short_closed_trade_count"] = 4
     with pytest.raises(ValueError, match="direction counts exceed total"):
         _LaneOffsets.from_payload(impossible)
+
+
+def _gap_close_record(
+    stream_id: str,
+    started_ms: int,
+    ended_ms: int,
+) -> ReplayRecord:
+    return ReplayRecord(
+        record_kind=SourceRecordKind.DATA_GAP,
+        available_at_ms=ended_ms,
+        source="hyperliquid-mainnet-ws",
+        schema_version=1,
+        market=None,
+        exchange_time_ms=None,
+        event_key=f"gap:{stream_id}:{started_ms}:{ended_ms}:recovered",
+        payload_json=json.dumps({
+            "stream_id": stream_id,
+            "started_ms": started_ms,
+            "ended_ms": ended_ms,
+            "reason": "recovered",
+        }),
+        event_kind=None,
+    )
+
+
+def test_v2_paired_shadow_restores_exact_gap_scopes_and_source_recovery(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    state_root = tmp_path / "paired"
+    first = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+    )
+    try:
+        for lane in (first._baseline, first._candidate):
+            lane.restore_gap_intervals(((10, None),))
+            lane.restore_gap_intervals_by_stream({
+                "l2Book:TEST": ((20, None),),
+            })
+            lane.restore_global_gap_intervals_by_stream({
+                "allMids": ((30, None),),
+            })
+        checkpoint = first.checkpoint(end_ms=EVALUATED_AT_MS)
+        assert checkpoint["schema_version"] == 2
+        assert checkpoint["historical_gap_scope_tainted"] is False
+        for lane_name in ("baseline", "candidate"):
+            lane = checkpoint[lane_name]
+            assert lane["legacy_unscoped_gap_intervals"] == [[10, None]]
+            assert lane["known_gap_intervals_by_stream"] == {
+                "l2Book:TEST": [[20, None]]
+            }
+            assert lane["known_global_gap_intervals_by_stream"] == {
+                "allMids": [[30, None]]
+            }
+            assert "known_gap_intervals" not in lane
+    finally:
+        first.close()
+
+    restored = LossContextPairedPortfolioShadow(
+        freeze=_freeze(),
+        replay_config=config,
+        selected_markets=(MARKET,),
+        state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS + 1,
+    )
+    try:
+        assert restored.summary_payload(
+            end_ms=EVALUATED_AT_MS
+        )["historical_gap_scope_tainted"] is False
+        for lane in (restored._baseline, restored._candidate):
+            assert lane.unscoped_gap_intervals == ((10, None),)
+            assert lane.known_gap_intervals_by_stream == {
+                "l2Book:TEST": ((20, None),)
+            }
+            assert lane.known_global_gap_intervals_by_stream == {
+                "allMids": ((30, None),)
+            }
+
+        # Recovering TEST cannot erase either anonymous legacy or
+        # the independent shared allMids source after a worker handoff.
+        recovered_ms = EVALUATED_AT_MS + 2
+        restored.on_record(
+            _gap_close_record("l2Book:TEST", 20, recovered_ms),
+            recovered_ms, evaluate_decisions=False,
+        )
+        for lane in (restored._baseline, restored._candidate):
+            assert lane.unscoped_gap_intervals == ((10, None),)
+            assert lane.known_gap_intervals_by_stream == {
+                "l2Book:TEST": ((20, recovered_ms),)
+            }
+            assert lane.known_global_gap_intervals_by_stream == {
+                "allMids": ((30, None),)
+            }
+        restored.mark_restore_warmup_complete()
+        second = restored.checkpoint(end_ms=recovered_ms)
+        for lane_name in ("baseline", "candidate"):
+            assert second[lane_name]["legacy_unscoped_gap_intervals"] == [
+                [10, None]
+            ]
+            assert second[lane_name]["known_gap_intervals_by_stream"] == {
+                "l2Book:TEST": [[20, recovered_ms]]
+            }
+    finally:
+        restored.close()
+
+
+def test_legacy_flattened_shadow_gap_state_is_preserved_but_taints_review(
+    tmp_path: Path,
+) -> None:
+    config = _config()
+    state_root = tmp_path / "paired"
+    first = LossContextPairedPortfolioShadow(
+        freeze=_freeze(), replay_config=config,
+        selected_markets=(MARKET,), state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+    )
+    try:
+        for lane in (first._baseline, first._candidate):
+            lane.restore_gap_intervals_by_stream({
+                "l2Book:TEST": ((100, None),)
+            })
+        first.checkpoint(end_ms=EVALUATED_AT_MS)
+    finally:
+        first.close()
+
+    state_path = state_root / "paired-shadow-state.json"
+    raw = json.loads(state_path.read_text(encoding="utf-8"))
+    raw.pop("state_digest")
+    raw["schema_version"] = 1
+    raw.pop("historical_gap_scope_tainted")
+    for lane_name in ("baseline", "candidate"):
+        lane = raw[lane_name]
+        lane["known_gap_intervals"] = [[100, None]]
+        lane.pop("legacy_unscoped_gap_intervals")
+        lane.pop("known_gap_intervals_by_stream")
+        lane.pop("known_global_gap_intervals_by_stream")
+    raw["state_digest"] = _state_digest({
+        k: v for k, v in raw.items() if k != "state_digest"
+    })
+    state_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    restored = LossContextPairedPortfolioShadow(
+        freeze=_freeze(), replay_config=config,
+        selected_markets=(MARKET,), state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS + 1,
+    )
+    try:
+        assert restored.summary_payload(
+            end_ms=EVALUATED_AT_MS
+        )["historical_gap_scope_tainted"] is True
+        for lane in (restored._baseline, restored._candidate):
+            assert lane.unscoped_gap_intervals == ((100, None),)
+            assert lane.known_gap_intervals_by_stream == {}
+        restored.mark_restore_warmup_complete()
+        upgraded = restored.checkpoint(end_ms=EVALUATED_AT_MS + 2)
+        assert upgraded["schema_version"] == 2
+        assert upgraded["historical_gap_scope_tainted"] is True
+        assert upgraded["baseline"]["legacy_unscoped_gap_intervals"] == [
+            [100, None]
+        ]
+        assert upgraded["baseline"]["known_gap_intervals_by_stream"] == {}
+        assert upgraded["candidate"]["known_gap_intervals_by_stream"] == {}
+        report = build_paired_shadow_review(
+            _freeze(), state_root / "review-ledger.jsonl"
+        )
+        assert report["ready_for_review"] is False
+        assert report["gap_scope_lineage_clean"] is False
+        assert "unverifiable_legacy_gap_scope_lineage" in (
+            report["readiness_failures"]
+        )
+    finally:
+        restored.close()
+
+
+@pytest.mark.parametrize(
+    ("corrupt_field", "corrupt_value"),
+    (
+        ("known_gap_intervals_by_stream", {"allMids": [[10, None]]}),
+        ("known_global_gap_intervals_by_stream", {
+            "l2Book:TEST": [[10, None]],
+        }),
+        ("known_gap_intervals_by_stream", {"l2Book:TEST": [[True, None]]}),
+        ("known_gap_intervals_by_stream", {"l2Book:TEST": [[10, "20"]]}),
+    ),
+)
+def test_v2_shadow_rejects_wrong_gap_scope_and_invalid_interval_values(
+    tmp_path: Path,
+    corrupt_field: str,
+    corrupt_value: object,
+) -> None:
+    config = _config()
+    state_root = tmp_path / "paired"
+    original = LossContextPairedPortfolioShadow(
+        freeze=_freeze(), replay_config=config,
+        selected_markets=(MARKET,), state_root=state_root,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+    )
+    try:
+        original.checkpoint(end_ms=EVALUATED_AT_MS)
+    finally:
+        original.close()
+    state_path = state_root / "paired-shadow-state.json"
+    payload = json.loads(state_path.read_text(encoding="utf-8"))
+    payload["baseline"][corrupt_field] = corrupt_value
+    payload.pop("state_digest")
+    payload["state_digest"] = _state_digest(payload)
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises((RuntimeError, ValueError)):
+        LossContextPairedPortfolioShadow(
+            freeze=_freeze(), replay_config=config,
+            selected_markets=(MARKET,), state_root=state_root,
+            startup_timestamp_ms=EVALUATED_AT_MS + 1,
+        )
