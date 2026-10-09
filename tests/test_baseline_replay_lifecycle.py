@@ -1150,3 +1150,26 @@ def test_scoped_gaps_survive_restore_without_promotion_from_legacy(
         })
     execution.close()
     facts.close()
+
+
+
+def test_market_scoped_candle_gaps_respect_hip3_dex_qualification(
+    tmp_path: Path,
+) -> None:
+    pipeline, execution, facts = _pipeline(
+        tmp_path, suffix="hip3-gap-names",
+    )
+    dex_market = MarketId("xyz", "BTC")
+    gap = _gap_record(
+        EVALUATED_AT_MS + 800, None,
+        event_key="hip3-candle-gap",
+        stream_id="candle:xyz:BTC:1m",
+    )
+    pipeline.on_record(gap, gap.available_at_ms)
+    assert pipeline.known_gap_intervals_for_market(dex_market) == (
+        (EVALUATED_AT_MS + 800, None),
+    )
+    assert pipeline.known_gap_intervals_for_market(MARKET) == ()
+    assert pipeline.known_gap_intervals_for_market(OTHER_MARKET) == ()
+    execution.close()
+    facts.close()
