@@ -208,6 +208,50 @@ def test_failed_recovered_lane_delivery_cannot_heal_aggregate_gap() -> None:
     asyncio.run(run())
 
 
+def test_pre_outage_buffer_cannot_certify_new_recovery() -> None:
+    async def run() -> None:
+        from cocomelon.evidence.redundant_stream import RedundantStreamMux
+
+        events: list[StreamEvent] = []
+        gaps: list[DataGap] = []
+        origin_ms = int(BASE.timestamp() * 1_000)
+
+        async def event_sink(event: StreamEvent) -> None:
+            events.append(event)
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        mux = RedundantStreamMux(event_sink=event_sink, gap_sink=gap_sink)
+        await mux.on_event(0, _trade(1, 1_000, 10))
+        await mux.on_event(1, _trade(1, 1_000, 12))
+        await mux.on_gap(
+            0, DataGap("trades:BTC", origin_ms + 500, None, "disconnect")
+        )
+        await mux.on_gap(
+            1, DataGap("trades:BTC", origin_ms + 510, None, "disconnect")
+        )
+
+        # An older buffered packet may be delivered successfully on switch,
+        # but its receive time predates the actual aggregate outage.
+        await mux.on_event(1, _trade(2, 2_000, 100))
+        await mux.on_gap(
+            1, DataGap(
+                "trades:BTC", origin_ms + 510, origin_ms + 600, "recovered"
+            )
+        )
+        assert [gap.reason for gap in gaps] == ["redundant_disconnect"]
+        assert events[-1].event_key == "trades:BTC:2000:2"
+
+        # Only a new post-outage event can produce a recovery notice.
+        await mux.on_event(1, _trade(3, 3_000, 700))
+        assert [gap.reason for gap in gaps] == [
+            "redundant_disconnect", "recovered"
+        ]
+
+    asyncio.run(run())
+
+
 def test_failover_suppresses_receive_time_only_cross_lane_duplicate() -> None:
     async def run() -> None:
         from cocomelon.evidence.redundant_stream import RedundantStreamMux
