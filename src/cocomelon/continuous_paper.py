@@ -322,6 +322,9 @@ from cocomelon.research.prospective_delayed_price_confirmation import (
     ProspectiveDelayedPriceConfirmationState,
     prospective_delayed_price_confirmation_summary,
 )
+from cocomelon.research.prospective_early_reserved_trailing import (
+    prospective_early_reserved_trailing_comparison,
+)
 from cocomelon.research.prospective_entry_cost_r import (
     ProspectiveEntryCostRState,
     prospective_entry_cost_r_comparison,
@@ -356,9 +359,6 @@ from cocomelon.research.prospective_momentum_band_forward_markout import (
 from cocomelon.research.prospective_momentum_pullback_entry import (
     ProspectiveMomentumPullbackEntryState,
     evaluate_prospective_momentum_pullback_entry,
-)
-from cocomelon.research.prospective_early_reserved_trailing import (
-    prospective_early_reserved_trailing_comparison,
 )
 from cocomelon.research.prospective_net_reserved_trailing import (
     prospective_net_reserved_trailing_comparison,
