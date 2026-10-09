@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Protocol
 
+from cocomelon.domain.candle_intervals import CANDLE_INTERVAL_MS
 from cocomelon.domain.evaluation import DecisionEvaluationFact, EquityFactKind
 from cocomelon.domain.execution import (
     ExecutionAttempt,
@@ -46,7 +47,6 @@ from cocomelon.execution.funding import FundingAccrual, reconcile_funding_bounda
 from cocomelon.execution.interface import PositionManagement
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.features.microstructure import calculate_microstructure_features
-from cocomelon.hyperliquid.client import INTERVAL_MS
 from cocomelon.journal.assembler import (
     JournalInconsistency,
     TradeLifecycleInput,
@@ -293,7 +293,7 @@ def _market_wire_name_for_gap_stream(stream_id: str) -> str | None:
         return None
     if kind == "candle":
         market_name, sep, interval = name.rpartition(":")
-        if not sep or interval not in INTERVAL_MS:
+        if not sep or interval not in CANDLE_INTERVAL_MS:
             return None
         name = market_name
     parts = name.split(":")
