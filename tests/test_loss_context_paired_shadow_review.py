@@ -176,8 +176,17 @@ def test_paired_shadow_review_requires_real_profit_and_three_clean_blocks(
     assert sides["candidate"]["short_closed_trades"] == 16
     assert sides["candidate"]["long_realized_net_pnl"] == "8"
     assert sides["candidate"]["short_realized_net_pnl"] == "8"
-    assert report["candidate_total_account_pnl"] == "27"
-    assert report["candidate_realized_net_pnl"] == "18"
+    assert report["candidate_total_account_pnl"] == "24"
+    assert report["candidate_realized_net_pnl"] == "16"
+    assert report["candidate_minus_baseline_total_account_pnl"] == "40"
+    assert report["candidate_minus_baseline_realized_net_pnl"] == "32"
+    assert report["candidate_cumulative_total_account_pnl"] == "27"
+    assert report["candidate_cumulative_realized_net_pnl"] == "18"
+    assert report["candidate_account_economics_window"] == (
+        "after_first_eligible_checkpoint"
+    )
+    assert sides["candidate"]["attributed_forward_closed_trades"] == 32
+    assert sides["candidate"]["total_forward_closed_trades"] == 32
     blocks = report["chronological_blocks"]
     assert isinstance(blocks, tuple)
     assert len(blocks) == 3
@@ -185,6 +194,87 @@ def test_paired_shadow_review_requires_real_profit_and_three_clean_blocks(
     assert report["changes_strategy"] is False
     assert report["promotion_authority"] is False
     assert report["execution_authority"] is False
+
+
+
+def test_review_rejects_profitable_cumulative_but_losing_forward_account(
+    tmp_path: Path,
+) -> None:
+    """Earlier paper profit cannot pay for a negative review interval."""
+    freeze = _freeze()
+    ledger = tmp_path / "pre-anchor-profit.jsonl"
+    for index in range(1, 10):
+        row = _checkpoint(freeze, index=index)
+        baseline_total = -2 * index
+        # Candidate loses $1 per future checkpoint, but started with
+        # enough pre-anchor profit to remain strongly positive overall.
+        candidate_total = 101 - index
+        candidate = row["candidate"]
+        assert isinstance(candidate, dict)
+        candidate["total_account_pnl"] = str(candidate_total)
+        candidate["equity"] = str(10_000 + candidate_total)
+        row["candidate_minus_baseline_total_account_pnl"] = str(
+            candidate_total - baseline_total
+        )
+        row["candidate_minus_baseline_equity"] = str(
+            candidate_total - baseline_total
+        )
+        append_review_checkpoint(ledger, row)
+
+    report = build_paired_shadow_review(freeze, ledger)
+    assert report["candidate_cumulative_total_account_pnl"] == "92"
+    assert report["candidate_total_account_pnl"] == "-8"
+    assert report["candidate_minus_baseline_total_account_pnl"] == "8"
+    assert all(
+        block["passes"] is True for block in report["chronological_blocks"]
+    )
+    assert "candidate_total_account_pnl_not_positive" in (
+        report["readiness_failures"]
+    )
+    assert report["ready_for_review"] is False
+
+
+def test_review_rejects_forward_closed_trades_missing_direction(
+    tmp_path: Path,
+) -> None:
+    """Unclassified post-anchor closes cannot be hidden by winning sides."""
+    freeze = _freeze()
+    ledger = tmp_path / "missing-forward-direction.jsonl"
+    for index in range(1, 10):
+        row = _checkpoint(freeze, index=index)
+        candidate = row["candidate"]
+        assert isinstance(candidate, dict)
+        candidate["closed_trade_count"] = 4 * index + (index - 1)
+        append_review_checkpoint(ledger, row)
+    report = build_paired_shadow_review(freeze, ledger)
+    assert report["candidate_closed_trade_count"] == 40
+    side = report["forward_closed_trade_economics_by_direction"]["candidate"]
+    assert side["attributed_forward_closed_trades"] == 32
+    assert side["total_forward_closed_trades"] == 40
+    assert "candidate_incomplete_forward_direction_attribution" in (
+        report["readiness_failures"]
+    )
+    assert report["ready_for_review"] is False
+
+
+def test_legacy_unclassified_offset_does_not_poison_forward_direction(
+    tmp_path: Path,
+) -> None:
+    """Missing pre-upgrade side history is not falsely counted as forward."""
+    freeze = _freeze()
+    ledger = tmp_path / "legacy-direction-offset.jsonl"
+    for index in range(1, 10):
+        row = _checkpoint(freeze, index=index)
+        for lane in ("baseline", "candidate"):
+            account = row[lane]
+            assert isinstance(account, dict)
+            account["closed_trade_count"] = 4 * index + 7
+        append_review_checkpoint(ledger, row)
+    report = build_paired_shadow_review(freeze, ledger)
+    assert report["ready_for_review"] is True
+    assert report["candidate_closed_trade_count"] == 32
+    assert report["baseline_closed_trade_count"] == 32
+
 
 
 def test_paired_shadow_review_rejects_candidate_that_is_only_less_bad(
