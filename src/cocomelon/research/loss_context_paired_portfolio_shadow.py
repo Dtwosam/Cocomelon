@@ -1133,11 +1133,20 @@ class LossContextPairedPortfolioShadow:
                 _lifecycle_payload(item)
                 for item in pipeline.open_lifecycle_checkpoints
             ],
-            "known_gap_intervals": [
+            "legacy_unscoped_gap_intervals": [
                 [started_ms, ended_ms]
-                for started_ms, ended_ms
-                in pipeline.known_gap_intervals
+                for started_ms, ended_ms in pipeline.unscoped_gap_intervals
             ],
+            "known_gap_intervals_by_stream": {
+                stream_id: [[start, end] for start, end in intervals]
+                for stream_id, intervals
+                in pipeline.known_gap_intervals_by_stream.items()
+            },
+            "known_global_gap_intervals_by_stream": {
+                stream_id: [[start, end] for start, end in intervals]
+                for stream_id, intervals
+                in pipeline.known_global_gap_intervals_by_stream.items()
+            },
         }
 
     def _review_checkpoint_payload(
@@ -1151,7 +1160,23 @@ class LossContextPairedPortfolioShadow:
         # Persist compact cumulative evidence, not unbounded interval arrays.
         baseline_gaps = self._baseline.known_gap_intervals
         candidate_gaps = self._candidate.known_gap_intervals
-        if baseline_gaps != candidate_gaps:
+        if baseline_gaps != candidate_gaps or any(
+            left != right
+            for left, right in (
+                (
+                    self._baseline.unscoped_gap_intervals,
+                    self._candidate.unscoped_gap_intervals,
+                ),
+                (
+                    self._baseline.known_gap_intervals_by_stream,
+                    self._candidate.known_gap_intervals_by_stream,
+                ),
+                (
+                    self._baseline.known_global_gap_intervals_by_stream,
+                    self._candidate.known_global_gap_intervals_by_stream,
+                ),
+            )
+        ):
             raise RuntimeError("paired paper lanes have different market-data gaps")
         closed_gaps = tuple(
             (start, end) for start, end in baseline_gaps if end is not None
@@ -1165,6 +1190,9 @@ class LossContextPairedPortfolioShadow:
                 self._freeze.prospective_not_before_ms
             ),
             "end_ms": end_ms,
+            "gap_scope_lineage_clean": (
+                not self._historical_gap_scope_tainted
+            ),
             "data_gap_closed_count": len(closed_gaps),
             "data_gap_closed_duration_ms": sum(
                 end - start for start, end in closed_gaps
@@ -1244,6 +1272,9 @@ class LossContextPairedPortfolioShadow:
             ),
         )
         payload: dict[str, object] = {
+            "historical_gap_scope_tainted": (
+                self._historical_gap_scope_tainted
+            ),
             "portfolio_shadow_candidate_id": self._freeze.candidate_id,
             "loss_context_candidate_id": (
                 self._freeze.loss_context_candidate_id
@@ -1394,6 +1425,9 @@ class LossContextPairedPortfolioShadow:
             ),
             "restored_from_checkpoint": (
                 self._restored_from_checkpoint
+            ),
+            "historical_gap_scope_tainted": (
+                self._historical_gap_scope_tainted
             ),
             "restore_warmup_required": (
                 self._restore_warmup_required
