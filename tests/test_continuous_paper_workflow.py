@@ -1940,3 +1940,54 @@ def test_paper_upgrade_watchdog_pathspec_is_one_shell_command() -> None:
         )
     assert "src/cocomelon/research/prospective_early_reserved_trailing.py" in snippet
     assert "src/cocomelon/research/prospective_early_vs_late_trailing.py" in snippet
+
+
+
+def test_full_journal_chart_and_long_loss_evidence_runs_immediately_after_handoff() -> None:
+    """Full journal research must not wait behind slow unrelated rebuilds."""
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    fallback = workflow.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    stages = [
+        "- name: Audit all closed paper trades and recorded entry-to-exit charts",
+        "- name: Upload all closed paper-trade economics and charts",
+        "- name: Attribute full-journal LONG losses to entry and exit evidence",
+        "- name: Upload all-paper LONG loss attribution",
+    ]
+    indices = [workflow.index(stage) for stage in stages]
+    paired_shadow = workflow.index(
+        "- name: Upload paired loss-context portfolio shadow state"
+    )
+    slow_research = workflow.index(
+        "- name: Rebuild deferred full-stack markouts after handoff"
+    )
+    exit_chart_gate = workflow.index(
+        "- name: Cross-verify early-versus-late IOC exits against full chart coverage"
+    )
+    assert fallback < indices[0] < indices[1] < indices[2] < indices[3]
+    assert indices[3] < paired_shadow < slow_research < exit_chart_gate
+    assert all(workflow.count(step) == 1 for step in stages)
+    chart = workflow[indices[0]:indices[1]]
+    loss = workflow[indices[2]:indices[3]]
+    assert "steps.fast_resume_dispatch.outcome == 'success'" in chart
+    assert "steps.fallback_resume_dispatch.outcome == 'success'" in chart
+    assert "steps.guard.outputs.skip != 'true'" in chart
+    assert "hashFiles('continuous-paper-state/session-summary.json')" in chart
+    assert "continue-on-error: true" in chart
+    assert "scripts/rebuild_deferred_all_trade_chart_audit.py" in chart
+    assert "steps.deferred_all_trade_chart_audit.outcome == 'success'" in workflow[
+        indices[1]:indices[2]
+    ]
+    assert "steps.deferred_all_trade_chart_audit.outcome == 'success'" in loss
+    assert "continue-on-error: true" in loss
+    assert "scripts/rebuild_deferred_long_entry_loss_attribution.py" in loss
+    assert "steps.deferred_long_loss_attribution.outcome == 'success'" in workflow[
+        indices[3]:paired_shadow
+    ]
+    assert "steps.deferred_all_trade_chart_audit.outcome == 'success'" in workflow[
+        exit_chart_gate:workflow.index(
+            "- name: Upload forward early-vs-late chart coverage gate",
+            exit_chart_gate,
+        )
+    ]
