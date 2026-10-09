@@ -12,6 +12,8 @@ CHART_NAME: Final = "all-paper-trade-chart-audit.json"
 CHECKPOINT_NAME: Final = "runtime-state.json"
 SESSION_NAME: Final = "session-summary.json"
 WITNESS_NAME: Final = "named-gap-recovery-witnesses.jsonl"
+# Freeze the public WS v1 witness freshness contract across schema upgrades.
+MAX_V1_WITNESS_EXCHANGE_AGE_MS: Final = 5_000
 CHECKPOINT_ADJACENT_WINDOW_MS: Final = 5_000
 _HANDOFF_REASONS: Final = {"duration_elapsed", "upgrade_requested"}
 
@@ -245,6 +247,10 @@ def _confirmed_named_recovery_witnesses(
             if exchange_ms > received_ms:
                 raise DeferredFeedGapSourceAuditError(
                     "named recovery source arrived before exchange event"
+                )
+            if received_ms - exchange_ms >= MAX_V1_WITNESS_EXCHANGE_AGE_MS:
+                raise DeferredFeedGapSourceAuditError(
+                    "named recovery witness exchange price event is stale"
                 )
         elif stream_id.startswith("l2Book:"):
             raise DeferredFeedGapSourceAuditError(

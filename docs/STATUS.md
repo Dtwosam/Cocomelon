@@ -33,6 +33,10 @@ Paired shadow state v2 separately checkpoints original anonymous, market-scoped 
 
 The baseline paper account, live market ingestion, orders, fees, entry/exit policy, risk budgets and all real-money permissions remain untouched. Correctly preserving future scoped feed evidence is **not** proof the challenger makes money: its latest legitimate after-cost forward comparison still loses against the baseline.
 
+### Independently reject stale exchange timestamps in named recovery receipts — 2026-10-09
+
+The production named-feed recovery observer already requires an accepted new mainnet WS event with exchange time strictly fresher than the frozen v1 **5,000 ms** L2 eligibility ceiling. Its deferred, post-handoff checkpoint auditor used to check that exchange timestamps were not future-dated, but omitted this independent *upper age bound*: a forged or corrupted receipt could therefore appear valid if the checkpoint contained a matching closed interval. The deferred source audit now rejects every exchange-stamped witness with receive-minus-exchange age greater than or equal to 5,000 ms; exactly 4,999 ms remains admissible. L2 source receipts without exchange time remain invalid; genuinely receive-only shared sources (such as `allMids`) require a post-checkpoint WS receipt and persistently closed same-source interval. Historical anonymous gaps, account fills, pricing, strategy, risk limits, and execution permissions do not change.
+
 ### Distinguish checkpoint-adjacent source-gap bursts from older outages — 2026-10-09
 
 The first completed post-witness audit (worker **37973628696**) preserved 72 named market-specific open starts; 21 different L2 sources opened new intervals at the **same** 19:07:44.751 UTC timestamp, 86ms before the last persisted record. A common timestamp strongly suggests coordinated lifecycle activity, but neither a safe shutdown nor successful recovery follows from timing alone.
