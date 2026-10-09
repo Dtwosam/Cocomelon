@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from types import SimpleNamespace
 
 import pytest
@@ -141,10 +141,11 @@ def test_exact_cash_parity_across_reordered_entry_context_groups(
     result = audit.closed_trade_entry_exit_context(tuple(rows), None, None, None)
     expected = Decimal("0.000000000000000000000000002")
     assert Decimal(result["overall"]["net_pnl"]) == expected
-    for groups in result["dimensions"].values():
-        assert sum(
-            (Decimal(cohort["net_pnl"]) for cohort in groups.values()),
-            Decimal("0"),
-        ) == expected
+    with localcontext(prec=96):
+        for groups in result["dimensions"].values():
+            assert sum(
+                (Decimal(cohort["net_pnl"]) for cohort in groups.values()),
+                Decimal("0"),
+            ) == expected
     assert Decimal(result["overall"]["net_reconciliation_residual"]) == 0
     assert result["entry_context_verified_trades"] == 4
