@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
-from scripts.rescue_continuous_paper import PaperRescueError, choose_exact_source
+from scripts.rescue_continuous_paper import (
+    PaperRescueError,
+    choose_exact_source,
+    verify_active_heartbeat,
+)
 
 REPOSITORY = "Dtwosam/Cocomelon"
 OLD_RUN = 37768727228
@@ -105,7 +111,7 @@ def test_running_real_trader_blocks_any_replacement() -> None:
     assert choose(
         [run(12)],
         jobs_by_run={12: paper_job("in_progress", None)},
-    ) == ("active", None)
+    ) == ("active", (12, 1))
 
 
 def test_pending_exact_successor_blocks_duplicate_dispatch() -> None:
@@ -250,5 +256,99 @@ def test_independent_workflow_has_unshared_concurrency_and_no_live_orders() -> N
     assert "group: independent-paper-rescue" in watchdog
     assert "python scripts/rescue_continuous_paper.py" in watchdog
     assert "COCOMELON_EXECUTION_MODE: paper" in watchdog
+    assert "issues: read" in watchdog
     assert "  schedule:" not in paper
     assert "cancel-in-progress: false" in watchdog
+
+
+
+def test_exact_active_worker_fresh_heartbeat_and_15min_boundary() -> None:
+    now = datetime(2026, 10, 9, 21, 30, tzinfo=UTC)
+    template = (
+        "## Continuous paper runtime live status\n"
+        "Updated: {updated}\n"
+        "Worker run: 555999\n"
+    )
+    for minutes, accepted in ((0, True), (14, True), (15, True), (16, False)):
+        body = template.format(
+            updated=(now - timedelta(minutes=minutes)).isoformat()
+        )
+        if accepted:
+            assert verify_active_heartbeat(
+                body, active_run_id=555999,
+                run_started_at=(now - timedelta(minutes=30)).isoformat(),
+                now=now,
+            ) == "fresh"
+        else:
+            with pytest.raises(PaperRescueError, match="stale"):
+                verify_active_heartbeat(
+                    body, active_run_id=555999,
+                    run_started_at=(now - timedelta(minutes=30)).isoformat(),
+                    now=now,
+                )
+
+
+def test_stale_or_future_workflow_heartbeat_fails_without_rescue_lease() -> None:
+    now = datetime(2026, 10, 9, 21, 30, tzinfo=UTC)
+    old = "Updated: 2026-10-09T19:29:00+00:00\nWorker run: 100\n"
+    assert verify_active_heartbeat(
+        old, active_run_id=101,
+        run_started_at=(now - timedelta(minutes=4)).isoformat(),
+        now=now,
+    ) == "startup_grace"
+    with pytest.raises(PaperRescueError, match="no current heartbeat"):
+        verify_active_heartbeat(
+            old, active_run_id=101,
+            run_started_at=(now - timedelta(minutes=18)).isoformat(),
+            now=now,
+        )
+    with pytest.raises(PaperRescueError, match="future-dated"):
+        verify_active_heartbeat(
+            old.replace("19:29:00", "21:35:00").replace("run: 100", "run: 101"),
+            active_run_id=101,
+            run_started_at=(now - timedelta(minutes=20)).isoformat(),
+            now=now,
+        )
+
+
+def test_heartbeat_cannot_predate_claimed_worker_start() -> None:
+    now = datetime(2026, 10, 9, 21, 30, tzinfo=UTC)
+    with pytest.raises(PaperRescueError, match="stale"):
+        verify_active_heartbeat(
+            "Worker run: 101\nUpdated: 2026-10-09T21:20:00Z\n",
+            active_run_id=101, run_started_at="2026-10-09T21:26:00Z",
+            now=now,
+        )
+
+
+@pytest.mark.parametrize(
+    ("body", "start"),
+    (
+        (None, "2026-10-09T21:20:00Z"),
+        (42, "2026-10-09T21:20:00Z"),
+        ("Worker run: 101\n", None),
+        ("Worker run: 101\n", "no date"),
+        ("Worker run: 101\n", "2026-10-09T21:20:00"),
+        ("Worker run: 101\n", "2026-10-09T21:40:00Z"),
+        ("Worker run: 101\nUpdated: not-iso\n", "2026-10-09T21:20:00Z"),
+        ("Worker run: 101\nUpdated: 2026-10-09T21:28:00\n", "2026-10-09T21:20:00Z"),
+    ),
+)
+def test_missing_corrupt_and_future_active_heartbeat_data_fail_closed(
+    body: object, start: object,
+) -> None:
+    with pytest.raises(PaperRescueError):
+        verify_active_heartbeat(
+            body, active_run_id=101, run_started_at=start,
+            now=datetime(2026, 10, 9, 21, 30, tzinfo=UTC),
+        )
+
+
+def test_active_worker_identity_cannot_be_boolean() -> None:
+    with pytest.raises(PaperRescueError, match="identity invalid"):
+        verify_active_heartbeat(
+            "Updated: 2026-10-09T21:29:00Z\nWorker run: 1\n",
+            active_run_id=True,  # type: ignore[arg-type]
+            run_started_at="2026-10-09T21:20:00Z",
+            now=datetime(2026, 10, 9, 21, 30, tzinfo=UTC),
+        )
