@@ -9,6 +9,14 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Start an independent clean-v2 paired paper trial after preserving the contaminated v1 archive — 2026-10-09
+
+State v2 corrects future market gap provenance, but the existing v1 experiment already has **6,215 globally flattened source-gap intervals per lane, 642 unresolved**, and no possible trustworthy attribution back to original markets. The existing v1 shadow candidate also has negative forward realized and full-account relative PnL. Do not simply bless its economic sample by changing a schema number or retroactively removing its inherited gaps.
+
+The same *previously frozen and untouched* trend/outside-top10 challenger is now assigned a **different, empty paper-only account and evidence directory**, `loss-context-paired-portfolio-shadow-scoped-v2`. The former `loss-context-paired-portfolio-shadow` folder and its review ledger remain archived, unmodified, and non-promotable. When the new worker first adopts the scoped-v2 runtime, a fresh baseline/challenger pair starts flat with identical paper-only starting cash, risk/execution models and prospective normalized records. It must earn **new** completed A/B economic and feed-lineage review checkpoints; workflow upload and review read *only* its new ledger, never the old tainted file. The candidate rule is not refitted and the old negative history is still reported separately. This is **not** a backtest replay, a promotion, or a live orders switch.
+
+The future trial is valid only after independently sufficient time, markets, closed trades, positive after-cost full-account advantage, stable chronological blocks, and trustworthy market feed continuity. Existing baseline paper account and all real-market orders remain unchanged; live execution stays disabled.
+
 ### Stop paired A/B shadow handoffs from turning named feed gaps into anonymous global outages — 2026-10-09
 
 The paired loss-context portfolio shadow persisted `pipeline.known_gap_intervals` (a compacted **global union** of anonymous, market-specific and shared outages) as a single `known_gap_intervals` v1 field. On restart, `restore_gap_intervals` treated all those market-specific source failures as global anonymous outages. Named recoveries could then never close the v1 copies, inflating cumulative unresolved source debt and invalidating paired data-continuity evidence; the latest paired review displayed 642 open market-data gaps and more than 76% forward gap-time coverage missing. **This is a shadow-lineage defect, not independent evidence the real venue was disconnected for that full fraction.**
