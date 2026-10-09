@@ -47,7 +47,7 @@ from cocomelon.research.loss_context_portfolio_shadow_entry import (
 
 ZERO: Final = Decimal("0")
 LOSS_CONTEXT_PAIRED_SHADOW_SCHEMA_VERSION: Final = 1
-LOSS_CONTEXT_PAIRED_SHADOW_STATE_SCHEMA_VERSION: Final = 1
+LOSS_CONTEXT_PAIRED_SHADOW_STATE_SCHEMA_VERSION: Final = 2
 LOSS_CONTEXT_PAIRED_SHADOW_STATE_FILENAME: Final = (
     "paired-shadow-state.json"
 )
@@ -540,6 +540,8 @@ class LossContextPairedPortfolioShadow:
         self._candidate_offsets = _LaneOffsets()
         self._restored_from_checkpoint = False
         self._restore_warmup_required = False
+        # v1 flattened a source-scoped union and irreversibly lost lineage.
+        self._historical_gap_scope_tainted = False
 
         self._baseline_filter = LossContextPortfolioShadowEntryFilter(
             freeze,
@@ -619,12 +621,36 @@ class LossContextPairedPortfolioShadow:
         for item in raw:
             if not isinstance(item, list) or len(item) != 2:
                 raise ValueError("shadow gap interval is invalid")
-            started = int(item[0])
-            ended = None if item[1] is None else int(item[1])
+            if type(item[0]) is not int or (
+                item[1] is not None and type(item[1]) is not int
+            ):
+                raise ValueError("shadow gap interval requires exact integers")
+            started = item[0]
+            ended = item[1]
             if started < 0 or (ended is not None and ended < started):
                 raise ValueError("shadow gap interval chronology is invalid")
             intervals.append((started, ended))
         return tuple(intervals)
+
+    @classmethod
+    def _gap_scopes_from_payload(
+        cls,
+        raw: object,
+        *,
+        scope: str,
+    ) -> dict[str, tuple[tuple[int, int | None], ...]]:
+        if not isinstance(raw, dict):
+            raise ValueError(f"shadow {scope} gap sources must be an object")
+        result: dict[str, tuple[tuple[int, int | None], ...]] = {}
+        for stream_id, values in raw.items():
+            if (
+                not isinstance(stream_id, str)
+                or not stream_id.strip()
+                or stream_id.strip() != stream_id
+            ):
+                raise ValueError(f"shadow {scope} gap source identity invalid")
+            result[stream_id] = cls._gap_intervals_from_payload(values)
+        return result
 
     @staticmethod
     def _restore_filter_counts(
@@ -709,6 +735,7 @@ class LossContextPairedPortfolioShadow:
         raw: object,
         pipeline: BaselineReplayPipeline,
         execution: PaperExecutionAdapter,
+        state_schema_version: int,
     ) -> tuple[_LaneOffsets, Decimal]:
         if not isinstance(raw, dict):
             raise ValueError("shadow lane state must be an object")
@@ -728,11 +755,34 @@ class LossContextPairedPortfolioShadow:
         checkpoints = tuple(
             _lifecycle_from_payload(item) for item in lifecycle_raw
         )
-        pipeline.restore_gap_intervals(
-            self._gap_intervals_from_payload(
-                raw.get("known_gap_intervals")
+        if state_schema_version == 1:
+            # Legacy union cannot be split back into source histories.
+            pipeline.restore_gap_intervals(
+                self._gap_intervals_from_payload(
+                    raw.get("known_gap_intervals")
+                )
             )
-        )
+        else:
+            if "known_gap_intervals" in raw:
+                raise ValueError(
+                    "v2 shadow lane cannot include a flattened gap union"
+                )
+            pipeline.restore_gap_intervals(
+                self._gap_intervals_from_payload(
+                    raw.get("legacy_unscoped_gap_intervals")
+                )
+            )
+            pipeline.restore_gap_intervals_by_stream(
+                self._gap_scopes_from_payload(
+                    raw.get("known_gap_intervals_by_stream"), scope="market",
+                )
+            )
+            pipeline.restore_global_gap_intervals_by_stream(
+                self._gap_scopes_from_payload(
+                    raw.get("known_global_gap_intervals_by_stream"),
+                    scope="shared",
+                )
+            )
         _restore_open_lifecycles(
             pipeline,
             execution,
@@ -775,11 +825,20 @@ class LossContextPairedPortfolioShadow:
                 "paired shadow durable state digest mismatch"
             )
         raw = unsigned
-        if (
-            raw.get("schema_version")
-            != LOSS_CONTEXT_PAIRED_SHADOW_STATE_SCHEMA_VERSION
-        ):
+        version = raw.get("schema_version")
+        if type(version) is not int or version not in {
+            1, LOSS_CONTEXT_PAIRED_SHADOW_STATE_SCHEMA_VERSION,
+        }:
             raise ValueError("paired shadow durable state schema mismatch")
+        if version == 1:
+            self._historical_gap_scope_tainted = True
+        else:
+            tainted = raw.get("historical_gap_scope_tainted")
+            if type(tainted) is not bool:
+                raise ValueError(
+                    "v2 shadow gap-scope migration authority missing"
+                )
+            self._historical_gap_scope_tainted = tainted
         if raw.get("portfolio_shadow_candidate_id") != self._freeze.candidate_id:
             raise RuntimeError(
                 "paired shadow durable candidate identity mismatch"
@@ -881,6 +940,7 @@ class LossContextPairedPortfolioShadow:
             raw=baseline_raw,
             pipeline=self._baseline,
             execution=self._baseline_execution,
+            state_schema_version=version,
         )
         (
             self._candidate_offsets,
@@ -889,6 +949,7 @@ class LossContextPairedPortfolioShadow:
             raw=candidate_raw,
             pipeline=self._candidate,
             execution=self._candidate_execution,
+            state_schema_version=version,
         )
         if not isinstance(baseline_raw, dict) or not isinstance(
             candidate_raw,
@@ -903,6 +964,27 @@ class LossContextPairedPortfolioShadow:
             self._candidate_filter,
             candidate_raw.get("admission"),
         )
+        # Reject even signed but contradictory paired scope histories before
+        # processing a single future event, not after recording account PnL.
+        if any(
+            left != right for left, right in (
+                (
+                    self._baseline.unscoped_gap_intervals,
+                    self._candidate.unscoped_gap_intervals,
+                ),
+                (
+                    self._baseline.known_gap_intervals_by_stream,
+                    self._candidate.known_gap_intervals_by_stream,
+                ),
+                (
+                    self._baseline.known_global_gap_intervals_by_stream,
+                    self._candidate.known_global_gap_intervals_by_stream,
+                ),
+            )
+        ):
+            raise RuntimeError(
+                "paired shadow restored market-data gap scope mismatch"
+            )
         self._restored_from_checkpoint = True
         self._restore_warmup_required = True
 
@@ -1072,11 +1154,20 @@ class LossContextPairedPortfolioShadow:
                 _lifecycle_payload(item)
                 for item in pipeline.open_lifecycle_checkpoints
             ],
-            "known_gap_intervals": [
+            "legacy_unscoped_gap_intervals": [
                 [started_ms, ended_ms]
-                for started_ms, ended_ms
-                in pipeline.known_gap_intervals
+                for started_ms, ended_ms in pipeline.unscoped_gap_intervals
             ],
+            "known_gap_intervals_by_stream": {
+                stream_id: [[start, end] for start, end in intervals]
+                for stream_id, intervals
+                in pipeline.known_gap_intervals_by_stream.items()
+            },
+            "known_global_gap_intervals_by_stream": {
+                stream_id: [[start, end] for start, end in intervals]
+                for stream_id, intervals
+                in pipeline.known_global_gap_intervals_by_stream.items()
+            },
         }
 
     def _review_checkpoint_payload(
@@ -1090,7 +1181,23 @@ class LossContextPairedPortfolioShadow:
         # Persist compact cumulative evidence, not unbounded interval arrays.
         baseline_gaps = self._baseline.known_gap_intervals
         candidate_gaps = self._candidate.known_gap_intervals
-        if baseline_gaps != candidate_gaps:
+        if baseline_gaps != candidate_gaps or any(
+            left != right
+            for left, right in (
+                (
+                    self._baseline.unscoped_gap_intervals,
+                    self._candidate.unscoped_gap_intervals,
+                ),
+                (
+                    self._baseline.known_gap_intervals_by_stream,
+                    self._candidate.known_gap_intervals_by_stream,
+                ),
+                (
+                    self._baseline.known_global_gap_intervals_by_stream,
+                    self._candidate.known_global_gap_intervals_by_stream,
+                ),
+            )
+        ):
             raise RuntimeError("paired paper lanes have different market-data gaps")
         closed_gaps = tuple(
             (start, end) for start, end in baseline_gaps if end is not None
@@ -1104,6 +1211,9 @@ class LossContextPairedPortfolioShadow:
                 self._freeze.prospective_not_before_ms
             ),
             "end_ms": end_ms,
+            "gap_scope_lineage_clean": (
+                not self._historical_gap_scope_tainted
+            ),
             "data_gap_closed_count": len(closed_gaps),
             "data_gap_closed_duration_ms": sum(
                 end - start for start, end in closed_gaps
@@ -1183,6 +1293,9 @@ class LossContextPairedPortfolioShadow:
             ),
         )
         payload: dict[str, object] = {
+            "historical_gap_scope_tainted": (
+                self._historical_gap_scope_tainted
+            ),
             "portfolio_shadow_candidate_id": self._freeze.candidate_id,
             "loss_context_candidate_id": (
                 self._freeze.loss_context_candidate_id
@@ -1333,6 +1446,9 @@ class LossContextPairedPortfolioShadow:
             ),
             "restored_from_checkpoint": (
                 self._restored_from_checkpoint
+            ),
+            "historical_gap_scope_tainted": (
+                self._historical_gap_scope_tainted
             ),
             "restore_warmup_required": (
                 self._restore_warmup_required

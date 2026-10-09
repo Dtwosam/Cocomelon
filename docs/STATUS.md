@@ -9,6 +9,14 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Stop paired A/B shadow handoffs from turning named feed gaps into anonymous global outages — 2026-10-09
+
+The paired loss-context portfolio shadow persisted `pipeline.known_gap_intervals` (a compacted **global union** of anonymous, market-specific and shared outages) as a single `known_gap_intervals` v1 field. On restart, `restore_gap_intervals` treated all those market-specific source failures as global anonymous outages. Named recoveries could then never close the v1 copies, inflating cumulative unresolved source debt and invalidating paired data-continuity evidence; the latest paired review displayed 642 open market-data gaps and more than 76% forward gap-time coverage missing. **This is a shadow-lineage defect, not independent evidence the real venue was disconnected for that full fraction.**
+
+Paired shadow state v2 separately checkpoints original anonymous, market-scoped and named shared gap intervals for **both** independently running account lanes. An exact v2 restore rejects malformed source identity, bad timestamp types and contradictory market/shared scopes and requires same scoped gap history on both lanes. V1 durable states remain loadable *only* as unattributable historical debt, without inventing a retroactive source or recovery. Every v1-migrated shadow remains permanently flagged as `historical_gap_scope_tainted`; the forward review refuses readiness if **any** eligible row has missing/tainted scope lineage, even if paper returns later become positive. This existing frozen candidate must not be promoted on its legacy history; a separate freshly anchored v2 trial with independently sufficient after-cost full-account economics is necessary.
+
+The baseline paper account, live market ingestion, orders, fees, entry/exit policy, risk budgets and all real-money permissions remain untouched. Correctly preserving future scoped feed evidence is **not** proof the challenger makes money: its latest legitimate after-cost forward comparison still loses against the baseline.
+
 ### Distinguish checkpoint-adjacent source-gap bursts from older outages — 2026-10-09
 
 The first completed post-witness audit (worker **37973628696**) preserved 72 named market-specific open starts; 21 different L2 sources opened new intervals at the **same** 19:07:44.751 UTC timestamp, 86ms before the last persisted record. A common timestamp strongly suggests coordinated lifecycle activity, but neither a safe shutdown nor successful recovery follows from timing alone.
