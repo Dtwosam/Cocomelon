@@ -523,7 +523,8 @@ def test_paired_review_cannot_mask_losing_shorts_with_profitable_longs(
         candidate["short_closed_net_pnl"] = str(-index)
         append_review_checkpoint(ledger, row)
     review = build_paired_shadow_review(freeze, ledger)
-    assert review["candidate_realized_net_pnl"] == "18"
+    assert review["candidate_realized_net_pnl"] == "16"
+    assert review["candidate_cumulative_realized_net_pnl"] == "18"
     assert review["ready_for_review"] is False
     assert "candidate_short_realized_net_pnl_not_positive" in review["readiness_failures"]
     assert review["forward_closed_trade_economics_by_direction"]["candidate"][
