@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -112,8 +113,8 @@ def _trade(
         initial_stop=D("90") if side is Direction.LONG else D("110"),
         initial_risk_amount=D("10"),
         entry_price=D("100"),
-        exit_price=D("100") - profit if side is Direction.LONG
-        else D("100") - profit,
+        exit_price=(D("100") + profit if side is Direction.LONG
+                    else D("100") - profit),
         filled_quantity=D("1"),
         gross_realized_pnl=profit,
         entry_fees=fee,
@@ -159,7 +160,7 @@ def _populate_state(root: Path) -> tuple[TradeJournalEntry, ...]:
                 feat = _feature(trade.opened_at_ms, trade.market)
                 # A journaled trade may carry the feature ID only if the
                 # corresponding immutable snapshot was available at entry.
-                trade = _replace_feature_id(trade, feat.snapshot_id)
+                trade = replace(trade, feature_snapshot_id=feat.snapshot_id)
                 features.record(feat)
                 facts.record_decision_fact(DecisionEvaluationFact(
                     strategy_decision_id=trade.strategy_decision_id,
@@ -212,14 +213,6 @@ def _populate_state(root: Path) -> tuple[TradeJournalEntry, ...]:
         journal.close()
         facts.close()
     return trades
-
-
-def _replace_feature_id(
-    trade: TradeJournalEntry, feature_snapshot_id: str,
-) -> TradeJournalEntry:
-    from dataclasses import replace
-
-    return replace(trade, feature_snapshot_id=feature_snapshot_id)
 
 
 def test_completed_real_store_handoff_builds_exact_full_journal_chart_and_loss_reports(
