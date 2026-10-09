@@ -343,6 +343,21 @@ def test_post_handoff_named_witness_needs_persisted_closed_gap() -> None:
         )
 
 
+def test_overlapping_old_closed_interval_cannot_hide_unresolved_start() -> None:
+    state = _checkpoint()
+    # An old closed outage spans the new witness, but the original exact
+    # checkpoint gap start is still unresolved. This is no recovery.
+    state["known_gap_intervals_by_stream"] = {
+        "l2Book:BTC": [[100, 700], [200, None]]
+    }
+    with pytest.raises(
+        DeferredFeedGapSourceAuditError, match="original gap remains unresolved"
+    ):
+        assess_feed_gap_source_debt(
+            state, _charts(), [_fresh_named_witness()]
+        )
+
+
 @pytest.mark.parametrize(
     ("field", "invalid"),
     [
