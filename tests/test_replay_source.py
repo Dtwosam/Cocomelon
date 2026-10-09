@@ -174,3 +174,54 @@ def test_evidence_class_filters_microstructure_without_fabrication(tmp_path: Pat
     assert any(item.event_kind == StreamKind.L2_BOOK.value for item in micro_records)
     assert any(item.record_kind is SourceRecordKind.DATA_GAP for item in micro_records)
     assert all(item.available_at_ms >= RECEIVED_MS for item in micro_records)
+
+
+def test_gap_recovery_is_not_replayed_at_start_and_cross_date_partition_stays_valid(
+    tmp_path: Path,
+) -> None:
+    # The recorder writes both gap witnesses under the UTC *start* date,
+    # but the recovery is not actionable until its independent ending time.
+    started_ms = int(datetime(2026, 8, 23, 23, 59, 58, tzinfo=UTC).timestamp() * 1000)
+    recovered_ms = started_ms + 5_000
+    recorder = DurableRecorder(tmp_path, max_records=1)
+    recorder.append_gap(DataGap(
+        stream_id="l2Book:SOL",
+        started_ms=started_ms,
+        ended_ms=None,
+        reason="disconnect",
+    ))
+    recorder.append_gap(DataGap(
+        stream_id="l2Book:SOL",
+        started_ms=started_ms,
+        ended_ms=recovered_ms,
+        reason="recovered",
+    ))
+
+    segments = validate_recording(tmp_path)
+    assert len(segments) == 2
+    assert all("gaps/2026-08-23/" in item.relative_path for item in segments)
+    assert max(item.last_available_at_ms for item in segments) == recovered_ms
+    from dataclasses import replace
+
+    manifest = replace(
+        replay_manifest(tmp_path, EvidenceClass.MICROSTRUCTURE),
+        start_ms=started_ms - 1,
+        end_ms=recovered_ms + 1,
+    )
+    source = JsonlReplaySource(tmp_path)
+    all_records = tuple(source.iter_records(manifest))
+    assert len(all_records) == 2
+    assert sorted(record.available_at_ms for record in all_records) == [
+        started_ms, recovered_ms
+    ]
+    assert {record.payload["ended_ms"] for record in all_records} == {
+        None, recovered_ms
+    }
+
+    # At an instant *before* the recovered websocket message, only the
+    # open coverage gap may exist in an honest historical replay.
+    before_recovery = replace(manifest, end_ms=recovered_ms - 1)
+    early_records = tuple(source.iter_records(before_recovery))
+    assert len(early_records) == 1
+    assert early_records[0].payload["ended_ms"] is None
+    assert early_records[0].available_at_ms == started_ms
