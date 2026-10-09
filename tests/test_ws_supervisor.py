@@ -125,6 +125,90 @@ def test_reconnect_resubscribes_and_closes_gap_on_recovery() -> None:
     asyncio.run(run())
 
 
+def test_failed_event_sink_cannot_record_false_websocket_recovery() -> None:
+    async def run() -> None:
+        first = FakeConnection([trade(1), ConnectionError("drop")])
+        second = FakeConnection([trade(2, 2_000)])
+        pool = [first, second]
+        timeline: list[str] = []
+        now = [1_000]
+
+        async def factory() -> FakeConnection:
+            return pool.pop(0)
+
+        async def event_sink(event: StreamEvent) -> None:
+            if event.event_key == "trades:BTC:2000:2":
+                timeline.append("event_rejected")
+                raise RuntimeError("journal write rejected")
+            timeline.append("event_accepted")
+            now[0] += 1_000
+
+        async def gap_sink(gap: DataGap) -> None:
+            timeline.append(gap.reason)
+
+        async def no_sleep(_: float) -> None:
+            return None
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "trades", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime(2026, 8, 23, tzinfo=UTC),
+            sleep=no_sleep,
+        )
+        with pytest.raises(RuntimeError, match="journal write rejected"):
+            await supervisor.run(max_sessions=2, max_messages_per_session=2)
+
+        assert timeline == [
+            "event_accepted", "disconnect", "event_rejected"
+        ]
+
+    asyncio.run(run())
+
+
+def test_websocket_recovery_is_persisted_after_normalized_event() -> None:
+    async def run() -> None:
+        first = FakeConnection([trade(1), ConnectionError("drop")])
+        second = FakeConnection([trade(2, 2_000)])
+        pool = [first, second]
+        timeline: list[str] = []
+        now = [1_000]
+
+        async def factory() -> FakeConnection:
+            return pool.pop(0)
+
+        async def event_sink(event: StreamEvent) -> None:
+            timeline.append(event.event_key)
+            now[0] += 1_000
+
+        async def gap_sink(gap: DataGap) -> None:
+            timeline.append(gap.reason)
+
+        async def no_sleep(_: float) -> None:
+            return None
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "trades", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime(2026, 8, 23, tzinfo=UTC),
+            sleep=no_sleep,
+        )
+        await supervisor.run(max_sessions=2, max_messages_per_session=2)
+        assert timeline[:4] == [
+            "trades:BTC:1000:1",
+            "disconnect",
+            "trades:BTC:2000:2",
+            "recovered",
+        ]
+
+    asyncio.run(run())
+
+
 def test_websocket_supervisor_reports_normalization_activity() -> None:
     async def run() -> None:
         connection = FakeConnection([trade(1)])
