@@ -12,6 +12,8 @@ CHART_NAME: Final = "all-paper-trade-chart-audit.json"
 CHECKPOINT_NAME: Final = "runtime-state.json"
 SESSION_NAME: Final = "session-summary.json"
 WITNESS_NAME: Final = "named-gap-recovery-witnesses.jsonl"
+# V1 producer accepts only post-handoff exchange events fresher than 5s.
+MAX_V1_WITNESS_EXCHANGE_AGE_MS: Final = 5_000
 _HANDOFF_REASONS: Final = {"duration_elapsed", "upgrade_requested"}
 
 
@@ -244,6 +246,13 @@ def _confirmed_named_recovery_witnesses(
             if exchange_ms > received_ms:
                 raise DeferredFeedGapSourceAuditError(
                     "named recovery source arrived before exchange event"
+                )
+            if (
+                received_ms - exchange_ms
+                >= MAX_V1_WITNESS_EXCHANGE_AGE_MS
+            ):
+                raise DeferredFeedGapSourceAuditError(
+                    "named recovery witness exchange price event is stale"
                 )
         elif stream_id.startswith("l2Book:"):
             raise DeferredFeedGapSourceAuditError(
