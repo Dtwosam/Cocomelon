@@ -9,6 +9,16 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Restore auditable LONG losses by fixing Decimal cohort reconciliation — 2026-10-09
+
+Authenticated GitHub Actions output from completed paper worker 37912255405 revealed that its deferred full-journal chart audit actually **failed** with `ClosedTradeEntryExitContextError: entry context cohort reconciliation failure: by_side_strategy_and_rank`. The step uses `continue-on-error`, so the overall workflow may continue even though the **raw evidence producer failed** and no all-trade chart artifact is uploaded. Consequently the newly merged LONG loss attribution from PR #1050 and chart-based +0.5R/+1R comparisons have **not** yet generated reliable current artifacts; do not claim their economic conclusions exist.
+
+Every journal trade belongs to exactly one cohort per dimension; the group-count invariant holds by construction. The first demonstrated failure mode is Decimal's default 28-significant-digit context: summation of large and very small signed trade results becomes order-dependent, so a full ordered journal and the same trades grouped by entry rank can disagree even with no missing trade. Wrap complete cohort attribution, lifecycle accounting, full chart audit and downstream LONG/SHORT audit in a local **96-digit decimal context**. Crucially this preserves the journal's exact already-booked individual trade net results and checks **exact** parity rather than suppressing reconciliation errors with a tolerance. Add regression cases with catastrophic cancellation, multiple entry rank groups, missing chart paths and side-separated profits. Reject genuine missing trades, forged cashflows, mismatched lineage, and incomplete mark paths as before.
+
+This is a **research-only evidence repair**. The live-paper strategy, stops, fees, execution flow, risk, and portfolio balances stay unchanged. The next completed paper worker must successfully upload the authenticated full-journal chart report and all-paper LONG audit before any new entry filter is evaluated. Independent matched portfolio evidence and positive after-cost PnL/R remain required for promotion.
+
+**LIVE TRADING: DISABLED.**
+
 ### Silent price-mark coverage in deferred exit audit — 2026-10-09
 
 PR #1049 hardens the **research-only** complete closed-trade chart audit used as provenance for the frozen +0.5R vs +1R IOC trailing comparison. The previous chart gate could regard a trade path as complete even where its two observed marks were separated by many minutes without a *recorded* stream-health gap; the offline chart could also join known price-data gaps with a solid line.
