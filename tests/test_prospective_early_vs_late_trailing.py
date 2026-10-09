@@ -148,3 +148,30 @@ def test_duplicate_trade_and_observer_identity_drift_fail(
     early["t1"].opening_plan_id = "different-plan"
     with pytest.raises(audit.EarlyVsLateTrailingError, match="identity mismatch"):
         audit.prospective_early_vs_late_trailing((trade,), {}, {})
+
+
+def test_exit_economics_preserve_tiny_after_cost_edge_across_large_positions() -> None:
+    """A small positive forward edge must not round to zero before netting."""
+    rows = []
+    for original, early, late in (
+        ("10000", "10000", "10000"),
+        ("0.000000000000000000000001", "0.000000000000000000000002", "0.000000000000000000000001"),
+        ("-10000", "-10000", "-10000"),
+    ):
+        trade = SimpleNamespace(net_pnl=Decimal(original), net_r=Decimal(original))
+        first = SimpleNamespace(
+            candidate_net_pnl_estimate=Decimal(early),
+            candidate_net_r_estimate=Decimal(early),
+        )
+        second = SimpleNamespace(
+            candidate_net_pnl_estimate=Decimal(late),
+            candidate_net_r_estimate=Decimal(late),
+        )
+        rows.append((trade, first, second))
+    report = audit._economics(tuple(rows))
+    assert report["original_net_pnl"] == "1E-24"
+    assert report["early_net_pnl"] == "2E-24"
+    assert report["late_net_pnl"] == "1E-24"
+    assert report["early_vs_original_net_pnl"] == "1E-24"
+    assert report["early_beats_late_and_original"] is True
+    assert report["early_is_profitable"] is True
