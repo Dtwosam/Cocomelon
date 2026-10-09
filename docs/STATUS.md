@@ -1,6 +1,6 @@
 # Cocomelon Project Status
 
-**Last updated:** 2026-09-22  
+**Last updated:** 2026-10-09  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
 **Verified implementation baseline:** `a54c7ed8dc773b056135c51983a7f4351bb82057`  
@@ -8,6 +8,16 @@
 **Live trading:** **DISABLED**  
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
+
+### Silent price-mark coverage in deferred exit audit — 2026-10-09
+
+PR #1049 hardens the **research-only** complete closed-trade chart audit used as provenance for the frozen +0.5R vs +1R IOC trailing comparison. The previous chart gate could regard a trade path as complete even where its two observed marks were separated by many minutes without a *recorded* stream-health gap; the offline chart could also join known price-data gaps with a solid line.
+
+The audit now checks the entire recorded mark sequence before chart compaction, including trade-open and trade-close coverage, and explicitly flags intervals longer than a predeclared five minutes. A single chart mark cannot establish full coverage. The report retains **all original closed trades** and their realized after-cost economics, records silent/known gaps, and renders discontinuous price paths without filling missing evidence. Long and short exit comparisons remain independently frozen; false apparent execution improvements are rejected, not promoted. Tests cover silent gaps, missing terminal coverage, incomplete one-mark paths, invalid timestamps and open known gaps.
+
+This is **not a change to entry/exit policy**, paper execution, live execution, risk, stops, leverage or promotion. The trading account remains unprofitable at the last authenticated status snapshot; no profit claim follows from this research guard. A complete forward after-cost paired full-account comparison, independent out-of-sample evidence and the established performance gates remain required before any strategy promotion.
+
+**LIVE TRADING: DISABLED.**
 
 ## Current production state
 
