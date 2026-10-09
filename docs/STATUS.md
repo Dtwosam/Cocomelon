@@ -9,6 +9,12 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Keep auditable event receipts for every inherited named-gap closure — 2026-10-09
+
+An interval that becomes closed in a checkpoint does not retain the individual public WebSocket event that justified that transition. Keep an append-only, fsynced `named-gap-recovery-witnesses.jsonl` alongside paper state. Each receipt records the exact restored source, original gap start, predecessor checkpoint cutoff, accepted event identity, exchange and receive timestamps, and explicitly marks itself as **not yet independently checkpoint-verified**. Persist this event witness *before* applying the gap closure; if witness persistence fails, the source remains open. Do not create a retroactive history from either REST snapshots or synthetic events.
+
+At safe handoff, the existing deferred full-journal source audit reads any receipt log, rejects partial or contradictory records, and only counts a recovery if the successor checkpoint contains an actually closed interval covering the same source, start and observed event time. Upload the receipts with the source-debt artifact and print the number of checkpoint-confirmed named streams. Absence of receipts remains explicit, not a green certification. Even a confirmed source recovery does not recover old prices, repair anonymous legacy lineage, make previously incomplete charts complete, or authorize execution or strategy promotion.
+
 ### Close inherited *named* feed outages only with accepted fresh post-handoff evidence — 2026-10-09
 
 The recorded v3 checkpoint carries individual unresolved per-market and named-global source gaps across handoffs. A fresh WebSocket supervisor/mux starts with no memory of their original open-start identities; therefore even a genuinely resumed subscribed source could leave those *persisted* gaps open forever. Do not guess an end timestamp from restart, wall-clock elapsed time, or a different market's feed.
