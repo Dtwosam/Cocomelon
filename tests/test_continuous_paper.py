@@ -12,6 +12,8 @@ from types import SimpleNamespace
 import pytest
 
 from cocomelon.continuous_paper import (
+    LOSS_CONTEXT_PAIRED_SHADOW_LEGACY_ROOT,
+    LOSS_CONTEXT_PAIRED_SHADOW_ROOT,
     RUN_ID,
     UPGRADE_DEFERRED_RESEARCH_FILENAMES,
     ContinuousPaperConfig,
@@ -5929,3 +5931,17 @@ def test_frozen_short_breakout_rank_research_wired_into_paper_handoff() -> None:
     assert '      - "src/cocomelon/research/prospective_short_breakout_rank.py"' in workflow
     assert "continuous-paper-short-breakout-rank-" in workflow
     assert "no order or position authority" in workflow
+
+
+
+def test_clean_paired_shadow_uses_new_root_without_reusing_v1_account_history() -> None:
+    assert LOSS_CONTEXT_PAIRED_SHADOW_LEGACY_ROOT == (
+        "loss-context-paired-portfolio-shadow"
+    )
+    assert LOSS_CONTEXT_PAIRED_SHADOW_ROOT == (
+        "loss-context-paired-portfolio-shadow-scoped-v2"
+    )
+    assert (
+        LOSS_CONTEXT_PAIRED_SHADOW_ROOT
+        != LOSS_CONTEXT_PAIRED_SHADOW_LEGACY_ROOT
+    )

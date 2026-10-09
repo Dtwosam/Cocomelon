@@ -639,7 +639,16 @@ LOSS_CONTEXT_PORTFOLIO_SHADOW_FREEZE_FILENAME = (
 TARGETED_TREND_PAIRED_SHADOW_FREEZE_FILENAME = (
     "targeted-trend-rank-paired-portfolio-freeze.json"
 )
-LOSS_CONTEXT_PAIRED_SHADOW_ROOT = "loss-context-paired-portfolio-shadow"
+LOSS_CONTEXT_PAIRED_SHADOW_LEGACY_ROOT = (
+    "loss-context-paired-portfolio-shadow"
+)
+# Source-scope v1 A/B histories mixed market-specific outages into global
+# anonymous debt. Preserve them untouched, never upgrade their evidentiary
+# authority by reusing the same state directory. The frozen entry rule is
+# unchanged; only future paper shadow observations belong to this new root.
+LOSS_CONTEXT_PAIRED_SHADOW_ROOT = (
+    "loss-context-paired-portfolio-shadow-scoped-v2"
+)
 LOSS_CONTEXT_PAIRED_SHADOW_SUMMARY_FILENAME = (
     "loss-context-paired-portfolio-shadow-summary.json"
 )
@@ -9742,6 +9751,10 @@ async def run_continuous_paper_session(
         if (
             not targeted_trend_freeze_path.exists()
             and not legacy_loss_context_freeze_path.exists()
+            and not (
+                root / LOSS_CONTEXT_PAIRED_SHADOW_LEGACY_ROOT
+                / "paired-shadow-state.json"
+            ).exists()
             and prospective_trend_outside_top10_restore_error is None
         ):
             component_started = time.perf_counter()
