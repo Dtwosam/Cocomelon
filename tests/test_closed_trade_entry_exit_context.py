@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from types import SimpleNamespace
 
 import pytest
@@ -104,3 +104,48 @@ def test_duplicate_journal_trade_id_fails() -> None:
     t = _trade(1, side=Direction.LONG, gross="-3", mfe=None)
     with pytest.raises(audit.ClosedTradeEntryExitContextError, match="duplicate"):
         audit.closed_trade_entry_exit_context((t, t), None, None, None)
+
+
+
+def test_exact_cash_parity_across_reordered_entry_context_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Default 28-digit Decimal summation used to invent a cohort mismatch."""
+    amounts = (
+        Decimal("100000000000000000000"),
+        Decimal("0.000000000000000000000000001"),
+        Decimal("-100000000000000000000"),
+        Decimal("0.000000000000000000000000001"),
+    )
+    rows = [
+        _trade(i, side=Direction.LONG, gross=str(amount), mfe=None)
+        for i, amount in enumerate(amounts, 1)
+    ]
+    for row, amount in zip(rows, amounts, strict=True):
+        row.gross_realized_pnl = amount
+        row.net_pnl = amount
+        row.entry_fees = Decimal("0")
+        row.exit_fees = Decimal("0")
+
+    def entry(trade: SimpleNamespace, *_: object) -> tuple[dict[str, object], None]:
+        return {
+            "lead_strategy": "trend",
+            "rank_band": "top10" if trade.trade_id in ("t1", "t3") else "outside10",
+            "return_15m_sign": "positive",
+            "return_1h_sign": "positive",
+            "trend_regime": "up",
+            "volatility_regime": "normal",
+        }, None
+
+    monkeypatch.setattr(audit, "try_resolve_entry_context_row", entry)
+    result = audit.closed_trade_entry_exit_context(tuple(rows), None, None, None)
+    expected = Decimal("0.000000000000000000000000002")
+    assert Decimal(result["overall"]["net_pnl"]) == expected
+    with localcontext(prec=96):
+        for groups in result["dimensions"].values():
+            assert sum(
+                (Decimal(cohort["net_pnl"]) for cohort in groups.values()),
+                Decimal("0"),
+            ) == expected
+    assert Decimal(result["overall"]["net_reconciliation_residual"]) == 0
+    assert result["entry_context_verified_trades"] == 4
