@@ -1605,9 +1605,21 @@ def test_loss_context_paired_shadow_runtime_handoff_is_non_blocking() -> None:
     shadow_upload = source[shadow_upload_at:review_at]
     assert "continue-on-error: true" in shadow_upload
     assert "loss-context-paired-portfolio-shadow-summary.json" in shadow_upload
-    assert "loss-context-paired-portfolio-shadow" in shadow_upload
+    assert (
+        "continuous-paper-state/"
+        "loss-context-paired-portfolio-shadow-scoped-v2"
+    ) in shadow_upload
+    assert (
+        "continuous-paper-state/loss-context-paired-portfolio-shadow\n"
+    ) not in shadow_upload
 
     review = source[review_at:review_upload_at]
+    assert (
+        "loss-context-paired-portfolio-shadow-scoped-v2/review-ledger.jsonl"
+    ) in review
+    assert (
+        "loss-context-paired-portfolio-shadow/review-ledger.jsonl"
+    ) not in review
     assert "continue-on-error: true" in review
     assert "cocomelon-loss-context-paired-shadow-review" in review
     assert "review-ledger.jsonl" in review
