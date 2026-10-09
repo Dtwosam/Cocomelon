@@ -5,6 +5,7 @@ outages have no source identity and can never enter its recovery set.
 """
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
@@ -42,6 +43,7 @@ class RestoredNamedGapRecovery:
             raise ValueError("invalid restored named source recovery limits")
         if set(market_gaps) & set(global_gaps):
             raise ValueError("named source appears in both checkpoint scopes")
+        self._lock = asyncio.Lock()
         self._checkpoint_ms = checkpoint_ms
         self._max_exchange_age_ms = max_exchange_age_ms
         self._max_delivery_lag_ms = max_delivery_lag_ms
@@ -113,13 +115,14 @@ class RestoredNamedGapRecovery:
         pipeline write has returned successfully. The returned count covers
         source starts, not certified historical trades or recovered prices.
         """
-        count = 0
-        for gap in self._fresh_recovery_gaps(
-            event, observed_at_ms=observed_at_ms,
-        ):
-            await gap_sink(gap)
-            self._open[gap.stream_id].remove(gap.started_ms)
-            if not self._open[gap.stream_id]:
-                del self._open[gap.stream_id]
-            count += 1
-        return count
+        async with self._lock:
+            count = 0
+            for gap in self._fresh_recovery_gaps(
+                event, observed_at_ms=observed_at_ms,
+            ):
+                await gap_sink(gap)
+                self._open[gap.stream_id].remove(gap.started_ms)
+                if not self._open[gap.stream_id]:
+                    del self._open[gap.stream_id]
+                count += 1
+            return count
