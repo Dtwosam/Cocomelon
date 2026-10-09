@@ -205,7 +205,7 @@ class RedundantStreamMux:
         *,
         recovered_ms: int,
     ) -> None:
-        started_ms = self._aggregate_gap_starts.pop(stream_id, None)
+        started_ms = self._aggregate_gap_starts.get(stream_id)
         if started_ms is None:
             return
         await self._gap_sink(
@@ -216,24 +216,28 @@ class RedundantStreamMux:
                 reason="recovered",
             )
         )
+        # A failed recorder write must never clear our recovery debt.
+        self._aggregate_gap_starts.pop(stream_id, None)
 
     async def on_event(self, lane: int, event: StreamEvent) -> None:
         self._require_lane(lane)
         stream_id = event_stream_id(event)
         self._session_ready_lanes.add(lane)
         self._observed_lanes[stream_id].add(lane)
-        if lane not in self._lane_gap_starts[stream_id]:
-            await self._close_aggregate_gap_if_needed(
-                stream_id,
-                recovered_ms=self._receive_ms(event),
-            )
+        recovered_lane = lane not in self._lane_gap_starts[stream_id]
         current = self.active_lane(stream_id)
         if not self._lane_is_available(stream_id, current):
             await self._switch(stream_id, lane)
         if lane == self.active_lane(stream_id):
             await self._emit_candidate(stream_id, event)
-            return
-        self._buffer(lane, stream_id, event)
+        else:
+            self._buffer(lane, stream_id, event)
+        if recovered_lane:
+            # Never publish a recovery ahead of downstream event acceptance.
+            await self._close_aggregate_gap_if_needed(
+                stream_id,
+                recovered_ms=self._receive_ms(event),
+            )
 
     async def on_gap(self, lane: int, gap: DataGap) -> None:
         self._require_lane(lane)
@@ -245,13 +249,15 @@ class RedundantStreamMux:
             self._session_ready_lanes.add(lane)
             self._observed_lanes[stream_id].add(lane)
             recovered_ms = gap.ended_ms if gap.ended_ms is not None else gap.started_ms
+            current = self.active_lane(stream_id)
+            if not self._lane_is_available(stream_id, current):
+                # Deliver the recovered lane's buffered witness before
+                # promising durable continuity for the aggregate stream.
+                await self._switch(stream_id, lane)
             await self._close_aggregate_gap_if_needed(
                 stream_id,
                 recovered_ms=recovered_ms,
             )
-            current = self.active_lane(stream_id)
-            if not self._lane_is_available(stream_id, current):
-                await self._switch(stream_id, lane)
             return
 
         if gap.is_open:
