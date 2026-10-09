@@ -9,6 +9,12 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Keep exact paper handoffs safe through installation API quota resets — 2026-10-09
+
+The successor dispatched from paper worker **37966212269** could not inspect the active-worker lease because GitHub returned repeated **HTTP 403 installation API rate-limit** errors. Run **37967379015** exhausted its old eight-attempt/15-second guard and never reached the exact archived-state restore; a controlled rerun later passed the guard. That is an operations availability problem, not proof of a strategy or execution defect.
+
+Keep the guard fail-closed and replace its short fixed window with a finite, progressively spaced retry schedule spanning an hourly API quota reset. Each attempt must successfully read current worker liveness before any checkout or trader startup. A continued API failure must still abort rather than guess that no trader exists, and neither the predecessor account artifact nor any live-trading permission may be relaxed. This prevents false recovery from API unavailability without changing strategy or risk.
+
 ### Require durable fresh-event witnesses before declaring WebSocket gap recovery — 2026-10-09
 
 A named feed gap must not be marked recovered before its normalized recovery event is accepted by the downstream pipeline. Previously, the individual WebSocket supervisor emitted the `recovered` gap **before** forwarding that event, and the redundant stream mux could also close an aggregate outage **before** draining a recovered lane's buffered event. A failed event sink could therefore create a recovery claim without matching persisted event evidence. The mux also accepted stand-alone recovery notices with no post-outage event witness.
