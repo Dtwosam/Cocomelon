@@ -146,5 +146,5 @@ def test_exact_cash_parity_across_reordered_entry_context_groups(
             (Decimal(cohort["net_pnl"]) for cohort in groups.values()),
             Decimal("0"),
         ) == expected
-    assert result["overall"]["net_reconciliation_residual"] == "0"
+    assert Decimal(result["overall"]["net_reconciliation_residual"]) == 0
     assert result["entry_context_verified_trades"] == 4
