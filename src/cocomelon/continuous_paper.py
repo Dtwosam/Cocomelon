@@ -52,6 +52,7 @@ from cocomelon.evidence.recording import (
     market_snapshot_record_event,
 )
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
+from cocomelon.evidence.restored_gap_recovery import RestoredNamedGapRecovery
 from cocomelon.execution.accounting import PaperPosition
 from cocomelon.execution.funding import (
     FundingAccrual,
@@ -9850,6 +9851,17 @@ async def run_continuous_paper_session(
         pipeline.restore_global_gap_intervals_by_stream(
             global_gap_intervals_by_stream
         )
+        # Only the *named* unresolved source starts carried by this exact
+        # checkpoint may recover on new live WebSocket evidence. No legacy
+        # anonymous gap can acquire retroactive source attribution here.
+        restored_named_gap_recovery = RestoredNamedGapRecovery(
+            market_gaps=gap_intervals_by_stream,
+            global_gaps=global_gap_intervals_by_stream,
+            checkpoint_ms=restored_available_at_ms,
+            max_exchange_age_ms=(
+                replay_config.eligibility.max_book_age_ms
+            ),
+        )
         _restore_open_lifecycles(pipeline, execution, checkpoints)
         record_startup_component(
             "open_lifecycle_restore",
@@ -10509,7 +10521,16 @@ async def run_continuous_paper_session(
             ] = tuple({} for _ in range(2))
 
             async def event_sink(event: StreamEvent) -> None:
+                # This mux-confirmed normalized event must be accepted by
+                # the paper pipeline before an inherited named source can
+                # be certified recovered. Closure is committed through the
+                # exact same durable record pump, never by elapsed time.
                 await pump.process(_record_from_stream(event))
+                await restored_named_gap_recovery.accept_recorded_event(
+                    event,
+                    observed_at_ms=utc_now_ms(),
+                    gap_sink=lambda gap: pump.process(_record_from_gap(gap)),
+                )
 
             async def gap_sink(gap: DataGap) -> None:
                 if gap_gate.is_set():
