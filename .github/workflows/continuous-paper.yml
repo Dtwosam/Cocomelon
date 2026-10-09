@@ -227,15 +227,24 @@ jobs:
           set -euo pipefail
           echo "skip=false" >> "$GITHUB_OUTPUT"
           guard_runs_loaded=false
-          for attempt in $(seq 1 8); do
+          # The installation API quota can remain exhausted until its
+          # hourly reset. A short fixed retry window previously stranded
+          # an exact-state handoff even though its archive was available.
+          # These bounded delays total just over one hour; every retry
+          # re-reads GitHub liveness before ANY checkout or trader starts.
+          guard_attempt=0
+          for guard_delay in 0 15 30 60 120 240 480 600 600 600 600 600; do
+            if [ "$guard_delay" -gt 0 ]; then
+              sleep "$guard_delay"
+            fi
+            guard_attempt=$((guard_attempt + 1))
             if gh api \
               "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?per_page=100" \
               > /tmp/continuous-paper-guard-runs.json; then
               guard_runs_loaded=true
               break
             fi
-            echo "::warning::continuous-paper guard API unavailable ($attempt/8)"
-            sleep 15
+            echo "::warning::continuous-paper guard API unavailable ($guard_attempt/12); holding startup until a verified worker lease is readable"
           done
           if [ "$guard_runs_loaded" != "true" ]; then
             echo "::error::continuous-paper guard could not read workflow state"
