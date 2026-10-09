@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
-from cocomelon.evidence.restored_gap_recovery import RestoredNamedGapRecovery
+from cocomelon.evidence.restored_gap_recovery import (
+    RestoredNamedGapRecovery,
+    append_restored_named_gap_witness,
+)
 
 BASE = datetime(2026, 10, 9, 17, 0, tzinfo=UTC)
 BASE_MS = int(BASE.timestamp() * 1_000)
@@ -263,3 +268,73 @@ def test_recovery_rejects_ambiguous_scope_and_invalid_limits() -> None:
             market_gaps={}, global_gaps={}, checkpoint_ms=BASE_MS,
             max_exchange_age_ms=0,
         )
+
+
+
+def test_fsynced_witness_precedes_gap_commit_and_preserves_event_identity(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        recovery = _recovery(
+            market={"l2Book:BTC": ((BASE_MS - 10_000, None),)},
+            shared={},
+        )
+        path = tmp_path / "named-gap-recovery-witnesses.jsonl"
+        events: list[str] = []
+
+        async def persist_witness(
+            event: StreamEvent, gap: DataGap, checkpoint_ms: int,
+        ) -> None:
+            append_restored_named_gap_witness(
+                path, event=event, gap=gap, checkpoint_ms=checkpoint_ms,
+            )
+            events.append("witness")
+
+        async def persist_gap(_gap: DataGap) -> None:
+            assert path.exists()
+            events.append("gap")
+
+        event = _event()
+        assert await recovery.accept_recorded_event(
+            event, observed_at_ms=BASE_MS + 2_300,
+            gap_sink=persist_gap, witness_sink=persist_witness,
+        ) == 1
+        assert events == ["witness", "gap"]
+        rows = [json.loads(s) for s in path.read_text().splitlines()]
+        assert len(rows) == 1
+        assert rows[0]["stream_id"] == "l2Book:BTC"
+        assert rows[0]["witness_event_key"] == event.event_key
+        assert rows[0]["checkpoint_last_available_at_ms"] == BASE_MS
+        assert rows[0]["independently_verified_checkpoint_closure"] is False
+
+    asyncio.run(run())
+
+
+def test_failed_witness_fsync_never_closes_named_gap() -> None:
+    async def run() -> None:
+        recovery = _recovery(
+            market={"l2Book:BTC": ((BASE_MS - 10_000, None),)},
+            shared={},
+        )
+        gap_calls = 0
+
+        async def rejected_witness(
+            _event: StreamEvent, _gap: DataGap, _checkpoint_ms: int,
+        ) -> None:
+            raise OSError("fsync not durable")
+
+        async def gap_sink(_gap: DataGap) -> None:
+            nonlocal gap_calls
+            gap_calls += 1
+
+        with pytest.raises(OSError, match="fsync not durable"):
+            await recovery.accept_recorded_event(
+                _event(), observed_at_ms=BASE_MS + 2_100,
+                gap_sink=gap_sink, witness_sink=rejected_witness,
+            )
+        assert gap_calls == 0
+        assert recovery.pending_named_starts == {
+            "l2Book:BTC": (BASE_MS - 10_000,)
+        }
+
+    asyncio.run(run())
