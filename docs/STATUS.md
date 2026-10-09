@@ -9,6 +9,14 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Preserve independent global feed recoveries across paper handoff — 2026-10-09
+
+A separate provenance collision survived the market-scoping fixes: the remaining shared/unknown data-gap events (`allMids`, malformed topics, or future unknown feeds) were combined into one source-anonymous list. If two such streams failed at the same millisecond, recovery for the first could close the other's still-open gap. That could incorrectly clean subsequent trade-chart coverage and distort prospective trailing/stop analysis.
+
+Newly observed shared/unknown gaps now retain exact source-stream identities for **independent recovery**, while still affecting every market's chart-quality assessment. Paper checkpoint **v3** persists these independent shared streams across worker handoffs. Older v1/v2 anonymous histories remain source-unknown and unresolved until independently attributable evidence exists, never retroactively assigned to a stream. Malformed v3 global gap times and mistaken market-scoped stream restoration fail closed; chronological price gaps are not filled.
+
+Only feed-provenance and post-trade chart validity change. Entries, stops, risk sizing, fills, account PnL, frozen paired candidates, and paper-only/live-disabled settings are unchanged. Neither clean prices nor favorable marks constitute executable exit fills.
+
 ### Reject ambiguous stream identities from chart-gap attribution — 2026-10-09
 
 After the market-specific witness isolation, a residual integrity hazard remained: a syntactically malformed but recognized-prefix topic such as `l2Book:BTC:bad:extra` or `candle:BTC:1m:extra` could be stored in a per-stream bucket that matches **no actual market**, causing a real source gap to disappear from every trade's chart. A missing `l2Book` or candle market label must instead remain **conservatively unknown across markets**, just like an unrecognized shared topic. Normalize per-asset topic identity through `MarketId.from_wire_name`, constrain candle intervals to the supported `CANDLE_INTERVAL_MS` values shared by the online client and the network-free offline evidence domain, and retain HIP-3 dex-qualified `dex:coin` namespaces. The shared constants preserve the historical replay prohibition on imports from online API clients.
