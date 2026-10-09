@@ -41,6 +41,40 @@ def main() -> None:
             report["legacy_lineage_blocks_chart_source_certification"]
         ),
         "named_unresolved_source_count": report["named_unresolved_source_count"],
+        "current_selection_witness_present": (
+            report["current_selection_witness_present"]
+        ),
+        "current_selected_market_count": (
+            report["current_selected_market_count"]
+        ),
+        "named_unresolved_sources_on_selected_markets": (
+            report["named_unresolved_sources_on_selected_markets"]
+        ),
+        "named_unresolved_sources_outside_selected_markets": (
+            report["named_unresolved_sources_outside_selected_markets"]
+        ),
+        "named_unresolved_sources_without_selection_attribution": (
+            report["named_unresolved_sources_without_selection_attribution"]
+        ),
+        "named_unresolved_gap_starts_on_selected_markets": (
+            report["named_unresolved_gap_starts_on_selected_markets"]
+        ),
+        "named_unresolved_gap_starts_outside_selected_markets": (
+            report["named_unresolved_gap_starts_outside_selected_markets"]
+        ),
+        "named_unresolved_gap_starts_without_selection_attribution": (
+            report["named_unresolved_gap_starts_without_selection_attribution"]
+        ),
+        "top_selected_market_repair_sources": [
+            {
+                "stream_id": item["stream_id"],
+                "open_gap_count": item["open_gap_count"],
+                "incomplete_charts": (
+                    item["incomplete_charts_overlapping_unresolved_source_gap"]
+                ),
+            }
+            for item in report["top_selected_market_repair_sources"]
+        ],
         "named_recovery_witness_ledger_present": (
             report["named_recovery_witness_ledger_present"]
         ),
