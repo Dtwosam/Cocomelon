@@ -9,6 +9,16 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+### Source-scoped data-gap witnesses for future real-chart fidelity — 2026-10-09
+
+Following the authenticated **151-trade** chart audit and causality repair, inspection confirmed a second root cause of the pervasive incomplete chart cohorts: `BaselineReplayPipeline.on_record` had been collecting **every WebSocket data-gap interval into one global list across all subscribed markets**, and passing that aggregate into each trade's MFE/MAE analysis and persisted opening-to-close market-mark record. As a result, an `l2Book:ETH` source outage could contaminate an unrelated `BTC` trade's in-position chart and mark-excursion completeness even if the BTC stream had observed data.
+
+The pipeline now records recognized unambiguous per-market `l2Book`, `activeAssetCtx`, `trades` and `candle` topic histories **by their original stream IDs**, and only includes the relevant market streams when closing that market's journal or chart path. Shared `allMids`, unrecognized topics and every already-restored legacy anonymous gap remain **conservatively global**, so no missing feed data is treated as recovered by changing the market selection. The legacy `known_gap_intervals` accessor remains the global union for independent paired-portfolio continuity observers; it is *not* sufficient to establish per-market chart provenance.
+
+The authenticated paper checkpoint now persists a **v2** separate mapping for stream-scoped histories while preserving legacy unscoped intervals; **v1 checkpoints remain readable**, and their historical gaps are not falsely reattributed. The first downstream real-paper observation under this upgrade must be verified at the normal safe single-worker handoff. Tests cover cross-market isolation, global shared gaps, restored legacy unknowns, source-specific recovery and exact v1→v2 checkpoint parity, including rejection of corrupt scoped time witnesses.
+
+This is **correctness of post-trade chart and PnL metadata**, not an entry signal, an IOC fill claim, retroactive recovery, or authorization to promote the frozen challenger. Trading behavior, leverage, account risk, stops and live-disabled defaults remain unchanged. The paired paper account must achieve adequate independent prospective sample size, true after-cost positive absolute expectancy and clean gap evidence before any champion change.
+
 ### Causal WebSocket gap recovery timestamps across live paper and offline replay — 2026-10-09
 
 Following the authenticated 151-trade chart review, a concrete feed-gap event-time bug was identified in both `_record_from_gap` (continuous-paper mainnet websocket) and `_record_from_row` (validated JSONL replay): **a known recovery event was assigned the original gap's `started_ms` as its availability timestamp**, despite `ended_ms` only becoming known at recovery. The live record pump often masked this by clamping stale records to the most recently processed observation; offline replay instead risked reordering the closure to the start, so historical exit evidence could use feed recovery **before it actually occurred**.
