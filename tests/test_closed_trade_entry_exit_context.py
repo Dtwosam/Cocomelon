@@ -76,7 +76,9 @@ def test_full_journal_long_short_rank_and_exit_diagnostics(
     grouped = result["dimensions"]["by_side_strategy_and_rank"]
     assert grouped["long | trend | outside10"]["trades"] == 2
     assert grouped["short | trend | top10"]["trades"] == 1
-    assert grouped["short | historical_context_unavailable | historical_context_unavailable"]["trades"] == 1
+    missing = ("short | historical_context_unavailable | "
+               "historical_context_unavailable")
+    assert grouped[missing]["trades"] == 1
     assert result["entry_context_by_trade_id"]["t4"] is None
     assert result["execution_authority"] is False
     assert result["promotion_authority"] is False
