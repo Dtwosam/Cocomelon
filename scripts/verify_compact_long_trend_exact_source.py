@@ -8,7 +8,6 @@ import os
 from collections.abc import Sequence
 from pathlib import Path
 
-
 REQUIRED_FILES = (
     "prospective-full-stack-forward-markout-summary.json",
     "prospective-long-trend-execution-shadow-source.json",
@@ -71,7 +70,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for item in report["inputs"]:
             if item["present"] is not True:
                 print(
-                    f"::error::missing authenticated LONG-trend input: "
+                    "::error::missing authenticated LONG-trend input: "
                     f"{item['type']} {item['path']}"
                 )
         return 1
