@@ -1272,6 +1272,18 @@ jobs:
               f"{report['named_unresolved_source_count']}"
           )
           print(
+              "- Selected-market witness count / selected source starts / "
+              "off-watchlist source starts / unknown-selection starts: "
+              f"{report['current_selected_market_count']} / "
+              f"{report['named_unresolved_gap_starts_on_selected_markets']} / "
+              f"{report['named_unresolved_gap_starts_outside_selected_markets']} / "
+              f"{report['named_unresolved_gap_starts_without_selection_attribution']}"
+          )
+          print(
+              "- Selection is NOT proof of active subscription; off-watchlist "
+              "gaps cannot heal from absent feeds."
+          )
+          print(
               "- Authenticated after-handoff named source event witnesses / "
               "checkpoint-confirmed closures: "
               f"{report['named_recovery_witness_ledger_present']} / "
