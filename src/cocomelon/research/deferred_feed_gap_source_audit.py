@@ -12,6 +12,7 @@ CHART_NAME: Final = "all-paper-trade-chart-audit.json"
 CHECKPOINT_NAME: Final = "runtime-state.json"
 SESSION_NAME: Final = "session-summary.json"
 WITNESS_NAME: Final = "named-gap-recovery-witnesses.jsonl"
+CHECKPOINT_ADJACENT_WINDOW_MS: Final = 5_000
 _HANDOFF_REASONS: Final = {"duration_elapsed", "upgrade_requested"}
 
 
@@ -411,6 +412,10 @@ def assess_feed_gap_source_debt(
     ):
         for stream_id, intervals in sorted(streams.items()):
             open_starts = [start for start, end in intervals if end is None]
+            near_checkpoint = sum(
+                latest_ms - start <= CHECKPOINT_ADJACENT_WINDOW_MS
+                for start in open_starts
+            )
             closed_durations = sum(
                 end - start for start, end in intervals if end is not None
             )
@@ -434,6 +439,8 @@ def assess_feed_gap_source_debt(
                 ),
                 "interval_count": len(intervals),
                 "open_gap_count": len(open_starts),
+                "checkpoint_adjacent_open_gap_starts": near_checkpoint,
+                "older_open_gap_starts": len(open_starts) - near_checkpoint,
                 "closed_gap_count": len(intervals) - len(open_starts),
                 "oldest_unresolved_gap_start_ms": min(open_starts, default=None),
                 "newest_unresolved_gap_start_ms": max(open_starts, default=None),
@@ -514,6 +521,34 @@ def assess_feed_gap_source_debt(
             )
         },
         "total_unresolved_source_gap_starts": unresolved_count,
+        "checkpoint_adjacent_window_ms": CHECKPOINT_ADJACENT_WINDOW_MS,
+        "checkpoint_adjacent_open_gaps_by_scope": {
+            scope: sum(
+                cast(int, row["checkpoint_adjacent_open_gap_starts"])
+                for row in by_source if row["scope"] == scope
+            )
+            for scope in (
+                "legacy_unattributed",
+                "global_shared_or_unknown",
+                "market_specific",
+            )
+        },
+        "older_open_gaps_by_scope": {
+            scope: sum(
+                cast(int, row["older_open_gap_starts"])
+                for row in by_source if row["scope"] == scope
+            )
+            for scope in (
+                "legacy_unattributed",
+                "global_shared_or_unknown",
+                "market_specific",
+            )
+        },
+        "checkpoint_adjacent_named_source_count": sum(
+            row["scope"] != "legacy_unattributed"
+            and cast(int, row["checkpoint_adjacent_open_gap_starts"]) > 0
+            for row in by_source
+        ),
         "sources_with_unresolved_gaps": sum(
             cast(int, row["open_gap_count"]) > 0 for row in by_source
         ),
@@ -559,7 +594,9 @@ def assess_feed_gap_source_debt(
             "verified live source recovery. Unselected and unknown market "
             "histories remain unresolved. Anonymous legacy outages remain "
             "unattributable. Overlap counts are not additive, causal proof, "
-            "or executable exit prices."
+            "or executable exit prices. Checkpoint-adjacent starts remain "
+            "unresolved even when grouped near the last persisted event; "
+            "their timing does not prove safe handoff or fresh recovery."
         ),
         "current_checkpoint_not_retrospective_chart_recovery": True,
         "caution": (
