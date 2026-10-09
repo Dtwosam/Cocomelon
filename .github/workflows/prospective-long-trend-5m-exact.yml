@@ -71,31 +71,43 @@ jobs:
           artifact_for_run() {
             local candidate_run_id="$1"
             local candidate_attempt="$2"
-            local expected_name="continuous-paper-state-$candidate_run_id-$candidate_attempt"
+            local compact_name="continuous-paper-long-trend-exact-source-$candidate_run_id-$candidate_attempt"
+            local durable_name="continuous-paper-state-$candidate_run_id-$candidate_attempt"
             local artifacts_json
             artifacts_json="$(
               gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/artifacts?per_page=100"
             )"
             printf '%s' "$artifacts_json" |
-            ARTIFACT_NAME="$expected_name" python -c '
+            ARTIFACT_COMPACT_NAME="$compact_name" ARTIFACT_DURABLE_NAME="$durable_name" python -c '
           import json, os, sys
           payload = json.load(sys.stdin)
-          name = os.environ["ARTIFACT_NAME"]
-          matches = [
-              item for item in payload.get("artifacts", [])
-              if item.get("name") == name and item.get("expired") is False
-          ]
-          if not matches:
+          artifact_list = payload.get("artifacts", [])
+          selected = None
+          for name in (
+              os.environ["ARTIFACT_COMPACT_NAME"],
+              os.environ["ARTIFACT_DURABLE_NAME"],
+          ):
+              matches = [
+                  item for item in artifact_list
+                  if item.get("name") == name and item.get("expired") is False
+              ]
+              if len(matches) > 1:
+                  raise SystemExit(
+                      f"ambiguous exact paper research artifact named {name}"
+                  )
+              if matches and selected is None:
+                  selected = matches[0]
+          if selected is None:
               raise SystemExit(0)
-          if len(matches) != 1:
-              raise SystemExit(
-                  f"expected at most one non-expired state artifact named {name}"
-              )
-          item = matches[0]
-          digest = item.get("digest")
-          if not isinstance(digest, str) or not digest.startswith("sha256:"):
+          digest = selected.get("digest")
+          if (
+              not isinstance(digest, str)
+              or len(digest) != 71
+              or not digest.startswith("sha256:")
+              or any(c not in "0123456789abcdef" for c in digest[7:].lower())
+          ):
               raise SystemExit("state artifact digest is missing or invalid")
-          print(item["id"], item["name"], digest, sep="\t")
+          print(selected["id"], selected["name"], digest, sep="\t")
           '
           }
 
@@ -291,6 +303,7 @@ jobs:
         env:
           ARTIFACT_ID: ${{ steps.source.outputs.artifact_id }}
           ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
+          ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
         run: |
           set -euo pipefail
           rm -rf /tmp/long-trend-5m-artifact /tmp/long-trend-5m-state
@@ -302,14 +315,31 @@ jobs:
             exit 1
           fi
           unzip -q /tmp/long-trend-5m-state.zip             -d /tmp/long-trend-5m-artifact
-          tar_path="$(
-            find /tmp/long-trend-5m-artifact               -type f               -name continuous-paper-state.tar               -print -quit
-          )"
-          if [ -z "$tar_path" ]; then
-            echo "durable paper state tar is missing" >&2
-            exit 1
+          if [[ "$ARTIFACT_NAME" == continuous-paper-long-trend-exact-source-* ]]; then
+            # A single authenticated TAR retains required source
+            # directories even if a cohort has zero records.
+            compact_tar="$(
+              find /tmp/long-trend-5m-artifact -type f -name continuous-paper-long-trend-exact-source.tar -print -quit
+            )"
+            if [ -z "$compact_tar" ]; then
+              echo "authenticated compact paper research tar is missing" >&2
+              exit 1
+            fi
+            tar -tf "$compact_tar" >/dev/null
+            tar -xf "$compact_tar" -C /tmp/long-trend-5m-state
+          else
+            # Read old fully authenticated durable archives as a
+            # backward-compatible fallback. Never confuse them with a
+            # newer compact source or bypass the exact SHA-256 check.
+            tar_path="$(
+              find /tmp/long-trend-5m-artifact -type f -name continuous-paper-state.tar -print -quit
+            )"
+            if [ -z "$tar_path" ]; then
+              echo "durable paper state tar is missing" >&2
+              exit 1
+            fi
+            tar -xf "$tar_path" -C /tmp/long-trend-5m-state
           fi
-          tar -xf "$tar_path" -C /tmp/long-trend-5m-state
 
           for required in             prospective-full-stack-forward-markout-summary.json             prospective-long-trend-execution-shadow-source.json
           do

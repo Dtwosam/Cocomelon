@@ -1152,6 +1152,58 @@ jobs:
           print("- execution enabled: false")
           PY
 
+      # Only authenticated after-handoff research files needed by the
+      # separate 5m/15m exact LONG-trend evaluations; never package the
+      # multi-GB account DB, market tapes, or open-position state here.
+      - name: Verify compact exact LONG trend research source
+        id: compact_long_trend_source_manifest
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$STATE_ROOT/prospective-full-stack-forward-markout-summary.json"
+          test -s "$STATE_ROOT/prospective-long-trend-execution-shadow-source.json"
+          for records in \
+            opening-opportunities/records \
+            opening-opportunity-exit-books/records \
+            replacement-funding-boundaries/records
+          do
+            test -d "$STATE_ROOT/$records"
+          done
+
+      - name: Pack compact exact LONG trend research source
+        id: compact_long_trend_source_pack
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.compact_long_trend_source_manifest.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f continuous-paper-long-trend-exact-source.tar
+          # A TAR preserves an authenticated empty records directory;
+          # upload-artifact's direct file glob would discard empty dirs.
+          tar -cf continuous-paper-long-trend-exact-source.tar \
+            -C "$STATE_ROOT" \
+            prospective-full-stack-forward-markout-summary.json \
+            prospective-long-trend-execution-shadow-source.json \
+            opening-opportunities/records \
+            opening-opportunity-exit-books/records \
+            replacement-funding-boundaries/records
+          tar -tf continuous-paper-long-trend-exact-source.tar >/dev/null
+          test -s continuous-paper-long-trend-exact-source.tar
+
+      - name: Upload compact exact LONG trend research source
+        id: compact_long_trend_source_upload
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.compact_long_trend_source_pack.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-long-trend-exact-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-long-trend-exact-source.tar
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Pack durable continuous paper state
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
         shell: bash
