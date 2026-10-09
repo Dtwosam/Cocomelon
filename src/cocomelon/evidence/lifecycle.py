@@ -279,6 +279,30 @@ def _compact_gap_intervals(
     return compacted
 
 
+
+def _scoped_market_gap_stream(stream_id: str) -> bool:
+    """Only recognized, unambiguous per-asset topics may be scoped.
+
+    Unknown and shared feed topics stay account-wide: a gap must never
+    be silently dropped because a new or malformed stream name appeared.
+    """
+    kind, separator, name = stream_id.partition(":")
+    if not separator or not name:
+        return False
+    if kind in {"l2Book", "activeAssetCtx", "trades"}:
+        return True
+    if kind == "candle":
+        return ":" in name and all(name.split(":", 1))
+    return False
+
+
+def _gap_stream_matches_market(stream_id: str, market: MarketId) -> bool:
+    kind, _separator, name = stream_id.partition(":")
+    if kind == "candle":
+        name = name.split(":", 1)[0]
+    return name == market.wire_name
+
+
 class BaselineReplayPipeline:
     def __init__(
         self,
@@ -343,7 +367,12 @@ class BaselineReplayPipeline:
         self._funding_resolved: set[tuple[str, int]] = set()
         self._funding_gaps: set[tuple[str, int]] = set()
         self._funding_inconsistent = False
+        # Old checkpoints have no stream lineage; they remain global and
+        # uncertain rather than being retroactively attributed to a coin.
         self._gap_intervals: list[tuple[int, int | None]] = []
+        self._gap_intervals_by_stream: dict[
+            str, list[tuple[int, int | None]]
+        ] = {}
         self._recorded_account_states: set[str] = set()
         self._initial_observation_emitted = False
         self._decision_epochs = 0
@@ -746,8 +775,37 @@ class BaselineReplayPipeline:
         self._lifecycles[market_key] = lifecycle
 
     @property
-    def known_gap_intervals(self) -> tuple[tuple[int, int | None], ...]:
+    def unscoped_gap_intervals(self) -> tuple[tuple[int, int | None], ...]:
+        """Immutable/legacy intervals that have no trustworthy market ID."""
         return tuple(self._gap_intervals)
+
+    @property
+    def known_gap_intervals_by_stream(
+        self,
+    ) -> dict[str, tuple[tuple[int, int | None], ...]]:
+        return {
+            key: tuple(intervals)
+            for key, intervals in sorted(self._gap_intervals_by_stream.items())
+        }
+
+    @property
+    def known_gap_intervals(self) -> tuple[tuple[int, int | None], ...]:
+        """Conservative global union for legacy observers and gap-readiness."""
+        return tuple(_compact_gap_intervals(
+            tuple(self._gap_intervals)
+            + tuple(interval
+                    for records in self._gap_intervals_by_stream.values()
+                    for interval in records)
+        ))
+
+    def known_gap_intervals_for_market(
+        self, market: MarketId,
+    ) -> tuple[tuple[int, int | None], ...]:
+        relevant = list(self._gap_intervals)
+        for stream_id, intervals in self._gap_intervals_by_stream.items():
+            if _gap_stream_matches_market(stream_id, market):
+                relevant.extend(intervals)
+        return tuple(_compact_gap_intervals(relevant))
 
     def restore_gap_intervals(
         self,
@@ -755,10 +813,35 @@ class BaselineReplayPipeline:
     ) -> None:
         restored: list[tuple[int, int | None]] = []
         for started_ms, ended_ms in intervals:
-            if started_ms < 0 or (ended_ms is not None and ended_ms < started_ms):
+            if (
+                type(started_ms) is not int or started_ms < 0
+                or (ended_ms is not None and (
+                    type(ended_ms) is not int or ended_ms < started_ms
+                ))
+            ):
                 raise ReplayInvariantError("restored gap interval is invalid")
             restored.append((started_ms, ended_ms))
         self._gap_intervals = _compact_gap_intervals(restored)
+
+    def restore_gap_intervals_by_stream(
+        self, gaps: dict[str, tuple[tuple[int, int | None], ...]],
+    ) -> None:
+        restored: dict[str, list[tuple[int, int | None]]] = {}
+        for stream_id, intervals in gaps.items():
+            if not isinstance(stream_id, str) or not _scoped_market_gap_stream(stream_id):
+                raise ReplayInvariantError("restored gap stream is not market-scoped")
+            validated: list[tuple[int, int | None]] = []
+            for started_ms, ended_ms in intervals:
+                if (
+                    type(started_ms) is not int or started_ms < 0
+                    or (ended_ms is not None and (
+                        type(ended_ms) is not int or ended_ms < started_ms
+                    ))
+                ):
+                    raise ReplayInvariantError("restored stream gap interval invalid")
+                validated.append((started_ms, ended_ms))
+            restored[stream_id] = _compact_gap_intervals(validated)
+        self._gap_intervals_by_stream = restored
 
     def _new_exposure_allowed(self, timestamp_ms: int) -> bool:
         cutoff_ms = self._new_exposure_cutoff_ms
@@ -1210,7 +1293,7 @@ class BaselineReplayPipeline:
                 equity_after=self._execution.account.equity,
                 exit_reason=exit_reason,
                 mark_observations=tuple(lifecycle.marks.values()),
-                known_gap_intervals=tuple(self._gap_intervals),
+                known_gap_intervals=self.known_gap_intervals_for_market(market),
                 evidence_class=self._evidence_class,
                 replay_run_id=self._run_id,
             )
@@ -1229,7 +1312,7 @@ class BaselineReplayPipeline:
             self._closed_lifecycle_sink.record(
                 assembled,
                 tuple(lifecycle.marks.values()),
-                tuple(self._gap_intervals),
+                self.known_gap_intervals_for_market(market),
             )
         if self._position_research_observer is not None:
             self._position_research_observer.record_closed_trade(
@@ -1347,25 +1430,33 @@ class BaselineReplayPipeline:
                 isinstance(ended_raw, bool) or not isinstance(ended_raw, int)
             ):
                 raise ReplayInvariantError("data-gap ended_ms must be an integer or null")
+            stream_id = payload.get("stream_id")
+            if not isinstance(stream_id, str) or not stream_id.strip():
+                raise ReplayInvariantError("data-gap stream ID must be non-empty")
+            if _scoped_market_gap_stream(stream_id):
+                intervals = self._gap_intervals_by_stream.setdefault(
+                    stream_id, [],
+                )
+            else:
+                # Includes allMids and unknown topics: conservatively global.
+                intervals = self._gap_intervals
             interval = (started_raw, ended_raw)
             if ended_raw is None:
-                if interval not in self._gap_intervals:
-                    self._gap_intervals.append(interval)
+                if started_raw < 0:
+                    raise ReplayInvariantError("data-gap start must be nonnegative")
+                if interval not in intervals:
+                    intervals.append(interval)
             else:
-                if ended_raw < started_raw:
+                if started_raw < 0 or ended_raw < started_raw:
                     raise ReplayInvariantError(
                         "data-gap ended_ms must be >= started_ms"
                     )
                 open_interval = (started_raw, None)
-                if open_interval in self._gap_intervals:
-                    self._gap_intervals[
-                        self._gap_intervals.index(open_interval)
-                    ] = interval
-                elif interval not in self._gap_intervals:
-                    self._gap_intervals.append(interval)
-                self._gap_intervals = _compact_gap_intervals(
-                    self._gap_intervals
-                )
+                if open_interval in intervals:
+                    intervals[intervals.index(open_interval)] = interval
+                elif interval not in intervals:
+                    intervals.append(interval)
+                intervals[:] = _compact_gap_intervals(intervals)
 
         if evaluate_decisions:
             decision_engine_started = time.perf_counter()
