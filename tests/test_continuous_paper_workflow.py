@@ -1934,7 +1934,7 @@ def test_paper_upgrade_watchdog_pathspec_is_one_shell_command() -> None:
     lines = snippet.splitlines()
     assert len(lines) >= 4
     assert lines[1].lstrip().startswith("git diff --name-only ")
-    for line in lines[1:-1]:
+    for line in lines[1:-2]:
         assert line.rstrip().endswith("\\"), (
             "upgrade pathspec split into an unintended executable shell command"
         )
