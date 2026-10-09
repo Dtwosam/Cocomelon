@@ -1184,6 +1184,7 @@ def test_market_scoped_candle_gaps_respect_hip3_dex_qualification(
         ("l2Book::BTC", True),
         ("l2Book:BTC:invalid:extra", True),
         ("candle:BTC:1m:extra", True),
+        ("candle:BTC:not-a-real-interval", True),
         ("unknown-market-topic", True),
     ],
 )
