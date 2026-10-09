@@ -166,47 +166,49 @@ def assess_early_exit_chart_integrity(
         )
     total_pnl = ZERO
     total_r = ZERO
-    actual_by_side = {
-        "long": [0, ZERO, ZERO],
-        "short": [0, ZERO, ZERO],
+    actual_by_side: dict[str, tuple[int, Decimal, Decimal]] = {
+        "long": (0, ZERO, ZERO),
+        "short": (0, ZERO, ZERO),
     }
     missing: list[str] = []
     gapped: list[str] = []
     incomplete: list[str] = []
     clean: list[str] = []
     for trade_id in selected:
-        item = rows.get(trade_id)
-        if item is None:
+        matched_row = rows.get(trade_id)
+        if matched_row is None:
             missing.append(trade_id)
             continue
-        opened_ms = _int(item.get("opened_at_ms"), "trade opening")
-        closed_ms = _int(item.get("closed_at_ms"), "trade close")
+        opened_ms = _int(matched_row.get("opened_at_ms"), "trade opening")
+        closed_ms = _int(matched_row.get("closed_at_ms"), "trade close")
         if closed_ms < opened_ms or opened_ms < frozen_ms:
             raise DeferredEarlyExitChartIntegrityError(
                 "matched trade outside frozen forward interval"
             )
-        direction = _side(item.get("side"))
-        pnl = _dec(item.get("net_pnl"), "original net PnL")
-        net_r = _dec(item.get("net_r"), "original net R")
+        direction = _side(matched_row.get("side"))
+        pnl = _dec(matched_row.get("net_pnl"), "original net PnL")
+        net_r = _dec(matched_row.get("net_r"), "original net R")
         total_pnl += pnl
         total_r += net_r
         bucket = actual_by_side[direction]
-        bucket[0] += 1
-        bucket[1] += pnl
-        bucket[2] += net_r
-        if item.get("chart_path_present") is not True:
+        actual_by_side[direction] = (
+            bucket[0] + 1,
+            bucket[1] + pnl,
+            bucket[2] + net_r,
+        )
+        if matched_row.get("chart_path_present") is not True:
             missing.append(trade_id)
         elif (
-            item.get("chart_known_gap_duration_ms") is None
+            matched_row.get("chart_known_gap_duration_ms") is None
             or _int(
-                item.get("chart_known_gap_duration_ms"),
+                matched_row.get("chart_known_gap_duration_ms"),
                 "known gap duration",
             ) != 0
         ):
             gapped.append(trade_id)
         elif (
-            item.get("chart_coverage_complete") is not True
-            or _int(item.get("chart_mark_count"), "chart mark count") < 2
+            matched_row.get("chart_coverage_complete") is not True
+            or _int(matched_row.get("chart_mark_count"), "chart mark count") < 2
         ):
             incomplete.append(trade_id)
         else:
