@@ -6,14 +6,56 @@ outages have no source identity and can never enter its recovery set.
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from pathlib import Path
 
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.hyperliquid.ws_protocol import SOURCE as MAINNET_WS_SOURCE
 from cocomelon.hyperliquid.ws_supervisor import event_stream_id
 
 GapSink = Callable[[DataGap], Awaitable[None]]
+WitnessSink = Callable[[StreamEvent, DataGap, int], Awaitable[None]]
 GapIntervals = Mapping[str, Sequence[tuple[int, int | None]]]
+WITNESS_FILENAME = "named-gap-recovery-witnesses.jsonl"
+
+
+def append_restored_named_gap_witness(
+    path: str | Path,
+    *,
+    event: StreamEvent,
+    gap: DataGap,
+    checkpoint_ms: int,
+) -> None:
+    """Fsynced event proof, not a claim that a later gap write succeeded.
+
+    The deferred auditor must independently intersect this witness with
+    the persisted closed source interval before reporting a verified closure.
+    """
+    received_ms = int(event.receive_time.timestamp() * 1_000)
+    payload = {
+        "definition": "post_handoff_named_ws_recovery_witness_v1",
+        "checkpoint_last_available_at_ms": checkpoint_ms,
+        "stream_id": gap.stream_id,
+        "gap_start_ms": gap.started_ms,
+        "witness_receive_ms": received_ms,
+        "witness_exchange_ms": event.exchange_time_ms,
+        "witness_event_key": event.event_key,
+        "witness_event_source": event.source,
+        "observed_event_before_gap_closure": True,
+        "independently_verified_checkpoint_closure": False,
+        "historical_price_reconstruction": False,
+        "research_only": True,
+    }
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 class RestoredNamedGapRecovery:
@@ -108,6 +150,7 @@ class RestoredNamedGapRecovery:
         *,
         observed_at_ms: int,
         gap_sink: GapSink,
+        witness_sink: WitnessSink | None = None,
     ) -> int:
         """Commit recovery receipts, never remove a start on failed persistence.
 
@@ -120,6 +163,11 @@ class RestoredNamedGapRecovery:
             for gap in self._fresh_recovery_gaps(
                 event, observed_at_ms=observed_at_ms,
             ):
+                # Record the real accepted source event *before* the gap
+                # closes. A witness alone is not a verified recovery:
+                # deferred audit checks the exact checkpoint afterwards.
+                if witness_sink is not None:
+                    await witness_sink(event, gap, self._checkpoint_ms)
                 await gap_sink(gap)
                 self._open[gap.stream_id].remove(gap.started_ms)
                 if not self._open[gap.stream_id]:
