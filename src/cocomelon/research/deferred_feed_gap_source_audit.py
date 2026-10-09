@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Final, cast
 
+from cocomelon.domain.market import MarketId
 from cocomelon.evidence.lifecycle import _market_wire_name_for_gap_stream
 
 OUTPUT_NAME: Final = "deferred-feed-gap-source-audit.json"
@@ -84,6 +85,56 @@ def _scoped(
         )
     return result
 
+
+
+def _selected_markets(
+    state: dict[str, object],
+) -> frozenset[str] | None:
+    """Validate a checkpoint market-selection witness without guessing feeds.
+
+    Older source fixtures may lack selection entirely. That is unknown,
+    not a valid reason to mark any market-specific gap off-watchlist.
+    """
+    raw = state.get("selected_markets")
+    if raw is None:
+        if "selected_markets" in state:
+            raise DeferredFeedGapSourceAuditError(
+                "checkpoint selected markets must be an array"
+            )
+        return None
+    if not isinstance(raw, list) or not raw:
+        raise DeferredFeedGapSourceAuditError(
+            "checkpoint selected markets must be nonempty array"
+        )
+    selected: set[str] = set()
+    for name in raw:
+        if (
+            not isinstance(name, str)
+            or not name
+            or name != name.strip()
+            or name in selected
+        ):
+            raise DeferredFeedGapSourceAuditError(
+                "checkpoint selected market identity invalid or duplicated"
+            )
+        parts = name.split(":")
+        try:
+            if len(parts) == 1:
+                validated = MarketId.from_wire_name("", name)
+            elif len(parts) == 2:
+                validated = MarketId.from_wire_name(parts[0], name)
+            else:
+                raise ValueError("invalid market name")
+        except ValueError as exc:
+            raise DeferredFeedGapSourceAuditError(
+                "checkpoint selected market identity invalid"
+            ) from exc
+        if validated.canonical != name:
+            raise DeferredFeedGapSourceAuditError(
+                "checkpoint selected market has noncanonical identity"
+            )
+        selected.add(name)
+    return frozenset(selected)
 
 
 def _chart_trade_witnesses(
@@ -320,6 +371,7 @@ def assess_feed_gap_source_debt(
     ):
         raise DeferredFeedGapSourceAuditError("chart source omitted closed trades")
     trade_witnesses = _chart_trade_witnesses(trades)
+    selection = _selected_markets(state)
 
     legacy = _intervals(
         state.get("known_gap_intervals", []),
@@ -368,6 +420,16 @@ def assess_feed_gap_source_debt(
                 "scope": scope,
                 "stream_id": stream_id,
                 "source_identity_identifiable": scope != "legacy_unattributed",
+                # Selection is only a routing clue, not proof of an active
+                # subscription or restored historical feed continuity.
+                "market_in_current_selection": (
+                    (
+                        _market_wire_name_for_gap_stream(stream_id)
+                        in selection
+                    )
+                    if scope == "market_specific" and selection is not None
+                    else None
+                ),
                 "market": (
                     _market_wire_name_for_gap_stream(stream_id)
                     if scope == "market_specific" else None
@@ -413,11 +475,42 @@ def assess_feed_gap_source_debt(
         named_gaps={**market_streams, **global_streams},
         latest_ms=latest_ms,
     )
+    selected_repair = [
+        row for row in named_repair_priority
+        if row["market_in_current_selection"] is True
+    ]
+    outside_repair = [
+        row for row in named_repair_priority
+        if row["market_in_current_selection"] is False
+    ]
+    unresolved_unknown = [
+        row for row in named_repair_priority
+        if row["market_in_current_selection"] is None
+    ]
     return {
         **recovery_proof,
         "definition": "post_handoff_paper_feed_gap_source_debt_v1",
         "checkpoint_schema_version": version,
         "checkpoint_last_available_at_ms": latest_ms,
+        "current_selection_witness_present": selection is not None,
+        "current_selected_market_count": (
+            len(selection) if selection is not None else None
+        ),
+        "named_unresolved_sources_on_selected_markets": len(selected_repair),
+        "named_unresolved_sources_outside_selected_markets": len(outside_repair),
+        "named_unresolved_sources_without_selection_attribution": (
+            len(unresolved_unknown)
+        ),
+        "named_unresolved_gap_starts_on_selected_markets": sum(
+            cast(int, row["open_gap_count"]) for row in selected_repair
+        ),
+        "named_unresolved_gap_starts_outside_selected_markets": sum(
+            cast(int, row["open_gap_count"]) for row in outside_repair
+        ),
+        "named_unresolved_gap_starts_without_selection_attribution": sum(
+            cast(int, row["open_gap_count"]) for row in unresolved_unknown
+        ),
+        "top_selected_market_repair_sources": selected_repair[:5],
         "chart_total_journal_trades": count,
         "chart_complete_paths": _integer(
             chart.get("complete_chart_paths"), "complete charts"
@@ -464,8 +557,10 @@ def assess_feed_gap_source_debt(
         "source_priority_definition": (
             "Named sources with unresolved histories are separately ranked "
             "for operational investigation. Anonymous legacy outages remain "
-            "unattributable even if they affect more charts. Overlap counts "
-            "are not additive, causal proof, or executable exit prices."
+            "unattributable even if they affect more charts. Current selected "
+            "markets identify only potential subscription eligibility, not "
+            "actual fresh feed coverage. Overlap counts are not additive, "
+            "causal proof, or executable exit prices."
         ),
         "current_checkpoint_not_retrospective_chart_recovery": True,
         "caution": (
