@@ -14,6 +14,15 @@ from cocomelon.journal.store import JournalStore
 from cocomelon.research.closed_trade_lifecycle_economics import (
     closed_trade_lifecycle_economics,
 )
+from cocomelon.research.closed_trade_entry_exit_context import (
+    closed_trade_entry_exit_context,
+)
+from cocomelon.research.continuous_paper_opening_rank import (
+    ContinuousPaperOpeningRankStore,
+)
+from cocomelon.research.learning_feature_snapshots import (
+    LearningFeatureSnapshotStore,
+)
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
@@ -281,6 +290,12 @@ function render(){svg.replaceChildren();const r=rows[Number(sel.value)||0];if(!r
  '\\nPath complete: '+r.chart_coverage_complete+' | Marks: '+r.chart_mark_count+
  ' | Known data gap ms: '+r.chart_known_gap_duration_ms+
  ' | Peak favorable R: '+r.mfe_r+' | Peak adverse R: '+r.mae_r;
+ if (r.entry_context) meta.textContent +=
+   ' | Entry strategy: '+r.entry_context.lead_strategy+
+   ' | Rank: '+r.entry_context.rank_band+
+   ' | 15m move: '+r.entry_context.return_15m_sign+
+   ' | Trend: '+r.entry_context.trend_regime;
+ else meta.textContent+=' | Verified entry features unavailable';
  const p=r.chart_mark_samples.map(a=>[Number(a[0]),Number(a[1])]);
  const levels=[Number(r.entry_price),Number(r.initial_stop),Number(r.exit_price)];
  const prices=p.map(a=>a[1]).concat(levels);const lo=Math.min(...prices),hi=Math.max(...prices);
@@ -321,6 +336,31 @@ def write_deferred_trade_charts(
         trades = tuple(journal.iter_trades())
         paths = ContinuousPaperTradePathStore(root / "trade-paths").iter_payloads()
         report = all_paper_trade_chart_audit(trades, facts, paths)
+        entry_analysis = closed_trade_entry_exit_context(
+            trades,
+            facts,
+            LearningFeatureSnapshotStore(root / "learning-features"),
+            ContinuousPaperOpeningRankStore(root / "opening-ranks"),
+        )
+        verified_context = entry_analysis["entry_context_by_trade_id"]
+        assert isinstance(verified_context, dict)
+        rows = report["trades"]
+        assert isinstance(rows, list)
+        for item in rows:
+            assert isinstance(item, dict)
+            item["entry_context"] = verified_context.get(item["trade_id"])
+        overall = report["economics"]
+        assert isinstance(overall, dict)
+        total = overall["overall"]
+        assert isinstance(total, dict)
+        context_total = entry_analysis["overall"]
+        assert isinstance(context_total, dict)
+        if str(total["net_pnl"]) != str(context_total["net_pnl"]):
+            raise AllPaperTradeChartAuditError(
+                "entry-context and trade lifecycle PnL mismatch"
+            )
+        entry_analysis.pop("entry_context_by_trade_id")
+        report["verified_entry_exit_context"] = entry_analysis
     finally:
         facts.close()
         journal.close()
