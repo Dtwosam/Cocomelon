@@ -174,3 +174,54 @@ class RestoredNamedGapRecovery:
                     del self._open[gap.stream_id]
                 count += 1
             return count
+
+def rotation_named_gap_recovery(
+    *,
+    market_gaps: GapIntervals,
+    global_gaps: GapIntervals,
+    checkpoint_ms: int,
+    max_exchange_age_ms: int,
+    earlier_observers: Sequence[RestoredNamedGapRecovery],
+) -> RestoredNamedGapRecovery | None:
+    """Reseed ONLY unclaimed, exact open starts at a live supervisor rotation.
+
+    A newly subscribed WebSocket group can be fully ready while the replaced
+    mux still has an unclosed source gap. Group readiness alone may NOT close
+    an interval. Capture those exact durable starts before switching and wait
+    for a distinct, actually accepted post-rotation source event to prove its
+    recovery. Existing restored/rotation observers retain their own starts;
+    overlap must not double-emit a gap closure.
+    """
+    claimed: dict[str, set[int]] = {}
+    for observer in earlier_observers:
+        for stream_id, starts in observer.pending_named_starts.items():
+            claimed.setdefault(stream_id, set()).update(starts)
+
+    def unclaimed(
+        intervals_by_stream: GapIntervals,
+    ) -> dict[str, tuple[tuple[int, int | None], ...]]:
+        selected: dict[str, tuple[tuple[int, int | None], ...]] = {}
+        for stream_id, intervals in intervals_by_stream.items():
+            pending = tuple(
+                (start, None)
+                for start, end in intervals
+                if end is None
+                and 0 <= start < checkpoint_ms
+                and start not in claimed.get(stream_id, set())
+            )
+            if pending:
+                selected[stream_id] = pending
+        return selected
+
+    remaining_market = unclaimed(market_gaps)
+    remaining_global = unclaimed(global_gaps)
+    if not remaining_market and not remaining_global:
+        return None
+    return RestoredNamedGapRecovery(
+        market_gaps=remaining_market,
+        global_gaps=remaining_global,
+        checkpoint_ms=checkpoint_ms,
+        max_exchange_age_ms=max_exchange_age_ms,
+    )
+
+
