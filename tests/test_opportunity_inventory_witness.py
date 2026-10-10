@@ -215,7 +215,7 @@ def test_first_census_receipt_lag_never_corroborates_stale_inventory(
     )
 
     report = original_inventory_overlap_audit(
-        (within, late), (_trade(),), store.iter_records(),
+        (within, late), (_trade(closed=500_000),), store.iter_records(),
         overlap_started_at_ms=100,
     )
     assert report["later_finalized_overlap_opportunities"] == 2
