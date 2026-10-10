@@ -568,6 +568,7 @@ jobs:
               f"- error: `{error}`",
               "",
               "No risk-rejected stop-path evidence is published from this run.",
+              "Changed terminal decision evidence remains rejected.",
               "",
               "**Execution authority:** `false`",
               "**Promotion authority:** `false`",
