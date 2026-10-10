@@ -132,6 +132,18 @@ def test_per_market_actual_cashflows_reconcile_both_signed_accounts(
     assert report["baseline"]["funding"] == "2"
     assert report["candidate"]["signed_total_account_pnl"] == "-11"
     assert report["candidate_minus_baseline_total_account_pnl"] == "-22"
+    assert report["baseline"]["market_components"]["ALPHA"] == {
+        "filled_cashflow": "-100",
+        "open_inventory_mark_value": "110",
+        "fill_fees": "1",
+        "funding_cash": "2",
+    }
+    assert report["candidate"]["market_components"]["BETA"] == {
+        "filled_cashflow": "100",
+        "open_inventory_mark_value": "-110",
+        "fill_fees": "1",
+        "funding_cash": "0",
+    }
     assert report["by_market"]["ALPHA"] == {
         "baseline_account_pnl": "11",
         "candidate_account_pnl": "0",

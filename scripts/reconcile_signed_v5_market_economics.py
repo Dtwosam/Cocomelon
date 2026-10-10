@@ -145,6 +145,19 @@ def _lane(root: Path, lane: str, expected_id: str,
             "fill_fees": str(total_fees),
             "funding": str(total_funding),
             "markets": {k: str(v) for k, v in sorted(by_market.items())},
+            # Exact additive whole-account mark/cash anatomy from the SAME
+            # authenticated SQLite records. These are NOT realized-vs-
+            # unrealized PnL: closing a position shifts value from open
+            # inventory marks into signed fill cash flows.
+            "market_components": {
+                market: {
+                    "filled_cashflow": str(c["cashflow"]),
+                    "open_inventory_mark_value": str(c["mark_value"]),
+                    "fill_fees": str(c["fees"]),
+                    "funding_cash": str(c["funding"]),
+                }
+                for market, c in sorted(components.items())
+            },
         }
     finally:
         db.close()
