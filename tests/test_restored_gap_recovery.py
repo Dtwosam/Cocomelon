@@ -16,6 +16,7 @@ from cocomelon.evidence.restored_gap_recovery import (
     append_restored_named_gap_witness,
     rotation_named_gap_recovery,
 )
+from cocomelon.hyperliquid.ws_protocol import normalize_ws_message
 
 BASE = datetime(2026, 10, 9, 17, 0, tzinfo=UTC)
 BASE_MS = int(BASE.timestamp() * 1_000)
@@ -701,3 +702,171 @@ def test_rotation_receipt_published_separately_from_signed_v5_ledger() -> None:
     )
     assert "append_in_session_rotation_gap_witness" in runtime
     assert "root / ROTATION_WITNESS_FILENAME" in runtime
+
+
+def _actual_mainnet_ws_candle(
+    *,
+    received_ms: int,
+    start_ms: int = BASE_MS,
+    interval: str = "15m",
+    end_ms: int | None = None,
+) -> StreamEvent:
+    """Exercise the production Hyperliquid WS normalizer, not invented marks."""
+    if end_ms is None:
+        end_ms = start_ms + 900_000 - 1
+    decoded = normalize_ws_message(
+        {
+            "channel": "candle",
+            "data": {
+                "s": "BTC",
+                "t": start_ms,
+                "T": end_ms,
+                "i": interval,
+                "o": "100",
+                "c": "101",
+                "h": "102",
+                "l": "99",
+                "v": "25",
+                "n": 7,
+            },
+        },
+        receive_time=BASE + timedelta(milliseconds=received_ms - BASE_MS),
+    )
+    assert len(decoded) == 1
+    return decoded[0]
+
+
+def test_actual_in_progress_15m_ws_candle_closes_only_exact_named_start() -> None:
+    async def run() -> None:
+        recovery = _recovery(
+            market={
+                "candle:BTC:15m": ((BASE_MS - 15_000, None),),
+                "candle:ETH:15m": ((BASE_MS - 16_000, None),),
+            },
+            shared={},
+        )
+        persisted: list[DataGap] = []
+        witnesses: list[str] = []
+
+        async def witness(event: StreamEvent, gap: DataGap, at: int) -> None:
+            assert event.source == "hyperliquid-mainnet-ws"
+            assert gap.stream_id == "candle:BTC:15m"
+            assert at == BASE_MS
+            witnesses.append(event.event_key)
+
+        async def sink(gap: DataGap) -> None:
+            # A source-identified event has already been committed upstream.
+            assert len(witnesses) == 1
+            persisted.append(gap)
+
+        received = BASE_MS + 600_000
+        event = _actual_mainnet_ws_candle(received_ms=received)
+        assert event.exchange_time_ms == BASE_MS
+        # This is a genuine 10-minute-old interval OPEN timestamp, not a
+        # 10-minute-old WS message. Existing 5s L2 rule rejected it.
+        assert received - event.exchange_time_ms > 5_000
+        assert await recovery.accept_recorded_event(
+            event, observed_at_ms=received + 200,
+            gap_sink=sink, witness_sink=witness,
+        ) == 1
+        assert [(x.stream_id, x.started_ms, x.ended_ms) for x in persisted] == [
+            ("candle:BTC:15m", BASE_MS - 15_000, received)
+        ]
+        assert recovery.pending_named_starts == {
+            "candle:ETH:15m": (BASE_MS - 16_000,)
+        }
+        assert await recovery.accept_recorded_event(
+            event, observed_at_ms=received + 200, gap_sink=sink,
+        ) == 0
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("received", "started", "ended", "interval"),
+    (
+        (BASE_MS + 900_000 + 10_000, BASE_MS, None, "15m"),
+        (BASE_MS + 1000, BASE_MS + 100_000, None, "15m"),
+        (BASE_MS + 600_000, BASE_MS, BASE_MS + 840_000, "15m"),
+        (BASE_MS + 600_000, BASE_MS, BASE_MS + 900_000 + 1000, "15m"),
+        (BASE_MS + 600_000, BASE_MS, None, "1m"),
+    ),
+)
+def test_old_future_malformed_or_wrong_interval_candle_cannot_recover(
+    received: int,
+    started: int,
+    ended: int | None,
+    interval: str,
+) -> None:
+    async def run() -> None:
+        recovery = _recovery(
+            market={"candle:BTC:15m": ((BASE_MS - 15_000, None),)},
+            shared={},
+        )
+        gaps: list[DataGap] = []
+
+        async def sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        event = _actual_mainnet_ws_candle(
+            received_ms=received, start_ms=started,
+            end_ms=ended, interval=interval,
+        )
+        assert await recovery.accept_recorded_event(
+            event, observed_at_ms=max(received, BASE_MS) + 100,
+            gap_sink=sink,
+        ) == 0
+        assert gaps == []
+        assert recovery.pending_named_starts == {
+            "candle:BTC:15m": (BASE_MS - 15_000,)
+        }
+
+    asyncio.run(run())
+
+
+def test_replayed_15m_candle_before_exact_checkpoint_does_not_heal() -> None:
+    async def run() -> None:
+        recovery = _recovery(
+            market={"candle:BTC:15m": ((BASE_MS - 15_000, None),)},
+            shared={},
+        )
+        emitted: list[DataGap] = []
+        async def sink(gap: DataGap) -> None:
+            emitted.append(gap)
+
+        event = _actual_mainnet_ws_candle(received_ms=BASE_MS)
+        assert await recovery.accept_recorded_event(
+            event, observed_at_ms=BASE_MS + 100, gap_sink=sink,
+        ) == 0
+        assert emitted == []
+    asyncio.run(run())
+
+
+def test_failed_candle_gap_persistence_keeps_exact_named_start() -> None:
+    async def run() -> None:
+        recovery = _recovery(
+            market={"candle:BTC:15m": ((BASE_MS - 15_000, None),)},
+            shared={},
+        )
+        event = _actual_mainnet_ws_candle(received_ms=BASE_MS + 300_000)
+
+        async def broken(_gap: DataGap) -> None:
+            raise RuntimeError("write failed")
+
+        with pytest.raises(RuntimeError, match="write failed"):
+            await recovery.accept_recorded_event(
+                event, observed_at_ms=BASE_MS + 300_100,
+                gap_sink=broken,
+            )
+        assert recovery.pending_named_starts == {
+            "candle:BTC:15m": (BASE_MS - 15_000,)
+        }
+
+    asyncio.run(run())
+
+
+def test_normalizer_rejects_negative_candle_open_before_gap_recovery() -> None:
+    with pytest.raises(ValueError, match="exchange_time_ms"):
+        _actual_mainnet_ws_candle(
+            received_ms=BASE_MS + 10_000, start_ms=-1,
+        )

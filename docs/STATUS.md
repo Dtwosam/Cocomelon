@@ -1,5 +1,7 @@
 # Cocomelon Project Status
 
+**Current profitability-first source:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Read the timestamped verified economics there before selecting strategy changes; this status page contains older history as well.
+
 **Last updated:** 2026-10-10  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
@@ -30,6 +32,14 @@
 The **separate read-only** signed-account reviewer now also receives an **hourly `schedule`** independently of the paper workflow chain. Each scheduled run authenticates up to 100 most recently listed genuine completed paper workers, skips self-named guard runs, preserves the original exact predecessor / attempt / signed market ZIP evidence checks, and processes the **oldest eligible unpublished** exact paired interval in that bounded window. It checks the retained output-artifact name first to avoid duplicate reports; it never pairs a current worker with an older convenient checkpoint if its immediate predecessor has no genuine report. Missing or expired source evidence remains unverified; incorrect source lineage, duplicate artifacts, changed frozen trial or inconsistent signed market accounting fails closed. Artifacts are keyed by the **source paper run/attempt**, not the synthetic scheduled run. Only one report is created per hourly scan, so a backlog recovers over several eligible scans; absence of a report is neither profit nor evidence deletion. This is **not background work performed by ChatGPT**: it is an explicitly configured GitHub Actions schedule owned by the repository.
 
 No real-money orders, candidate, paired trial restart, risk, fee model, original worker step or frozen review gate changes. Existing `workflow_run` event remains as opportunistic fast path; the independent scheduled scan is the reliability path. Confirm publication from a completed scheduled workflow artifact before claiming the fourth interval has been automatically reproduced.
+
+## October 10, 16:14 UTC — Source-witnessed WS candle recovery fix (research/data integrity only)
+
+**Confirmed timestamp mismatch:** The Hyperliquid mainnet WS `candle` normalizer stores `exchange_time_ms` as the candle **opening `t`**, with exact source interval `t`/`T` and `i`. The existing restored-/rotation-named-gap recovery accepted only source events with exchange age below the **L2 book-age ceiling**. A valid 15-minute in-progress WS candle thus becomes 'too old' minutes after it opens, preventing source-witnessed closure of genuine `candle:<market>:15m` gaps even though its accepted event arrived after the checkpoint. The completed predecessor original-paper source audit `11672933981` records **62 unresolved candle starts** (90 named source starts total, separately from v5's 75 open gaps) and thousands of unrelated historical anonymous debts. This identifies a plausible systematic closure blocker; it does NOT prove each historic candle gap can be repaired.
+
+The narrow forward repair validates the original **accepted, persisted WebSocket source event**, exact stream identity, strict source `hyperliquid-mainnet-ws`, checkpoint receive time, bounded delivery lag, positive known candle interval, exact `exchange_time_ms == start_ms`, `end_ms - start_ms` equal to known interval or interval-minus-one, and actual receive within `[start_ms, end_ms + configured late tolerance]`. This substitutes **candle-interval currency** for inappropriate L2 freshness only for `StreamKind.CANDLE`. Stale/expired candles, malformed or wrong intervals, replay-before-checkpoint, other markets, REST snapshots, and failed durable writes do NOT close anything. The previously strong L2/trade exchange freshness remains identical; witness receipts precede durable gap closures and the auditor still checks both before a verified recovery can be claimed.
+
+This is **not** historical candle fabrication, historical data completion, an excuse to disregard existing gap durations, or permission to promote the losing v5 challenger. The change only reaches a new paper worker at a genuine future handoff; do not claim it repaired existing counts until a signed post-deployment source gap audit demonstrates exact witnessed closures. It does not alter entry/exit/risk/fees/funding/trading authority. Real-money trading remains off.
 
 ## Fourth signed v5 interval: baseline winner concentration cannot excuse candidate loss (2026-10-10)
 
