@@ -4,6 +4,12 @@
 
 This is the **top-level current research and handoff checklist**, linked from `README.md`, `AGENTS.md`, `docs/STATUS.md`, and `docs/CHATGPT_PROJECT_SOURCE.md`. It complements, but does not supersede, `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, or individual immutable experiment freezes.
 
+## October 10 — Late first-observation census cannot prove decision-time inventory
+
+A genuinely new opening-opportunity census might still be observed late if a market feed or processing loop is delayed. Even with valid first-write immutability (PR #1124), a position inventory copied **more than five minutes** after the source opportunity timestamp is insufficient to corroborate which positions the live paper account held at that earlier decision. The frozen rank-evidence freshness horizon is **300,000 ms**, used here strictly as a descriptive upper bound; it never changes which actual trades execute.
+
+PR **#1125** fail-closes this research evidence: if an original stored census receipt is late by over **300,000 ms**, any subsequent journal trade whose opening-plan hash appears in it is classified as **late first census**, *not* a verified match. The source reports missing, contradictory, sufficiently proximal, and late categories independently; sums include ALL post-overlap opportunities and all original closed trades. At the exact boundary, a census remains descriptively proximal, but neither proximal observation nor a matching hash proves independent pre-decision archival attestation or a full contemporaneous strike/momentum state. `research_readiness_grant=false`, `promotion_authority=false`, `execution_authority=false`, old sealed historic decision drifts and market-data gaps all remain blockers. No refreeze or strategy change.
+
 ## October 10 — First-observation guard: replayed events cannot create research census history
 
 A post-merge review of the new original paper open-position census (PR #1123) identified an important provenance vulnerability: the opportunity observer called its append-only census store even when the *opportunity itself* had already been recorded by an earlier worker. The census store protected **existing** census records but could still create an entirely **missing old census** during a replayed callback, accidentally combining a historical opportunity timestamp with today's changed paper positions. That is **retroactive evidence fabrication**, even when no economic marks are changed.
