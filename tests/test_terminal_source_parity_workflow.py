@@ -39,7 +39,7 @@ def test_historical_parity_auditor_never_grants_execution_or_rewrites_history() 
     assert "  contents: read" in WORKFLOW
     assert "  issues: write" not in WORKFLOW
     assert "pull-requests: write" not in WORKFLOW
-    assert "actions/upload-artifact@v4" in WORKFLOW
+    assert "actions/upload-artifact@v5" in WORKFLOW
     assert "terminal-source-parity-redacted.json" in WORKFLOW
     assert "/tmp/parity-previous/prospective-risk-rejected-fast-markout-ledger.json" in CLI or (
         "/tmp/parity-previous/prospective-risk-rejected-fast-markout-ledger.json"
@@ -49,4 +49,5 @@ def test_historical_parity_auditor_never_grants_execution_or_rewrites_history() 
     assert "--rebuilt-summary" in CLI
     assert "output cannot overwrite an input source" in CLI
     assert "gh api" not in CLI
-    assert "trade" not in WORKFLOW.lower().split("  permissions:")[0]
+    assert "execution_authority: true" not in WORKFLOW
+    assert "promotion_authority: true" not in WORKFLOW
