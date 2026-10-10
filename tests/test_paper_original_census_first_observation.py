@@ -106,7 +106,7 @@ def test_new_opportunity_census_captured_once_but_never_replayed(
     census = _CensusStore()
     old_position = SimpleNamespace(opening_plan_id="original-plan")
     current_positions: list[object] = [old_position]
-    sink = _sink(original, census, positions=()) 
+    sink = _sink(original, census, positions=())
     # A mutable provider simulates a later recovered account snapshot.
     sink._position_provider = lambda: tuple(current_positions)
     monkeypatch.setattr(
