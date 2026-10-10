@@ -12,6 +12,8 @@ from cocomelon.research.prospective_momentum_band_forward_markout import (
     MAX_MARK_LAG_MS,
 )
 
+from cocomelon.research.terminal_row_drift import terminal_row_drift_receipt
+
 LEDGER_SCHEMA_VERSION: Final = 1
 LEDGER_KIND: Final = "prospective-risk-rejected-forward-markout-ledger-v1"
 TERMINAL_STATUSES: Final = frozenset(
@@ -1371,7 +1373,11 @@ def update_risk_rejected_forward_markout_ledger(
                 )
             if current != old:
                 raise ProspectiveRiskRejectedForwardMarkoutLedgerError(
-                    "previous terminal risk-rejected row changed"
+                    "previous terminal risk-rejected row changed ("
+                    + terminal_row_drift_receipt(
+                        opportunity_id, old, current
+                    )
+                    + ")"
                 )
 
     old_ids = {
