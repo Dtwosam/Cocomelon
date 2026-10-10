@@ -151,6 +151,13 @@ on:
       - "scripts/rebuild_deferred_consecutive_loss_cooldown.py"
       - "scripts/rebuild_deferred_loss_streak_context_audit.py"
       - "src/cocomelon/research/prospective_long_trend_carveout_execution_shadow_source.py"
+      # The compact export is performed by this continuous worker. If the
+      # preflight or a frozen start used by it changes, dispatch an exact
+      # successor instead of leaving the previous workflow code running.
+      - "scripts/rebuild_deferred_long_trend_exact_source.py"
+      - "scripts/verify_compact_long_trend_exact_source.py"
+      - "src/cocomelon/research/prospective_long_trend_5m_exit_source.py"
+      - "src/cocomelon/research/prospective_long_trend_15m_exit_source.py"
       - "src/cocomelon/research/prospective_weekly_drawdown_5m_exit_source.py"
       - "src/cocomelon/research/prospective_full_stack_capacity_reflow.py"
       - "src/cocomelon/research/prospective_full_stack_exit_capacity_reflow.py"
