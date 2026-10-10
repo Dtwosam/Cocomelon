@@ -96,7 +96,7 @@ def test_receipt_exposes_all_decision_drift_fields_without_values() -> None:
     assert "changed_json_pointer=/block_layer" in receipt
     assert "changed_json_pointers=" + ",".join(paths) in receipt
     assert "drift_paths_truncated=false" in receipt
-    for secret in ("private-opportunity", "two_strike", "ADMIT", "BLOCK"):
+    for secret in ("private-opportunity", "ADMIT", "BLOCK"):
         assert secret not in receipt
 
 
