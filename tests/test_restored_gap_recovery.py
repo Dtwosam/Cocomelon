@@ -547,7 +547,10 @@ def test_paper_runtime_witnesses_both_supervisor_rotation_paths() -> None:
     assert "in_session_rotation_gap_recoveries" in source
     assert source.count("register_rotated_group_gap_recovery()") == 3
     assert source.count("await _cancel_supervisor_group(previous_group)") == 1
-    assert "await _cancel_supervisor_group(\n                                previous_group" in source
+    assert (
+        "await _cancel_supervisor_group(\n                                previous_group"
+        in source
+    )
     callback = source.index("async def event_sink(event: StreamEvent)")
     recorded = source.index("await pump.process(_record_from_stream(event))", callback)
     rotated = source.index(
