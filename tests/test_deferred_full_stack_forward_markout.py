@@ -85,6 +85,13 @@ def test_deferred_full_stack_markout_rebuild_is_read_only_research(
         def __init__(self, root: Path) -> None:
             roots["features"] = root
 
+    class LineageStore:
+        def __init__(self, root: Path) -> None:
+            roots["lineages"] = root
+
+        def iter_records(self) -> tuple[str, ...]:
+            return ("lineage",)
+
     class Journal:
         def __init__(self, path: Path) -> None:
             roots["journal"] = path
@@ -148,6 +155,21 @@ def test_deferred_full_stack_markout_rebuild_is_read_only_research(
     monkeypatch.setattr(deferred, "JournalStore", Journal)
     monkeypatch.setattr(
         deferred,
+        "ContinuousPaperOpeningLineageStore",
+        LineageStore,
+    )
+    monkeypatch.setattr(
+        deferred,
+        "first_seen_opening_witness_summary",
+        lambda opportunities, trades, witnesses, *, overlap_started_at_ms: {
+            "kind": "verified-test-witness",
+            "links": (opportunities, trades, witnesses),
+            "overlap": overlap_started_at_ms,
+            "research_readiness_grant": False,
+        },
+    )
+    monkeypatch.setattr(
+        deferred,
         "prospective_full_stack_forward_markout_summary",
         summary,
     )
@@ -161,10 +183,21 @@ def test_deferred_full_stack_markout_rebuild_is_read_only_research(
         "opportunities": tmp_path / "opening-opportunities",
         "paths": tmp_path / "opening-opportunity-paths",
         "features": tmp_path / "learning-features",
+        "lineages": tmp_path / "opening-lineage",
         "journal": tmp_path / "journal.sqlite3",
     }
     assert payload["risk_rejected_stack_evaluated"] == 1
     assert payload["risk_rejected_integrity_clean"] is True
+    witness = payload["first_seen_opening_witness"]
+    assert witness["kind"] == "verified-test-witness"
+    assert witness["links"] == [
+        ["opportunity"],
+        ["trade"],
+        ["lineage"],
+    ] or witness["links"] == (
+        ("opportunity",), ("trade",), ("lineage",)
+    )
+    assert witness["research_readiness_grant"] is False
     assert payload["deferred_post_handoff_rebuild"] is True
     assert payload["source_exit_reason"] == "upgrade_requested"
     assert payload["execution_authority"] is False
