@@ -277,3 +277,122 @@ def test_worker_publishes_scoreboard_only_after_full_journal_audit() -> None:
     artifact = workflow[score_upload:]
     assert "steps.paper_profitability_scoreboard.outcome == 'success'" in artifact
     assert "continuous-paper-profitability-scoreboard-" in artifact
+
+
+def _reconciled_audit_from_rows(
+    rows: list[dict[str, object]],
+) -> dict[str, object]:
+    """Use the same strict signed-journal totals, never delete bad entries."""
+    audit = _audit()
+    with localcontext(prec=96):
+        gross = sum(
+            (Decimal(str(row["gross_realized_pnl"])) for row in rows),
+            Decimal(0),
+        )
+        fees = sum(
+            (
+                Decimal(str(row["entry_fees"])) +
+                Decimal(str(row["exit_fees"]))
+                for row in rows
+            ),
+            Decimal(0),
+        )
+        funding = sum(
+            (Decimal(str(row["funding_cash_pnl"])) for row in rows),
+            Decimal(0),
+        )
+        net = sum(
+            (Decimal(str(row["net_pnl"])) for row in rows),
+            Decimal(0),
+        )
+    audit["trades"] = rows
+    audit["total_journal_trades"] = len(rows)
+    audit["trades_included_in_economics"] = len(rows)
+    audit["verified_entry_exit_context"] = {
+        "entry_context_verified_trades": sum(
+            row["entry_context"] is not None for row in rows
+        ),
+        "entry_context_unresolved_trades": sum(
+            row["entry_context"] is None for row in rows
+        ),
+    }
+    audit["economics"] = {
+        "overall": {
+            "trades": len(rows),
+            "gross_realized_pnl": str(gross),
+            "fees": str(fees),
+            "funding_cash_pnl": str(funding),
+            "net_pnl": str(net),
+            "net_reconciliation_residual": str(net - gross + fees - funding),
+        }
+    }
+    return audit
+
+
+def test_short_breakout_top3_survives_outlier_omission_but_is_not_forward_edge() -> None:
+    rows = [
+        _trade(1, side="short", market="XPL", strategy="breakout", gross="0"),
+        _trade(2, side="short", market="NIL", strategy="breakout",
+               rank="top10", gross="-10"),
+        _trade(3, side="short", market="HBAR", strategy="breakout", gross="50"),
+        _trade(4, side="long", market="ADA", strategy="trend", gross="-100"),
+        _trade(5, side="short", market="CRV", strategy="breakout",
+               rank="outside10", gross="-5"),
+        _trade(6, side="short", market="CASHCAT", strategy="breakout", gross="40"),
+        _trade(7, side="short", market="AERO", strategy="breakout",
+               rank="missing", gross="13"),
+        _trade(8, side="short", market="STRK", strategy="breakout", gross="0"),
+        _trade(9, side="long", market="ETH", strategy=None, gross="-20"),
+    ]
+    result = paper_profitability_scoreboard(_reconciled_audit_from_rows(rows))
+    study = result["short_breakout_top3_robustness"]
+    assert result["overall"]["trades"] == 9
+    assert Decimal(result["overall"]["net_pnl"]) < 0
+    assert study["short_breakout_top3"]["trades"] == 4
+    assert study["short_breakout_top3"]["wins"] == 2
+    assert study["short_breakout_top3"]["net_pnl"] == "86.0"
+    assert study["short_breakout_other_bands_including_missing"]["trades"] == 3
+    assert study["short_breakout_other_rank_missing_trades"] == 1
+    assert study["short_breakout_all_rank_bands"]["trades"] == 7
+    assert study["top3_distinct_markets"] == 4
+    assert study["top3_min_net_after_leaving_one_trade_out"] == "37.0"
+    assert study["top3_min_net_after_leaving_one_market_out"] == "37.0"
+    assert study["top3_global_chronological_first_half"]["trades"] == 2
+    assert study["top3_global_chronological_second_half"]["trades"] == 2
+    assert study["meets_descriptive_sample_floor"] is False
+    assert study["counterfactual_account_pnl_estimated"] is False
+    assert study["ready_for_strategy_promotion"] is False
+    assert study["forward_net_edge_verified"] is False
+    assert study["execution_authority"] is False
+
+
+def test_profitable_gross_short_breakout_can_still_lose_after_costs() -> None:
+    rows = [
+        _trade(
+            1, side="short", market="ADA", strategy="breakout",
+            gross="2", entry_fee="2", exit_fee="2",
+        ),
+        _trade(
+            2, side="short", market="ARB", strategy="breakout",
+            gross="2", entry_fee="2", exit_fee="2",
+        ),
+    ]
+    result = paper_profitability_scoreboard(_reconciled_audit_from_rows(rows))
+    study = result["short_breakout_top3_robustness"]
+    assert study["short_breakout_top3"]["gross_realized_pnl"] == "4"
+    assert study["short_breakout_top3"]["net_pnl"] == "-4"
+    assert study["top3_min_net_after_leaving_one_trade_out"] == "-2"
+    assert study["meets_descriptive_sample_floor"] is False
+    assert study["forward_net_edge_verified"] is False
+
+
+def test_empty_short_breakout_cohort_does_not_invent_a_trading_edge() -> None:
+    result = paper_profitability_scoreboard(_audit())
+    study = result["short_breakout_top3_robustness"]
+    assert study["whole_journal_trades"] == 4
+    assert study["short_breakout_top3"]["trades"] == 0
+    assert study["top3_min_net_after_leaving_one_trade_out"] is None
+    assert study["top3_min_net_after_leaving_one_market_out"] is None
+    assert study["top3_largest_winner_share_of_positive_net"] is None
+    assert study["meets_descriptive_sample_floor"] is False
+    assert study["ready_for_strategy_promotion"] is False
