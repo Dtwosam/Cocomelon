@@ -162,6 +162,94 @@ def _metrics(trades: list[_Trade]) -> dict[str, object]:
     }
 
 
+def _short_breakout_top3_robustness(
+    trades: list[_Trade],
+) -> dict[str, object]:
+    """PREDECLARED rank hypothesis, never a trade-skip account simulation.
+
+    The current frozen prospective SHORT breakout-rank experiment motivates
+    an explicit top-three comparison on the original *entire* closed paper
+    journal. This retrospective slice cannot satisfy promotion authority.
+    Chronological halves follow the entire journal, not hand-picked dates
+    from favorable SHORT breakout winners.
+    """
+    candidates = [
+        trade
+        for trade in trades
+        if trade.side == "short" and trade.lead_strategy == "breakout"
+    ]
+    top3 = [trade for trade in candidates if trade.rank_band == "top3"]
+    other = [trade for trade in candidates if trade.rank_band != "top3"]
+    total = sum((t.net for t in top3), ZERO)
+    market_names = sorted({t.market for t in top3})
+    largest_positive = tuple(t.net for t in top3 if t.net > ZERO)
+    leave_trade = tuple(total - trade.net for trade in top3)
+    leave_market = tuple(
+        total - sum((t.net for t in top3 if t.market == market), ZERO)
+        for market in market_names
+    )
+    half = len(trades) // 2
+    first_ids = {t.trade_id for t in trades[:half]}
+    first = [t for t in top3 if t.trade_id in first_ids]
+    second = [t for t in top3 if t.trade_id not in first_ids]
+    first_metrics = _metrics(first)
+    second_metrics = _metrics(second)
+    min_trade = min(leave_trade) if len(top3) >= 2 else None
+    min_market = min(leave_market) if len(market_names) >= 2 else None
+    gross_win = sum(largest_positive, ZERO)
+    largest_winner_share = (
+        None
+        if not largest_positive or gross_win <= ZERO
+        else max(largest_positive) / gross_win
+    )
+
+    # Descriptive adequacy threshold for hypothesis prioritization only.
+    # Never reclassify a strategy ready for promotion on these counts.
+    descriptive_floor = (
+        len(top3) >= 24
+        and len(market_names) >= 6
+        and len(first) >= 8
+        and len(second) >= 8
+    )
+    return {
+        "hypothesis": "frozen-short-breakout-top3-rank-v1",
+        "kind": "executed-original-journal-retrospective-only",
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "changes_strategy": False,
+        "changes_candidate_readiness": False,
+        "whole_journal_trades": len(trades),
+        "whole_journal_net_pnl": _metrics(trades)["net_pnl"],
+        "short_breakout_all_rank_bands": _metrics(candidates),
+        "short_breakout_top3": _metrics(top3),
+        "short_breakout_other_bands_including_missing": _metrics(other),
+        "short_breakout_other_rank_missing_trades": sum(
+            t.rank_missing for t in other
+        ),
+        "top3_distinct_markets": len(market_names),
+        "top3_min_net_after_leaving_one_trade_out": (
+            None if min_trade is None else str(min_trade)
+        ),
+        "top3_min_net_after_leaving_one_market_out": (
+            None if min_market is None else str(min_market)
+        ),
+        "top3_largest_winner_share_of_positive_net": (
+            None if largest_winner_share is None
+            else str(largest_winner_share)
+        ),
+        "top3_global_chronological_first_half": first_metrics,
+        "top3_global_chronological_second_half": second_metrics,
+        "descriptive_minimum_trades": 24,
+        "descriptive_minimum_markets": 6,
+        "descriptive_minimum_trades_per_global_half": 8,
+        "meets_descriptive_sample_floor": descriptive_floor,
+        "ready_for_strategy_promotion": False,
+        "forward_net_edge_verified": False,
+        "counterfactual_account_pnl_estimated": False,
+    }
+
+
 def _cohorts(
     rows: list[_Trade], dimensions: tuple[str, ...]
 ) -> list[dict[str, object]]:
@@ -331,5 +419,8 @@ def paper_profitability_scoreboard(raw: object) -> dict[str, object]:
             ),
             "side_strategy_rank_cohorts": _cohorts(
                 trades, ("side", "lead_strategy", "rank_band")
+            ),
+            "short_breakout_top3_robustness": (
+                _short_breakout_top3_robustness(trades)
             ),
         }
