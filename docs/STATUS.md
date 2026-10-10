@@ -21,6 +21,12 @@
 
 **At every handoff:** verify live GitHub `main`, Issue #469, original vs shadow paper accounts, exact eligible forward sample and post-merge CI. Report **net dollars, costs, samples, challenger vs baseline, gate, and next economic step**, not merely PR counts. Full historical detail follows below; historical sections are not a live report.
 
+### Isolate irrecoverable v2 paired evidence; open a genuinely new forward account pair — 2026-10-10
+
+The previous scoped-v2 signed checkpoint records no open lifecycles, but the two execution SQLite stores contain later paper positions and different account state IDs. Its recorded checkpoint/account economics cannot be certified. **Do not overwrite, rewind, migrate, erase, relabel or credit either v1 or v2 historical state.** Both remain archived in the ordinary paper durable resume.
+
+The **scoped-v3** root starts separate flat equal-capital baseline/challenger accounts using the same previously frozen paper-only loss-context rule, the same feed, and v2 market-scoped gap-provenance semantics. Handoff uploads and review select *only* the scoped-v3 checkpoint/ledger, after a worker has adopted this code. The new trial gets no credit for any v1/v2 event: its first eligible forward checkpoint anchors its own window, and the original frozen duration, trade count per side, data integrity, relative and absolute after-cost PnL, and chronological-block thresholds all apply. A future v3 state mismatch is a failed trial, not grounds for another silent restart. Ordinary paper entry/exit/risk behavior and live-order permission are unchanged.
+
 ### Do not let push/watchdog fallback preempt a queued exact paper-state successor — 2026-10-09
 
 An older-head push run (**37982966703**) obtained a startup lease while its legitimate predecessor (**37981546174**) had completed trading but was still publishing its exact fast-resume/durable state. The exact workflow-dispatched successor (**37983282012**) then reported a skipped trader because the speculative push was already active. The push fallback previously searched only durable state artifacts, not newer fast-resume artifacts, so it could resurrect an older signed account and silently lose the intervening paper and feed-gap history. No post-hoc source reconstruction or false continuity claim is allowed.

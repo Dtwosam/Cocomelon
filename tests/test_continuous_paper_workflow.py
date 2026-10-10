@@ -1625,7 +1625,7 @@ def test_loss_context_paired_shadow_runtime_handoff_is_non_blocking() -> None:
     assert "scoped-v2/paired-shadow-state.json" in shadow_upload
     assert (
         "continuous-paper-state/"
-        "loss-context-paired-portfolio-shadow-scoped-v2"
+        "loss-context-paired-portfolio-shadow-scoped-v3"
     ) in shadow_upload
     assert (
         "continuous-paper-state/loss-context-paired-portfolio-shadow\n"
@@ -1633,7 +1633,7 @@ def test_loss_context_paired_shadow_runtime_handoff_is_non_blocking() -> None:
 
     review = source[review_at:review_upload_at]
     assert (
-        "loss-context-paired-portfolio-shadow-scoped-v2/review-ledger.jsonl"
+        "loss-context-paired-portfolio-shadow-scoped-v3/review-ledger.jsonl"
     ) in review
     assert (
         "loss-context-paired-portfolio-shadow/review-ledger.jsonl"
