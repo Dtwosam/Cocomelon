@@ -56,6 +56,7 @@ from cocomelon.evidence.restored_gap_recovery import (
     WITNESS_FILENAME,
     RestoredNamedGapRecovery,
     append_restored_named_gap_witness,
+    rotation_named_gap_recovery,
 )
 from cocomelon.execution.accounting import PaperPosition
 from cocomelon.execution.funding import (
@@ -9914,6 +9915,25 @@ async def run_continuous_paper_session(
                 replay_config.eligibility.max_book_age_ms
             ),
         )
+        # The original restored witness set is immutable for that exact
+        # checkpoint. A later watchlist/systemic WebSocket group replacement
+        # must also preserve NEW named source starts opened within this same
+        # worker, until actual accepted post-rotation data proves recovery.
+        in_session_rotation_gap_recovery: RestoredNamedGapRecovery | None = None
+
+        def register_rotated_group_gap_recovery() -> None:
+            nonlocal in_session_rotation_gap_recovery
+            earlier = [restored_named_gap_recovery]
+            if in_session_rotation_gap_recovery is not None:
+                earlier.append(in_session_rotation_gap_recovery)
+            in_session_rotation_gap_recovery = rotation_named_gap_recovery(
+                market_gaps=pipeline.known_gap_intervals_by_stream,
+                global_gaps=pipeline.known_global_gap_intervals_by_stream,
+                checkpoint_ms=utc_now_ms(),
+                max_exchange_age_ms=replay_config.eligibility.max_book_age_ms,
+                earlier_observers=earlier,
+            )
+
         _restore_open_lifecycles(pipeline, execution, checkpoints)
         record_startup_component(
             "open_lifecycle_restore",
@@ -10623,6 +10643,17 @@ async def run_continuous_paper_session(
                         )
                     ),
                 )
+                if in_session_rotation_gap_recovery is not None:
+                    # Unlike startup lineage, a new group cannot inherit
+                    # the old mux's volatile outstanding starts. Close a
+                    # pre-rotation start ONLY after this exact new normalized
+                    # WebSocket event was durably accepted by the paper pump.
+                    # No historical mark/bar reconstruction is implied.
+                    await in_session_rotation_gap_recovery.accept_recorded_event(
+                        event,
+                        observed_at_ms=utc_now_ms(),
+                        gap_sink=lambda gap: pump.process(_record_from_gap(gap)),
+                    )
 
             async def gap_sink(gap: DataGap) -> None:
                 if gap_gate.is_set():
@@ -10941,6 +10972,7 @@ async def run_continuous_paper_session(
                 supervisor_group = replacement_group
                 pump.stale_l2_recovery_promotions += 1
                 await _cancel_supervisor_group(previous_group)
+                register_rotated_group_gap_recovery()
                 return True
 
             pump.stale_l2_recovery_readiness_failures += 1
@@ -11276,6 +11308,7 @@ async def run_continuous_paper_session(
                             await _cancel_supervisor_group(
                                 previous_group
                             )
+                            register_rotated_group_gap_recovery()
                         else:
                             pump.shortlist_rotation_readiness_failures += 1
                             await _cancel_supervisor_group(
