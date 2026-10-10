@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts import publish_signed_v5_market_windows as publisher
+import scripts.publish_signed_v5_market_windows as publisher
 
 
 REPO = "Dtwosam/Cocomelon"
