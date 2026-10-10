@@ -569,6 +569,7 @@ class LossContextPairedShadowRuntime:
                 "restore_markets": tuple(
                     market.canonical for market in self._restore_markets
                 ),
+                "research_state_root": self._state_root.name,
                 "queue_capacity": self._queue.maxsize,
                 "queue_depth": self._queue.qsize(),
                 "queue_high_watermark": self._queue_high_watermark,

@@ -21,6 +21,10 @@
 
 **At every handoff:** verify live GitHub `main`, Issue #469, original vs shadow paper accounts, exact eligible forward sample and post-merge CI. Report **net dollars, costs, samples, challenger vs baseline, gate, and next economic step**, not merely PR counts. Full historical detail follows below; historical sections are not a live report.
 
+### Freeze invalid v3 after ENA rotation; require a new genuinely clean v4 forward anchor — 2026-10-10
+
+Worker `38011504073`, head `e2943073`, ran the new v3 paired accounts but failed at market rotation: `paired shadow market reconciliation would drop open shadow position coverage: ENA`, after 112,551 processed records and **zero signed shadow checkpoints**. No v3 account economics are restorable or admissible. The underlying missing protected-subscription logic is fixed in the same contained research-only change. Preserve v1/v2/v3 state unchanged, then start a separate scoped-v4 paired baseline/challenger **only** on a worker adopting the market-coverage fix. Never relabel old returns as new, alter the frozen candidate or promotion gates, enable live orders or automatically create v5. A v4 feed, parity or checkpoint failure means fail closed and diagnose it, not another account reset.
+
 ### Keep paired research positions on real mainnet feeds across ordinary shortlist changes — 2026-10-10
 
 The v2 research trial first failed when market rotation would drop **NEAR**, still held by its own independent paper account. Later SQLite execution state diverged from the old signed checkpoint. Simply starting fresh v3 accounts was insufficient to prevent another invalid forward sample.

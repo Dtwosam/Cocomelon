@@ -650,8 +650,14 @@ LOSS_CONTEXT_PAIRED_SHADOW_LEGACY_ROOT = (
 LOSS_CONTEXT_PAIRED_SHADOW_SCOPED_V2_ROOT = (
     "loss-context-paired-portfolio-shadow-scoped-v2"
 )
-LOSS_CONTEXT_PAIRED_SHADOW_ROOT = (
+# The v3 trial already encountered the same ENA market-rotation failure
+# before the subscription-pin fix could be adopted. Preserve it untouched,
+# and anchor exactly one post-fix independent v4 research account pair.
+LOSS_CONTEXT_PAIRED_SHADOW_SCOPED_V3_ROOT = (
     "loss-context-paired-portfolio-shadow-scoped-v3"
+)
+LOSS_CONTEXT_PAIRED_SHADOW_ROOT = (
+    "loss-context-paired-portfolio-shadow-scoped-v4"
 )
 LOSS_CONTEXT_PAIRED_SHADOW_SUMMARY_FILENAME = (
     "loss-context-paired-portfolio-shadow-summary.json"

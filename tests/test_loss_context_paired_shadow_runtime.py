@@ -202,6 +202,7 @@ def test_paired_shadow_runtime_processes_off_main_thread_in_order(
         assert _FakeShadow.thread_ids[0] != main_thread
 
         status = runtime.status_payload()
+        assert status["research_state_root"] == tmp_path.name
         assert status["submitted_records"] == 2
         assert status["processed_records"] == 2
         assert status["checkpoint_count"] == 1
