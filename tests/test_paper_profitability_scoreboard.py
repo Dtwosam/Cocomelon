@@ -1129,3 +1129,65 @@ def test_fee_only_bound_preserves_actual_subcent_booked_residual() -> None:
         assert Decimal(result["booked_net_cash_reconciliation_residual"]) == (
             Decimal("0.000000000000000000000000001")
         )
+
+
+
+def test_offsetting_trade_cashflow_corruption_cannot_hide_in_whole_net() -> None:
+    """Opposite row-level forgeries preserve the signed total, not cohorts."""
+    source = _audit()
+    source["trades"][1]["net_pnl"] = "19"
+    source["trades"][1]["entry_context"]["net_pnl"] = "19"
+    source["trades"][2]["net_pnl"] = "-17"
+    # Original whole-journal net, gross, fees, funding and declared residual
+    # remain EXACTLY unchanged. The verified ETH row and unverified SOL row
+    # falsely move $15 between strategy/rank cohorts.
+    assert source["economics"]["overall"]["net_pnl"] == "-13.9"
+    assert source["economics"]["overall"]["net_reconciliation_residual"] == "0.0"
+    with pytest.raises(
+        PaperProfitabilityScoreboardError, match="per-trade booked net"
+    ):
+        paper_profitability_scoreboard(source)
+
+
+def test_forged_aggregate_booked_residual_cannot_authorize_bad_trade() -> None:
+    source = _audit()
+    row = source["trades"][1]
+    row["net_pnl"] = "4.000001"
+    row["entry_context"]["net_pnl"] = "4.000001"
+    original = source["economics"]["overall"]
+    original["net_pnl"] = "-13.899999"
+    original["net_reconciliation_residual"] = "0.000001"
+    with pytest.raises(
+        PaperProfitabilityScoreboardError, match="per-trade booked net"
+    ):
+        paper_profitability_scoreboard(source)
+
+
+def test_genuine_precision_scale_residuals_are_retained_not_erased() -> None:
+    source = _audit()
+    row = source["trades"][1]
+    row["net_pnl"] = "4.000000000000000000000000005"
+    row["entry_context"]["net_pnl"] = row["net_pnl"]
+    original = source["economics"]["overall"]
+    with localcontext(prec=96):
+        original["net_pnl"] = str(
+            Decimal(str(original["net_pnl"])) + Decimal("5E-27")
+        )
+    original["net_reconciliation_residual"] = "5E-27"
+    result = paper_profitability_scoreboard(source)
+    overall = result["overall"]
+    assert overall["per_trade_nonzero_net_cash_residual_count"] == 1
+    assert Decimal(overall["per_trade_max_abs_net_cash_residual"]) == Decimal("5E-27")
+    assert Decimal(overall["per_trade_residual_precision_bound"]) == Decimal("1E-18")
+    assert Decimal(overall["booked_net_cash_reconciliation_residual"]) == Decimal("5E-27")
+    assert sum(
+        cohort["per_trade_nonzero_net_cash_residual_count"]
+        for cohort in result["strategy_cohorts"]
+    ) == 1
+    assert result["promotion_authority"] is False
+
+
+def test_empty_original_journal_has_no_invented_booked_cash_residue() -> None:
+    result = paper_profitability_scoreboard(_reconciled_audit_from_rows([]))
+    assert result["overall"]["per_trade_nonzero_net_cash_residual_count"] == 0
+    assert Decimal(result["overall"]["per_trade_max_abs_net_cash_residual"]) == 0
