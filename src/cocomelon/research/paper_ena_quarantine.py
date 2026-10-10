@@ -94,7 +94,6 @@ class PaperEnaQuarantine:
             "paper_only": True,
             "existing_positions_and_exits_untouched": True,
             "risk_limits_unchanged": True,
-            "live_orders_enabled": False,
             "retrospectively_selected": True,
             "profitable_edge_verified": False,
             "matched_forward_baseline_available": False,
