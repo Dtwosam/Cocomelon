@@ -75,6 +75,22 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert fast_cleanup_at < durable_upload_at < fallback_dispatch_at
     assert fallback_dispatch_at < deferred_markout_at
 
+def test_exact_long_exit_preflight_changes_dispatch_safe_paper_handoff() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    push_paths = source.split("  push:", 1)[1].split("  workflow_dispatch:", 1)[0]
+    for filename in (
+        "scripts/rebuild_deferred_long_trend_exact_source.py",
+        "scripts/verify_compact_long_trend_exact_source.py",
+        "src/cocomelon/research/prospective_long_trend_5m_exit_source.py",
+        "src/cocomelon/research/prospective_long_trend_15m_exit_source.py",
+    ):
+        assert f'      - "{filename}"' in push_paths
+    # The source-only push must not introduce duplicate traders.
+    assert 'cancel-in-progress: false' in source
+    assert "watch_for_newer_runtime_run" in source
+    assert "Queue exact successor from fast resume" in source
+
+
 def test_independent_scheduled_recovery_keeps_active_trader_guard() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     watchdog = Path(
