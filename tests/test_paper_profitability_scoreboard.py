@@ -919,8 +919,14 @@ def test_forward_trend_both_sides_exposes_loss_hidden_by_net_pooling() -> None:
     assert by_side["short"]["trades"] == 1
     for name, side_key in (
         ("original_forward_hypothesis_context", "original_forward_hypothesis_context_by_side"),
-        ("preferred_rank_attributed_original_closes", "preferred_rank_attributed_original_closes_by_side"),
-        ("disfavored_rank_attributed_original_closes", "disfavored_rank_attributed_original_closes_by_side"),
+        (
+            "preferred_rank_attributed_original_closes",
+            "preferred_rank_attributed_original_closes_by_side",
+        ),
+        (
+            "disfavored_rank_attributed_original_closes",
+            "disfavored_rank_attributed_original_closes_by_side",
+        ),
         ("unresolved_rank_original_closes", "unresolved_rank_original_closes_by_side"),
     ):
         overall = f[name]
