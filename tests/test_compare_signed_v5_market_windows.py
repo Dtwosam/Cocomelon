@@ -144,3 +144,112 @@ def test_actual_candidate_gain_smaller_than_baseline_is_not_an_edge() -> None:
     assert result["candidate_minus_baseline_cumulative_pnl_at_end"] == "-12"
     assert "hypothetical_saved_pnl" not in result
     assert result["execution_authority"] is False
+
+def _with_cost_components(report: dict[str, object]) -> dict[str, object]:
+    """Exactly balanced example with carried inventory and actual fees."""
+    for lane in ("baseline", "candidate"):
+        account = report[lane]
+        fee = Decimal(account["fill_fees"])
+        account["market_components"] = {}
+        for i, (market, raw_net) in enumerate(sorted(account["markets"].items())):
+            # All fees belong to the first market; no fake total fee split.
+            paid = fee if i == 0 else Decimal("0")
+            cashflow = Decimal("-100")
+            mark_value = Decimal(raw_net) - cashflow + paid
+            account["market_components"][market] = {
+                "filled_cashflow": str(cashflow),
+                "open_inventory_mark_value": str(mark_value),
+                "fill_fees": str(paid),
+                "funding_cash": "0",
+            }
+    return report
+
+
+def test_signed_component_window_exposes_mark_repricing_not_fake_realization() -> None:
+    before = _with_cost_components(
+        _report(10, {"PONS": "7"}, {"ZK": "-2"}, fees="1")
+    )
+    after = _with_cost_components(
+        _report(20, {"PONS": "16"}, {"ZK": "8"}, fees="2")
+    )
+    result = windows.compare(before, after)
+    detail = result["component_window"]
+    assert detail["available"] is True
+    assert detail["is_realized_pnl_decomposition"] is False
+    assert detail["by_market"]["PONS"]["baseline"] == {
+        "filled_cashflow": "0",
+        "open_inventory_mark_value": "10",
+        "fill_fees": "1",
+        "funding_cash": "0",
+    }
+    assert detail["by_market"]["ZK"]["candidate"] == {
+        "filled_cashflow": "0",
+        "open_inventory_mark_value": "11",
+        "fill_fees": "1",
+        "funding_cash": "0",
+    }
+    assert result["candidate_minus_baseline_window_pnl"] == "1"
+    assert result["promotion_authority"] is False
+
+
+def test_historical_compact_report_does_not_invent_missing_components() -> None:
+    before = _report(10, {"PONS": "7"}, {"ZK": "-2"}, fees="1")
+    after = _with_cost_components(
+        _report(20, {"PONS": "16"}, {"ZK": "8"}, fees="2")
+    )
+    result = windows.compare(before, after)
+    assert result["candidate_minus_baseline_window_pnl"] == "1"
+    assert result["component_window"]["available"] is False
+    assert "pre" in result["component_window"]["reason"]
+
+
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    (
+        ("wrong_market", "component markets mismatch"),
+        ("forged_mark", "components do not reconcile"),
+        ("fee_shift", "components do not reconcile"),
+        ("invalid_nan", "nonfinite"),
+        ("missing_field", "components drift"),
+    ),
+)
+def test_forged_or_partial_market_component_breakdown_fails_closed(
+    change: str, reason: str,
+) -> None:
+    before = _with_cost_components(
+        _report(10, {"PONS": "7"}, {"ZK": "-2"}, fees="1")
+    )
+    after = _with_cost_components(
+        _report(20, {"PONS": "16"}, {"ZK": "8"}, fees="2")
+    )
+    entry = after["candidate"]["market_components"]["ZK"]
+    if change == "wrong_market":
+        after["candidate"]["market_components"]["OTHER"] = entry
+    elif change == "forged_mark":
+        entry["open_inventory_mark_value"] = "9999"
+    elif change == "fee_shift":
+        entry["fill_fees"] = "0"
+    elif change == "invalid_nan":
+        entry["filled_cashflow"] = "NaN"
+    else:
+        del entry["funding_cash"]
+    with pytest.raises(windows.V5WindowComparisonError, match=reason):
+        windows.compare(before, after)
+
+
+def test_exact_market_component_totals_cannot_hide_fee_funding_mismatch() -> None:
+    before = _with_cost_components(
+        _report(10, {"PONS": "7"}, {"ZK": "-2"}, fees="1")
+    )
+    after = _with_cost_components(
+        _report(20, {"PONS": "16"}, {"ZK": "8"}, fees="2")
+    )
+    # Offset a changed fee with an equal changed mark. Net account PnL
+    # appears unchanged; exact account fee parity must still refuse it.
+    entry = after["candidate"]["market_components"]["ZK"]
+    entry["fill_fees"] = "3"
+    entry["open_inventory_mark_value"] = str(
+        Decimal(entry["open_inventory_mark_value"]) + Decimal("1")
+    )
+    with pytest.raises(windows.V5WindowComparisonError, match="market fees"):
+        windows.compare(before, after)
