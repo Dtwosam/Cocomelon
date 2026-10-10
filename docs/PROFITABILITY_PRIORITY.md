@@ -36,6 +36,12 @@ Latest repository implementation as this handoff was authored: **`ec7285b2c6e00c
 
 **Live money stays disabled** until the full documented independent live-promotion process is met; no automatic switches, wallet funding, risk increases, martingale, stop weakening, or live-order activation as an optimization shortcut.
 
+## New concrete paper intervention (candidate only, not a verified edge)
+
+The authenticated **154-original-closed-trade** chart audit from worker `38001096314` (attempt 1, chart artifact `11649679278`, member SHA-256 `b828de7051c2df0030c063c314e8802edba882e7b4c996e31b42adf6097ccef2`) showed **16 ENA closes, 0 winners, -$165.44 original booked net PnL** across both sides and multiple strategies. This was discovered by retrospectively inspecting markets, so it cannot justify any assertion of future profit.
+
+The **ordinary mainnet paper trader only** now has a frozen **ENA new-entry quarantine** for `2026-10-10 06:00 UTC` through `2026-10-17 06:00 UTC`, following a six-hour embargo. Existing positions, position management, other markets, risk settings and live execution remain unaffected. An exact post-handoff `paper-ena-quarantine-summary.json` reports intercepted decision counts; **no intercept is proof of a would-have-lost trade**. The previously running worker adopts this rule only after exact successor handoff to the new head; do not claim the quarantine started if no adopting worker is verified. Since there is no independently matched same-window ENA control, **do not claim causal incremental profit** from comparing an old unfiltered account to the new one. At expiry, review genuine *post-activation* net account economics and avoided-decision counts; never extrapolate the historical $165.44 into future returns.
+
 ## Ranked work that is likely to matter financially
 
 1. **Measure why the baseline loses:** use *all* unique executed journal trades and authentic decision-time rank/context; reconcile gross PnL, fees, funding and net cash/return by LONG/SHORT, strategy, rank and entry/exit context. Keep losers with missing evidence in original account totals and clearly expose the missingness. Prefer high-dollar, reproducible loss concentrations over speculative micro-optimizations.
