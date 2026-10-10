@@ -120,6 +120,7 @@ class RestoredNamedGapRecovery:
         checkpoint_ms: int,
         max_exchange_age_ms: int,
         max_delivery_lag_ms: int = 30_000,
+        recovery_reason: str = "recovered_after_handoff_witness",
     ) -> None:
         if (
             type(checkpoint_ms) is not int or checkpoint_ms < 0
@@ -131,6 +132,12 @@ class RestoredNamedGapRecovery:
             raise ValueError("invalid restored named source recovery limits")
         if set(market_gaps) & set(global_gaps):
             raise ValueError("named source appears in both checkpoint scopes")
+        if recovery_reason not in {
+            "recovered_after_handoff_witness",
+            "recovered_after_rotation_witness",
+        }:
+            raise ValueError("invalid named source recovery reason")
+        self._recovery_reason = recovery_reason
         self._lock = asyncio.Lock()
         self._checkpoint_ms = checkpoint_ms
         self._max_exchange_age_ms = max_exchange_age_ms
@@ -185,7 +192,7 @@ class RestoredNamedGapRecovery:
                 stream_id=stream_id,
                 started_ms=start,
                 ended_ms=received_ms,
-                reason="recovered_after_handoff_witness",
+                reason=self._recovery_reason,
             )
             for start in sorted(starts)
         )
@@ -268,6 +275,7 @@ def rotation_named_gap_recovery(
         global_gaps=remaining_global,
         checkpoint_ms=checkpoint_ms,
         max_exchange_age_ms=max_exchange_age_ms,
+        recovery_reason="recovered_after_rotation_witness",
     )
 
 
