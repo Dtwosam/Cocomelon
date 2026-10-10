@@ -581,6 +581,17 @@ def test_frozen_hypotheses_only_count_openings_after_actual_six_hour_embargo() -
     assert short["preferred_rank_attributed_original_closes"]["trades"] == 1
     assert short["disfavored_rank_attributed_original_closes"]["trades"] == 1
     assert short["original_forward_unverified_entry_context_count"] == 1
+    preferred_stress = short["original_forward_preferred_rank_robustness"]
+    assert preferred_stress["cohort_original_closes"] == 1
+    assert preferred_stress["distinct_original_markets"] == 1
+    assert preferred_stress["global_forward_first_half"]["trades"] == 1
+    assert preferred_stress["global_forward_second_half"]["trades"] == 0
+    assert preferred_stress["min_net_pnl_leaving_one_trade_out"] is None
+    assert preferred_stress["min_net_r_leaving_one_market_out"] is None
+    assert preferred_stress["promotion_authority"] is False
+    assert short["original_forward_disfavored_rank_robustness"][
+        "global_forward_first_half"
+    ]["trades"] == 1
     assert short["candidate_skip_cashflow_simulated"] is False
     assert short["ready_for_review"] is False
     assert trend["forward_trade_count"] == 5
@@ -622,3 +633,90 @@ def test_no_new_original_forward_closes_is_not_profitable_evidence() -> None:
     assert study["sufficient_original_forward_trade_count"] is False
     assert study["ready_for_review"] is False
     assert study["promotion_authority"] is False
+
+
+def test_post_embargo_rank_stress_exposes_concentrated_winners_and_net_r() -> None:
+    from cocomelon.research.prospective_short_breakout_rank import (
+        ProspectiveShortBreakoutRankState,
+    )
+
+    boundary = 6 * 3_600_000
+    rows = [
+        _move_trade_to_original_open_time(
+            _trade(
+                1, side="short", market="BTC", strategy="breakout",
+                rank="top3", gross="21",
+            ),
+            boundary + 10, closed_at_ms=boundary + 11,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                2, side="short", market="ADA", strategy="breakout",
+                rank="top3", gross="-3",
+            ),
+            boundary + 20, closed_at_ms=boundary + 21,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                3, side="short", market="CRV", strategy="breakout",
+                rank="outside10", gross="-5",
+            ),
+            boundary + 30, closed_at_ms=boundary + 31,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                4, side="short", market="ENA", strategy=None,
+                gross="-9",
+            ),
+            boundary + 40, closed_at_ms=boundary + 41,
+        ),
+    ]
+    report = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows(rows),
+        short_rank_freeze=ProspectiveShortBreakoutRankState(
+            frozen_at_ms=0
+        ).payload(),
+    )
+    study = report["frozen_hypotheses_original_forward_economics"][
+        "hypotheses"
+    ]["short_breakout_rank4plus_skip"]
+    assert study["forward_trade_count"] == 4
+    assert Decimal(study["original_forward_whole_journal"]["net_pnl"]) == 0
+    preferred = study["original_forward_preferred_rank_robustness"]
+    assert Decimal(study["preferred_rank_attributed_original_closes"]["net_pnl"]) == 16
+    assert preferred["distinct_original_markets"] == 2
+    assert Decimal(preferred["min_net_pnl_leaving_one_trade_out"]) == -4
+    assert Decimal(preferred["min_net_r_leaving_one_trade_out"]) == Decimal("-0.2")
+    assert Decimal(preferred["min_net_pnl_leaving_one_market_out"]) == -4
+    assert Decimal(preferred["min_net_r_leaving_one_market_out"]) == Decimal("-0.2")
+    assert preferred["largest_winner_share_of_positive_net"] == "1"
+    assert preferred["global_forward_first_half"]["trades"] == 2
+    assert preferred["global_forward_second_half"]["trades"] == 0
+    assert preferred["global_forward_second_half"]["net_pnl"] == "0"
+    assert preferred["independent_forward_edge_verified"] is False
+    assert study["unresolved_rank_original_closes"]["trades"] == 0
+    assert report["promotion_authority"] is False
+
+
+def test_empty_frozen_rank_stress_has_no_invented_profitability() -> None:
+    from cocomelon.research.prospective_trend_outside_top10 import (
+        ProspectiveTrendOutsideTop10State,
+    )
+
+    result = paper_profitability_scoreboard(
+        _audit(),
+        trend_outside_freeze=ProspectiveTrendOutsideTop10State(
+            frozen_at_ms=1_000_000_000
+        ).payload(),
+    )
+    study = result["frozen_hypotheses_original_forward_economics"][
+        "hypotheses"
+    ]["trend_outside_top10_both_sides_skip"]
+    preferred = study["original_forward_preferred_rank_robustness"]
+    assert preferred["cohort_original_closes"] == 0
+    assert preferred["min_net_pnl_leaving_one_trade_out"] is None
+    assert preferred["min_net_r_leaving_one_market_out"] is None
+    assert preferred["largest_winner_share_of_positive_net"] is None
+    assert preferred["global_forward_first_half"]["trades"] == 0
+    assert preferred["global_forward_second_half"]["trades"] == 0
+    assert preferred["independent_forward_edge_verified"] is False
