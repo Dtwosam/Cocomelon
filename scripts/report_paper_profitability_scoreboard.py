@@ -17,11 +17,31 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("audit_path", type=Path)
     parser.add_argument("--json-out", required=True, type=Path)
+    parser.add_argument("--short-rank-freeze", type=Path)
+    parser.add_argument("--trend-outside-freeze", type=Path)
     args = parser.parse_args(argv)
-    if args.audit_path.resolve() == args.json_out.resolve():
-        raise ValueError("scoreboard cannot replace authoritative audit")
+    sources = (
+        args.audit_path,
+        args.short_rank_freeze,
+        args.trend_outside_freeze,
+    )
+    if any(
+        source is not None and source.resolve() == args.json_out.resolve()
+        for source in sources
+    ):
+        raise ValueError("scoreboard cannot replace authoritative input")
     audit = json.loads(args.audit_path.read_text(encoding="utf-8"))
-    report = paper_profitability_scoreboard(audit)
+
+    def read_frozen(path: Path | None) -> object | None:
+        if path is None or not path.is_file():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    report = paper_profitability_scoreboard(
+        audit,
+        short_rank_freeze=read_frozen(args.short_rank_freeze),
+        trend_outside_freeze=read_frozen(args.trend_outside_freeze),
+    )
     target: Path = args.json_out
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
@@ -50,6 +70,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         ],
         "incomplete_chart_trades": overall["incomplete_chart_trades"],
         "side_cohorts": side,
+        "frozen_hypotheses": report[
+            "frozen_hypotheses_original_forward_economics"
+        ],
         "execution_authority": False,
         "promotion_authority": False,
     }
