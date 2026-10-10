@@ -30,7 +30,7 @@ def first_changed_field(before: object, after: object) -> str | None:
                     return difference
             return None
         if isinstance(old, list) and isinstance(new, list):
-            for index, (left, right) in enumerate(zip(old, new)):
+            for index, (left, right) in enumerate(zip(old, new, strict=False)):
                 difference = walk(left, right, path + f"/{index}")
                 if difference is not None:
                     return difference
