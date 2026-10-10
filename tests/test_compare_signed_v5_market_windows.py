@@ -253,3 +253,78 @@ def test_exact_market_component_totals_cannot_hide_fee_funding_mismatch() -> Non
     )
     with pytest.raises(windows.V5WindowComparisonError, match="market fees"):
         windows.compare(before, after)
+
+
+def test_signed_market_fragility_keeps_winners_and_losers_in_both_lanes() -> None:
+    first = _report(10, {}, {}, fees="0")
+    second = _report(
+        20,
+        {"PONS": "23.5", "AERO": "9.1", "JUP": "-9.3"},
+        {"ZK": "-14.7"},
+        fees="1",
+    )
+    result = windows.compare(first, second)
+    # -14.7 - (23.5 + 9.1 - 9.3) = -38.0
+    assert result["candidate_minus_baseline_window_pnl"] == "-38.0"
+    sensitivity = result["observed_market_concentration_sensitivity"]
+    assert sensitivity["available"] is True
+    assert sensitivity["observed_full_window_relative_pnl"] == "-38.0"
+    assert sensitivity["by_omitted_market"]["PONS"] == "-14.5"
+    assert sensitivity["by_omitted_market"]["ZK"] == "-23.3"
+    # Losing baseline JUP should not be falsely counted as challenger edge
+    # after removing that market from BOTH lanes' actual account values.
+    assert sensitivity["by_omitted_market"]["JUP"] == "-47.3"
+    assert sensitivity["worst_leave_one_market_relative_pnl"] == "-47.3"
+    assert sensitivity["best_leave_one_market_relative_pnl"] == "-14.5"
+    assert sensitivity["any_leave_one_market_relative_pnl_positive"] is False
+    assert sensitivity["all_leave_one_market_relative_pnl_positive"] is False
+    assert sensitivity["not_an_executable_counterfactual"] is True
+    assert sensitivity["not_a_strategy_filter_or_promotion_gate"] is True
+    assert result["promotion_authority"] is False
+
+
+def test_positive_observed_result_may_be_one_market_fragile() -> None:
+    first = _report(5, {}, {}, fees="0")
+    second = _report(
+        10, {"PONS": "5", "CRV": "-3"}, {"ZK": "4"}, fees="1",
+    )
+    out = windows.compare(first, second)
+    assert out["candidate_minus_baseline_window_pnl"] == "2"
+    sensitivity = out["observed_market_concentration_sensitivity"]
+    assert sensitivity["by_omitted_market"] == {
+        "CRV": "-1",
+        "PONS": "7",
+        "ZK": "-2",
+    }
+    assert sensitivity["any_leave_one_market_relative_pnl_positive"] is True
+    assert sensitivity["all_leave_one_market_relative_pnl_positive"] is False
+    assert sensitivity["not_an_executable_counterfactual"] is True
+
+
+def test_empty_market_window_is_not_vacuously_robust() -> None:
+    first = _report(5, {}, {}, fees="0")
+    second = _report(10, {}, {}, fees="0")
+    result = windows.compare(first, second)
+    info = result["observed_market_concentration_sensitivity"]
+    assert info["available"] is False
+    assert info["reason"] == "no_markets_in_signed_window"
+    assert "all_leave_one_market_relative_pnl_positive" not in info
+    assert result["candidate_minus_baseline_window_pnl"] == "0"
+
+
+def test_market_fragility_is_unchanged_when_exact_component_details_exist() -> None:
+    first = _with_cost_components(
+        _report(5, {"PONS": "7"}, {"ZK": "-2"}, fees="1")
+    )
+    second = _with_cost_components(
+        _report(10, {"PONS": "16"}, {"ZK": "8"}, fees="2")
+    )
+    result = windows.compare(first, second)
+    assert result["component_window"]["available"] is True
+    assert result["candidate_minus_baseline_window_pnl"] == "1"
+    observed = result["observed_market_concentration_sensitivity"]
+    assert observed["by_omitted_market"] == {
+        "PONS": "10",
+        "ZK": "-9",
+    }
+    assert observed["not_a_strategy_filter_or_promotion_gate"] is True
