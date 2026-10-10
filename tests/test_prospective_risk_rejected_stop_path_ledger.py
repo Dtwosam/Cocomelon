@@ -372,12 +372,14 @@ def test_stop_path_ledger_preserves_terminal_rows() -> None:
     with pytest.raises(
         RiskRejectedStopPathLedgerError,
         match="previous terminal stop-path row changed",
-    ):
+    ) as drift:
         _update(
             _source([changed]),
             previous=first,
             run_id=11,
         )
+    assert "opportunity_sha256_prefix=" in str(drift.value)
+    assert "changed_json_pointer=/stop_path/" in str(drift.value)
 
 
 def test_stop_path_ledger_rejects_risk_approved_rows() -> None:
