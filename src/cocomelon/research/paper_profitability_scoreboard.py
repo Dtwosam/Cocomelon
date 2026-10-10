@@ -161,6 +161,10 @@ def _metrics(trades: list[_Trade]) -> dict[str, object]:
     net = sum((t.net for t in trades), ZERO)
     booked_cost_drag = gross - net
     expected_cost_drag = fees - funding
+    all_fees_refunded_same_fills = net + fees
+    required_fee_fraction = (
+        max(-net, ZERO) / fees if trades and fees > ZERO else None
+    )
     gross_positive = [t for t in trades if t.gross > ZERO]
     flipped = [t for t in gross_positive if t.net <= ZERO]
     return {
@@ -171,6 +175,22 @@ def _metrics(trades: list[_Trade]) -> dict[str, object]:
         "fees": str(fees),
         "funding_cash_pnl": str(funding),
         "net_pnl": str(net),
+        "same_fill_all_recorded_fees_refunded_net_pnl": str(
+            all_fees_refunded_same_fills
+        ),
+        "same_fill_fee_refund_fraction_needed_for_zero_net": (
+            None if required_fee_fraction is None
+            else str(required_fee_fraction)
+        ),
+        "same_fill_all_fee_refund_still_net_negative": (
+            all_fees_refunded_same_fills < ZERO if trades else None
+        ),
+        "same_fill_additional_gross_needed_even_after_full_fee_refund": str(
+            max(-all_fees_refunded_same_fills, ZERO)
+        ),
+        "fee_refund_bound_semantics": (
+            "arithmetic_same_original_fills_not_executable_or_new_equity"
+        ),
         "gross_positive_trades": len(gross_positive),
         "gross_positive_net_nonpositive_trades": len(flipped),
         "gross_positive_net_negative_trades": sum(
