@@ -2143,3 +2143,23 @@ def test_compact_long_trend_exact_research_source_is_isolated_after_paper_handof
     assert "facts.sqlite3" not in selection
     assert "execution_mode: live" not in selection
     assert "live_orders: true" not in selection
+
+
+def test_compact_long_trend_source_waits_for_deferred_upgrade_rebuild() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    dispatch = source.index("- name: Queue exact successor from fast resume")
+    rebuild = source.index("- name: Rebuild deferred full-stack markouts after handoff")
+    offline_source = source.index(
+        "- name: Rebuild deferred exact LONG trend source after handoff"
+    )
+    verify = source.index("- name: Verify compact exact LONG trend research source")
+    pack = source.index("- name: Pack compact exact LONG trend research source")
+    upload = source.index("- name: Upload compact exact LONG trend research source")
+    assert dispatch < rebuild < offline_source < verify < pack < upload
+    step = source[offline_source:verify]
+    assert "scripts/rebuild_deferred_long_trend_exact_source.py" in step
+    assert 'if [ "$exit_reason" = "upgrade_requested" ]; then' in step
+    assert "steps.deferred_full_stack_markout_rebuild.outcome == 'success'" in step
+    assert "continue-on-error: true" in step
+    assert "live_orders: true" not in step
+    assert "execution_mode: live" not in step
