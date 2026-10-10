@@ -177,7 +177,7 @@ def test_all_original_trades_and_net_losses_are_retained() -> None:
         ),
         (
             lambda d: d["trades"][2].update(net_pnl="100"),
-            "whole-journal net_pnl",
+            "per-trade booked net",
         ),
         (
             lambda d: d["trades"][1]["entry_context"].update(trade_id="forged"),
