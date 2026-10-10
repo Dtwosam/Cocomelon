@@ -325,12 +325,14 @@ def test_risk_rejected_ledger_refuses_terminal_history_rewrite() -> None:
     with pytest.raises(
         ProspectiveRiskRejectedForwardMarkoutLedgerError,
         match="previous terminal risk-rejected row changed",
-    ):
+    ) as drift:
         _update(
             _summary([changed]),
             previous=ledger,
             run_id=11,
         )
+    assert "opportunity_sha256_prefix=" in str(drift.value)
+    assert "changed_json_pointer=/markouts/" in str(drift.value)
 
 
 def test_risk_rejected_ledger_keeps_candidate_readiness_authority_off() -> None:
