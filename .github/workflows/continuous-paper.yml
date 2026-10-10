@@ -1249,6 +1249,19 @@ jobs:
           echo "successor_run_id=$successor_run_id" >> "$GITHUB_OUTPUT"
           echo "fallback exact successor dispatch receipt: $successor_run_id"
 
+      # Small, original-paper intervention receipt: count genuine
+      # ENA opening decisions prevented, not hypothetical avoided PnL.
+      - name: Upload fixed ENA paper quarantine decision receipt
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/paper-ena-quarantine-summary.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-ena-quarantine-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/paper-ena-quarantine-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       # Only authenticated after-handoff research files needed by the
       # separate 5m/15m exact LONG-trend evaluations; never package the
       # multi-GB account DB, market tapes, or open-position state here.
