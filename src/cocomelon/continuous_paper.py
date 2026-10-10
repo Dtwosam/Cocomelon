@@ -234,6 +234,9 @@ from cocomelon.research.fill_aware_delay_selector import (
     FillAwareDelaySelectorState,
     fill_aware_delay_selector_summary,
 )
+from cocomelon.research.first_seen_opening_witness import (
+    first_seen_opening_witness_summary,
+)
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.loss_context_paired_shadow_runtime import (
     LossContextPairedShadowRuntime,
@@ -3493,6 +3496,8 @@ def _prospective_full_stack_forward_markout_payload(
     combined_state: ProspectiveCombinedEntryFilterState,
     two_strike_state: ProspectiveTwoStrikeStopFilterState,
     momentum_state: ProspectiveMomentumBandEntryState,
+    *,
+    lineage_store: ContinuousPaperOpeningLineageStore | None = None,
 ) -> dict[str, object]:
     overlap_start = max(
         combined_state.started_at_ms,
@@ -3500,15 +3505,26 @@ def _prospective_full_stack_forward_markout_payload(
         momentum_state.started_at_ms,
     )
     try:
+        opportunities = opportunity_store.iter_records()
+        closed_trades = tuple(journal.iter_trades())
         payload = prospective_full_stack_forward_markout_summary(
-            opportunity_store.iter_records(),
+            opportunities,
             path_store.iter_paths(),
-            tuple(journal.iter_trades()),
+            closed_trades,
             feature_store,
             combined_state,
             two_strike_state,
             momentum_state,
         )
+        if lineage_store is not None:
+            payload["first_seen_opening_witness"] = (
+                first_seen_opening_witness_summary(
+                    opportunities,
+                    closed_trades,
+                    lineage_store.iter_records(),
+                    overlap_started_at_ms=overlap_start,
+                )
+            )
     except Exception as exc:
         return {
             "enabled": False,
@@ -11710,6 +11726,7 @@ async def run_continuous_paper_session(
                     prospective_combined_entry_filter_state,
                     prospective_two_strike_stop_filter_state,
                     prospective_momentum_band_entry_state,
+                    lineage_store=opening_lineage_store,
                 )
             )
             _write_json_atomic(
