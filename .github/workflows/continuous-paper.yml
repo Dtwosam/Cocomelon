@@ -1358,6 +1358,10 @@ jobs:
           print(f"- Original closed trades: {o['trades']}")
           print(f"- Booked net realized PnL: ${o['net_pnl']}")
           print(f"- Recorded fees / funding: ${o['fees']} / ${o['funding_cash_pnl']}")
+          print(f"- Per-original-trade exact cash residuals: "
+                f"{o['per_trade_nonzero_net_cash_residual_count']} nonzero; "
+                f"max abs ${o['per_trade_max_abs_net_cash_residual']} "
+                f"(fail above ${o['per_trade_residual_precision_bound']})")
           print(f"- Entire original net with impossible 100% fee refund "
                 f"on the same fills (NOT new equity): "
                 f"${o['same_fill_all_recorded_fees_refunded_net_pnl']}")
