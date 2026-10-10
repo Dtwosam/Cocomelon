@@ -2210,8 +2210,11 @@ def test_original_profitability_research_sources_trigger_genuine_paper_handoff()
     )[0]
     start = source.index('changed_runtime="$(\n')
     end = source.index(')"', start)
-    command = source[start:end].splitlines()[1]
-    argv = shlex.split(command.strip())
+    command = " ".join(
+        line.strip().removesuffix("\\").strip()
+        for line in source[start:end].splitlines()[1:]
+    )
+    argv = shlex.split(command)
     assert argv[:6] == [
         "git", "diff", "--name-only", "$GITHUB_SHA", "FETCH_HEAD", "--"
     ]
