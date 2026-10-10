@@ -8,6 +8,10 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
+from cocomelon.research.terminal_journal_asof import (
+    future_finalized_open_exposure,
+    terminal_trades_known_at,
+)
 from cocomelon.research.prospective_two_strike_stop_filter import (
     CANDIDATE_ID,
     EMBARGO_MS,
@@ -498,3 +502,72 @@ def test_two_strike_rejects_less_bad_losing_candidate() -> None:
     assert readiness["improvement_positive"] is True
     assert readiness["economics_positive"] is False
     assert readiness["ready_for_review"] is False
+
+
+def test_shared_terminal_journal_asof_guard_never_backfills_unclosed_open() -> None:
+    state = ProspectiveTwoStrikeStopFilterState(frozen_at_ms=0)
+    start = state.started_at_ms
+    decision_ms = start + 400_000
+    completed = (
+        _trade("asof-loss-1", opened_at_ms=start + 100_000, pnl="-5"),
+        _trade("asof-loss-2", opened_at_ms=start + 220_000, pnl="-6"),
+    )
+    # The third trade opens before the decision but its journal row only
+    # becomes available after a later terminal close.
+    late = _trade(
+        "asof-open-closed-later",
+        opened_at_ms=start + 360_000,
+        pnl="-7",
+    )
+    rebuilt = completed + (late,)
+    asof = terminal_trades_known_at(rebuilt, timestamp_ms=decision_ms)
+    assert asof == completed
+    assert prospective_two_strike_prior_strikes_at(
+        completed,
+        state,
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=decision_ms,
+    ) == 2
+    assert prospective_two_strike_prior_strikes_at(
+        asof,
+        state,
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=decision_ms,
+    ) == 2
+    assert prospective_two_strike_prior_strikes_at(
+        rebuilt,
+        state,
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=decision_ms,
+    ) == 0
+    assert future_finalized_open_exposure(
+        rebuilt,
+        timestamp_ms=decision_ms,
+        overlap_started_at_ms=start,
+        market="SOL",
+        direction="long",
+    )
+    assert not future_finalized_open_exposure(
+        rebuilt,
+        timestamp_ms=decision_ms,
+        overlap_started_at_ms=start,
+        market="SOL",
+        direction="short",
+    )
+    assert not future_finalized_open_exposure(
+        rebuilt,
+        timestamp_ms=decision_ms,
+        overlap_started_at_ms=start,
+        market="ETH",
+        direction="long",
+    )
+    assert not future_finalized_open_exposure(
+        rebuilt,
+        timestamp_ms=decision_ms + 60_000,
+        overlap_started_at_ms=start,
+        market="SOL",
+        direction="long",
+    )
