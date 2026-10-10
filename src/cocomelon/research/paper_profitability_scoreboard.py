@@ -28,6 +28,11 @@ from cocomelon.research.prospective_trend_outside_top10 import (
 )
 
 ZERO: Final = Decimal("0")
+# The completed 176-close authenticated original audit contains 16
+# nonzero per-trade residuals, maximum abs 5E-27. Preserve those actual
+# booked sub-cent residuals, but prevent compensating material distortions
+# from laundering strategy/rank cohort PnL through a zero whole-journal sum.
+MAX_PER_TRADE_NET_CASH_RESIDUAL: Final = Decimal("1E-18")
 UNVERIFIED: Final = "UNVERIFIED_ENTRY_CONTEXT"
 
 
@@ -52,6 +57,7 @@ class _Trade:
     funding: Decimal
     net: Decimal
     net_r: Decimal
+    net_cash_residual: Decimal
 
 
 def _object(raw: object, label: str) -> dict[str, object]:
@@ -108,6 +114,12 @@ def _trade(raw: object) -> _Trade:
         raise PaperProfitabilityScoreboardError("negative execution fee")
     funding = _number(row.get("funding_cash_pnl"), "funding")
     net = _number(row.get("net_pnl"), "booked net PnL")
+    net_cash_residual = net - gross + entry_fee + exit_fee - funding
+    if abs(net_cash_residual) > MAX_PER_TRADE_NET_CASH_RESIDUAL:
+        raise PaperProfitabilityScoreboardError(
+            "per-trade booked net cashflow residual exceeds "
+            "authenticated source precision bound"
+        )
     net_r = _number(row.get("net_r"), "booked net R")
     chart = row.get("chart_coverage_complete")
     if type(chart) is not bool:
@@ -151,6 +163,7 @@ def _trade(raw: object) -> _Trade:
         funding=funding,
         net=net,
         net_r=net_r,
+        net_cash_residual=net_cash_residual,
     )
 
 
@@ -215,6 +228,18 @@ def _metrics(trades: list[_Trade]) -> dict[str, object]:
         "gross_minus_booked_net_pnl": str(booked_cost_drag),
         "booked_net_cash_reconciliation_residual": str(
             net - gross + fees - funding
+        ),
+        "per_trade_nonzero_net_cash_residual_count": sum(
+            trade.net_cash_residual != ZERO for trade in trades
+        ),
+        "per_trade_max_abs_net_cash_residual": str(
+            max(
+                (abs(trade.net_cash_residual) for trade in trades),
+                default=ZERO,
+            )
+        ),
+        "per_trade_residual_precision_bound": str(
+            MAX_PER_TRADE_NET_CASH_RESIDUAL
         ),
         "net_per_trade": str(net / len(trades)) if trades else None,
         "net_r": str(sum((t.net_r for t in trades), ZERO)),
