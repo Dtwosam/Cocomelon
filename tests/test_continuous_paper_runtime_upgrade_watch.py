@@ -5,6 +5,7 @@ paths into a single impossible argument. The main-push bootstrap sees an
 active worker and correctly skips a duplicate; therefore the genuine active
 worker's runtime watch MUST still recognize changes to research producers.
 """
+
 from __future__ import annotations
 
 import shlex
