@@ -4,6 +4,12 @@
 
 This is the **top-level current research and handoff checklist**, linked from `README.md`, `AGENTS.md`, `docs/STATUS.md`, and `docs/CHATGPT_PROJECT_SOURCE.md`. It complements, but does not supersede, `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, or individual immutable experiment freezes.
 
+## October 10 — First-observation guard: replayed events cannot create research census history
+
+A post-merge review of the new original paper open-position census (PR #1123) identified an important provenance vulnerability: the opportunity observer called its append-only census store even when the *opportunity itself* had already been recorded by an earlier worker. The census store protected **existing** census records but could still create an entirely **missing old census** during a replayed callback, accidentally combining a historical opportunity timestamp with today's changed paper positions. That is **retroactive evidence fabrication**, even when no economic marks are changed.
+
+PR **#1124** fixes the root: capture a paper inventory census **only when the opportunity store first returns `record(...)=True`** for that exact new event. Replayed/durable opportunities return false and must **never fill a missing earlier census**; genuine first-observation write failures remain missing, never retried into fictitious history. The ordinary paper execution, risk evaluation, order management and all existing ledgers are unchanged. A separately tracked original research census capture error is propagated to full-stack output; the descriptive `risk_rejected_integrity_clean` is forced false on a captured error rather than allowing a successful journal reconstruction to hide incomplete first-seen inventory. All authority fields remain false; no historical failed ledger can be rehabilitated and no profit claim follows.
+
 ## October 10 — Future first-observation original open-position census (research only)
 
 **Unchanged blocker:** The authentic post-causal replay of historical immutable research still shows seven sealed decision-field drifts, no altered marks, and 186 uncertain earlier-opening exposures; previous prospective ledgers remain failed. PRs #1116–#1121 improved causal journal projections and the immutable **at-opening lineage** comparison. That recorded opening-lineage proves an original paper opening plan existed but does **not** prove the complete account inventory at each later hypothetical opportunity.

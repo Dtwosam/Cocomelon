@@ -878,13 +878,16 @@ class _ContinuousOpeningOpportunitySink:
                 trace,
                 rank_snapshot=rank_snapshot,
             )
-            self._store.record(evidence)
+            first_observation = self._store.record(evidence)
         except Exception as exc:
             if self.error is None:
                 self.error = f"{type(exc).__name__}: {exc}"
             return
 
-        if self._inventory_store is not None:
+        # If an opportunity was durably recorded by an earlier worker,
+        # a replayed callback is NOT its first observation. Never create
+        # a missing historical census from today's changed account.
+        if first_observation and self._inventory_store is not None:
             try:
                 if self._position_provider is None:
                     raise RuntimeError("research census has no paper position provider")
@@ -3522,6 +3525,7 @@ def _prospective_full_stack_forward_markout_payload(
     *,
     lineage_store: ContinuousPaperOpeningLineageStore | None = None,
     inventory_store: OpportunityInventoryWitnessStore | None = None,
+    inventory_capture_error: str | None = None,
 ) -> dict[str, object]:
     overlap_start = max(
         combined_state.started_at_ms,
@@ -3574,6 +3578,14 @@ def _prospective_full_stack_forward_markout_payload(
     payload = dict(payload)
     payload["enabled"] = True
     payload["error"] = None
+    payload["original_open_inventory_capture_error"] = inventory_capture_error
+    # The observer's captured error must not disappear in a successful
+    # rebuild, since missing first-seen censuses cannot be backfilled.
+    if inventory_capture_error is not None:
+        payload["risk_rejected_integrity_clean"] = False
+        payload["original_open_inventory_capture_clean"] = False
+    else:
+        payload["original_open_inventory_capture_clean"] = True
     return payload
 
 
@@ -11766,6 +11778,7 @@ async def run_continuous_paper_session(
                     prospective_momentum_band_entry_state,
                     lineage_store=opening_lineage_store,
                     inventory_store=opening_opportunity_inventory_store,
+                    inventory_capture_error=opening_opportunity_sink.inventory_error,
                 )
             )
             _write_json_atomic(
