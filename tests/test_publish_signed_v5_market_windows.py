@@ -272,6 +272,9 @@ def test_no_runtime_modification_or_paper_trigger_in_read_only_workflow() -> Non
     assert 'cron: "11 * * * *"' in yml
     assert "github.event_name == 'schedule'" in yml
     assert "steps.compare.outputs.artifact_name" in yml
+    assert "group: signed-v5-window-singleflight" in yml
+    assert "cancel-in-progress: false" in yml
+    assert "github.event.workflow_run.id || 'scheduled-catchup'" not in yml
     assert "actions: write" not in yml
     assert "issue" not in yml.lower()
     assert "live_orders" not in yml
