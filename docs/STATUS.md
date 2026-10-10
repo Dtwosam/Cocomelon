@@ -1,5 +1,7 @@
 # Cocomelon Project Status
 
+**Current profitability-first source:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Read the timestamped verified economics there before selecting strategy changes; this status page contains older history as well.
+
 **Last updated:** 2026-10-10  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
