@@ -5994,3 +5994,46 @@ def test_mainnet_rotation_pins_shadow_feeds_but_not_trade_decisions() -> None:
     assert "paired-only L2 unavailable during rotation" in source
     assert "paired-only mainnet context missing during rotation" in source
     assert "paired-only market subscription failed during startup" in source
+
+
+
+def test_retryable_funding_info_outage_preserves_trading_and_gap_lineage() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    body = source.split("async def refresh_funding() -> None:", 1)[1].split(
+        "await refresh_funding()", 1
+    )[0]
+    assert "except (InfoHttpError, TransportError) as exc:" in body
+    assert "exc.status == 429 or 500 <= exc.status < 600" in body
+    assert "requested_at_ms = utc_now_ms()" in body
+    assert "MAINNET_FUNDING_HISTORY_INFO_UNAVAILABLE" in body
+    assert '"fundingHistory:"' in body
+    assert 'source="hyperliquid-mainnet-info"' in body
+    assert "await pump.process(" in body
+    assert "PAPER_FUNDING_HISTORY_RETRY" in body
+    assert "normalize_funding_history" in body
+    assert "funding_rate_record_event(rate)" in body
+    assert 'rates = ()' not in body
+    assert 'rates = []' not in body
+    assert "continue" in body
+
+
+def test_retryable_funding_failure_gap_is_scoped_not_fabricated_l2() -> None:
+    gap = DataGap(
+        stream_id="fundingHistory:ADA",
+        started_ms=1_000,
+        ended_ms=1_150,
+        reason="MAINNET_FUNDING_HISTORY_INFO_UNAVAILABLE",
+        source="hyperliquid-mainnet-info",
+    )
+    record = _record_from_gap(gap)
+    assert record.record_kind == SourceRecordKind.DATA_GAP
+    assert record.market is None
+    assert record.source == "hyperliquid-mainnet-info"
+    assert record.available_at_ms == 1_150
+    payload = json.loads(record.payload_json)
+    assert payload["stream_id"] == "fundingHistory:ADA"
+    assert payload["started_ms"] == 1_000
+    assert payload["ended_ms"] == 1_150
+    assert payload["reason"] == "MAINNET_FUNDING_HISTORY_INFO_UNAVAILABLE"

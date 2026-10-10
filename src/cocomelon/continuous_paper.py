@@ -10039,12 +10039,46 @@ async def run_continuous_paper_session(
                     position.opened_at_ms,
                     now_ms - 8 * 60 * 60 * 1000,
                 )
-                raw = await asyncio.to_thread(
-                    reader.funding_history,
-                    position.market,
-                    start_ms=start_ms,
-                    end_ms=now_ms,
-                )
+                requested_at_ms = utc_now_ms()
+                try:
+                    raw = await asyncio.to_thread(
+                        reader.funding_history,
+                        position.market,
+                        start_ms=start_ms,
+                        end_ms=now_ms,
+                    )
+                except (InfoHttpError, TransportError) as exc:
+                    # Only retryable mainnet-info faults are recoverable.
+                    # A permanent bad-request/configuration failure still
+                    # stops execution rather than hiding an invalid feed.
+                    if isinstance(exc, InfoHttpError) and not (
+                        exc.status == 429 or 500 <= exc.status < 600
+                    ):
+                        raise
+                    failed_at_ms = utc_now_ms()
+                    await pump.process(
+                        _record_from_gap(
+                            DataGap(
+                                stream_id=(
+                                    "fundingHistory:"
+                                    + position.market.canonical
+                                ),
+                                started_ms=requested_at_ms,
+                                ended_ms=max(requested_at_ms, failed_at_ms),
+                                reason="MAINNET_FUNDING_HISTORY_INFO_UNAVAILABLE",
+                                source="hyperliquid-mainnet-info",
+                            )
+                        )
+                    )
+                    # A skipped response is NEVER a zero funding accrual;
+                    # only validated actual funding_rate events can accrue.
+                    print(
+                        "PAPER_FUNDING_HISTORY_RETRY "
+                        + f"market={position.market.canonical} "
+                        + f"error={type(exc).__name__}: {exc}",
+                        flush=True,
+                    )
+                    continue
                 received_at_ms = utc_now_ms()
                 rates = await asyncio.to_thread(
                     normalize_funding_history,

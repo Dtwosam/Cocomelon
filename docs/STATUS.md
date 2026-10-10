@@ -9,6 +9,12 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+## New authenticated financial diagnostic — 2026-10-10 09:14 UTC
+
+Latest worker `38037544022` still runs head `4f09230b` paper only, 157 closes and **-$316.60 total PnL** on **$9,683.40 equity**. After-cost closed-trade audit on predecessor `38035861888`: 157 closes, **-$331.51** realized booked, 40 winners and 117 losers. ENA quarantine is active but the completed worker reported **0 intercepted entries**; the prospective SHORT breakout rank trial has **0 SHORT closes** among its 2 forward closes. **No profitable edge confirmed.**
+
+Critical non-speculative integrity defect: after a funding-history mainnet Info read timed out at 08:19 UTC, worker `38035861888` crashed without the optional actor's closing checkpoint. Its paired-v4 JSON points to execution account ID `86f75015a2bc6fa1e2458ed8` in both lanes; the archived SQLite baselines actually contain `4eba34b5dc703118c22817f4` and `0d2238953297b9c6c467f32e`. The v4 comparison is **invalid, frozen**, and **must not be rewritten, rebranded, or scored**. Its specific mainnet funding-history timeout is now handled as a retryable data gap (429/5xx/transport only) without manufacturing funding or relaxing risk. Do not start v5 automatically. Resume work on the existing genuine after-cost SHORT/ENA cohorts after there is sufficient forward evidence.
+
 ## READ FIRST — PROFITABILITY PRIORITY, NOT ANOTHER INFRASTRUCTURE LOOP
 
 **Standing user instruction (2026-10-10): build the Hyperliquid paper trader autonomously toward positive after-cost profitability, and make that goal impossible to miss in the next chat.** The canonical [`PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md) gives the next-chat checklist, forward experiment priorities, evidence gates and instructions. **Open that file before selecting the next change.**

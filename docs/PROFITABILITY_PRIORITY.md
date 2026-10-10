@@ -26,6 +26,14 @@ These are *point-in-time operational account figures*, not current forever and n
 
 Latest repository implementation as this handoff was authored: **`ec7285b2c6e00c9e722283479396c038a6fcd643`** (PR #1087), with *both post-merge test/research suites successful*. This is a **historical reference**, not an instruction to check out an outdated commit.
 
+## October 10, 09:14 UTC — Verified after-cost economics and funding-timeout blocker
+
+Original-account heartbeat run `38037544022` at `2026-10-10T09:13:55Z`, head `4f09230b`: equity **$9,683.40**, whole-account total PnL **-$316.60** with 157 cumulative closed trades; live orders off. The predecessor run `38035861888` after-cost scoreboard has 157 authenticated original closed trades, **-$331.51 realized booked net PnL**, fees **$121.84**, 117 losers / 40 winners. Market-discovery attribution: ENA 16 original closes **-$165.44** (all losses), ADA 7 **-$58.51**, FARTCOIN 7 **-$56.04**. These are not reliable estimates of future returns. The frozen SHORT breakout prospective experiment has **0 SHORT trades** among its 2 scored forward closes; no edge or promotion.
+
+ENA quarantine audit from worker `38035861888` shows **zero intercepted decisions during that worker**. Do not report avoided loss or economic uplift. Frozen ENA observation runs until October 17 06:00 UTC; don't overlap a retrospective ADA/FARTCOIN quarantine without an independently certified forward evaluation.
+
+The v4 paired trial is **not restorable**: its archived `paired-shadow-state.json` contains account state ID `86f75015a2bc6fa1e2458ed8` for both lanes, but authenticated exported baseline/candidate execution SQLite files have later IDs `4eba34b5dc703118c22817f4` and `0d2238953297b9c6c467f32e`. Worker `38035861888` failed after a **08:19 UTC** `InfoClient.funding_history` mainnet REST transport read timeout; abrupt exit bypassed ordinary end-of-session paired checkpoint. The paired v4 root is retained as invalid; **do not create v5 simply to reset data**. The scoped remediation records a short *actual request-unavailability* gap for retryable funding Info failures and continues with only validated funding-rate records instead of aborting mid-stream or fabricating zero funding. HTTP 4xx other than 429 remain fatal. Review clean, authenticated paired forward economics only after a properly justified new comparison is available.
+
 ## Definition of progress: money after costs, not code volume
 
 **Primary KPI:** baseline whole-account **net PnL / net expectancy per authentic executed paper trade**, including realized exits, taker fees, funding, slippage, missed executions, gaps, drawdown and cash/opportunity costs. Compare an independent **challenger account** to the **same-window baseline** under identical forward mainnet data; report absolute profitability **and** incremental advantage.
