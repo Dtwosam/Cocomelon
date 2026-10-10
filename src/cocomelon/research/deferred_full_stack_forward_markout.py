@@ -23,6 +23,10 @@ from cocomelon.research.first_seen_opening_witness import (
 from cocomelon.research.learning_feature_snapshots import (
     LearningFeatureSnapshotStore,
 )
+from cocomelon.research.opportunity_inventory_witness import (
+    OpportunityInventoryWitnessStore,
+    original_inventory_overlap_audit,
+)
 from cocomelon.research.prospective_combined_entry_filter import (
     ProspectiveCombinedEntryFilterState,
 )
@@ -109,6 +113,9 @@ def rebuild_deferred_full_stack_forward_markout(
     )
     feature_store = LearningFeatureSnapshotStore(root / "learning-features")
     lineage_store = ContinuousPaperOpeningLineageStore(root / "opening-lineage")
+    inventory_store = OpportunityInventoryWitnessStore(
+        root / "opening-opportunity-inventory"
+    )
     journal = JournalStore(root / "journal.sqlite3")
     try:
         opportunities = opportunity_store.iter_records()
@@ -122,21 +129,29 @@ def rebuild_deferred_full_stack_forward_markout(
             two_strike_state,
             momentum_state,
         )
+        overlap_start = max(
+            combined_state.started_at_ms,
+            two_strike_state.started_at_ms,
+            momentum_state.started_at_ms,
+        )
         witness = first_seen_opening_witness_summary(
             opportunities,
             closed_trades,
             lineage_store.iter_records(),
-            overlap_started_at_ms=max(
-                combined_state.started_at_ms,
-                two_strike_state.started_at_ms,
-                momentum_state.started_at_ms,
-            ),
+            overlap_started_at_ms=overlap_start,
+        )
+        inventory_witness = original_inventory_overlap_audit(
+            opportunities,
+            closed_trades,
+            inventory_store.iter_records(),
+            overlap_started_at_ms=overlap_start,
         )
     finally:
         journal.close()
 
     output = dict(payload)
     output["first_seen_opening_witness"] = witness
+    output["original_open_inventory_witness"] = inventory_witness
     rows = output.get("risk_rejected_rows")
     evaluated = output.get("risk_rejected_stack_evaluated")
     integrity = output.get("risk_rejected_integrity_clean")
