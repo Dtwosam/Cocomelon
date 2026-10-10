@@ -64,12 +64,53 @@ def _lane(obj: dict[str, object], label: str) -> dict[str, object]:
     }
     if sum(amounts.values(), ZERO) != pnl:
         raise V5WindowComparisonError(f"{label}: market PnL does not reconcile")
+    # Optional additive decomposition introduced after the first signed
+    # v5 compact report. Historical compact checkpoints remain admissible
+    # for whole-account totals, but may NOT get fabricated components.
+    components = None
+    if "market_components" in raw:
+        selected = _object(raw["market_components"], f"{label} market components")
+        if set(selected) != set(amounts):
+            raise V5WindowComparisonError(f"{label}: component markets mismatch")
+        components = {}
+        for market, entry in selected.items():
+            values = _object(entry, f"{label}.{market} components")
+            fields = (
+                "filled_cashflow", "open_inventory_mark_value",
+                "fill_fees", "funding_cash",
+            )
+            if set(values) != set(fields):
+                raise V5WindowComparisonError(f"{label}: {market} components drift")
+            parsed = {
+                field: _number(values[field], f"{label}.{market}.{field}")
+                for field in fields
+            }
+            if parsed["fill_fees"] < ZERO:
+                raise V5WindowComparisonError(f"{label}: negative market fee")
+            net = (
+                parsed["filled_cashflow"]
+                + parsed["open_inventory_mark_value"]
+                - parsed["fill_fees"]
+                + parsed["funding_cash"]
+            )
+            if net != amounts[market]:
+                raise V5WindowComparisonError(
+                    f"{label}: {market} components do not reconcile"
+                )
+            components[market] = parsed
+        if sum((v["fill_fees"] for v in components.values()), ZERO) != fees:
+            raise V5WindowComparisonError(f"{label}: market fees do not reconcile")
+        if sum((v["funding_cash"] for v in components.values()), ZERO) != funding:
+            raise V5WindowComparisonError(
+                f"{label}: market funding does not reconcile"
+            )
     return {
         "equity": equity,
         "pnl": pnl,
         "fees": fees,
         "funding": funding,
         "markets": amounts,
+        "market_components": components,
         "starting_cash": equity - pnl,
     }
 
@@ -185,6 +226,84 @@ def compare(before: object, after: object) -> dict[str, object]:
                 ),
                 "closing_marked_equity": str(last["equity"]),
             }
+        # Only fully component-bearing BEFORE and AFTER snapshots may
+        # produce market-level flow/mark decomposition. Mixed old/new
+        # reports still retain authentic total economics, with an explicit
+        # missing-component explanation instead of assumed zeros.
+        all_components = all(
+            snapshot[lane]["market_components"] is not None
+            for snapshot in (prior, later)
+            for lane in ("baseline", "candidate")
+        )
+        component_window: dict[str, object] = {
+            "available": False,
+            "reason": "one_or_more_exact_source_snapshots_precede_component_reporting",
+            "is_realized_pnl_decomposition": False,
+        }
+        if all_components:
+            detailed: dict[str, dict[str, dict[str, str]]] = {}
+            fields = (
+                "filled_cashflow", "open_inventory_mark_value",
+                "fill_fees", "funding_cash",
+            )
+            for market in markets:
+                market_deltas: dict[str, dict[str, str]] = {}
+                for lane in ("baseline", "candidate"):
+                    first = prior[lane]["market_components"]
+                    last = later[lane]["market_components"]
+                    assert first is not None and last is not None
+                    base = first.get(market, {})
+                    end = last.get(market, {})
+                    delta_components = {
+                        field: end.get(field, ZERO) - base.get(field, ZERO)
+                        for field in fields
+                    }
+                    if (
+                        delta_components["filled_cashflow"]
+                        + delta_components["open_inventory_mark_value"]
+                        - delta_components["fill_fees"]
+                        + delta_components["funding_cash"]
+                        != Decimal(rows[market][f"{lane}_window_pnl"])
+                    ):
+                        raise V5WindowComparisonError(
+                            f"{market}: component window does not reconcile"
+                        )
+                    market_deltas[lane] = {
+                        field: str(delta_components[field]) for field in fields
+                    }
+                detailed[market] = market_deltas
+            for lane in ("baseline", "candidate"):
+                window_fees = sum(
+                    (Decimal(entry[lane]["fill_fees"])
+                     for entry in detailed.values()), ZERO
+                )
+                window_funding = sum(
+                    (Decimal(entry[lane]["funding_cash"])
+                     for entry in detailed.values()), ZERO
+                )
+                if (
+                    window_fees != Decimal(
+                        lanes[lane]["paid_fees_in_window"]
+                    )
+                    or window_funding != Decimal(
+                        lanes[lane]["funding_cash_delta_in_window"]
+                    )
+                ):
+                    raise V5WindowComparisonError(
+                        f"{lane}: window fee/funding components disagree"
+                    )
+            component_window = {
+                "available": True,
+                "reason": None,
+                "is_realized_pnl_decomposition": False,
+                "note": (
+                    "Market cash-flow changes and open inventory mark-value "
+                    "changes are additive. Closing inventory moves value "
+                    "between these components; neither is standalone "
+                    "realized or unrealized profit."
+                ),
+                "by_market": detailed,
+            }
         advantage = (
             Decimal(lanes["candidate"]["marked_account_pnl_change"])
             - Decimal(lanes["baseline"]["marked_account_pnl_change"])
@@ -221,6 +340,7 @@ def compare(before: object, after: object) -> dict[str, object]:
             "candidate_minus_baseline_window_pnl": str(advantage),
             "candidate_minus_baseline_cumulative_pnl_at_end": str(later["delta"]),
             "by_market": rows,
+            "component_window": component_window,
             "largest_candidate_disadvantages": [
                 market for market in sorted(
                     markets,
