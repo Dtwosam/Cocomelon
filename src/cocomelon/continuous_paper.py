@@ -249,6 +249,10 @@ from cocomelon.research.opening_fill_liquidity import (
     evidence_from_opening_trace,
     opening_fill_liquidity_attribution,
 )
+from cocomelon.research.opportunity_inventory_witness import (
+    OpportunityInventoryWitnessStore,
+    original_inventory_overlap_audit,
+)
 from cocomelon.research.original_stop_book_evidence import (
     OriginalStopBookCapture,
     OriginalStopBookEvidenceStore,
@@ -843,7 +847,13 @@ class _ContinuousOpeningOpportunitySink:
         replacement_funding_store: ContinuousPaperReplacementFundingStore,
         capacity_release_book_capture: CapacityReleaseBookCapture,
         rank_tracker: LatestCoarseRankTracker,
+        *,
+        inventory_store: OpportunityInventoryWitnessStore | None = None,
+        position_provider: Callable[[], Sequence[PaperPosition]] | None = None,
     ) -> None:
+        self._inventory_store = inventory_store
+        self._position_provider = position_provider
+        self.inventory_error: str | None = None
         self._store = store
         self._path_store = path_store
         self._exit_book_store = exit_book_store
@@ -873,6 +883,19 @@ class _ContinuousOpeningOpportunitySink:
             if self.error is None:
                 self.error = f"{type(exc).__name__}: {exc}"
             return
+
+        if self._inventory_store is not None:
+            try:
+                if self._position_provider is None:
+                    raise RuntimeError("research census has no paper position provider")
+                self._inventory_store.record(
+                    evidence,
+                    self._position_provider(),
+                    recorded_at_ms=utc_now_ms(),
+                )
+            except Exception as exc:
+                if self.inventory_error is None:
+                    self.inventory_error = f"{type(exc).__name__}: {exc}"
 
         self._capacity_release_book_capture.register_from_trace(
             trace,
@@ -3498,6 +3521,7 @@ def _prospective_full_stack_forward_markout_payload(
     momentum_state: ProspectiveMomentumBandEntryState,
     *,
     lineage_store: ContinuousPaperOpeningLineageStore | None = None,
+    inventory_store: OpportunityInventoryWitnessStore | None = None,
 ) -> dict[str, object]:
     overlap_start = max(
         combined_state.started_at_ms,
@@ -3522,6 +3546,15 @@ def _prospective_full_stack_forward_markout_payload(
                     opportunities,
                     closed_trades,
                     lineage_store.iter_records(),
+                    overlap_started_at_ms=overlap_start,
+                )
+            )
+        if inventory_store is not None:
+            payload["original_open_inventory_witness"] = (
+                original_inventory_overlap_audit(
+                    opportunities,
+                    closed_trades,
+                    inventory_store.iter_records(),
                     overlap_started_at_ms=overlap_start,
                 )
             )
@@ -9188,6 +9221,9 @@ async def run_continuous_paper_session(
         component_started,
     )
     rank_tracker = LatestCoarseRankTracker()
+    opening_opportunity_inventory_store = OpportunityInventoryWitnessStore(
+        root / "opening-opportunity-inventory"
+    )
     opening_opportunity_sink = _ContinuousOpeningOpportunitySink(
         opening_opportunity_store,
         opening_opportunity_path_store,
@@ -9195,6 +9231,8 @@ async def run_continuous_paper_session(
         replacement_funding_store,
         capacity_release_book_capture,
         rank_tracker,
+        inventory_store=opening_opportunity_inventory_store,
+        position_provider=lambda: execution.account.positions,
     )
     component_started = time.perf_counter()
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
@@ -11727,6 +11765,7 @@ async def run_continuous_paper_session(
                     prospective_two_strike_stop_filter_state,
                     prospective_momentum_band_entry_state,
                     lineage_store=opening_lineage_store,
+                    inventory_store=opening_opportunity_inventory_store,
                 )
             )
             _write_json_atomic(
