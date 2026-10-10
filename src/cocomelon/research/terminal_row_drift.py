@@ -1,6 +1,6 @@
-"""Minimal fail-closed diagnostics for immutable prospective terminal rows.
+"""Bounded fail-closed diagnostics for immutable prospective terminal rows.
 
-Return a stable JSON-pointer to the first changed field, never original or
+Return deterministic JSON pointers to changed fields, never original or
 replacement values. A receipt is diagnostic only: callers MUST still reject
 any change to already published terminal economic rows.
 """
