@@ -5984,3 +5984,8 @@ def test_mainnet_rotation_pins_shadow_feeds_but_not_trade_decisions() -> None:
         "\n                                    subscribed"
     ) in source
     assert "start_supervisors(\n                subscribed," in source
+    startup_coverage = source.split("subscribed = selected", 1)[1].split(
+        "subscribed_keys =", 1
+    )[0]
+    # This late startup phase has already called observe(); seed() is illegal.
+    assert "evaluate_decisions=False" not in startup_coverage
