@@ -7,12 +7,16 @@ on:
     paths:
       - ".github/workflows/immutable-terminal-source-parity-audit.yml"
       - "scripts/audit_immutable_terminal_source_parity.py"
+      - "scripts/resolve_terminal_parity_schedule.py"
       - "src/cocomelon/research/terminal_source_parity.py"
   workflow_run:
     workflows:
       - "Continuous Mainnet Paper Trader"
     types:
       - completed
+  # Independent of GitHub's workflow_run chain-depth cap.
+  schedule:
+    - cron: "17 */4 * * *"
   workflow_dispatch:
     inputs:
       source_run_id:
@@ -71,6 +75,15 @@ jobs:
           elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             run="$INPUT_RUN"
             attempt="$INPUT_ATTEMPT"
+          elif [ "$EVENT_NAME" = "schedule" ]; then
+            # Chronological fixed post-causal cohort, never PnL selection.
+            pair="$(python scripts/resolve_terminal_parity_schedule.py --repository "$GITHUB_REPOSITORY")"
+            if [ -z "$pair" ]; then
+              echo "No unaudited authenticated completed paper source in bounded scan" >> "$GITHUB_STEP_SUMMARY"
+              echo "available=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            IFS=$'\t' read -r run attempt <<<"$pair"
           else
             # Verified original adopting worker source for first automatic
             # main-push audit; future completed paper events select themselves.
@@ -221,7 +234,7 @@ jobs:
         if: steps.source.outputs.available == 'true'
         uses: actions/upload-artifact@v5
         with:
-          name: immutable-terminal-source-parity-${{ github.run_id }}-${{ github.run_attempt }}
+          name: immutable-terminal-source-parity-${{ steps.source.outputs.run }}-${{ steps.source.outputs.attempt }}
           path: /tmp/terminal-source-parity-redacted.json
           if-no-files-found: error
           retention-days: 90
