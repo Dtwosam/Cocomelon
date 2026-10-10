@@ -643,12 +643,15 @@ TARGETED_TREND_PAIRED_SHADOW_FREEZE_FILENAME = (
 LOSS_CONTEXT_PAIRED_SHADOW_LEGACY_ROOT = (
     "loss-context-paired-portfolio-shadow"
 )
-# Source-scope v1 A/B histories mixed market-specific outages into global
-# anonymous debt. Preserve them untouched, never upgrade their evidentiary
-# authority by reusing the same state directory. The frozen entry rule is
-# unchanged; only future paper shadow observations belong to this new root.
-LOSS_CONTEXT_PAIRED_SHADOW_ROOT = (
+# The scoped-v2 accounts advanced beyond their last signed checkpoint and
+# cannot be restored without erasing simulated fills. Preserve both v1 and v2
+# as failed research evidence. The unchanged frozen hypothesis gets a separate
+# fresh prospective account pair; no earlier results count in v3 review.
+LOSS_CONTEXT_PAIRED_SHADOW_SCOPED_V2_ROOT = (
     "loss-context-paired-portfolio-shadow-scoped-v2"
+)
+LOSS_CONTEXT_PAIRED_SHADOW_ROOT = (
+    "loss-context-paired-portfolio-shadow-scoped-v3"
 )
 LOSS_CONTEXT_PAIRED_SHADOW_SUMMARY_FILENAME = (
     "loss-context-paired-portfolio-shadow-summary.json"

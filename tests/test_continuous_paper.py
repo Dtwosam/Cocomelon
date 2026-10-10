@@ -5939,6 +5939,10 @@ def test_clean_paired_shadow_uses_new_root_without_reusing_v1_account_history() 
         "loss-context-paired-portfolio-shadow"
     )
     assert LOSS_CONTEXT_PAIRED_SHADOW_ROOT == (
+        "loss-context-paired-portfolio-shadow-scoped-v3"
+    )
+    # The invalid v2 account directory must remain distinct and untouched.
+    assert LOSS_CONTEXT_PAIRED_SHADOW_ROOT != (
         "loss-context-paired-portfolio-shadow-scoped-v2"
     )
     assert (
