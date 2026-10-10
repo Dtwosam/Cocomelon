@@ -166,3 +166,21 @@ def test_quarantine_wired_only_to_original_paper_opening_not_paired_control() ->
     assert "PaperEnaQuarantine" not in paired
     assert "opening_candidate_filter=self._baseline_filter" in paired
     assert "opening_candidate_filter=self._candidate_filter" in paired
+
+    workflow = Path(".github/workflows/continuous-paper.yml").read_text(
+        encoding="utf-8"
+    )
+    after_handoff = workflow.index(
+        "- name: Upload fixed ENA paper quarantine decision receipt"
+    )
+    durable = workflow.index("- name: Upload durable continuous paper state")
+    compact = workflow.index(
+        "- name: Verify compact exact LONG trend research source"
+    )
+    assert durable < after_handoff < compact
+    block = workflow[after_handoff:compact]
+    assert "continue-on-error: true" in block
+    assert "steps.fast_resume_dispatch.outcome == 'success'" in block
+    assert "steps.fallback_resume_dispatch.outcome == 'success'" in block
+    assert "paper-ena-quarantine-summary.json" in block
+    assert "continuous-paper-ena-quarantine-" in block
