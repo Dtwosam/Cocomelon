@@ -159,6 +159,10 @@ def _metrics(trades: list[_Trade]) -> dict[str, object]:
     fees = sum((t.fees for t in trades), ZERO)
     funding = sum((t.funding for t in trades), ZERO)
     net = sum((t.net for t in trades), ZERO)
+    booked_cost_drag = gross - net
+    expected_cost_drag = fees - funding
+    gross_positive = [t for t in trades if t.gross > ZERO]
+    flipped = [t for t in gross_positive if t.net <= ZERO]
     return {
         "trades": len(trades),
         "wins": sum(t.net > ZERO for t in trades),
@@ -167,6 +171,31 @@ def _metrics(trades: list[_Trade]) -> dict[str, object]:
         "fees": str(fees),
         "funding_cash_pnl": str(funding),
         "net_pnl": str(net),
+        "gross_positive_trades": len(gross_positive),
+        "gross_positive_net_nonpositive_trades": len(flipped),
+        "gross_positive_net_negative_trades": sum(
+            trade.net < ZERO for trade in flipped
+        ),
+        "gross_nonpositive_net_positive_trades": sum(
+            trade.gross <= ZERO and trade.net > ZERO for trade in trades
+        ),
+        "gross_positive_flipped_booked_gross_pnl": str(
+            sum((trade.gross for trade in flipped), ZERO)
+        ),
+        "gross_positive_flipped_booked_net_pnl": str(
+            sum((trade.net for trade in flipped), ZERO)
+        ),
+        "gross_positive_flipped_recorded_fees": str(
+            sum((trade.fees for trade in flipped), ZERO)
+        ),
+        "gross_positive_flipped_funding_cash_pnl": str(
+            sum((trade.funding for trade in flipped), ZERO)
+        ),
+        "recorded_fees_minus_funding_cash": str(expected_cost_drag),
+        "gross_minus_booked_net_pnl": str(booked_cost_drag),
+        "booked_net_cash_reconciliation_residual": str(
+            net - gross + fees - funding
+        ),
         "net_per_trade": str(net / len(trades)) if trades else None,
         "net_r": str(sum((t.net_r for t in trades), ZERO)),
         "unverified_entry_context_trades": sum(

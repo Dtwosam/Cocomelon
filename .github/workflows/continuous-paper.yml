@@ -1358,6 +1358,12 @@ jobs:
           print(f"- Original closed trades: {o['trades']}")
           print(f"- Booked net realized PnL: ${o['net_pnl']}")
           print(f"- Recorded fees / funding: ${o['fees']} / ${o['funding_cash_pnl']}")
+          print(f"- Gross-positive closes turned nonpositive after booked costs: "
+                f"{o['gross_positive_net_nonpositive_trades']} / "
+                f"{o['gross_positive_trades']} gross-positive closes")
+          print(f"- Booked fee-minus-funding drag: "
+                f"${o['recorded_fees_minus_funding_cash']}; "
+                f"gross-minus-booked-net: ${o['gross_minus_booked_net_pnl']}")
           print(f"- Missing verified entry context: {o['unverified_entry_context_trades']}")
           print(f"- Incomplete original trade charts: {o['incomplete_chart_trades']}")
           print("- Side/strategy net losers (retrospective attribution only):")
