@@ -2198,3 +2198,43 @@ def test_compact_long_trend_source_waits_for_deferred_upgrade_rebuild() -> None:
     assert "continue-on-error: true" in step
     assert "live_orders: true" not in step
     assert "execution_mode: live" not in step
+
+
+def test_original_profitability_research_sources_trigger_genuine_paper_handoff() -> None:
+    """Both report dependencies must wake and reach the existing paper worker."""
+    import shlex
+
+    source = WORKFLOW.read_text(encoding="utf-8")
+    trigger = source.split("    paths:\n", 1)[1].split(
+        "\n  workflow_dispatch:", 1
+    )[0]
+    start = source.index('changed_runtime="$(\n')
+    end = source.index(')"', start)
+    command = " ".join(
+        line.strip().removesuffix("\\").strip()
+        for line in source[start:end].splitlines()[1:]
+    )
+    argv = shlex.split(command)
+    assert argv[:6] == [
+        "git", "diff", "--name-only", "$GITHUB_SHA", "FETCH_HEAD", "--"
+    ]
+    required = (
+        "src/cocomelon/research/paper_profitability_scoreboard.py",
+        "scripts/report_paper_profitability_scoreboard.py",
+    )
+    for file_path in required:
+        assert f'      - "{file_path}"' in trigger
+        assert argv.count(file_path) == 1, (
+            f"active worker git diff misses separate source: {file_path}"
+        )
+        assert (Path(__file__).resolve().parents[1] / file_path).is_file()
+    report = source[
+        source.index("- name: Reconcile original paper after-cost profitability cohorts"):
+        source.index("- name: Upload original paper after-cost profitability scoreboard")
+    ]
+    assert "scripts/report_paper_profitability_scoreboard.py" in report
+    cli = (
+        Path(__file__).resolve().parents[1]
+        / "scripts/report_paper_profitability_scoreboard.py"
+    ).read_text(encoding="utf-8")
+    assert "from cocomelon.research.paper_profitability_scoreboard import" in cli
