@@ -1649,6 +1649,17 @@ jobs:
           retention-days: 90
           compression-level: 6
 
+      - name: Upload witnessed intra-worker gap recoveries
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/in-session-gap-recovery-witnesses.jsonl') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-in-session-gap-witnesses-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/in-session-gap-recovery-witnesses.jsonl
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Review immutable forward-only loss-context coverage after handoff
         id: forward_loss_context_review
         if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.forward_loss_context_anchor.outcome == 'success' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/session-summary.json') != '' }}
