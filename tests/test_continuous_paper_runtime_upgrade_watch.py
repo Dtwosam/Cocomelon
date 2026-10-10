@@ -8,12 +8,12 @@ worker's runtime watch MUST still recognize changes to research producers.
 
 from __future__ import annotations
 
+import pathlib
 import shlex
-from pathlib import Path
 
 
 WATCH = (
-    Path(__file__).resolve().parents[1]
+    pathlib.Path(__file__).resolve().parents[1]
     / ".github"
     / "workflows"
     / "continuous-paper.yml"
