@@ -15,7 +15,9 @@ permissions:
   actions: read
 
 concurrency:
-  group: signed-v5-window-${{ github.event.workflow_run.id || 'scheduled-catchup' }}
+  # Serialize callback and independent catch-up to avoid concurrent uploads
+  # for the same authentic paper run/attempt under identical artifact names.
+  group: signed-v5-window-singleflight
   cancel-in-progress: false
 
 jobs:
