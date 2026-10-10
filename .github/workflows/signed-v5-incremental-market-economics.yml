@@ -5,18 +5,22 @@ on:
     workflows:
       - "Continuous Mainnet Paper Trader"
     types: [completed]
+  # Independent of the workflow_run chain-depth limit. Catch up one
+  # authentic unreported exact predecessor interval per scheduled scan.
+  schedule:
+    - cron: "11 * * * *"
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: signed-v5-window-${{ github.event.workflow_run.id }}
+  group: signed-v5-window-${{ github.event.workflow_run.id || 'scheduled-catchup' }}
   cancel-in-progress: false
 
 jobs:
   window:
-    if: ${{ github.event.workflow_run.head_branch == 'main' }}
+    if: ${{ github.event_name == 'schedule' || github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
@@ -32,12 +36,13 @@ jobs:
         with:
           python-version: '3.12'
       - name: Compare authenticated consecutive paper worker market reports
+        id: compare
         run: python -m scripts.publish_signed_v5_market_windows
       - name: Retain exact signed-account interval analysis
-        if: ${{ hashFiles('signed-v5-incremental-market-window.json') != '' }}
+        if: ${{ steps.compare.outputs.artifact_name != '' }}
         uses: actions/upload-artifact@v7
         with:
-          name: signed-v5-incremental-market-window-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          name: ${{ steps.compare.outputs.artifact_name }}
           path: signed-v5-incremental-market-window.json
           if-no-files-found: error
           retention-days: 90
