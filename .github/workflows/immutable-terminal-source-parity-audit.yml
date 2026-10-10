@@ -1,0 +1,227 @@
+name: Immutable Terminal Source Parity Audit
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/immutable-terminal-source-parity-audit.yml"
+      - "scripts/audit_immutable_terminal_source_parity.py"
+      - "src/cocomelon/research/terminal_source_parity.py"
+  workflow_run:
+    workflows:
+      - "Continuous Mainnet Paper Trader"
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Authenticated completed main-branch paper run
+        required: true
+        type: string
+      source_run_attempt:
+        description: Exact source attempt
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: immutable-terminal-source-parity-audit
+  cancel-in-progress: false
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # Frozen accepted evidence. Never replace this by a convenient newer
+      # ledger to make an old failed research campaign appear successful.
+      ACCEPTED_LEDGER_RUN: "37859637682"
+      ACCEPTED_LEDGER_ATTEMPT: "1"
+      ACCEPTED_LEDGER_NAME: "prospective-risk-rejected-fast-markout-ledger-37859637682-1"
+      EVENT_NAME: ${{ github.event_name }}
+      EVENT_RUN: ${{ github.event.workflow_run.id || '' }}
+      EVENT_ATTEMPT: ${{ github.event.workflow_run.run_attempt || '' }}
+      INPUT_RUN: ${{ inputs.source_run_id || '' }}
+      INPUT_ATTEMPT: ${{ inputs.source_run_attempt || '' }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e .
+
+      - name: Verify original and current source provenance
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            run="$EVENT_RUN"
+            attempt="$EVENT_ATTEMPT"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run="$INPUT_RUN"
+            attempt="$INPUT_ATTEMPT"
+          else
+            # Verified original adopting worker source for first automatic
+            # main-push audit; future completed paper events select themselves.
+            run="38074463531"
+            attempt="1"
+          fi
+          if [[ ! "$run" =~ ^[0-9]+$ || ! "$attempt" =~ ^[0-9]+$ ]]; then
+            echo "::error::source run identity must be numeric"
+            exit 1
+          fi
+
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" > /tmp/parity-source-run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ACCEPTED_LEDGER_RUN" > /tmp/parity-ledger-run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts?per_page=100" > /tmp/parity-source-artifacts.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ACCEPTED_LEDGER_RUN/artifacts?per_page=100" > /tmp/parity-ledger-artifacts.json
+
+          export SOURCE_RUN="$run" SOURCE_ATTEMPT="$attempt"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          source_id = int(os.environ["SOURCE_RUN"])
+          attempt = int(os.environ["SOURCE_ATTEMPT"])
+          old_id = int(os.environ["ACCEPTED_LEDGER_RUN"])
+          old_attempt = int(os.environ["ACCEPTED_LEDGER_ATTEMPT"])
+          expected_old = os.environ["ACCEPTED_LEDGER_NAME"]
+          def read(name):
+              return json.loads(Path("/tmp/parity-" + name + ".json").read_text())
+
+          source = read("source-run")
+          old = read("ledger-run")
+          for run, run_id, att in ((source, source_id, attempt), (old, old_id, old_attempt)):
+              if (
+                  run.get("id") != run_id
+                  or run.get("path") not in {
+                      ".github/workflows/continuous-paper.yml",
+                      ".github/workflows/prospective-risk-rejected-fast-markout-ledger.yml",
+                  }
+                  or run.get("head_branch") != "main"
+                  or run.get("run_attempt") != att
+                  or (run.get("head_repository") or {}).get("full_name") != repo
+              ):
+                  raise SystemExit("source workflow identity is not independently verified")
+          if source["path"] != ".github/workflows/continuous-paper.yml":
+              raise SystemExit("source is not an original paper worker")
+          if old["path"] != ".github/workflows/prospective-risk-rejected-fast-markout-ledger.yml":
+              raise SystemExit("previous accepted ledger is not the original research workflow")
+          if old.get("status") != "completed" or old.get("conclusion") != "success":
+              raise SystemExit("original accepted ledger run did not complete successfully")
+          if source.get("status") != "completed":
+              # A completed workflow_run event must never use live/incomplete
+              # evidence. Main-push fallback uses the original completed
+              # *artifact* after the publishing step even if its parent
+              # paper job is finishing cleanup.
+              if os.environ["EVENT_NAME"] == "workflow_run":
+                  raise SystemExit("paper source event did not complete")
+              if source_id != 38074463531:
+                  raise SystemExit("non-default source run is not complete")
+
+          def artifact(index, expected):
+              matches = [
+                  x for x in index.get("artifacts", [])
+                  if x.get("name") == expected and x.get("expired") is False
+              ]
+              if len(matches) != 1:
+                  return None
+              x = matches[0]
+              if (
+                  not isinstance(x.get("id"), int)
+                  or not isinstance(x.get("digest"), str)
+                  or not x["digest"].startswith("sha256:")
+              ):
+                  raise SystemExit("artifact digest or ID invalid")
+              return x
+
+          original = artifact(read("ledger-artifacts"), expected_old)
+          if original is None:
+              raise SystemExit("accepted original ledger artifact is missing")
+          expected_new = f"continuous-paper-full-stack-forward-markout-{source_id}-{attempt}"
+          rebuilt = artifact(read("source-artifacts"), expected_new)
+          if rebuilt is None:
+              # Some legitimate paper jobs stop at an early guard without a
+              # completed research source. Do not invent a source or retry
+              # a different run to produce convenient results.
+              Path("/tmp/parity-unavailable").write_text("no full-stack source")
+              print("No authenticated full-stack source for this exact paper run")
+          else:
+              Path("/tmp/parity-source-artifact-id").write_text(str(rebuilt["id"]))
+              Path("/tmp/parity-source-digest").write_text(rebuilt["digest"])
+          Path("/tmp/parity-ledger-artifact-id").write_text(str(original["id"]))
+          Path("/tmp/parity-ledger-digest").write_text(original["digest"])
+          PY
+
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "attempt=$attempt" >> "$GITHUB_OUTPUT"
+          if [ -e /tmp/parity-unavailable ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download authenticated immutable inputs
+        if: steps.source.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/parity-previous /tmp/parity-rebuilt
+          old_id="$(cat /tmp/parity-ledger-artifact-id)"
+          source_id="$(cat /tmp/parity-source-artifact-id)"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$old_id/zip" > /tmp/parity-previous.zip
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$source_id/zip" > /tmp/parity-rebuilt.zip
+          unzip -q /tmp/parity-previous.zip -d /tmp/parity-previous
+          unzip -q /tmp/parity-rebuilt.zip -d /tmp/parity-rebuilt
+          test -s /tmp/parity-previous/prospective-risk-rejected-fast-markout-ledger.json
+          test -s /tmp/parity-rebuilt/prospective-full-stack-forward-markout-summary.json
+
+      - name: Audit without changing historical evidence
+        if: steps.source.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/audit_immutable_terminal_source_parity.py \
+            --previous-ledger /tmp/parity-previous/prospective-risk-rejected-fast-markout-ledger.json \
+            --rebuilt-summary /tmp/parity-rebuilt/prospective-full-stack-forward-markout-summary.json \
+            --json-out /tmp/terminal-source-parity-redacted.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path("/tmp/terminal-source-parity-redacted.json").read_text())
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as f:
+              f.write("## Read-only historic terminal source parity\n\n")
+              f.write(f"- Original sealed rows: {report['previous_terminal_rows']}\n")
+              f.write(f"- Unchanged: {report['previous_rows_unchanged']}\n")
+              f.write(f"- Changed: {report['previous_rows_changed']}\n")
+              f.write(f"- Missing: {report['previous_rows_missing']}\n")
+              f.write(f"- Decision-only changed: {report['changed_rows_classification_only']}\n")
+              f.write(f"- Markout changed: {report['changed_rows_markout_drift']}\n")
+              f.write(f"- Future-closed journal exposures: {report['source_future_finalized_open_exposures']}\n")
+              f.write(f"- Historical terminal parity blocked: {report['historical_parity_blocked']}\n")
+              f.write("**Diagnostic only; no ledger repairs, readiness grant, live authority, or profit claim.**\n")
+          PY
+
+      - name: Upload redacted parity diagnostic
+        if: steps.source.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: immutable-terminal-source-parity-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/terminal-source-parity-redacted.json
+          if-no-files-found: error
+          retention-days: 90
