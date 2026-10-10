@@ -4,6 +4,24 @@
 
 This is the **top-level current research and handoff checklist**, linked from `README.md`, `AGENTS.md`, `docs/STATUS.md`, and `docs/CHATGPT_PROJECT_SOURCE.md`. It complements, but does not supersede, `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, or individual immutable experiment freezes.
 
+## October 10 — actual signed v5 market-level PnL and capacity-reflow diagnosis
+
+**NEW verified accounting insight, not a trading policy change:** Exact signed v5 artifact **11668295388** was decomposed by **real fill cash flows minus actual fees, plus signed marked open inventory and funding**. The resulting market sums reproduce the independent original paper research accounts *exactly*, without dropping shared or losing markets:
+
+| Market | Unchanged baseline | Frozen v5 challenger | Meaning |
+| --- | ---: | ---: | --- |
+| NEAR | -$10.8285 | -$10.8305 | Shared exit; effectively identical loss |
+| CRV | -$6.5835 | $0 | Baseline-only open exposure |
+| PONS | +$1.8389 | $0 | Baseline-only open exposure |
+| PUMP | $0 | -$9.9867 | Challenger-only closed loss |
+| ZK | $0 | -$2.2904 | Challenger-only open loss |
+| USELESS | -$0.3090 | -$1.5736 | Different open position sizing and cost |
+| **Total** | **-$15.8822** | **-$24.6812** | **-$8.7990 challenger vs baseline** |
+
+**This definitively invalidates naive 'blocked losses = saved money' math.** Different positions and fills from the *same true forward replay* can offset an avoided losing exposure. This is cumulative checkpoint accounting, not yet the `after_first_eligible_checkpoint` scored forward trial and **not causal attribution** of specific blocked decisions. No new filter, refreeze or live order is authorized by this table.
+
+New research-only reconciler `scripts/reconcile_signed_v5_market_economics.py` (when merged) validates the v5 checkpoint digest and signed review-ledger chain, BOTH SQLite state IDs, per-market filled signed quantities vs open positions, every actual fill fee/funding accrual, BOTH signed account totals, and signed candidate-minus-baseline; produces a compact **market-level attribution artifact at future safe handoffs**, separate from frozen promotion criteria. It intentionally reports **no readiness or hypothetical saved PnL**, and **fails closed** if any input does not reconcile. Do not mistake this for improved trading performance. Next economically meaningful decision remains the **second signed v5 account checkpoint and after-anchor PnL**, then the real 5m L2/funding exit feasibility.
+
 ## Latest authenticated economics — October 10, 11:03 UTC (supersedes older worker snapshots)
 
 **Do not restart finished tasks:** merged and deployed #1093 (funding transport), #1094 (deferred LONG source), #1095 (exactly one v5 paired shadow), #1096 (already-frozen clean-forward rank boundary), and #1097 (safe worker trigger). Both #1097 exact-head CI and post-merge CI passed. Current live *paper only* worker is **38046471594** at `cca08acc09da33fe8005a7645737a813fcd97e49`, exact predecessor **38044400505**. GitHub Issue #469 at **11:03:20 UTC**: **160 cumulative original closes, $9,661.01 equity, -$338.99 current whole-account net, live orders false**. The 160-close **completed paper-journal** scoreboard from run 38044400505 artifact **11668400292**: **41 winners / 119 losers, -$342.4435 booked net** = **-$216.4397 gross - $127.9402 fees + $1.9364 funding**. LONG 75 trades **-$284.80 net**, SHORT 85 trades **-$57.64**. Incomplete chart evidence 128 trades, missing rank 17, unverified entry context 7; these remain included in account totals. Completed closes and live equity can differ due to open positions/mark prices; never treat them as contradictory or double count fees.
