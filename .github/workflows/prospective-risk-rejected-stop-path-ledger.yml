@@ -545,6 +545,8 @@ jobs:
           ERROR_TEXT: ${{ steps.ledger.outputs.error }}
           SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
           SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          SOURCE_ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
+          PREVIOUS_WORKFLOW_RUN_ID: ${{ steps.previous.outputs.previous_workflow_run_id }}
         run: |
           python - <<'PY'
           import os
@@ -561,6 +563,8 @@ jobs:
                   f"`{os.environ['SOURCE_RUN_ID']} / "
                   f"{os.environ['SOURCE_RUN_ATTEMPT']}`"
               ),
+              f"- previous accepted ledger workflow run: `{os.environ.get('PREVIOUS_WORKFLOW_RUN_ID') or 'none'}`",
+              f"- source artifact SHA-256: `{os.environ['SOURCE_ARTIFACT_DIGEST']}`",
               f"- error: `{error}`",
               "",
               "No risk-rejected stop-path evidence is published from this run.",
@@ -575,6 +579,7 @@ jobs:
               encoding="utf-8",
           )
           PY
+          cat /tmp/risk-rejected-stop-path-status.md >> "$GITHUB_STEP_SUMMARY"
           gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/risk-rejected-stop-path-status.md)"
 
       - name: Fail closed on ledger drift
