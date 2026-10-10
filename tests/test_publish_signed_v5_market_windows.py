@@ -269,7 +269,9 @@ def test_no_runtime_modification_or_paper_trigger_in_read_only_workflow() -> Non
     assert "persist-credentials: false" in yml
     assert "scripts.publish_signed_v5_market_windows" in yml
     assert "workflow_dispatch:" not in yml
-    assert "schedule:" not in yml
+    assert 'cron: "11 * * * *"' in yml
+    assert "github.event_name == 'schedule'" in yml
+    assert "steps.compare.outputs.artifact_name" in yml
     assert "actions: write" not in yml
     assert "issue" not in yml.lower()
     assert "live_orders" not in yml
@@ -280,3 +282,172 @@ def test_no_runtime_modification_or_paper_trigger_in_read_only_workflow() -> Non
         '"scripts/publish_signed_v5_market_windows.py"'
         not in paper.split("workflow_dispatch:", 1)[0]
     )
+
+
+def _scheduled_sources(
+    *,
+    existing: bool = False,
+    missing_prior: bool = False,
+) -> tuple[dict[str, object], dict[str, bytes]]:
+    jsons, archives = _services()
+    jsons[f"repos/{REPO}/actions/workflows/"
+          "continuous-paper.yml/runs?per_page=100"] = {
+        "total_count": 3,
+        "workflow_runs": [
+            {
+                "id": 300,
+                "run_attempt": 1,
+                "status": "in_progress",
+                "head_branch": "main",
+                "path": ".github/workflows/continuous-paper.yml",
+                "display_title": "Continuous Paper · 200",
+            },
+            {
+                "id": 201,
+                "run_attempt": 1,
+                "status": "completed",
+                "head_branch": "main",
+                "path": ".github/workflows/continuous-paper.yml",
+                "display_title": "Continuous Paper · 201",
+            },
+            {
+                "id": 200,
+                "run_attempt": 1,
+                "status": "completed",
+                "conclusion": "failure",
+                "head_branch": "main",
+                "path": ".github/workflows/continuous-paper.yml",
+                "display_title": "Continuous Paper · 100",
+            },
+        ],
+    }
+    jsons[f"repos/{REPO}/actions/artifacts?"
+          "name=signed-v5-incremental-market-window-200-1&per_page=100"] = {
+        "total_count": int(existing),
+        "artifacts": [{
+            "id": 77,
+            "name": "signed-v5-incremental-market-window-200-1",
+            "expired": False,
+        }] if existing else [],
+    }
+    if missing_prior:
+        jsons[f"repos/{REPO}/actions/runs/100/artifacts?per_page=100"] = {
+            "total_count": 0,
+            "artifacts": [],
+        }
+    return jsons, archives
+
+
+def test_scheduled_independent_catchup_recovers_true_failed_worker() -> None:
+    jsons, archives = _scheduled_sources()
+    result, reason = publisher.scheduled_catchup(
+        REPO, jsons.__getitem__, archives.__getitem__,
+    )
+    assert result is not None
+    assert result["candidate_minus_baseline_window_pnl"] == "-9"
+    assert "catch-up validated exact" in reason
+    assert result["artifact_lineage"]["current_run_id"] == 200
+    assert result["artifact_lineage"]["predecessor_run_id"] == 100
+    assert result["scheduled_catchup"] == {
+        "discovery_limit_recent_paper_runs": 100,
+        "source_run_id": 200,
+        "source_run_attempt": 1,
+        "not_review_authority": True,
+    }
+    assert result["promotion_authority"] is False
+
+
+def test_schedule_skips_only_existing_unique_retained_interval_artifact() -> None:
+    jsons, archives = _scheduled_sources(existing=True)
+    result, reason = publisher.scheduled_catchup(
+        REPO, jsons.__getitem__, archives.__getitem__,
+    )
+    assert result is None
+    assert "no unpublished authentic" in reason
+
+
+def test_schedule_never_skips_missing_exact_predecessor_to_use_older_worker() -> None:
+    jsons, archives = _scheduled_sources(missing_prior=True)
+    result, reason = publisher.scheduled_catchup(
+        REPO, jsons.__getitem__, archives.__getitem__,
+    )
+    assert result is None
+    assert "no unpublished authentic" in reason
+
+
+@pytest.mark.parametrize(
+    ("corruption", "reason"),
+    (
+        ("wrong_path", "non-paper workflow"),
+        ("duplicate_worker", "duplicate exact completed paper run"),
+        ("incomplete_artifacts", "incomplete published interval artifact"),
+        ("duplicate_artifact", "duplicate existing signed interval"),
+        ("future_predecessor", "predecessor"),
+        ("wrong_candidate", "frozen candidate changed"),
+    ),
+)
+def test_scheduled_source_integrity_fails_closed(
+    corruption: str, reason: str,
+) -> None:
+    jsons, archives = _scheduled_sources()
+    key = f"repos/{REPO}/actions/workflows/continuous-paper.yml/runs?per_page=100"
+    artifact_key = (
+        f"repos/{REPO}/actions/artifacts?"
+        "name=signed-v5-incremental-market-window-200-1&per_page=100"
+    )
+    if corruption == "wrong_path":
+        jsons[key]["workflow_runs"][2]["path"] = "other.yml"
+    elif corruption == "duplicate_worker":
+        jsons[key]["workflow_runs"].append(jsons[key]["workflow_runs"][2].copy())
+        jsons[key]["total_count"] = 4
+    elif corruption == "incomplete_artifacts":
+        jsons[artifact_key]["total_count"] = 101
+    elif corruption == "duplicate_artifact":
+        jsons[artifact_key]["total_count"] = 2
+        jsons[artifact_key]["artifacts"] = [
+            {"id": 14, "name": "signed-v5-incremental-market-window-200-1",
+             "expired": False},
+            {"id": 15, "name": "signed-v5-incremental-market-window-200-1",
+             "expired": False},
+        ]
+    elif corruption == "future_predecessor":
+        jsons[key]["workflow_runs"][2]["display_title"] = (
+            "Continuous Paper · 301"
+        )
+    else:
+        alter = _report(200, base="-4", candidate="-23")
+        alter["source_candidate_id"] = "another-trial"
+        archives[f"repos/{REPO}/actions/artifacts/15/zip"] = _zip(alter)
+    with pytest.raises(ValueError, match=reason):
+        publisher.scheduled_catchup(
+            REPO, jsons.__getitem__, archives.__getitem__,
+        )
+
+
+def test_scheduled_main_writes_stable_exact_interval_artifact_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import json
+
+    jsons, archives = _scheduled_sources()
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps({"schedule": "11 * * * *"}), encoding="utf-8")
+    output = tmp_path / "window.json"
+    github_output = tmp_path / "github_output.txt"
+    summary = tmp_path / "summary.txt"
+    monkeypatch.setenv("GITHUB_REPOSITORY", REPO)
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
+    monkeypatch.setenv("V5_WINDOW_OUTPUT", str(output))
+    monkeypatch.setenv("GITHUB_OUTPUT", str(github_output))
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    monkeypatch.setattr(publisher, "_gh_json", jsons.__getitem__)
+    monkeypatch.setattr(publisher, "_gh_zip", archives.__getitem__)
+    assert publisher.main() == 0
+    saved = json.loads(output.read_text(encoding="utf-8"))
+    assert saved["artifact_lineage"]["current_run_id"] == 200
+    assert saved["candidate_minus_baseline_window_pnl"] == "-9"
+    assert github_output.read_text(encoding="utf-8") == (
+        "artifact_name=signed-v5-incremental-market-window-200-1\\n"
+    ).replace("\\n", "\n")
+    assert "Research only" in summary.read_text(encoding="utf-8")
