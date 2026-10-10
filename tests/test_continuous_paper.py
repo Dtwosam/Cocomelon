@@ -67,8 +67,8 @@ from cocomelon.continuous_paper import (
     _pipeline_l2_recovery_plan,
     _position_action_from_payload,
     _position_action_payload,
-    _position_protection_metrics,
     _paired_subscription_markets,
+    _position_protection_metrics,
     _post_freshness_paper_cohort_payload,
     _profit_lock_counterfactual_payload,
     _prospective_candidate_stack_overlap_payload,
@@ -5975,5 +5975,8 @@ def test_mainnet_rotation_pins_shadow_feeds_but_not_trade_decisions() -> None:
     assert "next_subscribed = _paired_subscription_markets(" in source
     assert "start_supervisors(\n                            next_subscribed," in source
     assert "pipeline.reconcile_markets(selected)" in source
-    assert "loss_context_paired_shadow_runtime.submit_reconcile(\n                                    subscribed" in source
+    assert (
+        "loss_context_paired_shadow_runtime.submit_reconcile("
+        "\n                                    subscribed"
+    ) in source
     assert "start_supervisors(\n                subscribed," in source
