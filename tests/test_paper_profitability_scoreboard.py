@@ -681,14 +681,14 @@ def test_post_embargo_rank_stress_exposes_concentrated_winners_and_net_r() -> No
         "hypotheses"
     ]["short_breakout_rank4plus_skip"]
     assert study["forward_trade_count"] == 4
-    assert study["original_forward_whole_journal"]["net_pnl"] == "0"
+    assert Decimal(study["original_forward_whole_journal"]["net_pnl"]) == 0
     preferred = study["original_forward_preferred_rank_robustness"]
-    assert study["preferred_rank_attributed_original_closes"]["net_pnl"] == "16"
+    assert Decimal(study["preferred_rank_attributed_original_closes"]["net_pnl"]) == 16
     assert preferred["distinct_original_markets"] == 2
-    assert preferred["min_net_pnl_leaving_one_trade_out"] == "-4"
-    assert preferred["min_net_r_leaving_one_trade_out"] == "-0.2"
-    assert preferred["min_net_pnl_leaving_one_market_out"] == "-4"
-    assert preferred["min_net_r_leaving_one_market_out"] == "-0.2"
+    assert Decimal(preferred["min_net_pnl_leaving_one_trade_out"]) == -4
+    assert Decimal(preferred["min_net_r_leaving_one_trade_out"]) == Decimal("-0.2")
+    assert Decimal(preferred["min_net_pnl_leaving_one_market_out"]) == -4
+    assert Decimal(preferred["min_net_r_leaving_one_market_out"]) == Decimal("-0.2")
     assert preferred["largest_winner_share_of_positive_net"] == "1"
     assert preferred["global_forward_first_half"]["trades"] == 2
     assert preferred["global_forward_second_half"]["trades"] == 0
