@@ -14,6 +14,7 @@ import pytest
 from cocomelon.continuous_paper import (
     LOSS_CONTEXT_PAIRED_SHADOW_LEGACY_ROOT,
     LOSS_CONTEXT_PAIRED_SHADOW_ROOT,
+    LOSS_CONTEXT_PAIRED_SHADOW_SCOPED_V4_ROOT,
     RUN_ID,
     UPGRADE_DEFERRED_RESEARCH_FILENAMES,
     ContinuousPaperConfig,
@@ -5939,8 +5940,15 @@ def test_clean_paired_shadow_uses_new_root_without_reusing_v1_account_history() 
     assert LOSS_CONTEXT_PAIRED_SHADOW_LEGACY_ROOT == (
         "loss-context-paired-portfolio-shadow"
     )
-    assert LOSS_CONTEXT_PAIRED_SHADOW_ROOT == (
+    assert LOSS_CONTEXT_PAIRED_SHADOW_SCOPED_V4_ROOT == (
         "loss-context-paired-portfolio-shadow-scoped-v4"
+    )
+    assert LOSS_CONTEXT_PAIRED_SHADOW_ROOT == (
+        "loss-context-paired-portfolio-shadow-scoped-v5"
+    )
+    # The failed v4 state is immutable audit evidence, never the live v5 root.
+    assert LOSS_CONTEXT_PAIRED_SHADOW_ROOT != (
+        LOSS_CONTEXT_PAIRED_SHADOW_SCOPED_V4_ROOT
     )
     # The failed v3 state also stays isolated for audit after ENA rotated out.
     assert LOSS_CONTEXT_PAIRED_SHADOW_ROOT != (

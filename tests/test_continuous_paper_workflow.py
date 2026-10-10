@@ -1622,10 +1622,10 @@ def test_loss_context_paired_shadow_runtime_handoff_is_non_blocking() -> None:
     shadow_upload = source[shadow_upload_at:review_at]
     assert "continue-on-error: true" in shadow_upload
     assert "loss-context-paired-portfolio-shadow-summary.json" in shadow_upload
-    assert "scoped-v4/paired-shadow-state.json" in shadow_upload
+    assert "scoped-v5/paired-shadow-state.json" in shadow_upload
     assert (
         "continuous-paper-state/"
-        "loss-context-paired-portfolio-shadow-scoped-v4"
+        "loss-context-paired-portfolio-shadow-scoped-v5"
     ) in shadow_upload
     assert (
         "continuous-paper-state/loss-context-paired-portfolio-shadow\n"
@@ -1633,11 +1633,15 @@ def test_loss_context_paired_shadow_runtime_handoff_is_non_blocking() -> None:
 
     review = source[review_at:review_upload_at]
     assert (
-        "loss-context-paired-portfolio-shadow-scoped-v4/review-ledger.jsonl"
+        "loss-context-paired-portfolio-shadow-scoped-v5/review-ledger.jsonl"
     ) in review
     assert (
         "loss-context-paired-portfolio-shadow/review-ledger.jsonl"
     ) not in review
+    # Every signed research artifact and review stays on the new v5
+    # account root; v4's mismatched SQLite state remains immutable audit.
+    assert "loss-context-paired-portfolio-shadow-scoped-v4" not in shadow_upload
+    assert "loss-context-paired-portfolio-shadow-scoped-v4" not in review
     assert "continue-on-error: true" in review
     assert "cocomelon-loss-context-paired-shadow-review" in review
     assert "review-ledger.jsonl" in review
