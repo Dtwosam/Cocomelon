@@ -56,6 +56,10 @@ class PaperEnaQuarantine:
         if not (ACTIVE_FROM_MS <= attempt_timestamp_ms < ACTIVE_UNTIL_MS):
             return None
         decision = evaluation.decision
+        # A pre-freeze decision is not re-labeled as forward merely because
+        # a subsequent book/IOC attempt crossed the policy start boundary.
+        if decision.timestamp_ms < ACTIVE_FROM_MS:
+            return None
         if decision.market.canonical != MARKET_CANONICAL:
             return None
         if decision.direction not in (Direction.LONG, Direction.SHORT):
