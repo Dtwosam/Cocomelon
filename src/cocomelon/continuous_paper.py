@@ -650,14 +650,22 @@ LOSS_CONTEXT_PAIRED_SHADOW_LEGACY_ROOT = (
 LOSS_CONTEXT_PAIRED_SHADOW_SCOPED_V2_ROOT = (
     "loss-context-paired-portfolio-shadow-scoped-v2"
 )
-# The v3 trial already encountered the same ENA market-rotation failure
-# before the subscription-pin fix could be adopted. Preserve it untouched,
-# and anchor exactly one post-fix independent v4 research account pair.
+# The v3 trial failed on missing ENA subscription coverage (#1092).
+# The independent v4 trial then became unrestorable after a genuine mainnet
+# funding-history timeout aborted the worker before its signed checkpoint.
+# That transport failure is now explicitly gap-recorded and retryable (#1093),
+# verified on the ordinary worker 38043086345. Preserve v2/v3/v4 entirely;
+# one new post-remediation paired research account starts under v5 ONLY.
+# Never silently fall back to a previous root, replay v4 economics, or
+# automatically advance to v6 on a new failure.
 LOSS_CONTEXT_PAIRED_SHADOW_SCOPED_V3_ROOT = (
     "loss-context-paired-portfolio-shadow-scoped-v3"
 )
-LOSS_CONTEXT_PAIRED_SHADOW_ROOT = (
+LOSS_CONTEXT_PAIRED_SHADOW_SCOPED_V4_ROOT = (
     "loss-context-paired-portfolio-shadow-scoped-v4"
+)
+LOSS_CONTEXT_PAIRED_SHADOW_ROOT = (
+    "loss-context-paired-portfolio-shadow-scoped-v5"
 )
 LOSS_CONTEXT_PAIRED_SHADOW_SUMMARY_FILENAME = (
     "loss-context-paired-portfolio-shadow-summary.json"
