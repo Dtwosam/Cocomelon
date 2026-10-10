@@ -458,8 +458,14 @@ def test_real_paper_workflow_supplies_both_frozen_state_paths_to_report() -> Non
         "- name: Upload original paper after-cost profitability scoreboard"
     )
     report = workflow[start:end]
-    assert '--short-rank-freeze "$STATE_ROOT/prospective-short-breakout-rank-state.json"' in report
-    assert '--trend-outside-freeze "$STATE_ROOT/prospective-trend-outside-top10-state.json"' in report
+    assert (
+        '--short-rank-freeze "$STATE_ROOT/prospective-short-breakout-rank-state.json"'
+        in report
+    )
+    assert (
+        '--trend-outside-freeze "$STATE_ROOT/prospective-trend-outside-top10-state.json"'
+        in report
+    )
     assert "frozen_hypotheses_original_forward_economics" in report
 
 def test_empty_short_breakout_cohort_does_not_invent_a_trading_edge() -> None:
