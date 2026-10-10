@@ -969,3 +969,163 @@ def test_short_only_forward_hypothesis_reports_zero_long_closes() -> None:
         assert Decimal(hypothesis[name]["long"]["net_pnl"]) == 0
         assert hypothesis[name]["short"]["trades"] == 0
     assert hypothesis["ready_for_review"] is False
+
+
+
+def test_fee_only_cannot_rescue_actual_negative_gross_original_journal() -> None:
+    """Even removing every booked fee can leave the observed account red."""
+    source = _reconciled_audit_from_rows([
+        _trade(
+            1, side="long", market="BTC", strategy="trend", gross="-10",
+            entry_fee="1", exit_fee="1", funding="1",
+        ),
+        _trade(
+            2, side="short", market="ETH", strategy="breakout", gross="4",
+            entry_fee="0.5", exit_fee="0.5", funding="-0.5",
+        ),
+    ])
+    result = paper_profitability_scoreboard(source)
+    metrics = result["overall"]
+    assert Decimal(metrics["gross_realized_pnl"]) == -6
+    assert Decimal(metrics["fees"]) == 3
+    assert Decimal(metrics["funding_cash_pnl"]) == Decimal("0.5")
+    assert Decimal(metrics["net_pnl"]) == Decimal("-8.5")
+    assert Decimal(metrics["same_fill_all_recorded_fees_refunded_net_pnl"]) == (
+        Decimal("-5.5")
+    )
+    with localcontext(prec=96):
+        assert Decimal(
+            metrics["same_fill_fee_refund_fraction_needed_for_zero_net"]
+        ) == Decimal("8.5") / 3
+    assert metrics["same_fill_all_fee_refund_still_net_negative"] is True
+    assert Decimal(
+        metrics["same_fill_additional_gross_needed_even_after_full_fee_refund"]
+    ) == Decimal("5.5")
+    assert metrics["fee_refund_bound_semantics"] == (
+        "arithmetic_same_original_fills_not_executable_or_new_equity"
+    )
+    assert result["execution_authority"] is False
+    assert result["ready_for_strategy_promotion"] is False
+
+
+def test_fee_only_bound_can_rescue_a_losing_single_original_close() -> None:
+    source = _reconciled_audit_from_rows([
+        _trade(
+            1, side="long", market="BTC", strategy="trend",
+            gross="0.5", entry_fee="0.4", exit_fee="0.6",
+        ),
+    ])
+    metrics = paper_profitability_scoreboard(source)["overall"]
+    assert Decimal(metrics["net_pnl"]) == Decimal("-0.5")
+    assert Decimal(metrics["same_fill_all_recorded_fees_refunded_net_pnl"]) == (
+        Decimal("0.5")
+    )
+    assert Decimal(
+        metrics["same_fill_fee_refund_fraction_needed_for_zero_net"]
+    ) == Decimal("0.5")
+    assert metrics["same_fill_all_fee_refund_still_net_negative"] is False
+    assert Decimal(
+        metrics["same_fill_additional_gross_needed_even_after_full_fee_refund"]
+    ) == 0
+
+
+def test_fee_refund_fraction_null_when_no_booked_fees_or_trades() -> None:
+    source = _reconciled_audit_from_rows([
+        _trade(
+            1, side="long", market="BTC", strategy="trend",
+            gross="-3", entry_fee="0", exit_fee="0",
+        ),
+    ])
+    report = paper_profitability_scoreboard(source)
+    assert report["overall"][
+        "same_fill_fee_refund_fraction_needed_for_zero_net"
+    ] is None
+    assert report["overall"]["same_fill_all_fee_refund_still_net_negative"] is True
+    assert Decimal(
+        report["overall"]["same_fill_additional_gross_needed_even_after_full_fee_refund"]
+    ) == 3
+    empty = paper_profitability_scoreboard(_reconciled_audit_from_rows([]))
+    assert empty["overall"]["same_fill_all_fee_refund_still_net_negative"] is None
+    assert empty["overall"]["same_fill_fee_refund_fraction_needed_for_zero_net"] is None
+    assert Decimal(empty["overall"]["same_fill_all_recorded_fees_refunded_net_pnl"]) == 0
+
+
+def test_frozen_fee_only_bound_preserves_original_open_time_embargo() -> None:
+    from cocomelon.research.prospective_trend_outside_top10 import (
+        ProspectiveTrendOutsideTop10State,
+    )
+
+    boundary = 6 * 3_600_000
+    rows = [
+        _move_trade_to_original_open_time(
+            _trade(
+                1, side="short", market="BTC", strategy="trend",
+                gross="400", rank="outside10",
+            ),
+            boundary - 1, closed_at_ms=boundary + 10,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                2, side="short", market="SOL", strategy="trend",
+                gross="-5", rank="outside10",
+            ),
+            boundary, closed_at_ms=boundary + 20,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                3, side="long", market="OP", strategy="trend",
+                gross="0.25", rank="top10",
+            ),
+            boundary + 1, closed_at_ms=boundary + 30,
+        ),
+    ]
+    report = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows(rows),
+        trend_outside_freeze=ProspectiveTrendOutsideTop10State(
+            frozen_at_ms=0
+        ).payload(),
+    )
+    f = report["frozen_hypotheses_original_forward_economics"][
+        "hypotheses"
+    ]["trend_outside_top10_both_sides_skip"]
+    disfavored = f["disfavored_rank_attributed_original_closes"]
+    assert disfavored["trades"] == 1
+    assert Decimal(disfavored["net_pnl"]) == -6
+    assert Decimal(
+        disfavored["same_fill_all_recorded_fees_refunded_net_pnl"]
+    ) == -5
+    assert disfavored["same_fill_all_fee_refund_still_net_negative"] is True
+    assert Decimal(
+        f["original_forward_hypothesis_context_by_side"]["short"][
+            "same_fill_all_recorded_fees_refunded_net_pnl"
+        ]
+    ) == -5
+    assert Decimal(report["overall"]["gross_realized_pnl"]) > 390
+    assert f["candidate_skip_cashflow_simulated"] is False
+    assert f["promotion_authority"] is False
+
+
+def test_fee_only_bound_preserves_actual_subcent_booked_residual() -> None:
+    source = _audit()
+    row = source["trades"][1]
+    assert isinstance(row, dict)
+    row["net_pnl"] = "4.000000000000000000000000001"
+    context = row["entry_context"]
+    assert isinstance(context, dict)
+    context["net_pnl"] = row["net_pnl"]
+    overall = source["economics"]["overall"]
+    assert isinstance(overall, dict)
+    with localcontext(prec=96):
+        overall["net_pnl"] = str(
+            Decimal(str(overall["net_pnl"])) +
+            Decimal("0.000000000000000000000000001")
+        )
+    overall["net_reconciliation_residual"] = "0.000000000000000000000000001"
+    result = paper_profitability_scoreboard(source)["overall"]
+    with localcontext(prec=96):
+        assert Decimal(
+            result["same_fill_all_recorded_fees_refunded_net_pnl"]
+        ) == Decimal(result["net_pnl"]) + Decimal(result["fees"])
+        assert Decimal(result["booked_net_cash_reconciliation_residual"]) == (
+            Decimal("0.000000000000000000000000001")
+        )
