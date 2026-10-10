@@ -243,11 +243,11 @@ from cocomelon.research.opening_fill_liquidity import (
     evidence_from_opening_trace,
     opening_fill_liquidity_attribution,
 )
-from cocomelon.research.paper_ena_quarantine import PaperEnaQuarantine
 from cocomelon.research.original_stop_book_evidence import (
     OriginalStopBookCapture,
     OriginalStopBookEvidenceStore,
 )
+from cocomelon.research.paper_ena_quarantine import PaperEnaQuarantine
 from cocomelon.research.post_freshness_paper_cohort import (
     clean_evidence_runway_summary,
     post_freshness_paper_cohort_summary,
