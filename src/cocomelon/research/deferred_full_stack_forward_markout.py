@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import cast
 
 from cocomelon.journal.store import JournalStore
+from cocomelon.research.continuous_paper_learning import (
+    ContinuousPaperOpeningLineageStore,
+)
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityStore,
 )
@@ -13,6 +16,9 @@ from cocomelon.research.continuous_paper_opening_opportunity_paths import (
     DEFAULT_MAX_COMPLETION_LAG_MS,
     DEFAULT_MAX_PATH_AGE_MS,
     ContinuousPaperOpeningOpportunityPathStore,
+)
+from cocomelon.research.first_seen_opening_witness import (
+    first_seen_opening_witness_summary,
 )
 from cocomelon.research.learning_feature_snapshots import (
     LearningFeatureSnapshotStore,
@@ -102,21 +108,35 @@ def rebuild_deferred_full_stack_forward_markout(
         max_completion_lag_ms=DEFAULT_MAX_COMPLETION_LAG_MS,
     )
     feature_store = LearningFeatureSnapshotStore(root / "learning-features")
+    lineage_store = ContinuousPaperOpeningLineageStore(root / "opening-lineage")
     journal = JournalStore(root / "journal.sqlite3")
     try:
+        opportunities = opportunity_store.iter_records()
+        closed_trades = tuple(journal.iter_trades())
         payload = prospective_full_stack_forward_markout_summary(
-            opportunity_store.iter_records(),
+            opportunities,
             path_store.iter_paths(),
-            tuple(journal.iter_trades()),
+            closed_trades,
             feature_store,
             combined_state,
             two_strike_state,
             momentum_state,
         )
+        witness = first_seen_opening_witness_summary(
+            opportunities,
+            closed_trades,
+            lineage_store.iter_records(),
+            overlap_started_at_ms=max(
+                combined_state.started_at_ms,
+                two_strike_state.started_at_ms,
+                momentum_state.started_at_ms,
+            ),
+        )
     finally:
         journal.close()
 
     output = dict(payload)
+    output["first_seen_opening_witness"] = witness
     rows = output.get("risk_rejected_rows")
     evaluated = output.get("risk_rejected_stack_evaluated")
     integrity = output.get("risk_rejected_integrity_clean")
