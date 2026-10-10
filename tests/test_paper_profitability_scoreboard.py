@@ -846,3 +846,126 @@ def test_subcent_booked_residual_stays_visible_in_friction_diagnostics() -> None
     assert Decimal(metrics["gross_minus_booked_net_pnl"]) != Decimal(
         metrics["recorded_fees_minus_funding_cash"]
     )
+
+
+
+def test_forward_trend_both_sides_exposes_loss_hidden_by_net_pooling() -> None:
+    from cocomelon.research.prospective_trend_outside_top10 import (
+        ProspectiveTrendOutsideTop10State,
+    )
+
+    boundary = 6 * 3_600_000
+    rows = [
+        _move_trade_to_original_open_time(
+            _trade(
+                1, side="long", market="BTC", strategy="trend",
+                rank="top3", gross="31", funding="-1",
+            ),
+            boundary - 1, closed_at_ms=boundary + 1,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                2, side="long", market="ETH", strategy="trend",
+                rank="top10", gross="22", funding="-1",
+            ),
+            boundary + 1, closed_at_ms=boundary + 2,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                3, side="short", market="OP", strategy="trend",
+                rank="top3", gross="-10",
+            ),
+            boundary + 3, closed_at_ms=boundary + 4,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                4, side="short", market="ADA", strategy="trend",
+                rank="outside10", gross="-7",
+            ),
+            boundary + 5, closed_at_ms=boundary + 6,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                5, side="long", market="SOL", strategy="trend",
+                rank="missing", gross="-4",
+            ),
+            boundary + 7, closed_at_ms=boundary + 8,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                6, side="short", market="ARB", strategy=None,
+                gross="-3",
+            ),
+            boundary + 9, closed_at_ms=boundary + 10,
+        ),
+    ]
+    result = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows(rows),
+        trend_outside_freeze=ProspectiveTrendOutsideTop10State(
+            frozen_at_ms=0
+        ).payload(),
+    )
+    f = result["frozen_hypotheses_original_forward_economics"]["hypotheses"][
+        "trend_outside_top10_both_sides_skip"
+    ]
+    assert f["forward_trade_count"] == 5
+    preferred = f["preferred_rank_attributed_original_closes"]
+    by_side = f["preferred_rank_attributed_original_closes_by_side"]
+    assert preferred["trades"] == 2
+    assert Decimal(preferred["net_pnl"]) == 9
+    assert Decimal(by_side["long"]["net_pnl"]) == 20
+    assert Decimal(by_side["short"]["net_pnl"]) == -11
+    assert by_side["long"]["trades"] == 1
+    assert by_side["short"]["trades"] == 1
+    for name, side_key in (
+        ("original_forward_hypothesis_context", "original_forward_hypothesis_context_by_side"),
+        (
+            "preferred_rank_attributed_original_closes",
+            "preferred_rank_attributed_original_closes_by_side",
+        ),
+        (
+            "disfavored_rank_attributed_original_closes",
+            "disfavored_rank_attributed_original_closes_by_side",
+        ),
+        ("unresolved_rank_original_closes", "unresolved_rank_original_closes_by_side"),
+    ):
+        overall = f[name]
+        split = f[side_key]
+        assert overall["trades"] == split["long"]["trades"] + split["short"]["trades"]
+        for field in ("gross_realized_pnl", "fees", "funding_cash_pnl", "net_pnl", "net_r"):
+            assert Decimal(overall[field]) == (
+                Decimal(split["long"][field]) + Decimal(split["short"][field])
+            )
+    assert f["disfavored_rank_attributed_original_closes_by_side"][
+        "short"
+    ]["trades"] == 1
+    assert f["unresolved_rank_original_closes_by_side"]["long"]["trades"] == 1
+    assert f["unresolved_rank_original_closes_by_side"]["short"]["trades"] == 0
+    assert f["candidate_skip_cashflow_simulated"] is False
+    assert f["promotion_authority"] is False
+
+
+def test_short_only_forward_hypothesis_reports_zero_long_closes() -> None:
+    from cocomelon.research.prospective_short_breakout_rank import (
+        ProspectiveShortBreakoutRankState,
+    )
+
+    result = paper_profitability_scoreboard(
+        _audit(),
+        short_rank_freeze=ProspectiveShortBreakoutRankState(
+            frozen_at_ms=0
+        ).payload(),
+    )
+    hypothesis = result["frozen_hypotheses_original_forward_economics"][
+        "hypotheses"
+    ]["short_breakout_rank4plus_skip"]
+    for name in (
+        "original_forward_hypothesis_context_by_side",
+        "preferred_rank_attributed_original_closes_by_side",
+        "disfavored_rank_attributed_original_closes_by_side",
+        "unresolved_rank_original_closes_by_side",
+    ):
+        assert hypothesis[name]["long"]["trades"] == 0
+        assert Decimal(hypothesis[name]["long"]["net_pnl"]) == 0
+        assert hypothesis[name]["short"]["trades"] == 0
+    assert hypothesis["ready_for_review"] is False

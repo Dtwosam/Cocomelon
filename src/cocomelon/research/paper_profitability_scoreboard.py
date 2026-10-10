@@ -357,6 +357,18 @@ def _forward_rank_robustness(
     }
 
 
+def _forward_side_economics(rows: list[_Trade]) -> dict[str, object]:
+    """Split actual booked closes without dropping either trade direction.
+
+    Zero-observation sides remain explicit; these are original executed
+    returns, not a matched replacement account or an online rank verdict.
+    """
+    return {
+        side: _metrics([trade for trade in rows if trade.side == side])
+        for side in ("long", "short")
+    }
+
+
 def _frozen_forward_hypothesis_economics(
     trades: list[_Trade],
     *,
@@ -448,9 +460,21 @@ def _frozen_forward_hypothesis_economics(
             "forward_trade_count": len(forward),
             "original_forward_whole_journal": _metrics(forward),
             "original_forward_hypothesis_context": _metrics(target),
+            "original_forward_hypothesis_context_by_side": (
+                _forward_side_economics(target)
+            ),
             "preferred_rank_attributed_original_closes": _metrics(preferred),
+            "preferred_rank_attributed_original_closes_by_side": (
+                _forward_side_economics(preferred)
+            ),
             "disfavored_rank_attributed_original_closes": _metrics(disfavored),
+            "disfavored_rank_attributed_original_closes_by_side": (
+                _forward_side_economics(disfavored)
+            ),
             "unresolved_rank_original_closes": _metrics(unresolved),
+            "unresolved_rank_original_closes_by_side": (
+                _forward_side_economics(unresolved)
+            ),
             "original_forward_preferred_rank_robustness": (
                 _forward_rank_robustness(preferred, forward)
             ),
