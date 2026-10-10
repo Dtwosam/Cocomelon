@@ -9,6 +9,12 @@
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
+## Signed independent v5 economics — exact handoff (2026-10-10)
+
+The authentic third v5 signed paired-account checkpoint (worker 38048378910, artifact 11669707831): baseline cumulative -$4.2704; frozen challenger -$23.3999; challenger -$19.1295 behind cumulatively and -$10.3305 behind in the genuine post-first-checkpoint window. Review is NOT ready: 91.0% market-data gaps and 1 open; only 3 of required 9 checkpoints, 6 of 30 blocked admissions, and 1 of required 30 challenger closes. No demonstrated positive after-cost edge. #1101 feed-gap rotation repair is already merged and does not reconstruct missing ticks. Ordinary paper runtime is separate; refresh Issue #469 for live status.
+
+The research-only `scripts/compare_signed_v5_market_windows.py` and `.github/workflows/signed-v5-incremental-market-economics.yml` can compare *exact completed predecessor/successor* signed market-account reports and identify real new PnL by market, fees and funding. They never skip a missing source artifact to select a better result. The original frozen v5 signed paired review still solely decides admissibility, with no trading or risk changes and no live orders.
+
 ## New authenticated financial diagnostic — 2026-10-10 09:14 UTC
 
 Latest worker `38037544022` still runs head `4f09230b` paper only, 157 closes and **-$316.60 total PnL** on **$9,683.40 equity**. After-cost closed-trade audit on predecessor `38035861888`: 157 closes, **-$331.51** realized booked, 40 winners and 117 losers. ENA quarantine is active but the completed worker reported **0 intercepted entries**; the prospective SHORT breakout rank trial has **0 SHORT closes** among its 2 forward closes. **No profitable edge confirmed.**

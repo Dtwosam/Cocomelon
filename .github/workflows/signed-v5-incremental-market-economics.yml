@@ -1,0 +1,44 @@
+name: Signed v5 Incremental Market Economics
+
+on:
+  workflow_run:
+    workflows:
+      - "Continuous Mainnet Paper Trader"
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: signed-v5-window-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  window:
+    if: ${{ github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+      V5_WINDOW_OUTPUT: signed-v5-incremental-market-window.json
+    steps:
+      - name: Checkout immutable latest read-only comparator
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Compare authenticated consecutive paper worker market reports
+        run: python -m scripts.publish_signed_v5_market_windows
+      - name: Retain exact signed-account interval analysis
+        if: ${{ hashFiles('signed-v5-incremental-market-window.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: signed-v5-incremental-market-window-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: signed-v5-incremental-market-window.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
