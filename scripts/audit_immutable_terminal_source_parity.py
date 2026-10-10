@@ -51,7 +51,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         ProspectiveRiskRejectedForwardMarkoutLedgerError,
         TerminalSourceParityError,
     ) as exc:
-        raise SystemExit(f"redacted terminal source parity audit failed: {type(exc).__name__}") from exc
+        raise SystemExit(
+            f"redacted terminal source parity audit failed: {type(exc).__name__}"
+        ) from exc
 
     args.json_out.parent.mkdir(parents=True, exist_ok=True)
     args.json_out.write_text(
