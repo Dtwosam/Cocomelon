@@ -546,6 +546,7 @@ jobs:
               f"- error: `{error}`",
               "",
               "No risk-rejected fast-markout evidence is published from this run.",
+              "Changed terminal decision evidence remains rejected.",
               "",
               "**Execution authority:** `false`",
               "**Promotion authority:** `false`",
