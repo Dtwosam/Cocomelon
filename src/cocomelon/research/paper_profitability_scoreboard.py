@@ -7,10 +7,25 @@ This module does not recommend or simulate skip-only strategy changes.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, localcontext
 from typing import Final, cast
+
+from cocomelon.research.prospective_short_breakout_rank import (
+    MIN_FUTURE as SHORT_MIN_FUTURE,
+)
+from cocomelon.research.prospective_short_breakout_rank import (
+    ProspectiveShortBreakoutRankState,
+)
+from cocomelon.research.prospective_trend_outside_top10 import (
+    MIN_CLOSED as TREND_MIN_CLOSED,
+)
+from cocomelon.research.prospective_trend_outside_top10 import (
+    ProspectiveTrendOutsideTop10State,
+)
 
 ZERO: Final = Decimal("0")
 UNVERIFIED: Final = "UNVERIFIED_ENTRY_CONTEXT"
@@ -250,6 +265,130 @@ def _short_breakout_top3_robustness(
     }
 
 
+def _frozen_forward_hypothesis_economics(
+    trades: list[_Trade],
+    *,
+    short_rank_state: object | None,
+    trend_outside_state: object | None,
+) -> dict[str, object]:
+    """Score pre-existing immutable hypotheses only after their actual embargo.
+
+    No strategy simulation is made from closed trades, even if a cohort is
+    profitable. Missing frozen state disables its forward readout instead
+    of incorrectly treating all old historical trades as prospective.
+    """
+    hypotheses: dict[str, object] = {}
+    for hypothesis, raw_state in (
+        ("short_breakout_rank4plus_skip", short_rank_state),
+        ("trend_outside_top10_both_sides_skip", trend_outside_state),
+    ):
+        if raw_state is None:
+            hypotheses[hypothesis] = {
+                "source_status": "missing_frozen_state",
+                "frozen_state_verified": False,
+                "forward_trade_count": 0,
+                "ready_for_review": False,
+                "promotion_authority": False,
+                "execution_authority": False,
+            }
+            continue
+
+        state: (
+            ProspectiveShortBreakoutRankState
+            | ProspectiveTrendOutsideTop10State
+        )
+        if hypothesis == "short_breakout_rank4plus_skip":
+            state = ProspectiveShortBreakoutRankState.from_payload(raw_state)
+            min_future = SHORT_MIN_FUTURE
+        else:
+            state = ProspectiveTrendOutsideTop10State.from_payload(raw_state)
+            min_future = TREND_MIN_CLOSED
+        forward = [
+            trade for trade in trades
+            if trade.opened_at_ms >= state.started_at_ms
+        ]
+        if hypothesis == "short_breakout_rank4plus_skip":
+            target = [
+                trade for trade in forward
+                if trade.side == "short" and trade.lead_strategy == "breakout"
+            ]
+            preferred = [t for t in target if t.rank_band == "top3"]
+            disfavored = [
+                t for t in target
+                if t.rank_band in {"top10", "outside10"}
+            ]
+        else:
+            target = [
+                trade for trade in forward
+                if trade.lead_strategy == "trend"
+            ]
+            preferred = [
+                t for t in target
+                if t.rank_band in {"top3", "top10"}
+            ]
+            disfavored = [
+                t for t in target if t.rank_band == "outside10"
+            ]
+        unresolved = [
+            t for t in target
+            if t.rank_band not in {"top3", "top10", "outside10"}
+        ]
+        if len(preferred) + len(disfavored) + len(unresolved) != len(target):
+            raise PaperProfitabilityScoreboardError(
+                "frozen forward cohort partition incomplete"
+            )
+        encoded = json.dumps(
+            state.payload(),
+            sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        hypotheses[hypothesis] = {
+            "source_status": "immutable_freeze_verified",
+            "frozen_state_verified": True,
+            "frozen_candidate_id": state.candidate_id,
+            "frozen_at_ms": state.frozen_at_ms,
+            "post_embargo_started_at_ms": state.started_at_ms,
+            "frozen_state_sha256": hashlib.sha256(encoded).hexdigest(),
+            "minimum_original_forward_closed_trades_for_context": min_future,
+            "sufficient_original_forward_trade_count": (
+                len(forward) >= min_future
+            ),
+            "forward_trade_count": len(forward),
+            "original_forward_whole_journal": _metrics(forward),
+            "original_forward_hypothesis_context": _metrics(target),
+            "preferred_rank_attributed_original_closes": _metrics(preferred),
+            "disfavored_rank_attributed_original_closes": _metrics(disfavored),
+            "unresolved_rank_original_closes": _metrics(unresolved),
+            "original_forward_unverified_entry_context_count": sum(
+                not t.verified_context for t in forward
+            ),
+            "rank_freshness_independently_reverified": False,
+            "candidate_skip_cashflow_simulated": False,
+            "matched_independent_paper_account_trial": False,
+            "ready_for_review": False,
+            "promotion_authority": False,
+            "execution_authority": False,
+        }
+    return {
+        "kind": "frozen-before-entry-original-booked-forward-diagnostics-v1",
+        "research_only": True,
+        "changes_strategy": False,
+        "changes_candidate_readiness": False,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "original_whole_journal_trades": len(trades),
+        "original_whole_journal_net_pnl": _metrics(trades)["net_pnl"],
+        "context_provenance": (
+            "posttrade_verified_entry_context_not_independent_online_receipt"
+        ),
+        "forward_set_membership_rule": (
+            "original_trade_open_timestamp_ge_frozen_at_plus_embargo"
+        ),
+        "no_claim_of_counterfactual_account_returns": True,
+        "hypotheses": hypotheses,
+    }
+
+
 def _cohorts(
     rows: list[_Trade], dimensions: tuple[str, ...]
 ) -> list[dict[str, object]]:
@@ -273,7 +412,12 @@ def _cohorts(
     )
 
 
-def paper_profitability_scoreboard(raw: object) -> dict[str, object]:
+def paper_profitability_scoreboard(
+    raw: object,
+    *,
+    short_rank_freeze: object | None = None,
+    trend_outside_freeze: object | None = None,
+) -> dict[str, object]:
     """Attribute **every** original closed trade without selecting winners.
 
     The caller must separately verify the source Actions artifact run,
@@ -422,5 +566,12 @@ def paper_profitability_scoreboard(raw: object) -> dict[str, object]:
             ),
             "short_breakout_top3_robustness": (
                 _short_breakout_top3_robustness(trades)
+            ),
+            "frozen_hypotheses_original_forward_economics": (
+                _frozen_forward_hypothesis_economics(
+                    trades,
+                    short_rank_state=short_rank_freeze,
+                    trend_outside_state=trend_outside_freeze,
+                )
             ),
         }
