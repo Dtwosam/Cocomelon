@@ -150,6 +150,7 @@ on:
       - "src/cocomelon/loss_context_account_readiness_cli.py"
       - "scripts/rebuild_deferred_consecutive_loss_cooldown.py"
       - "scripts/rebuild_deferred_loss_streak_context_audit.py"
+      - "src/cocomelon/evidence/restored_gap_recovery.py"
       - "src/cocomelon/research/prospective_long_trend_carveout_execution_shadow_source.py"
       # The compact export is performed by this continuous worker. If the
       # preflight or a frozen start used by it changes, dispatch an exact
