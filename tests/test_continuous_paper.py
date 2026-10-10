@@ -5989,3 +5989,7 @@ def test_mainnet_rotation_pins_shadow_feeds_but_not_trade_decisions() -> None:
     )[0]
     # This late startup phase has already called observe(); seed() is illegal.
     assert "evaluate_decisions=False" not in startup_coverage
+    # Research-only failures must leave normal subscriptions promotable.
+    assert "paired-only L2 unavailable during rotation" in source
+    assert "paired-only mainnet context missing during rotation" in source
+    assert "paired-only market subscription failed during startup" in source
