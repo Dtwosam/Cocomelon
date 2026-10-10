@@ -15,10 +15,6 @@ from cocomelon.research.continuous_paper_opening_opportunity import (
 from cocomelon.research.learning_feature_snapshots import (
     LearningFeatureSnapshotStore,
 )
-from cocomelon.research.terminal_journal_asof import (
-    future_finalized_open_exposure,
-    terminal_trades_known_at,
-)
 from cocomelon.research.prospective_capacity_reflow_opportunities import (
     RISK_CAPACITY_REJECTION_REASONS,
     CapacityReleaseOpportunityOption,
@@ -40,6 +36,10 @@ from cocomelon.research.prospective_two_strike_stop_filter import (
     STRIKE_THRESHOLD,
     ProspectiveTwoStrikeStopFilterState,
     prospective_two_strike_prior_strikes_at,
+)
+from cocomelon.research.terminal_journal_asof import (
+    future_finalized_open_exposure,
+    terminal_trades_known_at,
 )
 
 MOMENTUM_INTEGRITY_REASONS: Final = frozenset(
