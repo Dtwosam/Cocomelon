@@ -9919,20 +9919,29 @@ async def run_continuous_paper_session(
         # checkpoint. A later watchlist/systemic WebSocket group replacement
         # must also preserve NEW named source starts opened within this same
         # worker, until actual accepted post-rotation data proves recovery.
-        in_session_rotation_gap_recovery: RestoredNamedGapRecovery | None = None
+        in_session_rotation_gap_recoveries: list[RestoredNamedGapRecovery] = []
 
         def register_rotated_group_gap_recovery() -> None:
-            nonlocal in_session_rotation_gap_recovery
-            earlier = [restored_named_gap_recovery]
-            if in_session_rotation_gap_recovery is not None:
-                earlier.append(in_session_rotation_gap_recovery)
-            in_session_rotation_gap_recovery = rotation_named_gap_recovery(
+            # Do NOT replace a previous in-session observer with unresolved
+            # starts. Several rotations can happen before one market's next
+            # genuinely fresh book; every start must remain independently
+            # recoverable, never silently abandoned or double-closed.
+            in_session_rotation_gap_recoveries[:] = [
+                observer for observer in in_session_rotation_gap_recoveries
+                if observer.pending_named_starts
+            ]
+            new_observer = rotation_named_gap_recovery(
                 market_gaps=pipeline.known_gap_intervals_by_stream,
                 global_gaps=pipeline.known_global_gap_intervals_by_stream,
                 checkpoint_ms=utc_now_ms(),
                 max_exchange_age_ms=replay_config.eligibility.max_book_age_ms,
-                earlier_observers=earlier,
+                earlier_observers=(
+                    restored_named_gap_recovery,
+                    *in_session_rotation_gap_recoveries,
+                ),
             )
+            if new_observer is not None:
+                in_session_rotation_gap_recoveries.append(new_observer)
 
         _restore_open_lifecycles(pipeline, execution, checkpoints)
         record_startup_component(
@@ -10643,13 +10652,12 @@ async def run_continuous_paper_session(
                         )
                     ),
                 )
-                if in_session_rotation_gap_recovery is not None:
-                    # Unlike startup lineage, a new group cannot inherit
-                    # the old mux's volatile outstanding starts. Close a
-                    # pre-rotation start ONLY after this exact new normalized
-                    # WebSocket event was durably accepted by the paper pump.
-                    # No historical mark/bar reconstruction is implied.
-                    await in_session_rotation_gap_recovery.accept_recorded_event(
+                for rotation_observer in tuple(in_session_rotation_gap_recoveries):
+                    # A new group cannot inherit the old mux's volatile
+                    # outstanding starts. Close an EXACT previously persisted
+                    # source gap only after fresh, accepted same-stream WS
+                    # evidence. No historical price reconstruction is implied.
+                    await rotation_observer.accept_recorded_event(
                         event,
                         observed_at_ms=utc_now_ms(),
                         gap_sink=lambda gap: pump.process(_record_from_gap(gap)),
