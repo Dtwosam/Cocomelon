@@ -396,3 +396,147 @@ def test_empty_short_breakout_cohort_does_not_invent_a_trading_edge() -> None:
     assert study["top3_largest_winner_share_of_positive_net"] is None
     assert study["meets_descriptive_sample_floor"] is False
     assert study["ready_for_strategy_promotion"] is False
+
+
+def _move_trade_to_original_open_time(
+    row: dict[str, object], opened_at_ms: int, *, closed_at_ms: int
+) -> dict[str, object]:
+    result = dict(row)
+    result["opened_at_ms"] = opened_at_ms
+    result["closed_at_ms"] = closed_at_ms
+    context = result["entry_context"]
+    if isinstance(context, dict):
+        revised = dict(context)
+        revised["opened_at_ms"] = opened_at_ms
+        revised["closed_at_ms"] = closed_at_ms
+        result["entry_context"] = revised
+    return result
+
+
+def test_frozen_hypotheses_only_count_openings_after_actual_six_hour_embargo() -> None:
+    from cocomelon.research.prospective_short_breakout_rank import (
+        ProspectiveShortBreakoutRankState,
+    )
+    from cocomelon.research.prospective_trend_outside_top10 import (
+        ProspectiveTrendOutsideTop10State,
+    )
+
+    boundary = 6 * 3_600_000
+    data = [
+        _move_trade_to_original_open_time(
+            _trade(
+                1, side="short", market="BTC", strategy="breakout",
+                gross="100", rank="outside10",
+            ),
+            boundary - 1, closed_at_ms=boundary + 1,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                2, side="short", market="ADA", strategy="breakout",
+                gross="10", rank="top3",
+            ),
+            boundary, closed_at_ms=boundary + 5,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                3, side="short", market="CRV", strategy="breakout",
+                gross="-9", rank="outside10",
+            ),
+            boundary + 5, closed_at_ms=boundary + 15,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                4, side="short", market="XPL", strategy="trend",
+                gross="-4", rank="outside10",
+            ),
+            boundary + 17, closed_at_ms=boundary + 22,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                5, side="long", market="ETH", strategy="trend",
+                gross="-5", rank="top10",
+            ),
+            boundary + 23, closed_at_ms=boundary + 28,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                6, side="long", market="ENA", strategy=None,
+                gross="-2",
+            ),
+            boundary + 29, closed_at_ms=boundary + 35,
+        ),
+    ]
+    audit = _reconciled_audit_from_rows(data)
+    original_before_freeze = paper_profitability_scoreboard(audit)
+    absent = original_before_freeze[
+        "frozen_hypotheses_original_forward_economics"
+    ]
+    assert all(
+        item["source_status"] == "missing_frozen_state"
+        and item["forward_trade_count"] == 0
+        for item in absent["hypotheses"].values()
+    )
+    report = paper_profitability_scoreboard(
+        audit,
+        short_rank_freeze=(
+            ProspectiveShortBreakoutRankState(frozen_at_ms=0).payload()
+        ),
+        trend_outside_freeze=(
+            ProspectiveTrendOutsideTop10State(frozen_at_ms=0).payload()
+        ),
+    )
+    forward = report["frozen_hypotheses_original_forward_economics"]
+    assert forward["original_whole_journal_trades"] == 6
+    assert forward["original_whole_journal_net_pnl"] == "-16.0"
+    short = forward["hypotheses"]["short_breakout_rank4plus_skip"]
+    trend = forward["hypotheses"]["trend_outside_top10_both_sides_skip"]
+    assert short["source_status"] == "immutable_freeze_verified"
+    assert short["forward_trade_count"] == 5
+    assert short["post_embargo_started_at_ms"] == boundary
+    assert len(short["frozen_state_sha256"]) == 64
+    assert short["original_forward_whole_journal"]["trades"] == 5
+    assert short["original_forward_hypothesis_context"]["trades"] == 2
+    assert short["preferred_rank_attributed_original_closes"]["trades"] == 1
+    assert short["disfavored_rank_attributed_original_closes"]["trades"] == 1
+    assert short["original_forward_unverified_entry_context_count"] == 1
+    assert short["candidate_skip_cashflow_simulated"] is False
+    assert short["ready_for_review"] is False
+    assert trend["forward_trade_count"] == 5
+    assert trend["original_forward_hypothesis_context"]["trades"] == 2
+    assert trend["disfavored_rank_attributed_original_closes"]["trades"] == 1
+    assert trend["preferred_rank_attributed_original_closes"]["trades"] == 1
+    assert trend["execution_authority"] is False
+    assert forward["promotion_authority"] is False
+    assert forward["no_claim_of_counterfactual_account_returns"] is True
+
+
+def test_mutated_frozen_state_fails_closed_without_reporting_a_forward_edge() -> None:
+    from cocomelon.research.prospective_short_breakout_rank import (
+        ProspectiveShortBreakoutRankError,
+        ProspectiveShortBreakoutRankState,
+    )
+
+    frozen = ProspectiveShortBreakoutRankState(frozen_at_ms=0).payload()
+    frozen["started_at_ms"] = 0
+    with pytest.raises(ProspectiveShortBreakoutRankError, match="drift"):
+        paper_profitability_scoreboard(_audit(), short_rank_freeze=frozen)
+
+
+def test_no_new_original_forward_closes_is_not_profitable_evidence() -> None:
+    from cocomelon.research.prospective_short_breakout_rank import (
+        ProspectiveShortBreakoutRankState,
+    )
+
+    frozen = ProspectiveShortBreakoutRankState(frozen_at_ms=1_000_000_000)
+    report = paper_profitability_scoreboard(
+        _audit(), short_rank_freeze=frozen.payload()
+    )
+    forward = report["frozen_hypotheses_original_forward_economics"]
+    study = forward["hypotheses"]["short_breakout_rank4plus_skip"]
+    assert study["frozen_state_verified"] is True
+    assert study["forward_trade_count"] == 0
+    assert study["original_forward_hypothesis_context"]["net_pnl"] == "0"
+    assert study["original_forward_unverified_entry_context_count"] == 0
+    assert study["sufficient_original_forward_trade_count"] is False
+    assert study["ready_for_review"] is False
+    assert study["promotion_authority"] is False
