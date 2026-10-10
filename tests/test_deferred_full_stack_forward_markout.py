@@ -170,6 +170,18 @@ def test_deferred_full_stack_markout_rebuild_is_read_only_research(
     )
     monkeypatch.setattr(
         deferred,
+        "original_inventory_overlap_audit",
+        lambda opportunities, trades, censuses, *, overlap_started_at_ms: {
+            "kind": "test-first-observed-inventory",
+            "opportunities": tuple(opportunities),
+            "trades": tuple(trades),
+            "censuses": tuple(censuses),
+            "overlap": overlap_started_at_ms,
+            "research_readiness_grant": False,
+        },
+    )
+    monkeypatch.setattr(
+        deferred,
         "prospective_full_stack_forward_markout_summary",
         summary,
     )
@@ -198,6 +210,12 @@ def test_deferred_full_stack_markout_rebuild_is_read_only_research(
         ("opportunity",), ("trade",), ("lineage",)
     )
     assert witness["research_readiness_grant"] is False
+    assert payload["original_open_inventory_witness"]["kind"] == (
+        "test-first-observed-inventory"
+    )
+    assert payload["original_open_inventory_witness"][
+        "research_readiness_grant"
+    ] is False
     assert payload["deferred_post_handoff_rebuild"] is True
     assert payload["source_exit_reason"] == "upgrade_requested"
     assert payload["execution_authority"] is False
