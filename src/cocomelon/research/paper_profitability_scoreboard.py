@@ -289,6 +289,10 @@ def _frozen_forward_hypothesis_economics(
             }
             continue
 
+        state: (
+            ProspectiveShortBreakoutRankState
+            | ProspectiveTrendOutsideTop10State
+        )
         if hypothesis == "short_breakout_rank4plus_skip":
             state = ProspectiveShortBreakoutRankState.from_payload(raw_state)
             min_future = SHORT_MIN_FUTURE
