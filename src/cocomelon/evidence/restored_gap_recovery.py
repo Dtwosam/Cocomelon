@@ -11,6 +11,7 @@ import os
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 
+from cocomelon.domain.candle_intervals import CANDLE_INTERVAL_MS
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.hyperliquid.ws_protocol import SOURCE as MAINNET_WS_SOURCE
 from cocomelon.hyperliquid.ws_supervisor import event_stream_id
@@ -181,12 +182,38 @@ class RestoredNamedGapRecovery:
         ):
             return ()
         exchange_ms = event.exchange_time_ms
-        if event.kind is StreamKind.L2_BOOK and exchange_ms is None:
-            return ()
-        if exchange_ms is not None and not (
-            0 <= received_ms - exchange_ms < self._max_exchange_age_ms
-        ):
-            return ()
+        if event.kind is StreamKind.CANDLE:
+            # Hyperliquid WS candle exchange_time_ms is the OPEN of its
+            # interval, not the arrival timestamp. A valid current 15m
+            # candle can be hundreds of seconds old under the ordinary
+            # L2 book-age ceiling. Verify the candle's exact time window
+            # and source identity instead; an old completed candle MUST
+            # NOT cure a missing-feed interval merely because it arrived.
+            payload = event.payload
+            period = payload.get("interval")
+            start = payload.get("start_ms")
+            end = payload.get("end_ms")
+            duration = (
+                CANDLE_INTERVAL_MS.get(period)
+                if isinstance(period, str) else None
+            )
+            if (
+                duration is None
+                or type(start) is not int
+                or type(end) is not int
+                or start < 0
+                or exchange_ms != start
+                or end - start not in (duration - 1, duration)
+                or not start <= received_ms <= end + self._max_exchange_age_ms
+            ):
+                return ()
+        else:
+            if event.kind is StreamKind.L2_BOOK and exchange_ms is None:
+                return ()
+            if exchange_ms is not None and not (
+                0 <= received_ms - exchange_ms < self._max_exchange_age_ms
+            ):
+                return ()
         return tuple(
             DataGap(
                 stream_id=stream_id,
