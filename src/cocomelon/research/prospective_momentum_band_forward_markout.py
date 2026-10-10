@@ -16,6 +16,10 @@ from cocomelon.research.continuous_paper_opening_opportunity_paths import (
 from cocomelon.research.learning_feature_snapshots import (
     LearningFeatureSnapshotStore,
 )
+from cocomelon.research.terminal_journal_asof import (
+    future_finalized_open_exposure,
+    terminal_trades_known_at,
+)
 from cocomelon.research.prospective_combined_entry_filter import (
     MAX_ACCEPTED_RANK_AGE_MS,
     ProspectiveCombinedEntryFilterState,
@@ -292,6 +296,7 @@ def prospective_momentum_band_forward_markout_summary(
     base_combined_blocked = 0
     base_two_strike_blocked = 0
     momentum_feature_integrity_misses = 0
+    journal_future_close_exposure_opportunities = 0
     integrity_last_miss_at_ms: int | None = None
     decision_counts: Counter[str] = Counter()
     reason_counts: Counter[str] = Counter()
@@ -301,6 +306,21 @@ def prospective_momentum_band_forward_markout_summary(
         if not evidence.baseline_risk_approved:
             baseline_risk_rejected += 1
             continue
+
+        if future_finalized_open_exposure(
+            ordered_trades,
+            timestamp_ms=evidence.opportunity_timestamp_ms,
+            overlap_started_at_ms=overlap_start,
+            market=evidence.market,
+            direction=evidence.direction,
+        ):
+            journal_future_close_exposure_opportunities += 1
+            integrity_last_miss_at_ms = max(
+                evidence.opportunity_timestamp_ms,
+                integrity_last_miss_at_ms
+                if integrity_last_miss_at_ms is not None
+                else evidence.opportunity_timestamp_ms,
+            )
 
         observed_at = evidence.rank_observed_at_ms
         ordinal = evidence.rank_ordinal
@@ -353,8 +373,11 @@ def prospective_momentum_band_forward_markout_summary(
             base_combined_blocked += 1
             continue
 
+        decision_time_closed_trades = terminal_trades_known_at(
+            ordered_trades, timestamp_ms=evidence.opportunity_timestamp_ms
+        )
         prior_two_strikes = prospective_two_strike_prior_strikes_at(
-            ordered_trades,
+            decision_time_closed_trades,
             two_strike_state,
             market=evidence.market,
             direction=direction,
@@ -365,7 +388,7 @@ def prospective_momentum_band_forward_markout_summary(
             continue
 
         momentum_detail = prospective_momentum_band_opportunity_decision(
-            ordered_trades,
+            decision_time_closed_trades,
             feature_store,
             momentum_state,
             market=request.strategy_decision.market,
@@ -508,6 +531,10 @@ def prospective_momentum_band_forward_markout_summary(
         "momentum_feature_integrity_misses": (
             momentum_feature_integrity_misses
         ),
+        "journal_future_close_exposure_opportunities": (
+            journal_future_close_exposure_opportunities
+        ),
+        "journal_asof_provenance": "closed_trades_only_no_original_open_event_witness",
         "integrity_last_miss_at_ms": integrity_last_miss_at_ms,
         "base_stack_risk_approved_evaluated": len(row_values),
         "momentum_admitted": decision_counts["ADMIT"],
@@ -517,6 +544,7 @@ def prospective_momentum_band_forward_markout_summary(
             missing_rank == 0
             and stale_rank == 0
             and momentum_feature_integrity_misses == 0
+            and journal_future_close_exposure_opportunities == 0
         ),
         "horizons": horizon_summary,
         "rows": list(row_values),
