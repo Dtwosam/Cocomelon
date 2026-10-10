@@ -1622,7 +1622,7 @@ def test_loss_context_paired_shadow_runtime_handoff_is_non_blocking() -> None:
     shadow_upload = source[shadow_upload_at:review_at]
     assert "continue-on-error: true" in shadow_upload
     assert "loss-context-paired-portfolio-shadow-summary.json" in shadow_upload
-    assert "scoped-v2/paired-shadow-state.json" in shadow_upload
+    assert "scoped-v3/paired-shadow-state.json" in shadow_upload
     assert (
         "continuous-paper-state/"
         "loss-context-paired-portfolio-shadow-scoped-v3"
