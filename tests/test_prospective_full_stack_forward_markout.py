@@ -1070,3 +1070,79 @@ def test_future_close_exposure_is_scoped_to_same_market_and_direction(
     assert result["journal_asof_provenance"] == (
         "closed_trades_only_no_original_open_event_witness"
     )
+
+
+def test_rebuilt_terminal_journal_cannot_retroactively_reset_prior_strikes(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    combined, two_strike, momentum = _states()
+    before_query = START + 400_000
+    feature = _record_feature(
+        store,
+        market="ADA",
+        timestamp_ms=before_query - 100,
+        return_1h="-0.03",
+        day_return="-0.08",
+    )
+    opportunity = _opportunity(
+        suffix="historical-short-strike-reset",
+        market="ADA",
+        direction=Direction.SHORT,
+        timestamp_ms=before_query,
+        feature_snapshot_id=feature,
+        approved=False,
+    )
+    losses = (
+        _trade(
+            "historic-loss-1",
+            market="ADA",
+            direction=Direction.SHORT,
+            opened_at_ms=START + 100_000,
+            pnl="-5",
+        ),
+        _trade(
+            "historic-loss-2",
+            market="ADA",
+            direction=Direction.SHORT,
+            opened_at_ms=START + 220_000,
+            pnl="-6",
+        ),
+    )
+    # Terminal record first appears AFTER this opportunity, while its
+    # opening predates it. Without an as-of cutoff the historical replay
+    # retroactively resets two strikes, exactly the failure shape in #1115.
+    later_finalized = _trade(
+        "historic-pending-open",
+        market="ADA",
+        direction=Direction.SHORT,
+        opened_at_ms=START + 360_000,
+        pnl="-7",
+    )
+    old = prospective_full_stack_forward_markout_summary(
+        (opportunity,),
+        (),
+        losses,
+        store,
+        combined,
+        two_strike,
+        momentum,
+    )
+    rebuilt = prospective_full_stack_forward_markout_summary(
+        (opportunity,),
+        (),
+        losses + (later_finalized,),
+        store,
+        combined,
+        two_strike,
+        momentum,
+    )
+    earlier_row = old["risk_rejected_rows"][0]
+    current_row = rebuilt["risk_rejected_rows"][0]
+    assert earlier_row == current_row
+    assert current_row["two_strike_prior_strikes"] == 2
+    assert current_row["block_layer"] == "two_strike"
+    assert current_row["momentum_decision"] is None
+    assert rebuilt["risk_rejected_journal_future_close_exposure_opportunities"] == 1
+    assert rebuilt["risk_rejected_integrity_clean"] is False
+    assert rebuilt["promotion_authority"] is False
