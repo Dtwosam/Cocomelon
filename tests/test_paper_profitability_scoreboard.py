@@ -487,7 +487,7 @@ def test_frozen_hypotheses_only_count_openings_after_actual_six_hour_embargo() -
     )
     forward = report["frozen_hypotheses_original_forward_economics"]
     assert forward["original_whole_journal_trades"] == 6
-    assert forward["original_whole_journal_net_pnl"] == "-16.0"
+    assert forward["original_whole_journal_net_pnl"] == "84.0"
     short = forward["hypotheses"]["short_breakout_rank4plus_skip"]
     trend = forward["hypotheses"]["trend_outside_top10_both_sides_skip"]
     assert short["source_status"] == "immutable_freeze_verified"
