@@ -2198,3 +2198,44 @@ def test_compact_long_trend_source_waits_for_deferred_upgrade_rebuild() -> None:
     assert "continue-on-error: true" in step
     assert "live_orders: true" not in step
     assert "execution_mode: live" not in step
+
+
+def test_original_profitability_research_sources_trigger_genuine_paper_handoff() -> None:
+    """The active worker must see *both* changed report dependencies.
+
+    A changed report without runtime handoff would leave authenticated
+    completed original-paper results on old code until unrelated rotation.
+    This tests the ACTUAL diff shell argv and the main-push guard paths.
+    """
+    import shlex
+
+    source = WORKFLOW.read_text(encoding="utf-8")
+    trigger = source.split("    paths:\\n", 1)[1].split(
+        "\\n  workflow_dispatch:", 1
+    )[0]
+    start = source.index('changed_runtime="$(\\n')
+    end = source.index(')"', start)
+    command = source[start:end].splitlines()[1]
+    argv = shlex.split(command.strip().rstrip("\\\\"))
+    assert argv[:5] == [
+        "git", "diff", "--name-only", "$GITHUB_SHA", "FETCH_HEAD"
+    ]
+    assert argv[5] == "--"
+    required = (
+        "src/cocomelon/research/paper_profitability_scoreboard.py",
+        "scripts/report_paper_profitability_scoreboard.py",
+    )
+    for path in required:
+        assert f'      - "{path}"' in trigger
+        assert argv.count(path) == 1, (
+            f"active worker git diff misses independent causal file: {path}"
+        )
+        assert (Path(__file__).resolve().parents[1] / path).is_file()
+    assert "scripts/report_paper_profitability_scoreboard.py" in source[
+        source.index("- name: Reconcile original paper after-cost profitability cohorts"):
+        source.index("- name: Upload original paper after-cost profitability scoreboard")
+    ]
+    assert "src/cocomelon/research/paper_profitability_scoreboard.py" in (
+        Path(__file__).resolve().parents[1]
+        / "scripts/report_paper_profitability_scoreboard.py"
+    ).read_text(encoding="utf-8")
