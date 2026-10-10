@@ -10,7 +10,9 @@ import pytest
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evidence.restored_gap_recovery import (
+    ROTATION_WITNESS_FILENAME,
     RestoredNamedGapRecovery,
+    append_in_session_rotation_gap_witness,
     append_restored_named_gap_witness,
     rotation_named_gap_recovery,
 )
@@ -424,6 +426,7 @@ def test_rotation_witness_after_accepted_live_market_event_only() -> None:
         assert old.pending_named_starts["l2Book:BTC"] == (
             BASE_MS - 10_000,
         )
+        assert gaps[0].reason == "recovered_after_rotation_witness"
         assert rotation.pending_named_starts == {
             "l2Book:ETH": (BASE_MS + 300,),
         }
@@ -560,3 +563,141 @@ def test_paper_runtime_witnesses_both_supervisor_rotation_paths() -> None:
     assert "gap_sink=lambda gap: pump.process(_record_from_gap(gap))" in (
         source[rotated:rotated + 300]
     )
+
+
+def test_rotation_fsynced_witness_precedes_gap_commit(
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        gap_recovery = rotation_named_gap_recovery(
+            market_gaps={"l2Book:BTC": ((BASE_MS + 100, None),)},
+            global_gaps={},
+            checkpoint_ms=BASE_MS + 1_000,
+            max_exchange_age_ms=5_000,
+            earlier_observers=(),
+        )
+        assert gap_recovery is not None
+        path = tmp_path / ROTATION_WITNESS_FILENAME
+        steps: list[str] = []
+
+        async def witness_sink(
+            event: StreamEvent, gap: DataGap, checkpoint_ms: int,
+        ) -> None:
+            append_in_session_rotation_gap_witness(
+                path, event=event, gap=gap, checkpoint_ms=checkpoint_ms,
+            )
+            steps.append("witness")
+
+        async def gap_sink(gap: DataGap) -> None:
+            assert path.is_file()
+            assert gap.reason == "recovered_after_rotation_witness"
+            steps.append("persist_exact_close")
+
+        assert await gap_recovery.accept_recorded_event(
+            _event(),
+            observed_at_ms=BASE_MS + 2_100,
+            witness_sink=witness_sink,
+            gap_sink=gap_sink,
+        ) == 1
+        assert steps == ["witness", "persist_exact_close"]
+        assert gap_recovery.pending_named_starts == {}
+        receipts = [json.loads(x) for x in path.read_text().splitlines()]
+        assert len(receipts) == 1
+        assert receipts[0]["definition"] == (
+            "post_rotation_named_ws_recovery_witness_v1"
+        )
+        assert receipts[0]["rotation_checkpoint_ms"] == BASE_MS + 1_000
+        assert receipts[0]["gap_start_ms"] == BASE_MS + 100
+        assert receipts[0]["witness_receive_ms"] == BASE_MS + 2_000
+        assert receipts[0]["independently_verified_checkpoint_closure"] is False
+        assert receipts[0]["historical_price_reconstruction"] is False
+
+    asyncio.run(run())
+
+
+def test_rotation_witness_fsync_failure_never_closes_gap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        gap_recovery = rotation_named_gap_recovery(
+            market_gaps={"l2Book:BTC": ((BASE_MS + 100, None),)},
+            global_gaps={},
+            checkpoint_ms=BASE_MS + 1_000,
+            max_exchange_age_ms=5_000,
+            earlier_observers=(),
+        )
+        assert gap_recovery is not None
+
+        def failing_fsync(_fd: int) -> None:
+            raise OSError("witness fsync failed")
+
+        monkeypatch.setattr(
+            "cocomelon.evidence.restored_gap_recovery.os.fsync",
+            failing_fsync,
+        )
+
+        async def witness_sink(
+            event: StreamEvent, gap: DataGap, checkpoint_ms: int,
+        ) -> None:
+            append_in_session_rotation_gap_witness(
+                tmp_path / ROTATION_WITNESS_FILENAME,
+                event=event, gap=gap, checkpoint_ms=checkpoint_ms,
+            )
+
+        async def gap_sink(_gap: DataGap) -> None:
+            raise AssertionError("source must not heal without witness fsync")
+
+        with pytest.raises(OSError, match="witness fsync failed"):
+            await gap_recovery.accept_recorded_event(
+                _event(),
+                observed_at_ms=BASE_MS + 2_100,
+                witness_sink=witness_sink,
+                gap_sink=gap_sink,
+            )
+        assert gap_recovery.pending_named_starts == {
+            "l2Book:BTC": (BASE_MS + 100,),
+        }
+
+    asyncio.run(run())
+
+
+def test_rotation_witness_cannot_label_another_market_or_old_event(
+    tmp_path: Path,
+) -> None:
+    valid_event = _event()
+    gap = DataGap(
+        stream_id="l2Book:BTC",
+        started_ms=BASE_MS + 100,
+        ended_ms=BASE_MS + 2_000,
+        reason="recovered_after_rotation_witness",
+    )
+    for event, rotated_ms in (
+        (_event(market="ETH"), BASE_MS + 1_000),
+        (valid_event, BASE_MS + 2_000),
+        (valid_event, BASE_MS - 100),
+        (_event(source="hyperliquid-mainnet-rest"), BASE_MS + 1_000),
+    ):
+        with pytest.raises(ValueError, match="invalid in-session"):
+            append_in_session_rotation_gap_witness(
+                tmp_path / ROTATION_WITNESS_FILENAME,
+                event=event,
+                gap=gap,
+                checkpoint_ms=rotated_ms,
+            )
+    assert not (tmp_path / ROTATION_WITNESS_FILENAME).exists()
+
+
+def test_rotation_receipt_published_separately_from_signed_v5_ledger() -> None:
+    workflow = Path(".github/workflows/continuous-paper.yml").read_text(
+        encoding="utf-8"
+    )
+    receipt = workflow.index("- name: Upload witnessed intra-worker gap recoveries")
+    paired = workflow.index("- name: Upload paired loss-context portfolio shadow state")
+    assert paired < receipt
+    assert ROTATION_WITNESS_FILENAME in workflow[receipt:receipt + 600]
+    assert "continuous-paper-in-session-gap-witnesses-" in workflow[receipt:]
+    runtime = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    assert "append_in_session_rotation_gap_witness" in runtime
+    assert "root / ROTATION_WITNESS_FILENAME" in runtime
