@@ -53,8 +53,10 @@ from cocomelon.evidence.recording import (
 )
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
 from cocomelon.evidence.restored_gap_recovery import (
+    ROTATION_WITNESS_FILENAME,
     WITNESS_FILENAME,
     RestoredNamedGapRecovery,
+    append_in_session_rotation_gap_witness,
     append_restored_named_gap_witness,
     rotation_named_gap_recovery,
 )
@@ -10661,6 +10663,15 @@ async def run_continuous_paper_session(
                         event,
                         observed_at_ms=utc_now_ms(),
                         gap_sink=lambda gap: pump.process(_record_from_gap(gap)),
+                        witness_sink=lambda witness, gap, checkpoint_ms: (
+                            asyncio.to_thread(
+                                append_in_session_rotation_gap_witness,
+                                root / ROTATION_WITNESS_FILENAME,
+                                event=witness,
+                                gap=gap,
+                                checkpoint_ms=checkpoint_ms,
+                            )
+                        ),
                     )
 
             async def gap_sink(gap: DataGap) -> None:
