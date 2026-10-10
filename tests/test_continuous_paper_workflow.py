@@ -2116,8 +2116,23 @@ def test_compact_long_trend_exact_research_source_is_isolated_after_paper_handof
     chart_audit = source.index(
         "- name: Audit all closed paper trades and recorded entry-to-exit charts"
     )
-    assert successor < durable < fallback < manifest < pack < upload < chart_audit
-    selection = source[manifest:chart_audit]
+    # Upgrade-handoff research must run after the ordinary signed state is
+    # packed, the successor is queued, the original journal is audited, and
+    # the deferred full-stack source has been rebuilt.
+    deferred = source.index(
+        "- name: Rebuild deferred full-stack markouts after handoff"
+    )
+    source_rebuild = source.index(
+        "- name: Rebuild deferred exact LONG trend source after handoff"
+    )
+    next_research = source.index(
+        "- name: Rebuild correlation bucket priority audit after handoff"
+    )
+    assert (
+        successor < durable < fallback < chart_audit
+        < deferred < source_rebuild < manifest < pack < upload < next_research
+    )
+    selection = source[manifest:next_research]
     assert 'continue-on-error: true' in selection
     assert "steps.compact_long_trend_source_manifest.outcome == 'success'" in selection
     assert "steps.fast_resume_dispatch.outcome == 'success'" in selection
