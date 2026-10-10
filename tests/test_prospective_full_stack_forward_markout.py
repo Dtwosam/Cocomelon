@@ -935,3 +935,214 @@ def test_risk_rejected_integrity_is_isolated_from_candidate_readiness(
     readiness = one_hour["review_readiness"]
     assert isinstance(readiness, dict)
     assert readiness["integrity_clean"] is True
+
+
+def test_future_finalized_trade_exposure_fails_research_cleanliness_without_rewriting_rows(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    combined, two_strike, momentum = _states()
+    opening_feature = _record_feature(
+        store,
+        market="SOL",
+        timestamp_ms=START + 39_000,
+        return_1h="0.03",
+        day_return="0.05",
+    )
+    trade_feature = _record_feature(
+        store,
+        market="SOL",
+        timestamp_ms=START + 19_000,
+        return_1h="0.03",
+        day_return="0.05",
+    )
+    approved = _opportunity(
+        suffix="future-close-approved",
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=START + 40_000,
+        feature_snapshot_id=opening_feature,
+    )
+    rejected = _opportunity(
+        suffix="future-close-rejected",
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=START + 41_000,
+        feature_snapshot_id=opening_feature,
+        approved=False,
+    )
+    # The terminal-only journal adds this trade at START+80_000. Its
+    # opening cannot be proven from the journal at either opportunity.
+    late_finalized = replace(
+        _trade(
+            "finalized-later",
+            market="SOL",
+            direction=Direction.LONG,
+            opened_at_ms=START + 20_000,
+            pnl="-2",
+        ),
+        feature_snapshot_id=trade_feature,
+    )
+
+    earlier = prospective_full_stack_forward_markout_summary(
+        (approved, rejected),
+        (),
+        (),
+        store,
+        combined,
+        two_strike,
+        momentum,
+    )
+    later = prospective_full_stack_forward_markout_summary(
+        (approved, rejected),
+        (),
+        (late_finalized,),
+        store,
+        combined,
+        two_strike,
+        momentum,
+    )
+    assert earlier["integrity_clean"] is True
+    assert earlier["risk_rejected_integrity_clean"] is True
+    assert later["journal_future_close_exposure_opportunities"] == 1
+    assert later["risk_rejected_journal_future_close_exposure_opportunities"] == 1
+    assert later["integrity_clean"] is False
+    assert later["risk_rejected_integrity_clean"] is False
+    assert later["integrity_last_miss_at_ms"] == approved.opportunity_timestamp_ms
+    assert later["risk_rejected_integrity_last_miss_at_ms"] == (
+        rejected.opportunity_timestamp_ms
+    )
+    assert later["stack_risk_approved_evaluated"] == 1
+    assert later["risk_rejected_stack_evaluated"] == 1
+    assert len(later["rows"]) == 1
+    assert len(later["risk_rejected_rows"]) == 1
+    assert later["promotion_authority"] is False
+    assert later["execution_authority"] is False
+
+
+def test_future_close_exposure_is_scoped_to_same_market_and_direction(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    combined, two_strike, momentum = _states()
+    feature = _record_feature(
+        store,
+        market="SOL",
+        timestamp_ms=START + 39_000,
+        return_1h="0.03",
+        day_return="0.05",
+    )
+    opportunity = _opportunity(
+        suffix="unrelated-finalizations",
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=START + 40_000,
+        feature_snapshot_id=feature,
+    )
+    future_closures = (
+        _trade(
+            "opposite-side",
+            market="SOL",
+            direction=Direction.SHORT,
+            opened_at_ms=START + 20_000,
+            pnl="-2",
+        ),
+        _trade(
+            "different-market",
+            market="ETH",
+            direction=Direction.LONG,
+            opened_at_ms=START + 20_000,
+            pnl="-2",
+        ),
+    )
+    result = prospective_full_stack_forward_markout_summary(
+        (opportunity,),
+        (),
+        future_closures,
+        store,
+        combined,
+        two_strike,
+        momentum,
+    )
+    assert result["journal_future_close_exposure_opportunities"] == 0
+    assert result["risk_rejected_journal_future_close_exposure_opportunities"] == 0
+    assert result["integrity_clean"] is True
+    assert result["journal_asof_provenance"] == (
+        "closed_trades_only_no_original_open_event_witness"
+    )
+
+
+def test_rebuilt_terminal_journal_cannot_retroactively_reset_prior_strikes(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    combined, two_strike, momentum = _states()
+    before_query = START + 400_000
+    feature = _record_feature(
+        store,
+        market="ADA",
+        timestamp_ms=before_query - 100,
+        return_1h="-0.03",
+        day_return="-0.08",
+    )
+    opportunity = _opportunity(
+        suffix="historical-short-strike-reset",
+        market="ADA",
+        direction=Direction.SHORT,
+        timestamp_ms=before_query,
+        feature_snapshot_id=feature,
+        approved=False,
+    )
+    losses = (
+        _trade(
+            "historic-loss-1",
+            market="ADA",
+            direction=Direction.SHORT,
+            opened_at_ms=START + 100_000,
+            pnl="-5",
+        ),
+        _trade(
+            "historic-loss-2",
+            market="ADA",
+            direction=Direction.SHORT,
+            opened_at_ms=START + 220_000,
+            pnl="-6",
+        ),
+    )
+    # Terminal record first appears AFTER this opportunity, while its
+    # opening predates it. Without an as-of cutoff the historical replay
+    # retroactively resets two strikes, exactly the failure shape in #1115.
+    later_finalized = _trade(
+        "historic-pending-open",
+        market="ADA",
+        direction=Direction.SHORT,
+        opened_at_ms=START + 360_000,
+        pnl="-7",
+    )
+    old = prospective_full_stack_forward_markout_summary(
+        (opportunity,),
+        (),
+        losses,
+        store,
+        combined,
+        two_strike,
+        momentum,
+    )
+    rebuilt = prospective_full_stack_forward_markout_summary(
+        (opportunity,),
+        (),
+        losses + (later_finalized,),
+        store,
+        combined,
+        two_strike,
+        momentum,
+    )
+    earlier_row = old["risk_rejected_rows"][0]
+    current_row = rebuilt["risk_rejected_rows"][0]
+    assert earlier_row == current_row
+    assert current_row["two_strike_prior_strikes"] == 2
+    assert current_row["block_layer"] == "two_strike"
+    assert current_row["momentum_decision"] is None
+    assert rebuilt["risk_rejected_journal_future_close_exposure_opportunities"] == 1
+    assert rebuilt["risk_rejected_integrity_clean"] is False
+    assert rebuilt["promotion_authority"] is False
