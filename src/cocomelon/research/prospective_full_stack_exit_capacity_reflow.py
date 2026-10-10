@@ -14,10 +14,6 @@ from cocomelon.research.continuous_paper_opening_opportunity import (
 from cocomelon.research.learning_feature_snapshots import (
     LearningFeatureSnapshotStore,
 )
-from cocomelon.research.terminal_journal_asof import (
-    future_finalized_open_exposure,
-    terminal_trades_known_at,
-)
 from cocomelon.research.profit_lock_execution_shadow import (
     ProfitLockExecutionOutcome,
 )
@@ -43,6 +39,10 @@ from cocomelon.research.prospective_two_strike_stop_filter import (
     STRIKE_THRESHOLD,
     ProspectiveTwoStrikeStopFilterState,
     prospective_two_strike_prior_strikes_at,
+)
+from cocomelon.research.terminal_journal_asof import (
+    future_finalized_open_exposure,
+    terminal_trades_known_at,
 )
 
 RELEASE_REASON: Final = "breakeven_exact_early_close"
