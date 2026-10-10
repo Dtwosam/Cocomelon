@@ -1,9 +1,6 @@
 """Exact signed-v5 window automation must not skip missing source evidence."""
 from __future__ import annotations
 
-import io
-import json
-import zipfile
 from decimal import Decimal
 from pathlib import Path
 
@@ -59,6 +56,10 @@ def _zip(
     report: dict[str, object],
     name: str = "signed-v5-market-economics.json",
 ) -> bytes:
+    import io
+    import json
+    import zipfile
+
     target = io.BytesIO()
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as zipped:
         zipped.writestr(name, json.dumps(report))
