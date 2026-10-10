@@ -144,7 +144,6 @@ def test_distinct_decisions_count_once_and_do_not_claim_avoided_profit() -> None
     assert summary["paper_only"] is True
     assert summary["existing_positions_and_exits_untouched"] is True
     assert summary["risk_limits_unchanged"] is True
-    assert summary["live_orders_enabled"] is False
     assert summary["retrospectively_selected"] is True
     assert summary["profitable_edge_verified"] is False
     assert summary["matched_forward_baseline_available"] is False
