@@ -14,6 +14,10 @@ from cocomelon.research.continuous_paper_opening_opportunity import (
 from cocomelon.research.learning_feature_snapshots import (
     LearningFeatureSnapshotStore,
 )
+from cocomelon.research.terminal_journal_asof import (
+    future_finalized_open_exposure,
+    terminal_trades_known_at,
+)
 from cocomelon.research.profit_lock_execution_shadow import (
     ProfitLockExecutionOutcome,
 )
@@ -176,6 +180,7 @@ def prospective_full_stack_exit_capacity_reflow(
     missing_rank = 0
     stale_rank = 0
     momentum_integrity_misses = 0
+    journal_future_close_exposure_opportunities = 0
     entry_stack_blocked_opportunities = 0
     entry_stack_eligible_opportunities = 0
     pre_overlap_release_positions = 0
@@ -204,6 +209,14 @@ def prospective_full_stack_exit_capacity_reflow(
         ):
             continue
         baseline_capacity_rejections += 1
+        if future_finalized_open_exposure(
+            trades,
+            timestamp_ms=evidence.opportunity_timestamp_ms,
+            overlap_started_at_ms=overlap_start,
+            market=evidence.market,
+            direction=evidence.direction,
+        ):
+            journal_future_close_exposure_opportunities += 1
 
         rank_age_ms = _rank_age_ms(evidence)
         ordinal = evidence.rank_ordinal
@@ -234,15 +247,18 @@ def prospective_full_stack_exit_capacity_reflow(
             lead_strategy=evidence.lead_strategy,
             ordinal=ordinal,
         )
+        decision_time_closed_trades = terminal_trades_known_at(
+            trades, timestamp_ms=evidence.opportunity_timestamp_ms
+        )
         prior_strikes = prospective_two_strike_prior_strikes_at(
-            trades,
+            decision_time_closed_trades,
             two_strike_state,
             market=evidence.market,
             direction=direction,
             timestamp_ms=evidence.opportunity_timestamp_ms,
         )
         momentum_detail = prospective_momentum_band_opportunity_decision(
-            trades,
+            decision_time_closed_trades,
             feature_store,
             momentum_state,
             market=request.strategy_decision.market,
@@ -388,6 +404,7 @@ def prospective_full_stack_exit_capacity_reflow(
         and momentum_integrity_misses == 0
         and missing_full_stack_decision == 0
         and missing_breakeven_outcomes == 0
+        and journal_future_close_exposure_opportunities == 0
     )
     summary: dict[str, object] = {
         "research_only": True,
@@ -407,6 +424,10 @@ def prospective_full_stack_exit_capacity_reflow(
         "missing_rank_evidence": missing_rank,
         "stale_rank_evidence": stale_rank,
         "momentum_feature_integrity_misses": momentum_integrity_misses,
+        "journal_future_close_exposure_opportunities": (
+            journal_future_close_exposure_opportunities
+        ),
+        "journal_asof_provenance": "closed_trades_only_no_original_open_event_witness",
         "entry_stack_blocked_opportunities": (
             entry_stack_blocked_opportunities
         ),
