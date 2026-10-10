@@ -21,6 +21,16 @@
 
 **At every handoff:** verify live GitHub `main`, Issue #469, original vs shadow paper accounts, exact eligible forward sample and post-merge CI. Report **net dollars, costs, samples, challenger vs baseline, gate, and next economic step**, not merely PR counts. Full historical detail follows below; historical sections are not a live report.
 
+### Freeze invalid v3 after ENA rotation; require a new genuinely clean v4 forward anchor — 2026-10-10
+
+Worker `38011504073`, head `e2943073`, ran the new v3 paired accounts but failed at market rotation: `paired shadow market reconciliation would drop open shadow position coverage: ENA`, after 112,551 processed records and **zero signed shadow checkpoints**. No v3 account economics are restorable or admissible. The underlying missing protected-subscription logic is fixed in the same contained research-only change. Preserve v1/v2/v3 state unchanged, then start a separate scoped-v4 paired baseline/challenger **only** on a worker adopting the market-coverage fix. Never relabel old returns as new, alter the frozen candidate or promotion gates, enable live orders or automatically create v5. A v4 feed, parity or checkpoint failure means fail closed and diagnose it, not another account reset.
+
+### Keep paired research positions on real mainnet feeds across ordinary shortlist changes — 2026-10-10
+
+The v2 research trial first failed when market rotation would drop **NEAR**, still held by its own independent paper account. Later SQLite execution state diverged from the old signed checkpoint. Simply starting fresh v3 accounts was insufficient to prevent another invalid forward sample.
+
+Research subscription coverage now combines the unchanged ordinary trader's selected mainnet markets with markets held by either independent research account, obtained using an **actor-ordered protected-market read**. Stream handoff retains those genuine L2 subscriptions while allowing ordinary watchlist rotation and unchanged 15m entry eligibility. Restored shadow positions are pinned before starting supervisors; missing actual mainnet context or a failed shadow snapshot fails the research lane closed and never authorizes new orders. Neither v1/v2 invalid returns nor retrospective ENA losses are credited to v3. Verify a completed adopting worker's signed checkpoint and actual source continuity before judging any relative account PnL.
+
 ### Isolate irrecoverable v2 paired evidence; open a genuinely new forward account pair — 2026-10-10
 
 The previous scoped-v2 signed checkpoint records no open lifecycles, but the two execution SQLite stores contain later paper positions and different account state IDs. Its recorded checkpoint/account economics cannot be certified. **Do not overwrite, rewind, migrate, erase, relabel or credit either v1 or v2 historical state.** Both remain archived in the ordinary paper durable resume.

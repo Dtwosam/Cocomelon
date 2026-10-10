@@ -743,6 +743,7 @@ def test_paired_shadow_reconcile_refuses_to_drop_open_shadow_market(
             OPEN_BOOK_MS,
         )
 
+        assert shadow.protected_open_markets == (MARKET,)
         with pytest.raises(
             RuntimeError,
             match="drop open shadow position coverage",

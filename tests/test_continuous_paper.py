@@ -64,6 +64,7 @@ from cocomelon.continuous_paper import (
     _monitor_event_loop_lag,
     _opening_fill_liquidity_payload,
     _opening_rank_attribution_payload,
+    _paired_subscription_markets,
     _pipeline_l2_recovery_plan,
     _position_action_from_payload,
     _position_action_payload,
@@ -5939,6 +5940,10 @@ def test_clean_paired_shadow_uses_new_root_without_reusing_v1_account_history() 
         "loss-context-paired-portfolio-shadow"
     )
     assert LOSS_CONTEXT_PAIRED_SHADOW_ROOT == (
+        "loss-context-paired-portfolio-shadow-scoped-v4"
+    )
+    # The failed v3 state also stays isolated for audit after ENA rotated out.
+    assert LOSS_CONTEXT_PAIRED_SHADOW_ROOT != (
         "loss-context-paired-portfolio-shadow-scoped-v3"
     )
     # The invalid v2 account directory must remain distinct and untouched.
@@ -5949,3 +5954,43 @@ def test_clean_paired_shadow_uses_new_root_without_reusing_v1_account_history() 
         LOSS_CONTEXT_PAIRED_SHADOW_ROOT
         != LOSS_CONTEXT_PAIRED_SHADOW_LEGACY_ROOT
     )
+
+
+
+def test_paired_subscription_pin_preserves_main_entry_watchlist() -> None:
+    ordinary = (MarketId("", "ETH"), MarketId("", "BTC"))
+    held_by_shadow = (MarketId("", "NEAR"), MarketId("", "BTC"))
+    subscribed = _paired_subscription_markets(ordinary, held_by_shadow)
+    assert tuple(item.canonical for item in subscribed) == (
+        "BTC", "ETH", "NEAR",
+    )
+    assert tuple(item.canonical for item in ordinary) == ("ETH", "BTC")
+    # After the shadow positions close, the extra subscription can expire.
+    assert tuple(
+        market.canonical
+        for market in _paired_subscription_markets(ordinary, ())
+    ) == ("BTC", "ETH")
+
+
+def test_mainnet_rotation_pins_shadow_feeds_but_not_trade_decisions() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    assert "next_subscribed = _paired_subscription_markets(" in source
+    assert "replacement_group = await start_supervisors(" in source
+    assert "next_subscribed,\n" in source
+    assert "pipeline.reconcile_markets(selected)" in source
+    assert (
+        "loss_context_paired_shadow_runtime.submit_reconcile("
+        "\n                                    subscribed"
+    ) in source
+    assert "start_supervisors(\n                subscribed," in source
+    startup_coverage = source.split("subscribed = selected", 1)[1].split(
+        "subscribed_keys =", 1
+    )[0]
+    # This late startup phase has already called observe(); seed() is illegal.
+    assert "evaluate_decisions=False" not in startup_coverage
+    # Research-only failures must leave normal subscriptions promotable.
+    assert "paired-only L2 unavailable during rotation" in source
+    assert "paired-only mainnet context missing during rotation" in source
+    assert "paired-only market subscription failed during startup" in source

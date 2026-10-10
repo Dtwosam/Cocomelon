@@ -47,6 +47,9 @@ class _PairedShadowLike(Protocol):
         selected_markets: Sequence[MarketId],
     ) -> None: ...
 
+    @property
+    def protected_open_markets(self) -> tuple[MarketId, ...]: ...
+
     def mark_restore_warmup_complete(self) -> None: ...
 
     def checkpoint(self, *, end_ms: int) -> dict[str, object]: ...
@@ -75,6 +78,11 @@ class _ReconcileCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class _ProtectedMarketsCommand:
+    future: Future[dict[str, object]]
+
+
+@dataclass(frozen=True, slots=True)
 class _WarmupCompleteCommand:
     pass
 
@@ -100,6 +108,7 @@ _Command = (
     _RecordCommand
     | _RankCommand
     | _ReconcileCommand
+    | _ProtectedMarketsCommand
     | _WarmupCompleteCommand
     | _CheckpointCommand
     | _SummaryCommand
@@ -376,6 +385,10 @@ class LossContextPairedShadowRuntime:
                         shadow.reconcile_markets(command.markets)
                         with self._lock:
                             self._processed_reconciles += 1
+                    elif isinstance(command, _ProtectedMarketsCommand):
+                        command.future.set_result({
+                            "protected_markets": shadow.protected_open_markets,
+                        })
                     elif isinstance(command, _WarmupCompleteCommand):
                         shadow.mark_restore_warmup_complete()
                         with self._lock:
@@ -416,7 +429,7 @@ class LossContextPairedShadowRuntime:
 
     async def _request_control(
         self,
-        command: _CheckpointCommand | _SummaryCommand,
+        command: _CheckpointCommand | _SummaryCommand | _ProtectedMarketsCommand,
         *,
         timeout_seconds: float,
     ) -> dict[str, object]:
@@ -447,6 +460,32 @@ class LossContextPairedShadowRuntime:
             raise LossContextPairedShadowRuntimeError(
                 "paired shadow control timeout"
             ) from exc
+
+    def fail_closed(self, reason: str) -> None:
+        """Disable only the shadow, not ordinary paper trading."""
+        self._set_error("LossContextPairedShadowRuntimeError: " + reason)
+
+    async def protected_open_markets(
+        self,
+        *,
+        timeout_seconds: float = DEFAULT_CONTROL_TIMEOUT_SECONDS,
+    ) -> tuple[MarketId, ...]:
+        """Actor-ordered snapshot includes fills from all preceding records."""
+        payload = await self._request_control(
+            _ProtectedMarketsCommand(future=Future()),
+            timeout_seconds=timeout_seconds,
+        )
+        markets = payload.get("protected_markets")
+        if not isinstance(markets, tuple) or any(
+            not isinstance(market, MarketId) for market in markets
+        ):
+            self._set_error("invalid paired position coverage response")
+            raise LossContextPairedShadowRuntimeError(
+                "invalid paired position coverage response"
+            )
+        return tuple(
+            market for market in markets if isinstance(market, MarketId)
+        )
 
     async def checkpoint(
         self,
@@ -530,6 +569,7 @@ class LossContextPairedShadowRuntime:
                 "restore_markets": tuple(
                     market.canonical for market in self._restore_markets
                 ),
+                "research_state_root": self._state_root.name,
                 "queue_capacity": self._queue.maxsize,
                 "queue_depth": self._queue.qsize(),
                 "queue_high_watermark": self._queue_high_watermark,
