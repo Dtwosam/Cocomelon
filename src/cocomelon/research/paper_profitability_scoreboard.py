@@ -265,6 +265,69 @@ def _short_breakout_top3_robustness(
     }
 
 
+def _forward_rank_robustness(
+    cohort: list[_Trade], whole_forward: list[_Trade]
+) -> dict[str, object]:
+    """Stress an executed original cohort; never simulate skipped fills.
+
+    Chronological halves are fixed by EVERY original post-embargo opening,
+    not by choosing favorable dates or splitting the selected rank cohort.
+    """
+    markets = sorted({trade.market for trade in cohort})
+    total_net = sum((trade.net for trade in cohort), ZERO)
+    total_r = sum((trade.net_r for trade in cohort), ZERO)
+    leave_trade_dollars = [total_net - trade.net for trade in cohort]
+    leave_trade_r = [total_r - trade.net_r for trade in cohort]
+    leave_market_dollars = [
+        total_net - sum(
+            (trade.net for trade in cohort if trade.market == market), ZERO
+        )
+        for market in markets
+    ]
+    leave_market_r = [
+        total_r - sum(
+            (trade.net_r for trade in cohort if trade.market == market), ZERO
+        )
+        for market in markets
+    ]
+    ordered = sorted(
+        whole_forward, key=lambda trade: (trade.opened_at_ms, trade.trade_id)
+    )
+    first_ids = {trade.trade_id for trade in ordered[:len(ordered) // 2]}
+    winners = [trade.net for trade in cohort if trade.net > ZERO]
+    positive_total = sum(winners, ZERO)
+    return {
+        "cohort_original_closes": len(cohort),
+        "distinct_original_markets": len(markets),
+        "whole_forward_chronology": "original_opened_at_ms_then_trade_id",
+        "global_forward_first_half": _metrics(
+            [trade for trade in cohort if trade.trade_id in first_ids]
+        ),
+        "global_forward_second_half": _metrics(
+            [trade for trade in cohort if trade.trade_id not in first_ids]
+        ),
+        "min_net_pnl_leaving_one_trade_out": (
+            str(min(leave_trade_dollars)) if len(cohort) >= 2 else None
+        ),
+        "min_net_r_leaving_one_trade_out": (
+            str(min(leave_trade_r)) if len(cohort) >= 2 else None
+        ),
+        "min_net_pnl_leaving_one_market_out": (
+            str(min(leave_market_dollars)) if len(markets) >= 2 else None
+        ),
+        "min_net_r_leaving_one_market_out": (
+            str(min(leave_market_r)) if len(markets) >= 2 else None
+        ),
+        "largest_winner_share_of_positive_net": (
+            str(max(winners) / positive_total) if winners else None
+        ),
+        "independent_forward_edge_verified": False,
+        "counterfactual_cashflow_simulated": False,
+        "promotion_authority": False,
+        "execution_authority": False,
+    }
+
+
 def _frozen_forward_hypothesis_economics(
     trades: list[_Trade],
     *,
@@ -359,6 +422,12 @@ def _frozen_forward_hypothesis_economics(
             "preferred_rank_attributed_original_closes": _metrics(preferred),
             "disfavored_rank_attributed_original_closes": _metrics(disfavored),
             "unresolved_rank_original_closes": _metrics(unresolved),
+            "original_forward_preferred_rank_robustness": (
+                _forward_rank_robustness(preferred, forward)
+            ),
+            "original_forward_disfavored_rank_robustness": (
+                _forward_rank_robustness(disfavored, forward)
+            ),
             "original_forward_unverified_entry_context_count": sum(
                 not t.verified_context for t in forward
             ),
