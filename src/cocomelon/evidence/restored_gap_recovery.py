@@ -19,6 +19,7 @@ GapSink = Callable[[DataGap], Awaitable[None]]
 WitnessSink = Callable[[StreamEvent, DataGap, int], Awaitable[None]]
 GapIntervals = Mapping[str, Sequence[tuple[int, int | None]]]
 WITNESS_FILENAME = "named-gap-recovery-witnesses.jsonl"
+ROTATION_WITNESS_FILENAME = "in-session-gap-recovery-witnesses.jsonl"
 
 
 def append_restored_named_gap_witness(
@@ -54,6 +55,51 @@ def append_restored_named_gap_witness(
         handle.write(json.dumps(
             payload, sort_keys=True, separators=(",", ":"), allow_nan=False
         ) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def append_in_session_rotation_gap_witness(
+    path: str | Path,
+    *,
+    event: StreamEvent,
+    gap: DataGap,
+    checkpoint_ms: int,
+) -> None:
+    """Fsync proof of a post-rotation *accepted* event before exact gap close.
+
+    Distinct from a predecessor-checkpoint recovery receipt: no signed state
+    has certified this live watchlist rotation. An on-disk witness is not
+    permission to erase missing ticks or bypass the forward-data gap gates.
+    """
+    received_ms = int(event.receive_time.timestamp() * 1_000)
+    if (
+        event.source != MAINNET_WS_SOURCE
+        or event_stream_id(event) != gap.stream_id
+        or not (0 <= gap.started_ms < checkpoint_ms < received_ms)
+    ):
+        raise ValueError("invalid in-session source recovery witness")
+    payload = {
+        "definition": "post_rotation_named_ws_recovery_witness_v1",
+        "rotation_checkpoint_ms": checkpoint_ms,
+        "stream_id": gap.stream_id,
+        "gap_start_ms": gap.started_ms,
+        "witness_receive_ms": received_ms,
+        "witness_exchange_ms": event.exchange_time_ms,
+        "witness_event_key": event.event_key,
+        "witness_event_source": event.source,
+        "observed_event_before_gap_closure": True,
+        "independently_verified_checkpoint_closure": False,
+        "historical_price_reconstruction": False,
+        "research_only": True,
+    }
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+            + "\n"
+        )
         handle.flush()
         os.fsync(handle.fileno())
 
