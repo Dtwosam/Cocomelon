@@ -993,9 +993,10 @@ def test_fee_only_cannot_rescue_actual_negative_gross_original_journal() -> None
     assert Decimal(metrics["same_fill_all_recorded_fees_refunded_net_pnl"]) == (
         Decimal("-5.5")
     )
-    assert Decimal(
-        metrics["same_fill_fee_refund_fraction_needed_for_zero_net"]
-    ) == Decimal("8.5") / 3
+    with localcontext(prec=96):
+        assert Decimal(
+            metrics["same_fill_fee_refund_fraction_needed_for_zero_net"]
+        ) == Decimal("8.5") / 3
     assert metrics["same_fill_all_fee_refund_still_net_negative"] is True
     assert Decimal(
         metrics["same_fill_additional_gross_needed_even_after_full_fee_refund"]
