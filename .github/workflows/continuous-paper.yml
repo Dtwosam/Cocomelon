@@ -1337,6 +1337,8 @@ jobs:
           set -euo pipefail
           python scripts/report_paper_profitability_scoreboard.py \
             "$STATE_ROOT/all-paper-trade-chart-audit.json" \
+            --short-rank-freeze "$STATE_ROOT/prospective-short-breakout-rank-state.json" \
+            --trend-outside-freeze "$STATE_ROOT/prospective-trend-outside-top10-state.json" \
             --json-out "$STATE_ROOT/all-paper-profitability-scoreboard.json" \
             > /tmp/paper-profitability-scoreboard-headline.json
           test -s "$STATE_ROOT/all-paper-profitability-scoreboard.json"
@@ -1363,6 +1365,17 @@ jobs:
                   f"  - {c['side']} / {c['lead_strategy']}: "
                   f"{group['trades']} trades / ${group['net_pnl']} booked net"
               )
+          f = report["frozen_hypotheses_original_forward_economics"]
+          print("- Frozen candidate after-embargo original booked closes "
+                "(NOT paired challenger returns):")
+          for name, entry in sorted(f["hypotheses"].items()):
+              print(f"  - {name}: freeze={entry['source_status']}, "
+                    f"original forward closes={entry['forward_trade_count']}")
+              if entry["frozen_state_verified"]:
+                  chosen = entry["original_forward_hypothesis_context"]
+                  print(f"    - original target cohort: {chosen['trades']} closes, "
+                        f"${chosen['net_pnl']} booked net / "
+                        f"{chosen['net_r']} booked net-R")
           print("- WARNING: not a prospective rule; no skipped-trade cashflow, "
                 "replacement capital, or model promotion is inferred")
           PY
