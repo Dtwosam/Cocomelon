@@ -1266,62 +1266,6 @@ jobs:
       # Only authenticated after-handoff research files needed by the
       # separate 5m/15m exact LONG-trend evaluations; never package the
       # multi-GB account DB, market tapes, or open-position state here.
-      - name: Verify compact exact LONG trend research source
-        id: compact_long_trend_source_manifest
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') }}
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/verify_compact_long_trend_exact_source.py \
-            "$STATE_ROOT" \
-            --json-out compact-long-trend-source-preflight.json
-
-      # Report missing genuine inputs without converting a failed
-      # source verification into a passing research artifact.
-      - name: Upload compact LONG trend source preflight diagnostics
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('compact-long-trend-source-preflight.json') != '' }}
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-long-trend-exact-source-preflight-${{ github.run_id }}-${{ github.run_attempt }}
-          path: compact-long-trend-source-preflight.json
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 6
-
-      - name: Pack compact exact LONG trend research source
-        id: compact_long_trend_source_pack
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.compact_long_trend_source_manifest.outcome == 'success' }}
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -f continuous-paper-long-trend-exact-source.tar
-          # A TAR preserves an authenticated empty records directory;
-          # upload-artifact's direct file glob would discard empty dirs.
-          tar -cf continuous-paper-long-trend-exact-source.tar \
-            -C "$STATE_ROOT" \
-            prospective-full-stack-forward-markout-summary.json \
-            prospective-long-trend-execution-shadow-source.json \
-            opening-opportunities/records \
-            opening-opportunity-exit-books/records \
-            replacement-funding-boundaries/records
-          tar -tf continuous-paper-long-trend-exact-source.tar >/dev/null
-          test -s continuous-paper-long-trend-exact-source.tar
-
-      - name: Upload compact exact LONG trend research source
-        id: compact_long_trend_source_upload
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.compact_long_trend_source_pack.outcome == 'success' }}
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-long-trend-exact-source-${{ github.run_id }}-${{ github.run_attempt }}
-          path: continuous-paper-long-trend-exact-source.tar
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 6
-
       - name: Audit all closed paper trades and recorded entry-to-exit charts
         id: deferred_all_trade_chart_audit
         if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/session-summary.json') != '' }}
@@ -1749,6 +1693,92 @@ jobs:
         with:
           name: continuous-paper-full-stack-forward-markout-${{ github.run_id }}-${{ github.run_attempt }}
           path: continuous-paper-state/prospective-full-stack-forward-markout-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      # Upgrade handoffs intentionally omit expensive runtime research, so
+      # reconstruct the genuine LONG-trend source only after the ordinary
+      # paper successor has already been queued and the full-stack rebuild
+      # has succeeded. Ordinary normal exits keep their original source.
+      - name: Rebuild deferred exact LONG trend source after handoff
+        id: deferred_long_trend_source_rebuild
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && steps.deferred_full_stack_markout_rebuild.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set -euo pipefail
+          exit_reason="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(
+              Path("continuous-paper-state/session-summary.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print(payload.get("exit_reason", ""))
+          PY
+          )"
+          if [ "$exit_reason" = "upgrade_requested" ]; then
+            python scripts/rebuild_deferred_long_trend_exact_source.py "$STATE_ROOT"
+          else
+            echo "No deferred LONG-trend reconstruction needed for $exit_reason"
+          fi
+
+      - name: Verify compact exact LONG trend research source
+        id: compact_long_trend_source_manifest
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/verify_compact_long_trend_exact_source.py \
+            "$STATE_ROOT" \
+            --json-out compact-long-trend-source-preflight.json
+
+      # Report missing genuine inputs without converting a failed
+      # source verification into a passing research artifact.
+      - name: Upload compact LONG trend source preflight diagnostics
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('compact-long-trend-source-preflight.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-long-trend-exact-source-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: compact-long-trend-source-preflight.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Pack compact exact LONG trend research source
+        id: compact_long_trend_source_pack
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.compact_long_trend_source_manifest.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f continuous-paper-long-trend-exact-source.tar
+          # A TAR preserves an authenticated empty records directory;
+          # upload-artifact's direct file glob would discard empty dirs.
+          tar -cf continuous-paper-long-trend-exact-source.tar \
+            -C "$STATE_ROOT" \
+            prospective-full-stack-forward-markout-summary.json \
+            prospective-long-trend-execution-shadow-source.json \
+            opening-opportunities/records \
+            opening-opportunity-exit-books/records \
+            replacement-funding-boundaries/records
+          tar -tf continuous-paper-long-trend-exact-source.tar >/dev/null
+          test -s continuous-paper-long-trend-exact-source.tar
+
+      - name: Upload compact exact LONG trend research source
+        id: compact_long_trend_source_upload
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.compact_long_trend_source_pack.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-long-trend-exact-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-long-trend-exact-source.tar
           if-no-files-found: error
           retention-days: 90
           compression-level: 6

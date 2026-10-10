@@ -2116,8 +2116,23 @@ def test_compact_long_trend_exact_research_source_is_isolated_after_paper_handof
     chart_audit = source.index(
         "- name: Audit all closed paper trades and recorded entry-to-exit charts"
     )
-    assert successor < durable < fallback < manifest < pack < upload < chart_audit
-    selection = source[manifest:chart_audit]
+    # Upgrade-handoff research must run after the ordinary signed state is
+    # packed, the successor is queued, the original journal is audited, and
+    # the deferred full-stack source has been rebuilt.
+    deferred = source.index(
+        "- name: Rebuild deferred full-stack markouts after handoff"
+    )
+    source_rebuild = source.index(
+        "- name: Rebuild deferred exact LONG trend source after handoff"
+    )
+    next_research = source.index(
+        "- name: Rebuild correlation bucket priority audit after handoff"
+    )
+    assert (
+        successor < durable < fallback < chart_audit
+        < deferred < source_rebuild < manifest < pack < upload < next_research
+    )
+    selection = source[manifest:next_research]
     assert 'continue-on-error: true' in selection
     assert "steps.compact_long_trend_source_manifest.outcome == 'success'" in selection
     assert "steps.fast_resume_dispatch.outcome == 'success'" in selection
@@ -2143,3 +2158,23 @@ def test_compact_long_trend_exact_research_source_is_isolated_after_paper_handof
     assert "facts.sqlite3" not in selection
     assert "execution_mode: live" not in selection
     assert "live_orders: true" not in selection
+
+
+def test_compact_long_trend_source_waits_for_deferred_upgrade_rebuild() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    dispatch = source.index("- name: Queue exact successor from fast resume")
+    rebuild = source.index("- name: Rebuild deferred full-stack markouts after handoff")
+    offline_source = source.index(
+        "- name: Rebuild deferred exact LONG trend source after handoff"
+    )
+    verify = source.index("- name: Verify compact exact LONG trend research source")
+    pack = source.index("- name: Pack compact exact LONG trend research source")
+    upload = source.index("- name: Upload compact exact LONG trend research source")
+    assert dispatch < rebuild < offline_source < verify < pack < upload
+    step = source[offline_source:verify]
+    assert "scripts/rebuild_deferred_long_trend_exact_source.py" in step
+    assert 'if [ "$exit_reason" = "upgrade_requested" ]; then' in step
+    assert "steps.deferred_full_stack_markout_rebuild.outcome == 'success'" in step
+    assert "continue-on-error: true" in step
+    assert "live_orders: true" not in step
+    assert "execution_mode: live" not in step
