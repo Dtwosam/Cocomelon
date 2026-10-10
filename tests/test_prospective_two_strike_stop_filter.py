@@ -8,10 +8,6 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
-from cocomelon.research.terminal_journal_asof import (
-    future_finalized_open_exposure,
-    terminal_trades_known_at,
-)
 from cocomelon.research.prospective_two_strike_stop_filter import (
     CANDIDATE_ID,
     EMBARGO_MS,
@@ -19,6 +15,10 @@ from cocomelon.research.prospective_two_strike_stop_filter import (
     ProspectiveTwoStrikeStopFilterState,
     prospective_two_strike_prior_strikes_at,
     prospective_two_strike_stop_filter_summary,
+)
+from cocomelon.research.terminal_journal_asof import (
+    future_finalized_open_exposure,
+    terminal_trades_known_at,
 )
 
 
