@@ -9,6 +9,21 @@ import os
 from collections.abc import Sequence
 from pathlib import Path
 
+from cocomelon.research.prospective_long_trend_5m_exit_source import (
+    FROZEN_STARTED_AT_MS as FROZEN_FIVE_MINUTE_START_MS,
+)
+from cocomelon.research.prospective_long_trend_15m_exit_source import (
+    FROZEN_STARTED_AT_MS as FROZEN_FIFTEEN_MINUTE_START_MS,
+)
+
+# Never select a clean period from observed returns. The already-frozen
+# candidate start times, not a retrospectively chosen PnL breakpoint, set
+# this exact export boundary for both downstream independent exit studies.
+CLEAN_FORWARD_START_MS = min(
+    FROZEN_FIVE_MINUTE_START_MS,
+    FROZEN_FIFTEEN_MINUTE_START_MS,
+)
+
 REQUIRED_FILES = (
     "prospective-full-stack-forward-markout-summary.json",
     "prospective-long-trend-execution-shadow-source.json",
@@ -61,7 +76,8 @@ def _check_summary(raw: dict[str, object]) -> tuple[str | None, dict[str, object
     ):
         if raw.get(key) is not expected:
             return f"full_stack_{key}_invalid", metrics
-    if raw.get("risk_rejected_integrity_clean") is not True:
+    is_clean = raw.get("risk_rejected_integrity_clean")
+    if type(is_clean) is not bool:
         return "risk_rejected_integrity_not_clean", metrics
     if (
         not isinstance(rows, list)
@@ -72,6 +88,50 @@ def _check_summary(raw: dict[str, object]) -> tuple[str | None, dict[str, object
     overlap = raw.get("overlap_started_at_ms")
     if type(overlap) is not int or overlap < 0:
         return "full_stack_overlap_invalid", metrics
+
+    # The 5m and 15m original producers already enforce their *independent*
+    # frozen start times against risk_rejected_integrity_last_miss_at_ms.
+    # This shared compact preflight must use the EARLIEST frozen start.
+    # Never rewrite the dirty legacy summary or re-label it globally clean.
+    metrics["frozen_forward_scope_start_ms"] = CLEAN_FORWARD_START_MS
+    metrics["historic_missing_rank_retained"] = raw.get(
+        "risk_rejected_missing_rank"
+    )
+    metrics["entire_history_integrity_clean"] = is_clean
+    if not is_clean:
+        last_miss = raw.get("risk_rejected_integrity_last_miss_at_ms")
+        metrics["last_integrity_miss_at_ms"] = last_miss
+        if type(last_miss) is not int or last_miss < 0:
+            return "risk_rejected_integrity_not_clean", metrics
+        if last_miss >= CLEAN_FORWARD_START_MS:
+            return "risk_rejected_integrity_overlaps_frozen_window", metrics
+        metrics["scope"] = "frozen_forward_only_historical_defects_retained"
+    else:
+        metrics["scope"] = "entire_history"
+
+    # Every row is retained; do not compact away missing-rank, stale,
+    # malformed or out-of-order evidence after the frozen boundary. An
+    # unavailable rank in that window must fail rather than be inferred.
+    eligible_count = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            return "risk_rejected_row_invalid", metrics
+        at_ms = row.get("timestamp_ms")
+        if type(at_ms) is not int or at_ms < overlap:
+            return "risk_rejected_row_timestamp_invalid", metrics
+        if at_ms < CLEAN_FORWARD_START_MS:
+            continue
+        eligible_count += 1
+        ordinal = row.get("rank_ordinal")
+        rank_age = row.get("rank_age_ms")
+        if (
+            type(ordinal) is not int
+            or ordinal <= 0
+            or type(rank_age) is not int
+            or rank_age < 0
+        ):
+            return "frozen_forward_rank_integrity_not_clean", metrics
+    metrics["frozen_forward_rank_checked_rows"] = eligible_count
     return None, metrics
 
 
