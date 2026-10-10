@@ -128,10 +128,9 @@ def audit_terminal_source_parity(
         pointers = changed_field_paths(
             old_row, projection, limit=MAX_DRIFT_PATHS + 1
         )
-        changed_economics = any(
-            path == "/markouts" or path.startswith("/markouts/")
-            for path in pointers
-        )
+        # Never miss a price-outcome rewrite just because there were
+        # more than 12 earlier classification fields in a bounded receipt.
+        changed_economics = old_row.get("markouts") != projection.get("markouts")
         if changed_economics:
             markout_changed += 1
         else:
@@ -163,6 +162,12 @@ def audit_terminal_source_parity(
     integrity_clean = rebuilt_source.get("risk_rejected_integrity_clean")
     if not isinstance(integrity_clean, bool):
         raise TerminalSourceParityError("risk-rejected integrity status is missing")
+    history = previous.get("source_history")
+    assert isinstance(history, list)
+    previous_integrity_clean = bool(history) and all(
+        isinstance(item, dict) and item.get("integrity_clean") is True
+        for item in history
+    )
     historical_parity = changed == 0 and missing == 0
     return {
         "kind": "terminal-source-parity-redacted-audit-v1",
@@ -187,11 +192,15 @@ def audit_terminal_source_parity(
             causal_exposures if causal_instrumented else None
         ),
         "source_integrity_clean": integrity_clean,
+        "previous_ledger_integrity_clean": previous_integrity_clean,
+        "diagnostic_only": True,
+        "research_readiness_grant": False,
         "historical_terminal_parity": historical_parity,
         "historical_parity_blocked": not historical_parity,
         "research_readiness_blocked": (
             not historical_parity
             or not integrity_clean
+            or not previous_integrity_clean
             or not causal_instrumented
             or bool(causal_exposures)
         ),
