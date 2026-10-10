@@ -11,7 +11,6 @@ from cocomelon.research.prospective_momentum_band_forward_markout import (
     FORWARD_HORIZONS_MS,
     MAX_MARK_LAG_MS,
 )
-
 from cocomelon.research.terminal_row_drift import terminal_row_drift_receipt
 
 LEDGER_SCHEMA_VERSION: Final = 1
