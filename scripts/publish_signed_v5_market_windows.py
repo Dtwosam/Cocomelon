@@ -60,8 +60,14 @@ def _event_target(event: object) -> tuple[int, int, int] | None:
         # Bootstrap/scheduled workers do not certify a predecessor.
         return None
     predecessor = int(match.group(1))
-    if predecessor >= current:
-        raise V5WindowPublishError("predecessor cannot equal or exceed worker")
+    if predecessor == current:
+        # On push/schedule GitHub's run-name expression falls back to
+        # github.run_id; the resulting *guard-only* run has no predecessor.
+        # A successful guard skip can trigger workflow_run subscribers.
+        # Treat it as no pair, never as a failed economic observation.
+        return None
+    if predecessor > current:
+        raise V5WindowPublishError("predecessor cannot exceed worker")
     return current, attempt, predecessor
 
 

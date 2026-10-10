@@ -171,11 +171,22 @@ def test_failing_predecessor_with_signed_ledger_is_usable() -> None:
 def test_no_unverified_completed_predecessor_may_publish(
     event: object,
 ) -> None:
-    if event == _event(title="Continuous Paper · 200"):
-        with pytest.raises(publisher.V5WindowPublishError, match="predecessor"):
-            _publish(event)
-    else:
-        assert _publish(event)[0] is None
+    report, reason = _publish(event)
+    assert report is None
+    assert "not an exact completed" in reason
+
+
+def test_future_run_cannot_be_named_an_already_completed_predecessor() -> None:
+    with pytest.raises(publisher.V5WindowPublishError, match="predecessor"):
+        _publish(_event(title="Continuous Paper · 201"))
+
+
+def test_actual_github_push_guard_completion_is_clean_no_evidence() -> None:
+    event = _event(title="Continuous Paper · 200")
+    event["workflow_run"]["conclusion"] = "success"
+    report, reason = _publish(event)
+    assert report is None
+    assert "not an exact completed" in reason
 
 
 def test_current_or_predecessor_missing_compact_artifact_skips_truthfully() -> None:
