@@ -4,6 +4,10 @@
 
 This is the **top-level current research and handoff checklist**, linked from `README.md`, `AGENTS.md`, `docs/STATUS.md`, and `docs/CHATGPT_PROJECT_SOURCE.md`. It complements, but does not supersede, `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, or individual immutable experiment freezes.
 
+## October 10 — Fix the source-change watcher that controls genuine paper handoffs
+
+A further audit exposed one concrete **deployment-level source integrity defect** in `.github/workflows/continuous-paper.yml`: the active paper worker's shell `git diff --name-only` dependency-watch list had two actual research paths accidentally concatenated into an impossible `terminal_journal_asof.pysrc/...prospective_full_stack_forward_markout.py` filename. The separate main-push guard correctly refuses to launch duplicate traders, so this broken runtime-watch token could prevent a necessary genuine state handoff when only either of those two causal research files changed. PR **#1126** separates them into the two real arguments, with an independent regression that *shell-tokenizes the actual workflow command* and requires all critical opening-lineage, as-of, original inventory and deferred source paths to exist as individual watched files. No risk, model, data economics or frozen-trial rules are modified. This is necessary to make repairs genuinely reach the next original paper worker; it is not a profit or historical-parity claim.
+
 ## October 10 — Late first-observation census cannot prove decision-time inventory
 
 A genuinely new opening-opportunity census might still be observed late if a market feed or processing loop is delayed. Even with valid first-write immutability (PR #1124), a position inventory copied **more than five minutes** after the source opportunity timestamp is insufficient to corroborate which positions the live paper account held at that earlier decision. The frozen rank-evidence freshness horizon is **300,000 ms**, used here strictly as a descriptive upper bound; it never changes which actual trades execute.
