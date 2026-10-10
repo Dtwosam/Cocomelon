@@ -234,6 +234,9 @@ from cocomelon.research.fill_aware_delay_selector import (
     FillAwareDelaySelectorState,
     fill_aware_delay_selector_summary,
 )
+from cocomelon.research.first_seen_opening_witness import (
+    first_seen_opening_witness_summary,
+)
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.loss_context_paired_shadow_runtime import (
     LossContextPairedShadowRuntime,
@@ -344,9 +347,6 @@ from cocomelon.research.prospective_entry_cost_r import (
 from cocomelon.research.prospective_entry_filter import (
     ProspectiveEntryFilterState,
     evaluate_prospective_entry_filter,
-)
-from cocomelon.research.first_seen_opening_witness import (
-    first_seen_opening_witness_summary,
 )
 from cocomelon.research.prospective_full_stack_capacity_reflow import (
     prospective_full_stack_capacity_reflow,
