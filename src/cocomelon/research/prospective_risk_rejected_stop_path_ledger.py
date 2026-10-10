@@ -17,7 +17,6 @@ from cocomelon.research.prospective_risk_rejected_forward_markout_ledger import 
     MIN_REASON_SHORT_SETTLED_PER_HORIZON,
     MIN_REASON_STACK_ADMIT_SETTLED_PER_HORIZON,
 )
-
 from cocomelon.research.terminal_row_drift import terminal_row_drift_receipt
 
 LEDGER_SCHEMA_VERSION: Final = 1
