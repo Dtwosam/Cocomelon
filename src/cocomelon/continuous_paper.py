@@ -53,9 +53,12 @@ from cocomelon.evidence.recording import (
 )
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
 from cocomelon.evidence.restored_gap_recovery import (
+    ROTATION_WITNESS_FILENAME,
     WITNESS_FILENAME,
     RestoredNamedGapRecovery,
+    append_in_session_rotation_gap_witness,
     append_restored_named_gap_witness,
+    rotation_named_gap_recovery,
 )
 from cocomelon.execution.accounting import PaperPosition
 from cocomelon.execution.funding import (
@@ -9914,6 +9917,34 @@ async def run_continuous_paper_session(
                 replay_config.eligibility.max_book_age_ms
             ),
         )
+        # The original restored witness set is immutable for that exact
+        # checkpoint. A later watchlist/systemic WebSocket group replacement
+        # must also preserve NEW named source starts opened within this same
+        # worker, until actual accepted post-rotation data proves recovery.
+        in_session_rotation_gap_recoveries: list[RestoredNamedGapRecovery] = []
+
+        def register_rotated_group_gap_recovery() -> None:
+            # Do NOT replace a previous in-session observer with unresolved
+            # starts. Several rotations can happen before one market's next
+            # genuinely fresh book; every start must remain independently
+            # recoverable, never silently abandoned or double-closed.
+            in_session_rotation_gap_recoveries[:] = [
+                observer for observer in in_session_rotation_gap_recoveries
+                if observer.pending_named_starts
+            ]
+            new_observer = rotation_named_gap_recovery(
+                market_gaps=pipeline.known_gap_intervals_by_stream,
+                global_gaps=pipeline.known_global_gap_intervals_by_stream,
+                checkpoint_ms=utc_now_ms(),
+                max_exchange_age_ms=replay_config.eligibility.max_book_age_ms,
+                earlier_observers=(
+                    restored_named_gap_recovery,
+                    *in_session_rotation_gap_recoveries,
+                ),
+            )
+            if new_observer is not None:
+                in_session_rotation_gap_recoveries.append(new_observer)
+
         _restore_open_lifecycles(pipeline, execution, checkpoints)
         record_startup_component(
             "open_lifecycle_restore",
@@ -10623,6 +10654,25 @@ async def run_continuous_paper_session(
                         )
                     ),
                 )
+                for rotation_observer in tuple(in_session_rotation_gap_recoveries):
+                    # A new group cannot inherit the old mux's volatile
+                    # outstanding starts. Close an EXACT previously persisted
+                    # source gap only after fresh, accepted same-stream WS
+                    # evidence. No historical price reconstruction is implied.
+                    await rotation_observer.accept_recorded_event(
+                        event,
+                        observed_at_ms=utc_now_ms(),
+                        gap_sink=lambda gap: pump.process(_record_from_gap(gap)),
+                        witness_sink=lambda witness, gap, checkpoint_ms: (
+                            asyncio.to_thread(
+                                append_in_session_rotation_gap_witness,
+                                root / ROTATION_WITNESS_FILENAME,
+                                event=witness,
+                                gap=gap,
+                                checkpoint_ms=checkpoint_ms,
+                            )
+                        ),
+                    )
 
             async def gap_sink(gap: DataGap) -> None:
                 if gap_gate.is_set():
@@ -10941,6 +10991,7 @@ async def run_continuous_paper_session(
                 supervisor_group = replacement_group
                 pump.stale_l2_recovery_promotions += 1
                 await _cancel_supervisor_group(previous_group)
+                register_rotated_group_gap_recovery()
                 return True
 
             pump.stale_l2_recovery_readiness_failures += 1
@@ -11276,6 +11327,7 @@ async def run_continuous_paper_session(
                             await _cancel_supervisor_group(
                                 previous_group
                             )
+                            register_rotated_group_gap_recovery()
                         else:
                             pump.shortlist_rotation_readiness_failures += 1
                             await _cancel_supervisor_group(
