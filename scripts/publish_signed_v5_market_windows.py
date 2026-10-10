@@ -181,6 +181,109 @@ def publish(
     return result, "validated exact-predecessor signed-account market window"
 
 
+def scheduled_catchup(
+    repository: str,
+    get_json: Callable[[str], object],
+    get_zip: Callable[[str], bytes],
+) -> tuple[dict[str, object] | None, str]:
+    """Recover a missing workflow_run callback without fabricating checkpoints.
+
+    GitHub caps workflow_run chains at three levels; an hourly, independent
+    scheduled workflow must discover the authentic newest 100 paper runs.
+    Select the OLDEST eligible exact predecessor pair that is not already
+    represented by a retained interval artifact. A missing pair is skipped
+    only after exact source artifact discovery returns no usable evidence.
+    Never substitute an older signed checkpoint as the predecessor.
+    """
+    if not REPOSITORY.fullmatch(repository):
+        raise V5WindowPublishError("invalid GitHub repository")
+    payload = _mapping(
+        get_json(
+            f"repos/{repository}/actions/workflows/"
+            "continuous-paper.yml/runs?per_page=100"
+        ),
+        "recent paper workflow runs",
+    )
+    runs = payload.get("workflow_runs")
+    if not isinstance(runs, list) or len(runs) > 100:
+        raise V5WindowPublishError("invalid bounded paper workflow run list")
+    total = payload.get("total_count")
+    if type(total) is not int or total < len(runs):
+        raise V5WindowPublishError("paper run list total_count mismatch")
+    candidates: list[tuple[int, int, dict[str, Any]]] = []
+    seen: set[tuple[int, int]] = set()
+    for raw in runs:
+        run = _mapping(raw, "listed paper run")
+        if run.get("path") != ".github/workflows/continuous-paper.yml":
+            raise V5WindowPublishError("listed non-paper workflow")
+        if run.get("head_branch") != "main" or run.get("status") != "completed":
+            continue
+        target = _event_target({"action": "completed", "workflow_run": run})
+        if target is None:
+            continue
+        current, attempt, _ = target
+        if (current, attempt) in seen:
+            raise V5WindowPublishError("duplicate exact completed paper run")
+        seen.add((current, attempt))
+        candidates.append((current, attempt, run))
+
+    for current, attempt, run in sorted(candidates):
+        published_name = f"signed-v5-incremental-market-window-{current}-{attempt}"
+        stored = _mapping(
+            get_json(
+                f"repos/{repository}/actions/artifacts?"
+                f"name={published_name}&per_page=100"
+            ),
+            "published interval artifacts",
+        )
+        artifacts = stored.get("artifacts")
+        count = stored.get("total_count")
+        if (
+            not isinstance(artifacts, list)
+            or type(count) is not int
+            or count != len(artifacts)
+        ):
+            raise V5WindowPublishError(
+                "incomplete published interval artifact listing"
+            )
+        exact = [
+            artifact for artifact in artifacts
+            if isinstance(artifact, dict)
+            and artifact.get("name") == published_name
+        ]
+        if len(exact) > 1:
+            raise V5WindowPublishError("duplicate existing signed interval artifact")
+        if exact:
+            if exact[0].get("expired") is not False:
+                # Expired output is not verified retained evidence; replace
+                # only from the same immutable exact signed source pair.
+                pass
+            else:
+                _int(exact[0].get("id"), "existing interval artifact")
+                continue
+        report, reason = publish(
+            {"action": "completed", "workflow_run": run},
+            repository, get_json, get_zip,
+        )
+        if report is not None:
+            report["scheduled_catchup"] = {
+                "discovery_limit_recent_paper_runs": 100,
+                "source_run_id": current,
+                "source_run_attempt": attempt,
+                "not_review_authority": True,
+            }
+            return report, (
+                "catch-up validated exact signed pair from completed "
+                f"worker {current}/{attempt}"
+            )
+        # No authoritative report for this exact pair. This is not a
+        # zero-return observation and cannot be replaced by old market data.
+    return None, (
+        "no unpublished authentic exact predecessor pair in the "
+        "100 most recent paper workers"
+    )
+
+
 def _gh_json(endpoint: str) -> object:
     raw = subprocess.run(
         ["gh", "api", endpoint],
@@ -206,7 +309,12 @@ def main() -> int:
     ))
     if output.exists():
         raise V5WindowPublishError("refuse stale output path")
-    result, reason = publish(event, repository, _gh_json, _gh_zip)
+    if os.environ.get("GITHUB_EVENT_NAME") == "schedule":
+        result, reason = scheduled_catchup(
+            repository, _gh_json, _gh_zip,
+        )
+    else:
+        result, reason = publish(event, repository, _gh_json, _gh_zip)
     print(reason)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
@@ -231,6 +339,16 @@ def main() -> int:
                 )
     if result is None:
         return 0
+    lineage = _mapping(result.get("artifact_lineage"), "exact interval lineage")
+    artifact_name = (
+        f"signed-v5-incremental-market-window-"
+        f"{_int(lineage.get('current_run_id'), 'source worker')}-"
+        f"{_int(lineage.get('current_attempt'), 'source attempt')}"
+    )
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        with Path(github_output).open("a", encoding="utf-8") as handle:
+            handle.write(f"artifact_name={artifact_name}\n")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, sort_keys=True, indent=2) + "\n",
                       encoding="utf-8")
