@@ -10749,9 +10749,12 @@ async def run_continuous_paper_session(
                             "shadow-held market absent from mainnet context: "
                             + market.canonical
                         )
+                    # Selected-market startup already entered live observe;
+                    # never call seed() again after the first decision epoch.
+                    # The ordinary decision engine still evaluates only
+                    # its unchanged selected-market set.
                     await pump.process(
                         _record_from_public(market_snapshot_record_event(snapshot)),
-                        evaluate_decisions=False,
                     )
                 loss_context_paired_shadow_runtime.submit_reconcile(subscribed)
             except Exception as coverage_exc:
