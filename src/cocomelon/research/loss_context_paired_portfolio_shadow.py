@@ -1073,6 +1073,19 @@ class LossContextPairedPortfolioShadow:
             f"candidate={candidate or 'none'}"
         )
 
+    @property
+    def protected_open_markets(self) -> tuple[MarketId, ...]:
+        """Independent paper positions require live market data through exit."""
+        positions = (
+            *self._baseline_execution.account.positions,
+            *self._candidate_execution.account.positions,
+        )
+        by_key = {
+            position.market.canonical: position.market
+            for position in positions
+        }
+        return tuple(sorted(by_key.values(), key=lambda market: market.canonical))
+
     def reconcile_markets(
         self,
         selected_markets: Sequence[MarketId],

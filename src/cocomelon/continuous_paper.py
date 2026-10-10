@@ -4696,6 +4696,18 @@ def _ranked_selection(
     )
 
 
+def _paired_subscription_markets(
+    ordinary_markets: Sequence[MarketId],
+    protected_shadow_markets: Sequence[MarketId],
+) -> tuple[MarketId, ...]:
+    """Subscribe to shadow exits without expanding ordinary entry eligibility."""
+    by_key = {
+        market.canonical: market
+        for market in (*ordinary_markets, *protected_shadow_markets)
+    }
+    return tuple(sorted(by_key.values(), key=lambda market: market.canonical))
+
+
 async def _warmup_market(
     reader: InfoClient,
     market: MarketId,
@@ -10000,9 +10012,6 @@ async def run_continuous_paper_session(
                     observed_at_ms=startup_rank_observed_at_ms,
                 )
                 loss_context_paired_shadow_runtime.submit_restore_warmup_complete()
-                loss_context_paired_shadow_runtime.submit_reconcile(
-                    selected
-                )
             for market in selected:
                 snapshot = snapshots.get(market.canonical)
                 if snapshot is not None:
@@ -10715,8 +10724,39 @@ async def run_continuous_paper_session(
                 ),
             )
 
+        subscribed = selected
+        if loss_context_paired_shadow_runtime is not None:
+            try:
+                shadow_held = await loss_context_paired_shadow_runtime.protected_open_markets(
+                    timeout_seconds=5.0,
+                )
+                subscribed = _paired_subscription_markets(selected, shadow_held)
+                ordinary_keys_at_start = {
+                    market.canonical for market in selected
+                }
+                for market in subscribed:
+                    if market.canonical in ordinary_keys_at_start:
+                        continue
+                    snapshot = snapshots.get(market.canonical)
+                    if snapshot is None:
+                        raise RuntimeError(
+                            "shadow-held market absent from mainnet context: "
+                            + market.canonical
+                        )
+                    await pump.process(
+                        _record_from_public(market_snapshot_record_event(snapshot)),
+                        evaluate_decisions=False,
+                    )
+                loss_context_paired_shadow_runtime.submit_reconcile(subscribed)
+            except Exception as coverage_exc:
+                loss_context_paired_shadow_runtime.fail_closed(
+                    "paired market coverage startup: "
+                    + f"{type(coverage_exc).__name__}: {coverage_exc}"
+                )
+                subscribed = selected
+        subscribed_keys = {market.canonical for market in subscribed}
         supervisor_group = await start_supervisors(
-            selected,
+            subscribed,
             forward_gaps=True,
         )
         _mark_event_loop_phase(pump, "control_wait")
@@ -10821,7 +10861,7 @@ async def run_continuous_paper_session(
             )
             pump.stale_l2_recovery_attempts += 1
             replacement_group = await start_supervisors(
-                selected,
+                subscribed,
                 forward_gaps=False,
             )
             replacement_ready = await _wait_supervisor_group_ready(
@@ -11034,10 +11074,29 @@ async def run_continuous_paper_session(
                         pinned=pinned,
                     )
                     desired_keys = {market.canonical for market in desired}
+                    next_subscribed = desired
+                    if loss_context_paired_shadow_runtime is not None:
+                        try:
+                            shadow_held = await (
+                                loss_context_paired_shadow_runtime.protected_open_markets(
+                                    timeout_seconds=5.0,
+                                )
+                            )
+                            next_subscribed = _paired_subscription_markets(
+                                desired, shadow_held,
+                            )
+                        except Exception as coverage_exc:
+                            loss_context_paired_shadow_runtime.fail_closed(
+                                "paired market coverage rotation: "
+                                + f"{type(coverage_exc).__name__}: {coverage_exc}"
+                            )
+                    next_subscribed_keys = {
+                        market.canonical for market in next_subscribed
+                    }
                     added = tuple(
                         market
-                        for market in desired
-                        if market.canonical not in selected_keys
+                        for market in next_subscribed
+                        if market.canonical not in subscribed_keys
                     )
                     for market in added:
                         snapshot = refreshed.get(market.canonical)
@@ -11058,10 +11117,13 @@ async def run_continuous_paper_session(
                                 _record_from_public(candle_record_event(candle))
                             )
                             await _cooperative_stream_yield()
-                    if desired_keys != selected_keys:
+                    if (
+                        desired_keys != selected_keys
+                        or next_subscribed_keys != subscribed_keys
+                    ):
                         pump.shortlist_rotation_attempts += 1
                         replacement_group = await start_supervisors(
-                            desired,
+                            next_subscribed,
                             forward_gaps=False,
                         )
                         replacement_ready = (
@@ -11071,13 +11133,16 @@ async def run_continuous_paper_session(
                         )
                         if replacement_ready:
                             replacement_group.forward_gaps.set()
-                            selected = desired
-                            selected_keys = desired_keys
-                            pipeline.reconcile_markets(selected)
-                            pump.reconcile_cadence_shadow(selected)
+                            if desired_keys != selected_keys:
+                                selected = desired
+                                selected_keys = desired_keys
+                                pipeline.reconcile_markets(selected)
+                                pump.reconcile_cadence_shadow(selected)
+                            subscribed = next_subscribed
+                            subscribed_keys = next_subscribed_keys
                             if loss_context_paired_shadow_runtime is not None:
                                 loss_context_paired_shadow_runtime.submit_reconcile(
-                                    selected
+                                    subscribed
                                 )
                             previous_group = supervisor_group
                             supervisor_group = replacement_group
