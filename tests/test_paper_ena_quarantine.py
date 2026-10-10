@@ -23,7 +23,8 @@ from cocomelon.research.paper_ena_quarantine import (
 
 
 def _candidate(
-    market: MarketId, direction: Direction, decision_id: str = "d1"
+    market: MarketId, direction: Direction, decision_id: str = "d1",
+    *, timestamp_ms: int = ACTIVE_FROM_MS,
 ) -> EpochMarketEvaluation:
     return cast(
         EpochMarketEvaluation,
@@ -32,6 +33,7 @@ def _candidate(
                 market=market,
                 direction=direction,
                 decision_id=decision_id,
+                timestamp_ms=timestamp_ms,
             ),
         ),
     )
@@ -69,11 +71,26 @@ def test_only_forward_original_ena_openings_are_blocked(side: Direction) -> None
     assert policy.blocked_by_side == {side.value: 1}
 
 
+
+def test_past_decision_cannot_be_selected_by_later_paper_ioc() -> None:
+    policy = PaperEnaQuarantine()
+    decision = _candidate(
+        MarketId("", "ENA"), Direction.SHORT,
+        timestamp_ms=ACTIVE_FROM_MS - 1,
+    )
+    assert (
+        policy.block_reason(
+            decision, attempt_timestamp_ms=ACTIVE_FROM_MS + 1000
+        )
+        is None
+    )
+    assert policy.blocked_decisions == 0
+
 def test_other_markets_and_dex_scopes_are_never_blocked() -> None:
     policy = PaperEnaQuarantine()
     for name in ("BTC", "ETH", "ARB", "ENA"):
         market = (
-            MarketId("testdex", "ENA")
+            MarketId("otherdex", "ENA")
             if name == "ENA"
             else MarketId("", name)
         )
