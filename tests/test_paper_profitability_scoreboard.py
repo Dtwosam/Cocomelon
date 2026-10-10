@@ -720,3 +720,129 @@ def test_empty_frozen_rank_stress_has_no_invented_profitability() -> None:
     assert preferred["global_forward_first_half"]["trades"] == 0
     assert preferred["global_forward_second_half"]["trades"] == 0
     assert preferred["independent_forward_edge_verified"] is False
+
+
+
+def test_whole_original_journal_booked_friction_flips_are_exact() -> None:
+    """Separate observed fee/funding erosion from raw trade-direction losses."""
+    rows = [
+        _trade(
+            1, side="short", market="BTC", strategy="breakout",
+            gross="0.4",
+        ),
+        _trade(
+            2, side="short", market="ETH", strategy="breakout",
+            gross="2",
+        ),
+        _trade(
+            3, side="long", market="SOL", strategy="trend",
+            gross="-1", funding="3",
+        ),
+        _trade(
+            4, side="long", market="OP", strategy=None,
+            gross="0", funding="1",
+        ),
+        _trade(
+            5, side="long", market="ARB", strategy="trend",
+            gross="-9",
+        ),
+    ]
+    source = _reconciled_audit_from_rows(rows)
+    report = paper_profitability_scoreboard(source)
+    overall = report["overall"]
+    assert overall["trades"] == 5
+    assert Decimal(overall["gross_realized_pnl"]) == Decimal("-7.6")
+    assert Decimal(overall["fees"]) == 5
+    assert Decimal(overall["funding_cash_pnl"]) == 4
+    assert Decimal(overall["net_pnl"]) == Decimal("-8.6")
+    assert Decimal(overall["recorded_fees_minus_funding_cash"]) == 1
+    assert Decimal(overall["gross_minus_booked_net_pnl"]) == 1
+    assert Decimal(overall["booked_net_cash_reconciliation_residual"]) == 0
+    assert overall["gross_positive_trades"] == 2
+    assert overall["gross_positive_net_nonpositive_trades"] == 1
+    assert overall["gross_positive_net_negative_trades"] == 1
+    assert overall["gross_nonpositive_net_positive_trades"] == 1
+    assert Decimal(overall["gross_positive_flipped_booked_gross_pnl"]) == Decimal("0.4")
+    assert Decimal(overall["gross_positive_flipped_booked_net_pnl"]) == Decimal("-0.6")
+    assert Decimal(overall["gross_positive_flipped_recorded_fees"]) == 1
+    assert Decimal(overall["gross_positive_flipped_funding_cash_pnl"]) == 0
+    assert sum(x["gross_positive_net_nonpositive_trades"] for x in report["side_cohorts"]) == 1
+    assert sum(x["gross_positive_net_nonpositive_trades"] for x in report["strategy_cohorts"]) == 1
+    assert source["trades"] == rows
+    assert report["promotion_authority"] is False
+
+
+def test_frozen_forward_friction_excludes_pre_embargo_winning_trades() -> None:
+    from cocomelon.research.prospective_short_breakout_rank import (
+        ProspectiveShortBreakoutRankState,
+    )
+
+    boundary = 6 * 3_600_000
+    rows = [
+        _move_trade_to_original_open_time(
+            _trade(
+                1, side="short", market="BTC", strategy="breakout",
+                gross="2", rank="outside10",
+            ),
+            boundary - 1, closed_at_ms=boundary + 1,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                2, side="short", market="ETH", strategy="breakout",
+                gross="0.25", rank="top3",
+            ),
+            boundary, closed_at_ms=boundary + 2,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                3, side="short", market="SOL", strategy="breakout",
+                gross="-2", rank="outside10",
+            ),
+            boundary + 10, closed_at_ms=boundary + 12,
+        ),
+    ]
+    report = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows(rows),
+        short_rank_freeze=ProspectiveShortBreakoutRankState(
+            frozen_at_ms=0
+        ).payload(),
+    )
+    hypothesis = report["frozen_hypotheses_original_forward_economics"][
+        "hypotheses"
+    ]["short_breakout_rank4plus_skip"]
+    assert hypothesis["forward_trade_count"] == 2
+    assert hypothesis["original_forward_whole_journal"]["gross_positive_trades"] == 1
+    preferred = hypothesis["preferred_rank_attributed_original_closes"]
+    assert preferred["gross_positive_net_negative_trades"] == 1
+    assert Decimal(preferred["gross_positive_flipped_booked_gross_pnl"]) == Decimal("0.25")
+    assert Decimal(preferred["gross_positive_flipped_booked_net_pnl"]) == Decimal("-0.75")
+    assert hypothesis["disfavored_rank_attributed_original_closes"][
+        "gross_positive_net_nonpositive_trades"
+    ] == 0
+    assert report["overall"]["gross_positive_trades"] == 2
+    assert hypothesis["promotion_authority"] is False
+
+
+def test_subcent_booked_residual_stays_visible_in_friction_diagnostics() -> None:
+    source = _audit()
+    row = source["trades"][1]
+    assert isinstance(row, dict)
+    row["net_pnl"] = "4.000000000000000000000000001"
+    context = row["entry_context"]
+    assert isinstance(context, dict)
+    context["net_pnl"] = row["net_pnl"]
+    original = source["economics"]["overall"]
+    assert isinstance(original, dict)
+    with localcontext(prec=96):
+        original["net_pnl"] = str(
+            Decimal(str(original["net_pnl"])) +
+            Decimal("0.000000000000000000000000001")
+        )
+    original["net_reconciliation_residual"] = "0.000000000000000000000000001"
+    metrics = paper_profitability_scoreboard(source)["overall"]
+    assert Decimal(
+        metrics["booked_net_cash_reconciliation_residual"]
+    ) == Decimal("0.000000000000000000000000001")
+    assert Decimal(metrics["gross_minus_booked_net_pnl"]) != Decimal(
+        metrics["recorded_fees_minus_funding_cash"]
+    )
