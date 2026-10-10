@@ -270,10 +270,13 @@ def original_inventory_overlap_audit(
         exposed += 1
         if old is None:
             missing += 1
-        elif all(
-            _fingerprint(t.opening_plan_id) in old["prior_opening_plan_sha256"]
-            for t in future
-        ):
+            continue
+        plans = old["prior_opening_plan_sha256"]
+        if not isinstance(plans, list):
+            raise OpportunityInventoryWitnessError(
+                "validated census plan list missing"
+            )
+        if all(_fingerprint(t.opening_plan_id) in plans for t in future):
             fully_present += 1
         else:
             mismatched += 1
