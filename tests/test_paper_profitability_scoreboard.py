@@ -386,6 +386,82 @@ def test_profitable_gross_short_breakout_can_still_lose_after_costs() -> None:
     assert study["forward_net_edge_verified"] is False
 
 
+
+
+def test_report_cli_uses_exact_frozen_states_or_marks_absence(
+    tmp_path: Path,
+) -> None:
+    from cocomelon.research.prospective_short_breakout_rank import (
+        ProspectiveShortBreakoutRankState,
+    )
+    from cocomelon.research.prospective_trend_outside_top10 import (
+        ProspectiveTrendOutsideTop10State,
+    )
+
+    source = tmp_path / "original-complete-trades.json"
+    output = tmp_path / "separate-economic-readout.json"
+    short = tmp_path / "frozen-short-breakout.json"
+    trend = tmp_path / "frozen-trend-rank.json"
+    source.write_text(json.dumps(_audit()), encoding="utf-8")
+    short.write_text(
+        json.dumps(ProspectiveShortBreakoutRankState(frozen_at_ms=0).payload()),
+        encoding="utf-8",
+    )
+    trend.write_text(
+        json.dumps(ProspectiveTrendOutsideTop10State(frozen_at_ms=0).payload()),
+        encoding="utf-8",
+    )
+    cmd = [
+        sys.executable,
+        "scripts/report_paper_profitability_scoreboard.py",
+        str(source),
+        "--short-rank-freeze", str(short),
+        "--trend-outside-freeze", str(trend),
+        "--json-out", str(output),
+    ]
+    result = subprocess.run(
+        cmd, check=False, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    forward = payload["frozen_hypotheses_original_forward_economics"]
+    assert forward["hypotheses"][
+        "short_breakout_rank4plus_skip"
+    ]["frozen_state_verified"] is True
+    assert forward["hypotheses"][
+        "trend_outside_top10_both_sides_skip"
+    ]["forward_trade_count"] == 0
+    assert payload["overall"]["trades"] == 4
+    assert payload["execution_authority"] is False
+    assert source.read_text(encoding="utf-8") == json.dumps(_audit())
+    assert short.is_file() and trend.is_file()
+    bad = json.loads(short.read_text(encoding="utf-8"))
+    bad["frozen_at_ms"] = 123
+    short.write_text(json.dumps(bad), encoding="utf-8")
+    broken = subprocess.run(
+        cmd, check=False, capture_output=True, text=True
+    )
+    assert broken.returncode != 0
+    assert "drift" in broken.stderr
+    # Failure cannot rewrite a previously successful original output.
+    assert json.loads(output.read_text(encoding="utf-8")) == payload
+
+
+def test_real_paper_workflow_supplies_both_frozen_state_paths_to_report() -> None:
+    workflow = Path(".github/workflows/continuous-paper.yml").read_text(
+        encoding="utf-8"
+    )
+    start = workflow.index(
+        "- name: Reconcile original paper after-cost profitability cohorts"
+    )
+    end = workflow.index(
+        "- name: Upload original paper after-cost profitability scoreboard"
+    )
+    report = workflow[start:end]
+    assert '--short-rank-freeze "$STATE_ROOT/prospective-short-breakout-rank-state.json"' in report
+    assert '--trend-outside-freeze "$STATE_ROOT/prospective-trend-outside-top10-state.json"' in report
+    assert "frozen_hypotheses_original_forward_economics" in report
+
 def test_empty_short_breakout_cohort_does_not_invent_a_trading_edge() -> None:
     result = paper_profitability_scoreboard(_audit())
     study = result["short_breakout_top3_robustness"]
