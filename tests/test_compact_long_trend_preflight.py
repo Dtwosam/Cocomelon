@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts.verify_compact_long_trend_exact_source import CLEAN_FORWARD_START_MS
+
 SCRIPT = Path("scripts/verify_compact_long_trend_exact_source.py")
 FILES = (
     "prospective-full-stack-forward-markout-summary.json",
@@ -252,3 +254,103 @@ def test_workflow_diagnostic_does_not_override_compact_pack_gate() -> None:
     pack_step = source[pack:actual_upload]
     assert "steps.compact_long_trend_source_manifest.outcome == 'success'" in pack_step
     assert "live_orders: true" not in segment
+
+
+def _dirty_historic_before_frozen_window(
+    root: Path, *, last_miss_ms: int
+) -> None:
+    target = root / FILES[0]
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    payload.update(
+        risk_rejected_integrity_clean=False,
+        risk_rejected_missing_rank=67,
+        risk_rejected_integrity_last_miss_at_ms=last_miss_ms,
+        risk_rejected_rows=[
+            {
+                "timestamp_ms": CLEAN_FORWARD_START_MS - 100,
+                "rank_ordinal": None,
+                "rank_age_ms": None,
+            },
+            {
+                "timestamp_ms": CLEAN_FORWARD_START_MS + 100,
+                "rank_ordinal": 4,
+                "rank_age_ms": 500,
+            },
+        ],
+        risk_rejected_stack_evaluated=2,
+    )
+    target.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_earlier_rank_defects_do_not_erase_clean_frozen_forward_evidence(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "state"
+    _fixture(root)
+    _dirty_historic_before_frozen_window(
+        root, last_miss_ms=CLEAN_FORWARD_START_MS - 101
+    )
+    result = _run(root, tmp_path / "preflight.json")
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads((tmp_path / "preflight.json").read_text(encoding="utf-8"))
+    assert report["ready"] is True
+    assert report["promotion_authority"] is False
+    metric = report["inputs"][0]["metrics"]
+    assert metric["risk_rejected_integrity_clean"] is False
+    assert metric["risk_rejected_missing_rank"] == 67
+    assert metric["historic_missing_rank_retained"] == 67
+    assert metric["entire_history_integrity_clean"] is False
+    assert metric["frozen_forward_scope_start_ms"] == CLEAN_FORWARD_START_MS
+    assert metric["frozen_forward_rank_checked_rows"] == 1
+    assert metric["scope"] == "frozen_forward_only_historical_defects_retained"
+
+
+@pytest.mark.parametrize(
+    ("last_miss_ms", "reason"),
+    [
+        (CLEAN_FORWARD_START_MS, "risk_rejected_integrity_overlaps_frozen_window"),
+        (
+            CLEAN_FORWARD_START_MS + 1,
+            "risk_rejected_integrity_overlaps_frozen_window",
+        ),
+        (-1, "risk_rejected_integrity_not_clean"),
+    ],
+)
+def test_frozen_window_overlap_or_bad_boundary_fails_closed(
+    tmp_path: Path, last_miss_ms: int, reason: str
+) -> None:
+    root = tmp_path / "state"
+    _fixture(root)
+    _dirty_historic_before_frozen_window(root, last_miss_ms=last_miss_ms)
+    report, payload, _ = _receipt(tmp_path)
+    assert report.is_file()
+    assert payload["ready"] is False
+    assert payload["inputs"][0]["reason"] == reason
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "expected_reason"),
+    [
+        ("rank_ordinal", None, "frozen_forward_rank_integrity_not_clean"),
+        ("rank_age_ms", None, "frozen_forward_rank_integrity_not_clean"),
+        ("rank_age_ms", -1, "frozen_forward_rank_integrity_not_clean"),
+        ("rank_ordinal", True, "frozen_forward_rank_integrity_not_clean"),
+        ("timestamp_ms", "bad", "risk_rejected_row_timestamp_invalid"),
+    ],
+)
+def test_dirty_forward_rank_data_still_blocks_compact_export(
+    tmp_path: Path, key: str, value: object, expected_reason: str
+) -> None:
+    root = tmp_path / "state"
+    _fixture(root)
+    _dirty_historic_before_frozen_window(
+        root, last_miss_ms=CLEAN_FORWARD_START_MS - 101
+    )
+    target = root / FILES[0]
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    payload["risk_rejected_rows"][1][key] = value
+    target.write_text(json.dumps(payload), encoding="utf-8")
+    report, result, _ = _receipt(tmp_path)
+    assert report.is_file()
+    assert result["ready"] is False
+    assert result["inputs"][0]["reason"] == expected_reason
