@@ -16,10 +16,14 @@ from typing import Final, cast
 
 from cocomelon.research.prospective_short_breakout_rank import (
     MIN_FUTURE as SHORT_MIN_FUTURE,
+)
+from cocomelon.research.prospective_short_breakout_rank import (
     ProspectiveShortBreakoutRankState,
 )
 from cocomelon.research.prospective_trend_outside_top10 import (
     MIN_CLOSED as TREND_MIN_CLOSED,
+)
+from cocomelon.research.prospective_trend_outside_top10 import (
     ProspectiveTrendOutsideTop10State,
 )
 
