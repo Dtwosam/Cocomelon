@@ -314,6 +314,56 @@ def compare(before: object, after: object) -> dict[str, object]:
                     for v in rows.values()), ZERO) != advantage
         ):
             raise V5WindowComparisonError("window PnL does not reconcile")
+        # Descriptive leave-one-market arithmetic on actual signed market
+        # contributions. A hypothetical portfolio without that market would
+        # have DIFFERENT available margin, timing, fills, funding and
+        # replacement trades: never call these executable counterfactuals.
+        # This diagnoses whether ONE outlier alone can explain the observed
+        # relative result without filtering away baseline winners.
+        omitted_market_sensitivity = {
+            market: str(
+                advantage - Decimal(
+                    rows[market]["candidate_minus_baseline_window_pnl"]
+                )
+            )
+            for market in markets
+        }
+        if omitted_market_sensitivity:
+            sensitivity_values = tuple(
+                Decimal(v) for v in omitted_market_sensitivity.values()
+            )
+            robustness = {
+                "available": True,
+                "observed_full_window_relative_pnl": str(advantage),
+                "by_omitted_market": omitted_market_sensitivity,
+                "worst_leave_one_market_relative_pnl": str(
+                    min(sensitivity_values)
+                ),
+                "best_leave_one_market_relative_pnl": str(
+                    max(sensitivity_values)
+                ),
+                "all_leave_one_market_relative_pnl_positive": all(
+                    result > ZERO for result in sensitivity_values
+                ),
+                "any_leave_one_market_relative_pnl_positive": any(
+                    result > ZERO for result in sensitivity_values
+                ),
+                "not_an_executable_counterfactual": True,
+                "not_a_strategy_filter_or_promotion_gate": True,
+                "note": (
+                    "Arithmetic subtraction of both accounts' exact market "
+                    "contribution from the original window. No recreated "
+                    "orders, exposure, replacement trades, fees, funding, "
+                    "capital allocation, stops, or performance claims."
+                ),
+            }
+        else:
+            robustness = {
+                "available": False,
+                "reason": "no_markets_in_signed_window",
+                "not_an_executable_counterfactual": True,
+                "not_a_strategy_filter_or_promotion_gate": True,
+            }
         return {
             "schema_version": 1,
             "kind": "signed-v5-descriptive-incremental-market-window",
@@ -341,6 +391,7 @@ def compare(before: object, after: object) -> dict[str, object]:
             "candidate_minus_baseline_cumulative_pnl_at_end": str(later["delta"]),
             "by_market": rows,
             "component_window": component_window,
+            "observed_market_concentration_sensitivity": robustness,
             "largest_candidate_disadvantages": [
                 market for market in sorted(
                     markets,
