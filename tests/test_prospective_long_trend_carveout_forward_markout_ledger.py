@@ -569,12 +569,14 @@ def test_carveout_ledger_refuses_terminal_history_rewrite() -> None:
     with pytest.raises(
         ProspectiveLongTrendCarveoutLedgerError,
         match="previous terminal carveout row changed",
-    ):
+    ) as drift:
         _update(
             _summary([changed]),
             previous=first,
             run_id=11,
         )
+    assert "opportunity_sha256_prefix=" in str(drift.value)
+    assert "changed_json_pointer=/markouts/" in str(drift.value)
 
 
 def test_carveout_ledger_rejects_rank_block_becoming_admit() -> None:
