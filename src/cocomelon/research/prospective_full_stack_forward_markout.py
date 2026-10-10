@@ -34,6 +34,10 @@ from cocomelon.research.prospective_two_strike_stop_filter import (
     ProspectiveTwoStrikeStopFilterState,
     prospective_two_strike_prior_strikes_at,
 )
+from cocomelon.research.terminal_journal_asof import (
+    future_finalized_open_exposure,
+    terminal_trades_known_at,
+)
 
 ZERO: Final = Decimal("0")
 MIN_SETTLED_PER_HORIZON: Final = 20
@@ -809,13 +813,12 @@ def prospective_full_stack_forward_markout_summary(
         # momentum decisions from its now-known opening can shift previously
         # terminal research rows across worker handoffs. Keep all original
         # economic rows, but mark that research cohort unfit for promotion.
-        future_close_exposure = any(
-            trade.opened_at_ms >= overlap_start
-            and trade.opened_at_ms < evidence.opportunity_timestamp_ms
-            and trade.closed_at_ms > evidence.opportunity_timestamp_ms
-            and trade.market.canonical == evidence.market
-            and trade.direction.value == evidence.direction
-            for trade in ordered_trades
+        future_close_exposure = future_finalized_open_exposure(
+            ordered_trades,
+            timestamp_ms=evidence.opportunity_timestamp_ms,
+            overlap_started_at_ms=overlap_start,
+            market=evidence.market,
+            direction=evidence.direction,
         )
         if future_close_exposure:
             if risk_approved:
@@ -906,10 +909,8 @@ def prospective_full_stack_forward_markout_summary(
         # recorded in the *terminal-only* journal when first observed.
         # See future_close_exposure: if that uncertainty exists, research
         # stays dirty even after rebuilding the same conservative result.
-        decision_time_closed_trades = tuple(
-            trade
-            for trade in ordered_trades
-            if trade.closed_at_ms <= evidence.opportunity_timestamp_ms
+        decision_time_closed_trades = terminal_trades_known_at(
+            ordered_trades, timestamp_ms=evidence.opportunity_timestamp_ms
         )
 
         combined_reason = prospective_combined_block_reason(

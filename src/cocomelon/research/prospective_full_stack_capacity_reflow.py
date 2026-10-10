@@ -37,6 +37,10 @@ from cocomelon.research.prospective_two_strike_stop_filter import (
     ProspectiveTwoStrikeStopFilterState,
     prospective_two_strike_prior_strikes_at,
 )
+from cocomelon.research.terminal_journal_asof import (
+    future_finalized_open_exposure,
+    terminal_trades_known_at,
+)
 
 MOMENTUM_INTEGRITY_REASONS: Final = frozenset(
     {
@@ -227,6 +231,7 @@ def prospective_full_stack_capacity_reflow(
     missing_rank = 0
     stale_rank = 0
     momentum_feature_integrity_misses = 0
+    journal_future_close_exposure_opportunities = 0
     full_stack_blocked_opportunities = 0
     full_stack_eligible_opportunities = 0
     single_release_options = 0
@@ -256,6 +261,14 @@ def prospective_full_stack_capacity_reflow(
         ):
             continue
         baseline_capacity_rejections += 1
+        if future_finalized_open_exposure(
+            closed_trades,
+            timestamp_ms=evidence.opportunity_timestamp_ms,
+            overlap_started_at_ms=overlap_start,
+            market=evidence.market,
+            direction=evidence.direction,
+        ):
+            journal_future_close_exposure_opportunities += 1
 
         rank_age_ms = _rank_age_ms(evidence)
         ordinal = evidence.rank_ordinal
@@ -287,15 +300,18 @@ def prospective_full_stack_capacity_reflow(
             lead_strategy=evidence.lead_strategy,
             ordinal=ordinal,
         )
+        decision_time_closed_trades = terminal_trades_known_at(
+            closed_trades, timestamp_ms=evidence.opportunity_timestamp_ms
+        )
         two_prior_strikes = prospective_two_strike_prior_strikes_at(
-            closed_trades,
+            decision_time_closed_trades,
             two_strike_state,
             market=evidence.market,
             direction=direction,
             timestamp_ms=evidence.opportunity_timestamp_ms,
         )
         momentum_detail = prospective_momentum_band_opportunity_decision(
-            closed_trades,
+            decision_time_closed_trades,
             feature_store,
             momentum_state,
             market=request.strategy_decision.market,
@@ -395,6 +411,7 @@ def prospective_full_stack_capacity_reflow(
         and release_lineage_misses == 0
         and unresolved_release_positions == 0
         and release_decision_map_misses == 0
+        and journal_future_close_exposure_opportunities == 0
     )
     release_values = tuple(
         sorted(
@@ -429,6 +446,10 @@ def prospective_full_stack_capacity_reflow(
         "momentum_feature_integrity_misses": (
             momentum_feature_integrity_misses
         ),
+        "journal_future_close_exposure_opportunities": (
+            journal_future_close_exposure_opportunities
+        ),
+        "journal_asof_provenance": "closed_trades_only_no_original_open_event_witness",
         "full_stack_blocked_opportunities": (
             full_stack_blocked_opportunities
         ),
