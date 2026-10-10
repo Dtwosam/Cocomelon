@@ -783,6 +783,8 @@ def prospective_full_stack_forward_markout_summary(
     risk_rejected_missing_rank = 0
     risk_rejected_stale_rank = 0
     risk_rejected_momentum_feature_integrity_misses = 0
+    journal_future_close_exposure_opportunities = 0
+    risk_rejected_journal_future_close_exposure_opportunities = 0
     risk_rejected_integrity_last_miss_at_ms: int | None = None
     long_trend_carveout_momentum_integrity_misses = 0
     risk_rejected_long_trend_carveout_momentum_integrity_misses = 0
@@ -799,6 +801,39 @@ def prospective_full_stack_forward_markout_summary(
 
     for evidence in prospective:
         risk_approved = evidence.baseline_risk_approved
+
+        # The journal contains only finalized trades, not an independently
+        # replayable open-event stream. A trade finalized AFTER this
+        # opportunity cannot prove that its opening was present in an
+        # earlier historical journal snapshot. Reconstructing strike and
+        # momentum decisions from its now-known opening can shift previously
+        # terminal research rows across worker handoffs. Keep all original
+        # economic rows, but mark that research cohort unfit for promotion.
+        future_close_exposure = any(
+            trade.opened_at_ms >= overlap_start
+            and trade.opened_at_ms < evidence.opportunity_timestamp_ms
+            and trade.closed_at_ms > evidence.opportunity_timestamp_ms
+            and trade.market.canonical == evidence.market
+            and trade.direction.value == evidence.direction
+            for trade in ordered_trades
+        )
+        if future_close_exposure:
+            if risk_approved:
+                journal_future_close_exposure_opportunities += 1
+                integrity_last_miss_at_ms = max(
+                    evidence.opportunity_timestamp_ms,
+                    integrity_last_miss_at_ms
+                    if integrity_last_miss_at_ms is not None
+                    else evidence.opportunity_timestamp_ms,
+                )
+            else:
+                risk_rejected_journal_future_close_exposure_opportunities += 1
+                risk_rejected_integrity_last_miss_at_ms = max(
+                    evidence.opportunity_timestamp_ms,
+                    risk_rejected_integrity_last_miss_at_ms
+                    if risk_rejected_integrity_last_miss_at_ms is not None
+                    else evidence.opportunity_timestamp_ms,
+                )
         if not risk_approved:
             baseline_risk_rejected += 1
             risk_rejected_reason_counts.update(
@@ -1114,6 +1149,7 @@ def prospective_full_stack_forward_markout_summary(
         missing_rank == 0
         and stale_rank == 0
         and momentum_feature_integrity_misses == 0
+        and journal_future_close_exposure_opportunities == 0
     )
     horizons = {
         str(horizon_ms): _horizon_summary(
@@ -1127,6 +1163,7 @@ def prospective_full_stack_forward_markout_summary(
         risk_rejected_missing_rank == 0
         and risk_rejected_stale_rank == 0
         and risk_rejected_momentum_feature_integrity_misses == 0
+        and risk_rejected_journal_future_close_exposure_opportunities == 0
     )
     risk_rejected_horizons = {
         str(horizon_ms): _risk_rejected_horizon_summary(
@@ -1247,6 +1284,9 @@ def prospective_full_stack_forward_markout_summary(
         "risk_rejected_momentum_feature_integrity_misses": (
             risk_rejected_momentum_feature_integrity_misses
         ),
+        "risk_rejected_journal_future_close_exposure_opportunities": (
+            risk_rejected_journal_future_close_exposure_opportunities
+        ),
         "risk_rejected_integrity_clean": (
             risk_rejected_integrity_clean
         ),
@@ -1271,6 +1311,10 @@ def prospective_full_stack_forward_markout_summary(
         "stack_blocked": decision_counts["BLOCK"],
         "block_layer_counts": dict(sorted(block_layer_counts.items())),
         "integrity_clean": integrity_clean,
+        "journal_future_close_exposure_opportunities": (
+            journal_future_close_exposure_opportunities
+        ),
+        "journal_asof_provenance": "closed_trades_only_no_original_open_event_witness",
         "integrity_last_miss_at_ms": integrity_last_miss_at_ms,
         "post_integrity_miss": post_integrity_miss,
         "long_trend_carveout_integrity_last_miss_at_ms": (
