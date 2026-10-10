@@ -23,6 +23,10 @@
 
 **Next priority:** preserve frozen v5 and all signed account evidence, verify forward continuity rather than touching the filter; do not claim positive expectancy, refreeze v6, cherry-pick the avoided JUP loser, disregard the missed PONS winner or enable live money. Exact consecutive market comparator from #1103/#1104 and source-cost components from #1105 are research-only. Self-named guard-run false failures were fixed in #1106. The automatic compact source may not contain components until two *genuine post-#1105* signed source checkpoints exist.
 
+## Fourth signed v5 interval: baseline winner concentration cannot excuse candidate loss (2026-10-10)
+
+Authenticated source artifact third `11669707831` to fourth `11673268469` proves candidate **-$44.7424** relative to baseline over the same observed marked-account interval. Purely subtracting both accounts' observed PONS contributions still leaves the challenger **-$21.2341** behind; doing the same for ZK leaves it **-$29.9859** behind. New `observed_market_concentration_sensitivity` in the incremental signed v5 market comparator reports this precise *descriptive* leave-one-market arithmetic, including unfavorable cases where removing a baseline loser makes the challenger look worse. It has **zero** causal/execution/promotion authority and must not be read as a hypothetical strategy with no trades in that market. All v5 gap, sample and after-cost gates remain unchanged.
+
 ## Signed independent v5 economics — exact handoff (2026-10-10)
 
 The authentic third v5 signed paired-account checkpoint (worker 38048378910, artifact 11669707831): baseline cumulative -$4.2704; frozen challenger -$23.3999; challenger -$19.1295 behind cumulatively and -$10.3305 behind in the genuine post-first-checkpoint window. Review is NOT ready: 91.0% market-data gaps and 1 open; only 3 of required 9 checkpoints, 6 of 30 blocked admissions, and 1 of required 30 challenger closes. No demonstrated positive after-cost edge. #1101 feed-gap rotation repair is already merged and does not reconstruct missing ticks. Ordinary paper runtime is separate; refresh Issue #469 for live status.
