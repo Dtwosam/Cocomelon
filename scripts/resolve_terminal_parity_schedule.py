@@ -9,9 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-from collections.abc import Callable, Mapping
-from pathlib import Path
-from typing import Any
+from collections.abc import Callable
 
 CAUSAL_SOURCE_START = "2026-10-10T18:06:46Z"
 WORKFLOW_PATH = ".github/workflows/continuous-paper.yml"
@@ -121,7 +119,10 @@ def main() -> int:
     if (
         not isinstance(repo, str)
         or repo.count("/") != 1
-        or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_/" for ch in repo)
+        or any(
+            ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_/"
+            for ch in repo
+        )
     ):
         raise SystemExit("invalid repository identity")
     try:
