@@ -219,7 +219,7 @@ jobs:
 
       - name: Upload redacted parity diagnostic
         if: steps.source.outputs.available == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: immutable-terminal-source-parity-${{ github.run_id }}-${{ github.run_attempt }}
           path: /tmp/terminal-source-parity-redacted.json
