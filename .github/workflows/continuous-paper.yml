@@ -156,6 +156,7 @@ on:
       # successor instead of leaving the previous workflow code running.
       - "scripts/rebuild_deferred_long_trend_exact_source.py"
       - "scripts/verify_compact_long_trend_exact_source.py"
+      - "scripts/reconcile_signed_v5_market_economics.py"
       - "src/cocomelon/research/prospective_long_trend_5m_exit_source.py"
       - "src/cocomelon/research/prospective_long_trend_15m_exit_source.py"
       - "src/cocomelon/research/prospective_weekly_drawdown_5m_exit_source.py"
@@ -1594,6 +1595,55 @@ jobs:
         with:
           name: continuous-paper-loss-context-paired-shadow-review-${{ github.run_id }}-${{ github.run_attempt }}
           path: continuous-paper-state/loss-context-paired-shadow-review-report.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Reconcile signed v5 paired market economics
+        id: signed_v5_market_economics
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.loss_context_paired_shadow_review.outcome == 'success' && hashFiles('continuous-paper-state/loss-context-paired-portfolio-shadow-scoped-v5/paired-shadow-state.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/reconcile_signed_v5_market_economics.py "$STATE_ROOT" \
+            --json-out "$STATE_ROOT/signed-v5-market-economics.json"
+          test -s "$STATE_ROOT/signed-v5-market-economics.json"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path(
+              "continuous-paper-state/signed-v5-market-economics.json"
+          ).read_text(encoding="utf-8"))
+          print("## Signed v5 market-level whole-account PnL reconciliation")
+          print("- RESEARCH ONLY; cumulative initial/checkpoint state, NOT a forward verdict")
+          print("- Baseline / challenger actual cumulative account PnL: "
+                f"{payload['baseline']['signed_total_account_pnl']} / "
+                f"{payload['candidate']['signed_total_account_pnl']}")
+          print("- Challenger minus baseline actual account PnL: "
+                f"{payload['candidate_minus_baseline_total_account_pnl']}")
+          print("- Market-by-market cash flows, fills, fees, funding and "
+                "marked open inventory reconcile exactly to BOTH signed accounts.")
+          print("- Market contributions are NOT causal credit for blocked trades.")
+          for market, values in sorted(
+              payload["by_market"].items(),
+              key=lambda item: abs(float(item[1]["candidate_minus_baseline"])),
+              reverse=True,
+          )[:8]:
+              print(f"  - {market}: baseline "
+                    f"{values['baseline_account_pnl']} / challenger "
+                    f"{values['candidate_account_pnl']} / delta "
+                    f"{values['candidate_minus_baseline']}")
+          PY
+
+      - name: Upload signed v5 market economics attribution
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.signed_v5_market_economics.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-v5-market-economics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/signed-v5-market-economics.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
