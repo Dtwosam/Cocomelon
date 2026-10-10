@@ -666,7 +666,7 @@ def test_post_embargo_rank_stress_exposes_concentrated_winners_and_net_r() -> No
         _move_trade_to_original_open_time(
             _trade(
                 4, side="short", market="ENA", strategy=None,
-                gross="-8",
+                gross="-9",
             ),
             boundary + 40, closed_at_ms=boundary + 41,
         ),
