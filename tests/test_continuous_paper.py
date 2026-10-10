@@ -68,6 +68,7 @@ from cocomelon.continuous_paper import (
     _position_action_from_payload,
     _position_action_payload,
     _position_protection_metrics,
+    _paired_subscription_markets,
     _post_freshness_paper_cohort_payload,
     _profit_lock_counterfactual_payload,
     _prospective_candidate_stack_overlap_payload,
@@ -5949,3 +5950,30 @@ def test_clean_paired_shadow_uses_new_root_without_reusing_v1_account_history() 
         LOSS_CONTEXT_PAIRED_SHADOW_ROOT
         != LOSS_CONTEXT_PAIRED_SHADOW_LEGACY_ROOT
     )
+
+
+
+def test_paired_subscription_pin_preserves_main_entry_watchlist() -> None:
+    ordinary = (MarketId("", "ETH"), MarketId("", "BTC"))
+    held_by_shadow = (MarketId("", "NEAR"), MarketId("", "BTC"))
+    subscribed = _paired_subscription_markets(ordinary, held_by_shadow)
+    assert tuple(item.canonical for item in subscribed) == (
+        "BTC", "ETH", "NEAR",
+    )
+    assert tuple(item.canonical for item in ordinary) == ("ETH", "BTC")
+    # After the shadow positions close, the extra subscription can expire.
+    assert tuple(
+        market.canonical
+        for market in _paired_subscription_markets(ordinary, ())
+    ) == ("BTC", "ETH")
+
+
+def test_mainnet_rotation_pins_shadow_feeds_but_not_trade_decisions() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    assert "next_subscribed = _paired_subscription_markets(" in source
+    assert "start_supervisors(\n                            next_subscribed," in source
+    assert "pipeline.reconcile_markets(selected)" in source
+    assert "loss_context_paired_shadow_runtime.submit_reconcile(\n                                    subscribed" in source
+    assert "start_supervisors(\n                subscribed," in source

@@ -92,6 +92,14 @@ class _FakeShadow:
             )
         )
 
+    @property
+    def protected_open_markets(self) -> tuple[MarketId, ...]:
+        self._observe_thread()
+        self.events.append(("protected",))
+        if any(item[0] == "record" for item in self.events):
+            return (MARKET,)
+        return ()
+
     def mark_restore_warmup_complete(self) -> None:
         self._observe_thread()
         self.events.append(("warmup_complete",))
@@ -241,4 +249,27 @@ def test_paired_shadow_runtime_overflow_fails_only_shadow_closed(
         assert "queue overflow" in str(status["error"])
     finally:
         _SlowShadow.release.set()
+        asyncio.run(runtime.close())
+
+
+
+def test_paired_shadow_position_query_follows_enqueued_record(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path, shadow_factory=_FakeShadow)
+    try:
+        assert asyncio.run(runtime.protected_open_markets()) == ()
+        assert runtime.submit_record(
+            _record(3_000),
+            now_ms=3_000,
+            evaluate_decisions=False,
+        )
+        assert asyncio.run(runtime.protected_open_markets()) == (MARKET,)
+        assert _FakeShadow.events[-2:] == [
+            ("record", 3_000, 3_000, False),
+            ("protected",),
+        ]
+        runtime.fail_closed("market source missing")
+        assert runtime.status_payload()["failed"] is True
+    finally:
         asyncio.run(runtime.close())
