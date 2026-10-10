@@ -5977,7 +5977,8 @@ def test_mainnet_rotation_pins_shadow_feeds_but_not_trade_decisions() -> None:
         encoding="utf-8"
     )
     assert "next_subscribed = _paired_subscription_markets(" in source
-    assert "start_supervisors(\n                            next_subscribed," in source
+    assert "replacement_group = await start_supervisors(" in source
+    assert "next_subscribed,\n" in source
     assert "pipeline.reconcile_markets(selected)" in source
     assert (
         "loss_context_paired_shadow_runtime.submit_reconcile("
