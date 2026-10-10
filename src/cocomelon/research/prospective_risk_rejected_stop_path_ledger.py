@@ -18,6 +18,8 @@ from cocomelon.research.prospective_risk_rejected_forward_markout_ledger import 
     MIN_REASON_STACK_ADMIT_SETTLED_PER_HORIZON,
 )
 
+from cocomelon.research.terminal_row_drift import terminal_row_drift_receipt
+
 LEDGER_SCHEMA_VERSION: Final = 1
 LEDGER_KIND: Final = "prospective-risk-rejected-stop-path-ledger-v1"
 CLAIM_SCOPE: Final = "observed_mark_stop_crossing_only"
@@ -1184,7 +1186,11 @@ def update_risk_rejected_stop_path_ledger(
                 )
             if current != old:
                 raise RiskRejectedStopPathLedgerError(
-                    "previous terminal stop-path row changed"
+                    "previous terminal stop-path row changed ("
+                    + terminal_row_drift_receipt(
+                        opportunity_id, old, current
+                    )
+                    + ")"
                 )
 
     old_ids = {
