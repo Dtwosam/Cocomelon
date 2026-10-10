@@ -243,6 +243,7 @@ from cocomelon.research.opening_fill_liquidity import (
     evidence_from_opening_trace,
     opening_fill_liquidity_attribution,
 )
+from cocomelon.research.paper_ena_quarantine import PaperEnaQuarantine
 from cocomelon.research.original_stop_book_evidence import (
     OriginalStopBookCapture,
     OriginalStopBookEvidenceStore,
@@ -9825,6 +9826,10 @@ async def run_continuous_paper_session(
                 rank_tracker=rank_tracker,
             )
         )
+        # Only the genuine continuous-mainnet PAPER engine gets this
+        # fixed 7-day ENA exposure quarantine; paired baseline shadow
+        # and its precommitted entry rule are not silently modified.
+        paper_ena_quarantine = PaperEnaQuarantine()
         component_started = time.perf_counter()
         pipeline = BaselineReplayPipeline(
             replay_config,
@@ -9836,6 +9841,7 @@ async def run_continuous_paper_session(
             feature_snapshot_sink=feature_store,
             opening_lifecycle_sink=opening_lineage_sink,
             closed_lifecycle_sink=trade_path_sink,
+            opening_candidate_filter=paper_ena_quarantine,
             opening_research_observer=(
                 _CompositeOpeningResearchObserver(
                     opening_fill_liquidity_sink,
@@ -11144,6 +11150,20 @@ async def run_continuous_paper_session(
         await flush_opening_path_observe()
         await flush_background_checkpoint()
         persist_checkpoint_sync()
+        # The trading checkpoint and exact next-worker handoff remain
+        # authoritative even when this optional hypothesis receipt fails.
+        try:
+            _write_json_atomic(
+                root / "paper-ena-quarantine-summary.json",
+                paper_ena_quarantine.summary(),
+            )
+        except (OSError, ValueError) as quarantine_report_exc:
+            print(
+                "PAPER_ENA_QUARANTINE_REPORT_ERROR "
+                + f"{type(quarantine_report_exc).__name__}: "
+                + str(quarantine_report_exc),
+                flush=True,
+            )
         ended_at_ms = utc_now_ms()
         if loss_context_paired_shadow_runtime is not None:
             shadow_summary_path = (
