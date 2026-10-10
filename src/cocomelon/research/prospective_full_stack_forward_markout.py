@@ -900,13 +900,25 @@ def prospective_full_stack_forward_markout_summary(
                 "opening opportunity decision lineage mismatch"
             )
 
+        # Only terminal trades known by this opportunity's clock may
+        # participate in retrospective reconstruction. Later-finalized
+        # trades can carry earlier openings, but those openings were not
+        # recorded in the *terminal-only* journal when first observed.
+        # See future_close_exposure: if that uncertainty exists, research
+        # stays dirty even after rebuilding the same conservative result.
+        decision_time_closed_trades = tuple(
+            trade
+            for trade in ordered_trades
+            if trade.closed_at_ms <= evidence.opportunity_timestamp_ms
+        )
+
         combined_reason = prospective_combined_block_reason(
             direction=direction,
             lead_strategy=evidence.lead_strategy,
             ordinal=ordinal,
         )
         prior_two_strikes = prospective_two_strike_prior_strikes_at(
-            ordered_trades,
+            decision_time_closed_trades,
             two_strike_state,
             market=evidence.market,
             direction=direction,
@@ -924,7 +936,7 @@ def prospective_full_stack_forward_markout_summary(
             block_layer = "two_strike"
         else:
             momentum_detail = prospective_momentum_band_opportunity_decision(
-                ordered_trades,
+                decision_time_closed_trades,
                 feature_store,
                 momentum_state,
                 market=request.strategy_decision.market,
@@ -981,7 +993,7 @@ def prospective_full_stack_forward_markout_summary(
             else:
                 carveout_momentum_detail = (
                     prospective_momentum_band_opportunity_decision(
-                        ordered_trades,
+                        decision_time_closed_trades,
                         feature_store,
                         momentum_state,
                         market=request.strategy_decision.market,
