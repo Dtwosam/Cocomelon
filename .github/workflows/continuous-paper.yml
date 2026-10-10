@@ -1358,6 +1358,13 @@ jobs:
           print(f"- Original closed trades: {o['trades']}")
           print(f"- Booked net realized PnL: ${o['net_pnl']}")
           print(f"- Recorded fees / funding: ${o['fees']} / ${o['funding_cash_pnl']}")
+          print(f"- Entire original net with impossible 100% fee refund "
+                f"on the same fills (NOT new equity): "
+                f"${o['same_fill_all_recorded_fees_refunded_net_pnl']}")
+          print(f"- Still losing after 100% same-fill fee refund: "
+                f"{o['same_fill_all_fee_refund_still_net_negative']}; "
+                f"additional gross needed: "
+                f"${o['same_fill_additional_gross_needed_even_after_full_fee_refund']}")
           print(f"- Gross-positive closes turned nonpositive after booked costs: "
                 f"{o['gross_positive_net_nonpositive_trades']} / "
                 f"{o['gross_positive_trades']} gross-positive closes")
