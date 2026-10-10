@@ -6045,3 +6045,27 @@ def test_retryable_funding_failure_gap_is_scoped_not_fabricated_l2() -> None:
     assert payload["started_ms"] == 1_000
     assert payload["ended_ms"] == 1_150
     assert payload["reason"] == "MAINNET_FUNDING_HISTORY_INFO_UNAVAILABLE"
+
+
+def test_actual_paper_change_watcher_has_separate_causal_source_tokens() -> None:
+    """An active worker must recognize source-only repairs and hand off."""
+    text = Path(".github/workflows/continuous-paper.yml").read_text(
+        encoding="utf-8"
+    )
+    command = 'git diff --name-only "$GITHUB_SHA" FETCH_HEAD --'
+    assert text.count(command) == 1
+    watched = text.split(command, 1)[1].split(
+        "\n                )", 1
+    )[0].replace("\\\n", " ").split()
+    required = (
+        "src/cocomelon/research/terminal_journal_asof.py",
+        "src/cocomelon/research/prospective_full_stack_forward_markout.py",
+        "src/cocomelon/research/first_seen_opening_witness.py",
+        "src/cocomelon/research/opportunity_inventory_witness.py",
+        "src/cocomelon/research/deferred_full_stack_forward_markout.py",
+        "scripts/rebuild_deferred_full_stack_forward_markout.py",
+    )
+    for name in required:
+        assert watched.count(name) == 1
+        assert Path(name).is_file()
+    assert not any(".pysrc/" in item for item in watched)
