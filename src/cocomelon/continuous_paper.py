@@ -10764,10 +10764,27 @@ async def run_continuous_paper_session(
                 )
                 subscribed = selected
         subscribed_keys = {market.canonical for market in subscribed}
-        supervisor_group = await start_supervisors(
-            subscribed,
-            forward_gaps=True,
-        )
+        try:
+            supervisor_group = await start_supervisors(
+                subscribed,
+                forward_gaps=True,
+            )
+        except Exception as subscription_exc:
+            if (
+                loss_context_paired_shadow_runtime is None
+                or subscribed_keys == {market.canonical for market in selected}
+            ):
+                raise
+            loss_context_paired_shadow_runtime.fail_closed(
+                "paired-only market subscription failed during startup: "
+                + f"{type(subscription_exc).__name__}: {subscription_exc}"
+            )
+            subscribed = selected
+            subscribed_keys = {market.canonical for market in selected}
+            supervisor_group = await start_supervisors(
+                selected,
+                forward_gaps=True,
+            )
         _mark_event_loop_phase(pump, "control_wait")
         replacement_funding_oracle_task = asyncio.create_task(
             capture_replacement_funding_oracles()
@@ -11102,6 +11119,22 @@ async def run_continuous_paper_session(
                     next_subscribed_keys = {
                         market.canonical for market in next_subscribed
                     }
+                    missing_shadow_context = sorted(
+                        market.canonical
+                        for market in next_subscribed
+                        if (
+                            market.canonical not in desired_keys
+                            and market.canonical not in refreshed
+                        )
+                    )
+                    if missing_shadow_context:
+                        if loss_context_paired_shadow_runtime is not None:
+                            loss_context_paired_shadow_runtime.fail_closed(
+                                "paired-only mainnet context missing during rotation: "
+                                + ",".join(missing_shadow_context)
+                            )
+                        next_subscribed = desired
+                        next_subscribed_keys = desired_keys
                     added = tuple(
                         market
                         for market in next_subscribed
@@ -11116,6 +11149,10 @@ async def run_continuous_paper_session(
                         await pump.process(
                             _record_from_public(market_snapshot_record_event(snapshot))
                         )
+                        if market.canonical not in desired_keys:
+                            # Open shadow markets were already warm when filled.
+                            # No optional research REST warmup may block paper.
+                            continue
                         for candle in await _warmup_market(
                             reader,
                             market,
@@ -11131,15 +11168,53 @@ async def run_continuous_paper_session(
                         or next_subscribed_keys != subscribed_keys
                     ):
                         pump.shortlist_rotation_attempts += 1
-                        replacement_group = await start_supervisors(
-                            next_subscribed,
-                            forward_gaps=False,
-                        )
-                        replacement_ready = (
-                            await _wait_supervisor_group_ready(
-                                replacement_group
+                        try:
+                            replacement_group = await start_supervisors(
+                                next_subscribed,
+                                forward_gaps=False,
                             )
+                        except Exception as subscription_exc:
+                            if (
+                                not (next_subscribed_keys - desired_keys)
+                                or loss_context_paired_shadow_runtime is None
+                            ):
+                                raise
+                            loss_context_paired_shadow_runtime.fail_closed(
+                                "paired-only mainnet subscription failed: "
+                                + f"{type(subscription_exc).__name__}: "
+                                + str(subscription_exc)
+                            )
+                            next_subscribed = desired
+                            next_subscribed_keys = desired_keys
+                            replacement_group = await start_supervisors(
+                                desired,
+                                forward_gaps=False,
+                            )
+                        replacement_ready = (
+                            await _wait_supervisor_group_ready(replacement_group)
                         )
+                        if (
+                            not replacement_ready
+                            and next_subscribed_keys - desired_keys
+                        ):
+                            # Shadow-only readiness must never veto ordinary
+                            # paper watchlist promotion or its trading PnL.
+                            await _cancel_supervisor_group(replacement_group)
+                            if loss_context_paired_shadow_runtime is not None:
+                                loss_context_paired_shadow_runtime.fail_closed(
+                                    "paired-only L2 unavailable during rotation"
+                                )
+                            next_subscribed = desired
+                            next_subscribed_keys = desired_keys
+                            replacement_group = await start_supervisors(
+                                desired,
+                                forward_gaps=False,
+                            )
+                            replacement_ready = (
+                                await _wait_supervisor_group_ready(
+                                    replacement_group
+                                )
+                            )
                         if replacement_ready:
                             replacement_group.forward_gaps.set()
                             if desired_keys != selected_keys:
