@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from cocomelon.domain.market import MarketId
-from cocomelon.hyperliquid.ws_protocol import normalize_ws_message
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evidence.restored_gap_recovery import (
     ROTATION_WITNESS_FILENAME,
@@ -17,6 +16,7 @@ from cocomelon.evidence.restored_gap_recovery import (
     append_restored_named_gap_witness,
     rotation_named_gap_recovery,
 )
+from cocomelon.hyperliquid.ws_protocol import normalize_ws_message
 
 BASE = datetime(2026, 10, 9, 17, 0, tzinfo=UTC)
 BASE_MS = int(BASE.timestamp() * 1_000)
