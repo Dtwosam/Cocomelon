@@ -192,3 +192,75 @@ def test_invalid_observation_clocks_are_rejected(invalid: object) -> None:
             (),
             recorded_at_ms=invalid,  # type: ignore[arg-type]
         )
+
+
+def test_first_census_receipt_lag_never_corroborates_stale_inventory(
+    tmp_path: Path,
+) -> None:
+    """A matching plan is not valid original census evidence when it is late."""
+    from cocomelon.research.opportunity_inventory_witness import (
+        MAX_FIRST_CENSUS_LAG_MS,
+    )
+
+    store = OpportunityInventoryWitnessStore(tmp_path)
+    within = _opportunity("within-causal-window", timestamp=400)
+    late = _opportunity("too-late-to-verify", timestamp=400)
+    store.record(
+        within, (_position(),),
+        recorded_at_ms=400 + MAX_FIRST_CENSUS_LAG_MS,
+    )
+    store.record(
+        late, (_position(),),
+        recorded_at_ms=401 + MAX_FIRST_CENSUS_LAG_MS,
+    )
+
+    report = original_inventory_overlap_audit(
+        (within, late), (_trade(closed=500_000),), store.iter_records(),
+        overlap_started_at_ms=100,
+    )
+    assert report["later_finalized_overlap_opportunities"] == 2
+    assert report["overlap_original_census_matches"] == 1
+    assert report["overlap_original_census_late"] == 1
+    assert report["overlap_original_census_mismatches"] == 0
+    assert report["overlap_missing_original_census"] == 0
+    assert report["maximum_first_census_receipt_lag_ms"] == 300_000
+    assert report["maximum_observed_exposed_census_lag_ms"] == 300_001
+    assert report[
+        "all_later_finalized_overlaps_witnessed_within_freshness"
+    ] is False
+    assert report["promotion_authority"] is False
+    assert report["research_readiness_grant"] is False
+
+
+def test_census_freshness_is_descriptive_not_a_readiness_grant(
+    tmp_path: Path,
+) -> None:
+    store = OpportunityInventoryWitnessStore(tmp_path)
+    opp = _opportunity()
+    store.record(opp, (_position(),), recorded_at_ms=401)
+    report = original_inventory_overlap_audit(
+        (opp,), (_trade(),), store.iter_records(),
+        overlap_started_at_ms=100,
+    )
+    assert report["overlap_original_census_matches"] == 1
+    assert report["overlap_original_census_late"] == 0
+    assert report["maximum_observed_exposed_census_lag_ms"] == 1
+    assert report[
+        "all_later_finalized_overlaps_witnessed_within_freshness"
+    ] is True
+    assert report["independently_archived_before_opportunity"] is False
+    assert report["decision_time_filter_state_verified"] is False
+    assert report["execution_authority"] is False
+    assert report["research_readiness_grant"] is False
+
+
+def test_unwitnessed_overlap_has_no_fictitious_observed_receipt_lag() -> None:
+    report = original_inventory_overlap_audit(
+        (_opportunity(),), (_trade(),), (),
+        overlap_started_at_ms=100,
+    )
+    assert report["overlap_missing_original_census"] == 1
+    assert report["maximum_observed_exposed_census_lag_ms"] is None
+    assert report[
+        "all_later_finalized_overlaps_witnessed_within_freshness"
+    ] is False

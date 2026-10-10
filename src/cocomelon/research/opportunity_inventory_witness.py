@@ -22,6 +22,9 @@ from cocomelon.research.continuous_paper_opening_opportunity import (
 
 SCHEMA_VERSION = 1
 PHASE = "opening_opportunity_research_sink_after_risk_evaluation"
+# Aligned with the frozen rank evidence's maximum freshness horizon.
+# This is a conservative read-only provenance label, NOT a trading rule.
+MAX_FIRST_CENSUS_LAG_MS = 300_000
 
 
 class OpportunityInventoryWitnessError(RuntimeError):
@@ -244,6 +247,8 @@ def original_inventory_overlap_audit(
     missing = 0
     fully_present = 0
     mismatched = 0
+    late = 0
+    max_observed_lag = 0
     for evidence in opportunities:
         timestamp = evidence.opportunity_timestamp_ms
         if timestamp < overlap_started_at_ms:
@@ -271,6 +276,19 @@ def original_inventory_overlap_audit(
         if old is None:
             missing += 1
             continue
+        observed = old["recorded_at_ms"]
+        if type(observed) is not int:
+            raise OpportunityInventoryWitnessError("validated census clock invalid")
+        lag = observed - timestamp
+        if lag < 0:
+            raise OpportunityInventoryWitnessError("census observed before event")
+        max_observed_lag = max(max_observed_lag, lag)
+        if lag > MAX_FIRST_CENSUS_LAG_MS:
+            # A late *first* receipt can reflect a position inventory
+            # changed after the opportunity, even without any replay.
+            # Its hash match is therefore insufficient for coverage.
+            late += 1
+            continue
         plans = old["prior_opening_plan_sha256"]
         if not isinstance(plans, list):
             raise OpportunityInventoryWitnessError(
@@ -296,4 +314,16 @@ def original_inventory_overlap_audit(
         "overlap_missing_original_census": missing,
         "overlap_original_census_matches": fully_present,
         "overlap_original_census_mismatches": mismatched,
+        "overlap_original_census_late": late,
+        "maximum_first_census_receipt_lag_ms": MAX_FIRST_CENSUS_LAG_MS,
+        "maximum_observed_exposed_census_lag_ms": (
+            max_observed_lag if exposed > missing else None
+        ),
+        "all_later_finalized_overlaps_witnessed_within_freshness": (
+            exposed > 0
+            and missing == 0
+            and mismatched == 0
+            and late == 0
+            and fully_present == exposed
+        ),
     }
