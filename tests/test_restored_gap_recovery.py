@@ -790,7 +790,6 @@ def test_actual_in_progress_15m_ws_candle_closes_only_exact_named_start() -> Non
         (BASE_MS + 600_000, BASE_MS, BASE_MS + 840_000, "15m"),
         (BASE_MS + 600_000, BASE_MS, BASE_MS + 900_000 + 1000, "15m"),
         (BASE_MS + 600_000, BASE_MS, None, "1m"),
-        (BASE_MS + 600_000, -1, None, "15m"),
     ),
 )
 def test_old_future_malformed_or_wrong_interval_candle_cannot_recover(
@@ -864,3 +863,10 @@ def test_failed_candle_gap_persistence_keeps_exact_named_start() -> None:
         }
 
     asyncio.run(run())
+
+
+def test_normalizer_rejects_negative_candle_open_before_gap_recovery() -> None:
+    with pytest.raises(ValueError, match="exchange_time_ms"):
+        _actual_mainnet_ws_candle(
+            received_ms=BASE_MS + 10_000, start_ms=-1,
+        )
