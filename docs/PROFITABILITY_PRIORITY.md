@@ -4,6 +4,12 @@
 
 This is the **top-level current research and handoff checklist**, linked from `README.md`, `AGENTS.md`, `docs/STATUS.md`, and `docs/CHATGPT_PROJECT_SOURCE.md`. It complements, but does not supersede, `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, or individual immutable experiment freezes.
 
+## Signed v5 market-concentration falsification (2026-10-10)
+
+The actual third-to-fourth signed market-account window (artifacts `11669707831` -> `11673268469`) is **-$44.7424355777 challenger versus baseline**, with baseline **+$27.5784810762** and challenger **-$17.1639545016**. The new read-only `scripts/compare_signed_v5_market_windows.py` field `observed_market_concentration_sensitivity` subtracts **each market from BOTH exact signed account contributions** and reports a clearly labeled observed one-market arithmetic fragility test. Removing the worst single negative relative market, PONS, still leaves the candidate **-$21.2340701353** behind; removing ZK leaves it **-$29.9859475051** behind. **No one-market omission makes the observed interval positive**. The missed PONS winner, lost ZK mark/trade and partial JUP saved loser remain visible, and the full-account result is not modified.
+
+This is an **observed accounting identity, not a strategy**: skipping a market would change entry timing, capacity, future fills, funding, available margin, turnover and correlation, so these leave-one-market figures are **not** executable counterfactuals or permission to exclude any market/refresh v5. The original signed v5 review and 75 source gaps remain binding; no winner selection, promotion or live action. The new reporting enforces the existing signed market sum before calculating fragility and makes empty signed market windows `available=false` rather than trivially robust.
+
 ## October 10, 15:11 UTC — FOURTH signed v5 checkpoint, worsening relative loss; data unready
 
 **Authority:** Completed predecessor worker `38051095992` (head `ab6044bd2fad7d48c6a544bd02f57a7525961428`) published signed v5 market economics artifact **11673268469** (`source_record_count=929059`) and frozen review artifact **11673308551**. Both independent SQLite accounts are reconciled by the existing signed market script to actual fills, fees, funding, inventory marks and account IDs. Previous third signed market report is **11669707831** (worker `38048378910`, record count 323120). Same frozen candidate ID `2805d098c34009d6578c3e47f34bf2d695068b51605dc7085a782f8bd67484d4`; **no trial restart**.
