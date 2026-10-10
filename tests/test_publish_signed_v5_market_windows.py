@@ -8,7 +8,6 @@ import pytest
 
 import scripts.publish_signed_v5_market_windows as publisher
 
-
 REPO = "Dtwosam/Cocomelon"
 
 
