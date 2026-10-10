@@ -34,12 +34,18 @@ def test_blocked_terminal_ledger_replay_preserves_source_lineage(
 
     # Main push replays a genuine completed source on the new diagnostics.
     assert "  push:" in source
-    assert '      - "' + ".github/workflows/" + workflow_name + '"' in source
+    assert f'      - ".github/workflows/{workflow_name}"' in source
     assert "  workflow_run:" in source
 
     # Provenance must survive the fail-closed branch; no new ledger is uploaded.
-    assert "PREVIOUS_WORKFLOW_RUN_ID: ${{ steps.previous.outputs.previous_workflow_run_id }}" in blocked
-    assert "SOURCE_ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}" in blocked
+    assert (
+        "PREVIOUS_WORKFLOW_RUN_ID: "
+        "${{ steps.previous.outputs.previous_workflow_run_id }}" in blocked
+    )
+    assert (
+        "SOURCE_ARTIFACT_DIGEST: "
+        "${{ steps.source.outputs.artifact_digest }}" in blocked
+    )
     assert "previous accepted ledger workflow run:" in blocked
     assert "source artifact SHA-256:" in blocked
     assert "f\"- error: `{error}`\"" in blocked
