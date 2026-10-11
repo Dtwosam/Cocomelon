@@ -17,12 +17,12 @@ from cocomelon.research.closed_trade_entry_exit_context import (
 from cocomelon.research.closed_trade_lifecycle_economics import (
     closed_trade_lifecycle_economics,
 )
-from cocomelon.research.continuous_paper_opening_rank import (
-    ContinuousPaperOpeningRankStore,
-)
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityEvidence,
     ContinuousPaperOpeningOpportunityStore,
+)
+from cocomelon.research.continuous_paper_opening_rank import (
+    ContinuousPaperOpeningRankStore,
 )
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
