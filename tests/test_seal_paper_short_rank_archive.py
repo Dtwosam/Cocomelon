@@ -276,3 +276,40 @@ def test_real_workflow_dispatch_sources_are_written_into_rank_seal() -> None:
     assert '--restored-from-run-attempt "${{ inputs.source_run_attempt || \'\' }}"' in source
     assert "--worker-run-attempt" in source
     assert "continue-on-error: true" in source
+
+
+def test_separate_original_rank_seal_commands_never_consume_other_script_as_argument(
+) -> None:
+    """The real rank seal would fail after worker exit if the watcher
+    dependency's script path becomes a stray Python CLI positional argument.
+    """
+    workflow = Path(".github/workflows/continuous-paper.yml").read_text(
+        encoding="utf-8"
+    )
+    rank_start = workflow.index(
+        "- name: Seal original first-seen SHORT rank source after worker exit"
+    )
+    rank_end = workflow.index(
+        "- name: Upload original first-seen SHORT rank seal and failure receipt"
+    )
+    full_start = workflow.index(
+        "- name: Seal entire original SHORT rank input features after paper exit"
+    )
+    full_end = workflow.index(
+        "- name: Upload original SHORT rank full-input seal or rejection"
+    )
+    rank_step = workflow[rank_start:rank_end]
+    full_step = workflow[full_start:full_end]
+
+    assert "python scripts/seal_paper_short_rank_archive.py \\n" in rank_step
+    assert "scripts/seal_paper_short_rank_full_features.py" not in rank_step
+    assert "--restored-from-run-id" in rank_step
+    assert "--restored-from-run-attempt" in rank_step
+    assert "python scripts/seal_paper_short_rank_full_features.py \\n" in full_step
+    assert "scripts/seal_paper_short_rank_archive.py" not in full_step
+
+    # One trigger path, one independent upgrade watcher dependency, and
+    # exactly one executable step for each of the two distinct exporters.
+    assert workflow.count("scripts/seal_paper_short_rank_archive.py") == 3
+    assert workflow.count("scripts/seal_paper_short_rank_full_features.py") == 3
+    assert workflow.index("scripts/seal_paper_short_rank_full_features.py") < rank_start
