@@ -219,13 +219,17 @@ def audit_completed_original_rank_handoff(
 
 
 def _read_json(path: Path) -> object | None:
-    if not path.is_file():
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _read_zip(path: Path) -> bytes | None:
-    return path.read_bytes() if path.is_file() else None
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
 
 
 def main() -> int:
