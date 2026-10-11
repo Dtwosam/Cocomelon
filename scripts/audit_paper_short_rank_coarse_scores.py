@@ -219,7 +219,17 @@ def audit_original_worker_rank_score_sources(
 
 
 def _json(path: Path) -> object | None:
-    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        return None
+
+
+def _zip(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
 
 
 def main() -> int:
@@ -239,12 +249,8 @@ def main() -> int:
         run_json=_json(original / "run.json"),
         jobs_json=_json(original / "jobs.json"),
         artifacts_json=_json(original / "artifacts.json"),
-        rank_artifact_zip=(
-            rank_archive.read_bytes() if rank_archive.is_file() else None
-        ),
-        full_input_artifact_zip=(
-            input_archive.read_bytes() if input_archive.is_file() else None
-        ),
+        rank_artifact_zip=_zip(rank_archive),
+        full_input_artifact_zip=_zip(input_archive),
         expected_repository=args.repository,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
