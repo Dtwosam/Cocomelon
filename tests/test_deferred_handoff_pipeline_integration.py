@@ -267,8 +267,9 @@ def test_crashed_real_store_handoff_cannot_generate_research_artifacts(
     assert not (tmp_path / "long-entry-loss-attribution.json").exists()
 
 
-def test_completed_worker_reads_genuine_first_seen_decision_store(
+def test_completed_worker_joins_first_seen_decision_source_and_keeps_missing(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from cocomelon.research.continuous_paper_opening_opportunity import (
         ContinuousPaperOpeningOpportunityEvidence,
@@ -281,10 +282,10 @@ def test_completed_worker_reads_genuine_first_seen_decision_store(
     finally:
         journal.close()
     first = next(t for t in trades if t.opened_at_ms == 1_000_000)
-    store = ContinuousPaperOpeningOpportunityStore(
-        tmp_path / "opening-opportunities"
-    )
-    store.record(ContinuousPaperOpeningOpportunityEvidence(
+    # Exercise completed-worker state-root source joining with a synthetic
+    # original decision object. Store canonical payload validation has
+    # independent tests; do not fabricate risk/book snapshots to pass it.
+    source = ContinuousPaperOpeningOpportunityEvidence(
         strategy_decision_id=first.strategy_decision_id,
         feature_snapshot_id=first.feature_snapshot_id,
         market=first.market.canonical,
@@ -297,8 +298,12 @@ def test_completed_worker_reads_genuine_first_seen_decision_store(
         equity_before=D("10000"),
         risk_request={},
         instrument={},
-        book={"event_key": "real-original-book"},
-    ))
+        book={"event_key": "original-fixture-book"},
+    )
+    monkeypatch.setattr(
+        ContinuousPaperOpeningOpportunityStore, "iter_records",
+        lambda self: (source,),
+    )
     _, _, report = write_deferred_trade_charts(tmp_path)
     rows = {row["opened_at_ms"]: row for row in report["trades"]}
     assert rows[1_000_000]["original_first_seen_opportunity"]["status"] == "matched"
