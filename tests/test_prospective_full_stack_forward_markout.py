@@ -1146,3 +1146,49 @@ def test_rebuilt_terminal_journal_cannot_retroactively_reset_prior_strikes(
     assert rebuilt["risk_rejected_journal_future_close_exposure_opportunities"] == 1
     assert rebuilt["risk_rejected_integrity_clean"] is False
     assert rebuilt["promotion_authority"] is False
+
+
+def test_equal_millisecond_terminal_close_keeps_original_risk_rejected_row(
+    tmp_path: Path,
+) -> None:
+    """An ambiguous tie must not rewrite a first-seen research decision."""
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    combined, two_strike, momentum = _states()
+    decision_ms = START + 400_000
+    feature = _record_feature(
+        store, market="ADA", timestamp_ms=decision_ms - 100,
+        return_1h="-0.03", day_return="-0.08",
+    )
+    opportunity = _opportunity(
+        suffix="exact-close-tie", market="ADA",
+        direction=Direction.SHORT, timestamp_ms=decision_ms,
+        feature_snapshot_id=feature, approved=False,
+    )
+    losses = (
+        _trade(
+            "tie-loss-one", market="ADA", direction=Direction.SHORT,
+            opened_at_ms=START + 100_000, pnl="-5",
+        ),
+        _trade(
+            "tie-loss-two", market="ADA", direction=Direction.SHORT,
+            opened_at_ms=START + 220_000, pnl="-6",
+        ),
+    )
+    same_millisecond_close = _trade(
+        "tie-unordered", market="ADA", direction=Direction.SHORT,
+        opened_at_ms=START + 340_000, pnl="-7",
+    )
+    assert same_millisecond_close.closed_at_ms == decision_ms
+    original = prospective_full_stack_forward_markout_summary(
+        (opportunity,), (), losses, store, combined, two_strike, momentum,
+    )
+    rebuilt = prospective_full_stack_forward_markout_summary(
+        (opportunity,), (), losses + (same_millisecond_close,),
+        store, combined, two_strike, momentum,
+    )
+    assert rebuilt["risk_rejected_rows"] == original["risk_rejected_rows"]
+    assert rebuilt["risk_rejected_rows"][0]["two_strike_prior_strikes"] == 2
+    assert rebuilt["risk_rejected_journal_future_close_exposure_opportunities"] == 1
+    assert rebuilt["risk_rejected_integrity_clean"] is False
+    assert rebuilt["promotion_authority"] is False
+    assert rebuilt["execution_authority"] is False
