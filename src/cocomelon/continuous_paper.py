@@ -9266,6 +9266,18 @@ async def run_continuous_paper_session(
             rank_snapshot_capture_error = (
                 f"{type(exc).__name__}: {exc}"
             )
+            try:
+                _write_json_atomic(
+                    rank_snapshot_error_path,
+                    {
+                        "error": rank_snapshot_capture_error,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                    },
+                )
+            except OSError:
+                pass
 
     def capture_rank_first_seen(
         *,
