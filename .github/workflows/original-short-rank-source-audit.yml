@@ -105,6 +105,94 @@ jobs:
           print("- live execution authority: FALSE")
           PY
 
+      - name: Find predecessor from real original GitHub worker title
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/original-short-rank-predecessor
+          title="$(jq -r '.display_title // ""' /tmp/original-short-rank-api/run.json)"
+          # GitHub's REST workflow-run response does not expose workflow
+          # dispatch inputs, so the rank seal binds the attempt. This real
+          # GitHub-computed title gives the predecessor run ID only.
+          if [[ ! "$title" =~ ^Continuous\ Paper\ ·\ ([0-9]+)$ ]]; then
+            echo "::notice::no exact predecessor title; conservative unverified receipt"
+            exit 0
+          fi
+          PREDECESSOR_RUN_ID="${BASH_REMATCH[1]}"
+          if [[ "$PREDECESSOR_RUN_ID" == "$SOURCE_RUN_ID" ]]; then
+            echo "::notice::self predecessor is not a valid original handoff"
+            exit 0
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID" \
+            > /tmp/original-short-rank-predecessor/run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID/jobs?per_page=100" \
+            > /tmp/original-short-rank-predecessor/jobs.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID/artifacts?per_page=100" \
+            > /tmp/original-short-rank-predecessor/artifacts.json
+          PREDECESSOR_RUN_ATTEMPT="$(
+            jq -r '.run_attempt' /tmp/original-short-rank-predecessor/run.json
+          )"
+          artifact_name="continuous-paper-first-seen-short-rank-$PREDECESSOR_RUN_ID-$PREDECESSOR_RUN_ATTEMPT"
+          artifact_id="$(
+            jq -r --arg name "$artifact_name" '
+              [.artifacts[] | select(.name == $name)]
+              | if length == 1 then .[0].id else empty end
+            ' /tmp/original-short-rank-predecessor/artifacts.json
+          )"
+          if [[ -z "$artifact_id" ]]; then
+            echo "::notice::exact predecessor rank source missing or ambiguous"
+            exit 0
+          fi
+          curl --fail --silent --show-error --location \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+            --output /tmp/original-short-rank-predecessor/artifact.zip
+
+      - name: Verify two sealed original rank archives across exact handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/original-short-rank-predecessor
+          python scripts/audit_paper_short_rank_handoff.py \
+            --source-dir /tmp/original-short-rank-api \
+            --predecessor-dir /tmp/original-short-rank-predecessor \
+            --source-run-id "$SOURCE_RUN_ID" \
+            --source-run-attempt "$SOURCE_RUN_ATTEMPT" \
+            --repository "$GITHUB_REPOSITORY" \
+            --output first-seen-short-rank-handoff-audit.json
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          proof = json.loads(
+              Path("first-seen-short-rank-handoff-audit.json")
+              .read_text(encoding="utf-8")
+          )
+          print("\n## Original SHORT rank history continuity")
+          print(f"- status: {proof['rank_handoff_status']}")
+          print(f"- failure: {proof['failure_reason_code']}")
+          print(f"- original source run: {proof['source_worker_run_id_claimed']}")
+          print(f"- predecessor: {proof['predecessor_worker_run_id_claimed']}")
+          print(
+              "- original rank prefix immutable: "
+              f"{proof['original_rank_history_exact_prefix_reconciled']}"
+          )
+          print("- complete mainnet market evidence: NOT YET CERTIFIED")
+          print("- after-fee account profitability: NOT PROVEN")
+          print("- live order authority: FALSE")
+          PY
+
+      - name: Publish immutable two-worker rank continuity receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: original-first-seen-short-rank-handoff-audit-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: first-seen-short-rank-handoff-audit.json
+          retention-days: 90
+          if-no-files-found: warn
+
       - name: Publish immutable rank source audit receipt
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
