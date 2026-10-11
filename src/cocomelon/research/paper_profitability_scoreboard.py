@@ -40,6 +40,7 @@ UNVERIFIED: Final = "UNVERIFIED_ENTRY_CONTEXT"
 MEAN_REVERSION_DISCOVERY_FREEZE_MS: Final = 1_791_720_000_000  # Oct 11 12:00 UTC
 MEAN_REVERSION_EMBARGO_MS: Final = 6 * 3_600_000
 MEAN_REVERSION_FIXED_OPENING_DAY_MS: Final = 24 * 3_600_000
+MEAN_REVERSION_FIXED_OPENING_WEEK_MS: Final = 7 * MEAN_REVERSION_FIXED_OPENING_DAY_MS
 MEAN_REVERSION_FORWARD_START_MS: Final = (
     MEAN_REVERSION_DISCOVERY_FREEZE_MS + MEAN_REVERSION_EMBARGO_MS
 )
@@ -1037,11 +1038,82 @@ def _predeclared_mean_reversion_abstention(
             for b in first_two
         )
     )
+
+    # Mean-reversion opened only nine times in the discovery cohort. The
+    # frozen two-day splits are transparent diagnostics but an arbitrary
+    # >=3-trades-per-day maturity floor would make an otherwise promising
+    # 40+ close/12+ MR forward study practically unreviewable. The actual
+    # temporal sample gate uses *first two consecutive 7-day windows*.
+    by_open_week: dict[int, list[_Trade]] = {}
+    for trade in opening_order:
+        week = (
+            trade.opened_at_ms - MEAN_REVERSION_FORWARD_START_MS
+        ) // MEAN_REVERSION_FIXED_OPENING_WEEK_MS
+        by_open_week.setdefault(week, []).append(trade)
+    weeks = sorted(set(by_open_week).union({0, 1}))
+    week_blocks: list[dict[str, object]] = []
+    for week in weeks:
+        members = by_open_week.get(week, [])
+        matching_avoided = [
+            t for t in members
+            if t.verified_context
+            and t.original_decision_source_match
+            and t.lead_strategy == "mean_reversion"
+        ]
+        original_cash = sum((t.net for t in members), ZERO)
+        original_r = sum((t.net_r for t in members), ZERO)
+        omitted_cash = sum((t.net for t in matching_avoided), ZERO)
+        omitted_r = sum((t.net_r for t in matching_avoided), ZERO)
+        window_start = (
+            MEAN_REVERSION_FORWARD_START_MS
+            + week * MEAN_REVERSION_FIXED_OPENING_WEEK_MS
+        )
+        window_end = window_start + MEAN_REVERSION_FIXED_OPENING_WEEK_MS
+        week_blocks.append({
+            "opening_week_index": week,
+            "opened_at_ms_ge": window_start,
+            "opened_at_ms_lt": window_end,
+            "observed_original_closed_trades": len(members),
+            "avoided_verified_mean_reversion": _metrics(matching_avoided),
+            "original_booked_net_cash": str(original_cash),
+            "original_booked_net_r": str(original_r),
+            "zero_replacement_net_cash": str(original_cash - omitted_cash),
+            "zero_replacement_net_r": str(original_r - omitted_r),
+            "naive_skip_delta_cash": str(-omitted_cash),
+            "naive_skip_delta_r": str(-omitted_r),
+            "source_observation_window_mature": (
+                all_exposure_settled
+                and source_handoff_ended_at_ms is not None
+                and source_handoff_ended_at_ms >= window_end
+            ),
+            "unclosed_trades_not_claimed_absent_without_zero_exposure": True,
+            "capital_reallocation_modeled": False,
+            "promotion_authority": False,
+        })
+    fixed_weeks_sampled = all(
+        block["source_observation_window_mature"] is True
+        and _integer(
+            _object(
+                block["avoided_verified_mean_reversion"],
+                "fixed opening-week avoided cohort",
+            ).get("trades"),
+            "fixed opening-week avoided count",
+        ) >= 3
+        for block in week_blocks[:2]
+    )
+    fixed_weeks_improved = (
+        fixed_weeks_sampled
+        and all(
+            Decimal(str(block["naive_skip_delta_cash"])) > ZERO
+            and Decimal(str(block["naive_skip_delta_r"])) > ZERO
+            for block in week_blocks[:2]
+        )
+    )
     descriptive_floor = (
         len(forward) >= 40
         and len(avoided) >= 12
         and len(market_cash) >= 6
-        and fixed_days_sampled
+        and fixed_weeks_sampled
         and all(t.verified_context for t in forward)
         and all(t.original_decision_source_match for t in forward)
     )
@@ -1052,6 +1124,7 @@ def _predeclared_mean_reversion_abstention(
         "embargo_ms": MEAN_REVERSION_EMBARGO_MS,
         "forward_started_at_ms": MEAN_REVERSION_FORWARD_START_MS,
         "fixed_opening_window_ms": MEAN_REVERSION_FIXED_OPENING_DAY_MS,
+        "fixed_stability_window_ms": MEAN_REVERSION_FIXED_OPENING_WEEK_MS,
         "fixed_opening_windows_start_at_embargo_end": True,
         "closed_only_right_censoring_explicit": True,
         "source_handoff_ended_at_ms": source_handoff_ended_at_ms,
@@ -1116,6 +1189,9 @@ def _predeclared_mean_reversion_abstention(
             str(min(leave_market_r)) if len(market_cash) >= 2 else None
         ),
         "fixed_24h_original_opening_windows": blocks,
+        "fixed_7d_original_opening_windows": week_blocks,
+        "first_two_fixed_7d_windows_have_mature_sample": fixed_weeks_sampled,
+        "first_two_fixed_7d_naive_skip_improves_cash_and_r": fixed_weeks_improved,
         "first_two_fixed_24h_windows_have_mature_sample": fixed_days_sampled,
         "first_two_fixed_24h_naive_skip_improves_cash_and_r": first_two_positive,
         "chronological_count_halves_dynamic_not_fixed_stability": True,
@@ -1142,7 +1218,7 @@ def _predeclared_mean_reversion_abstention(
             "discovery only and never validation. Closed-only cohorts are "
             "right-censored until the authenticated handoff end and zero "
             "open positions establish observed window maturity. Fixed "
-            "opening-time 24h windows are descriptive, not a full-account "
+            "opening-time day/week windows are descriptive, not a full-account "
             "replacement simulation. No trade authority."
         ),
     }
