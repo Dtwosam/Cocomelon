@@ -708,6 +708,11 @@ def write_deferred_trade_charts(
         facts.close()
         journal.close()
     report["source_exit_reason"] = session["exit_reason"]
+    # The original completed paper session supplies the only source-backed
+    # end-of-observation/open-exposure censoring bounds. Absent on legacy
+    # test/old sources => explicitly UNKNOWN, not zero open risk.
+    report["source_handoff_ended_at_ms"] = session.get("ended_at_ms")
+    report["source_handoff_open_positions"] = session.get("open_positions")
     report["deferred_after_successor_dispatch"] = True
     report_path = root / REPORT_FILENAME
     chart_path = root / CHART_FILENAME

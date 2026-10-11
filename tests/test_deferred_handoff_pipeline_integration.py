@@ -314,3 +314,22 @@ def test_completed_worker_joins_first_seen_decision_source_and_keeps_missing(
         "ambiguous": 0, "contradictory_or_stale": 0,
     }
     assert report["original_first_seen_opportunity_parity"]["promotion_authority"] is False
+
+
+def test_completed_handoff_exposes_real_ended_time_and_unclosed_exposure(
+    tmp_path: Path,
+) -> None:
+    _populate_state(tmp_path)
+    source_end_ms = 5_000_000
+    (tmp_path / "session-summary.json").write_text(
+        json.dumps({
+            "exit_reason": "duration_elapsed",
+            "ended_at_ms": source_end_ms,
+            "open_positions": 2,
+        }),
+        encoding="utf-8",
+    )
+    _, _, report = write_deferred_trade_charts(tmp_path)
+    assert report["source_handoff_ended_at_ms"] == source_end_ms
+    assert report["source_handoff_open_positions"] == 2
+    assert report["total_journal_trades"] == 3
