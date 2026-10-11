@@ -800,7 +800,7 @@ def _fixed_signed_checkpoint_calendar_blocks(
         "calendar_anchor_first_eligible_checkpoint_end_ms": first_ms,
         "fixed_calendar_day_ms": SIGNED_PAIRED_CALENDAR_DAY_MS,
         "signed_account_snapshot_based": bool(eligible),
-        "signed_full_forward_account_pnl_partition_reconciles": True,
+        "signed_full_forward_account_pnl_partition_reconciles": bool(eligible),
         "within_day_signed_checkpoint_transitions": sum(
             cast(int, b["transitions"]) for b in buckets.values()
         ),
