@@ -23,6 +23,7 @@ from cocomelon.domain.execution import (
     PositionAction,
     PositionActionType,
 )
+from cocomelon.domain.features import FeatureSnapshot, OpportunityRank
 from cocomelon.domain.journal import JournalObservation, TradeJournalEntry
 from cocomelon.domain.market import (
     Candle,
@@ -407,6 +408,10 @@ from cocomelon.research.prospective_replacement_exit_robustness import (
 from cocomelon.research.prospective_short_breakout_rank import (
     ProspectiveShortBreakoutRankState,
     prospective_short_breakout_rank_comparison,
+)
+from cocomelon.research.prospective_short_rank_first_seen import (
+    FirstSeenRankSnapshot,
+    FirstSeenRankSnapshotStore,
 )
 from cocomelon.research.prospective_side_conditioned_delay import (
     ProspectiveSideConditionedDelayState,
@@ -9233,6 +9238,84 @@ async def run_continuous_paper_session(
         component_started,
     )
     rank_tracker = LatestCoarseRankTracker()
+    rank_snapshot_error_path = (
+        root / "prospective-short-rank-first-seen-error.json"
+    )
+    rank_snapshot_capture_error: str | None = None
+    rank_snapshot_store: FirstSeenRankSnapshotStore | None = None
+    if rank_snapshot_error_path.exists():
+        # Historical failure receipts are permanent blockers, not repaired
+        # by silently restarting a cleaner prospective rank ledger.
+        try:
+            old_error = json.loads(
+                rank_snapshot_error_path.read_text(encoding="utf-8")
+            )
+            if not isinstance(old_error, dict) or not isinstance(
+                old_error.get("error"), str
+            ):
+                raise ValueError("rank source failure receipt is invalid")
+            rank_snapshot_capture_error = old_error["error"]
+        except (OSError, ValueError):
+            rank_snapshot_capture_error = "unreadable_rank_failure_receipt"
+    else:
+        try:
+            rank_snapshot_store = FirstSeenRankSnapshotStore(
+                root / "prospective-short-rank-first-seen"
+            )
+        except Exception as rank_restore_error:
+            rank_snapshot_capture_error = (
+                f"{type(rank_restore_error).__name__}: {rank_restore_error}"
+            )
+            try:
+                _write_json_atomic(
+                    rank_snapshot_error_path,
+                    {
+                        "error": rank_snapshot_capture_error,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                    },
+                )
+            except OSError:
+                pass
+
+    def capture_rank_first_seen(
+        *,
+        features: dict[str, FeatureSnapshot],
+        ranks: tuple[OpportunityRank, ...],
+        observed_at_ms: int,
+    ) -> None:
+        nonlocal rank_snapshot_capture_error
+        if rank_snapshot_capture_error is not None:
+            return
+        if rank_snapshot_store is None:
+            raise RuntimeError("rank snapshot store is missing")
+        try:
+            rank_snapshot_store.append(
+                FirstSeenRankSnapshot.from_observation(
+                    observed_at_ms=observed_at_ms,
+                    captured_at_ms=utc_now_ms(),
+                    features=features,
+                    ranks=ranks,
+                )
+            )
+        except Exception as exc:
+            # This is append-only research. An archive failure disables rank
+            # attribution, NOT the original paper-trading or position exits.
+            rank_snapshot_capture_error = f"{type(exc).__name__}: {exc}"
+            try:
+                _write_json_atomic(
+                    rank_snapshot_error_path,
+                    {
+                        "error": rank_snapshot_capture_error,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                    },
+                )
+            except OSError:
+                pass
+
     opening_opportunity_inventory_store = OpportunityInventoryWitnessStore(
         root / "opening-opportunity-inventory"
     )
@@ -9825,6 +9908,11 @@ async def run_continuous_paper_session(
             initial_ranks,
             observed_at_ms=initial_rank_observed_at_ms,
         )
+        capture_rank_first_seen(
+            features=_initial_features,
+            ranks=initial_ranks,
+            observed_at_ms=initial_rank_observed_at_ms,
+        )
         selected = _ranked_selection(
             snapshots,
             as_of_ms=initial_received_at_ms,
@@ -10115,6 +10203,11 @@ async def run_continuous_paper_session(
             )
             rank_tracker.update(
                 startup_ranks,
+                observed_at_ms=startup_rank_observed_at_ms,
+            )
+            capture_rank_first_seen(
+                features=_startup_features,
+                ranks=startup_ranks,
                 observed_at_ms=startup_rank_observed_at_ms,
             )
             if loss_context_paired_shadow_runtime is not None:
@@ -11220,6 +11313,11 @@ async def run_continuous_paper_session(
                 _mark_event_loop_phase(pump, "context_postprocess")
                 rank_tracker.update(
                     refreshed_ranks,
+                    observed_at_ms=rank_observed_at_ms,
+                )
+                capture_rank_first_seen(
+                    features=_refreshed_features,
+                    ranks=refreshed_ranks,
                     observed_at_ms=rank_observed_at_ms,
                 )
                 if loss_context_paired_shadow_runtime is not None:
