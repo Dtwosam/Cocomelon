@@ -2,6 +2,15 @@
 
 **Profitability-first evidence anchor:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Negative signed forward economics remain the binding result; archive engineering does not authorize promotion.
 
+## October 11 — original-worker upgrade handoff source is not a successful economic research run (PR pending)
+
+An actual completed original paper worker `38162541394` sealed and uploaded its 374 genuine first-seen rank snapshots successfully, and the next worker `38166151613` restored the original account. However its GitHub paper job and full workflow concluded **FAILURE by design**: exactly one failed step, `Fail closed on upgrade handoff source`, after successful trader exit, durable state upload, rank seal and rank artifact upload. This prevents misleading positive research based on an upgrade-only interval. The earlier GitHub artifact attestor checked the component steps but did not independently classify overall workflow/job failure. An intact ZIP alone must not turn that failed research run green.
+
+The read-only GitHub attestor now requires both paper job and workflow run `completed`; ordinary positive original-worker source status requires **both green** and no failure steps. A negative upgrade-only paper job can carry independently byte-verified ranks **only** when its run and job both failed, exactly the named expected upgrade guard failed, durable state export succeeded, and all original trader/seal/rank upload checks and SHA digests pass. Its receipt states `github_api_bound_upgrade_handoff_only`, `successful_research_run_proven=false`, and never certifies the producer's `exit_reason` independently from the GitHub step alone. Any other failure or run/job disagreement is unverified.
+
+The automatic two-worker source-chain audit can still verify immutable rank continuity across an upgrade-only worker, but marks its result `github_api_bound_upgrade_handoff_prefix_only` with `chain_is_successful_research_source=false`. No positive full account, market-gap, source-feature, trade, risk, readiness, promotion or LIVE claim is authorized. The original paper strategy and frozen negative v5 comparison remain untouched.
+
+
 ## October 11 — exact first-seen SHORT rank input feature lineage is not yet available (PR pending)
 
 A genuine original-worker artifact join now shows an **economically important evidence blocker**, not a win: rank source `11711759572` contains 374 original first-seen rankings *234 source feature IDs = **87,516 rank-feature references**. The separate original decision-learning artifact `11711789549` contains **25,466 stored learning features** and **25,909 decision facts**. Both exact outer ZIP checksums match independently downloaded GitHub bytes, but **zero of the 87,516 ranked-source feature IDs occur in the separate saved learning-feature population**. The rank refresh and decision-learning writers save features at different times. This is **not evidence that ranks were fabricated**; it establishes that the current completed evidence source cannot independently reconstruct the full original rank inputs.

@@ -94,6 +94,8 @@ jobs:
           )
           print("\n## Original first-seen SHORT rank provenance")
           print(f"- status: {proof['first_seen_rank_artifact_status']}")
+          print(f"- worker source class: {proof.get('original_worker_run_source_class', 'unverified')}")
+          print(f"- successful economic research source: {proof.get('successful_research_run_proven', False)}")
           print(f"- failure reason: {proof['failure_reason_code']}")
           print(f"- source run: {proof['source_worker_run_id_claimed']}")
           print(
@@ -172,6 +174,8 @@ jobs:
           )
           print("\n## Original SHORT rank history continuity")
           print(f"- status: {proof['rank_handoff_status']}")
+          print(f"- chain contains upgrade-only worker: {proof.get('source_chain_contains_upgrade_only_worker', False)}")
+          print(f"- eligible successful research source: {proof.get('chain_is_successful_research_source', False)}")
           print(f"- failure: {proof['failure_reason_code']}")
           print(f"- original source run: {proof['source_worker_run_id_claimed']}")
           print(f"- predecessor: {proof['predecessor_worker_run_id_claimed']}")

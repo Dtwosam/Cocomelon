@@ -67,7 +67,7 @@ def _side(
     data = zip_buffer.getvalue()
     title_run = restored_from_id or run_id
     run: dict[str, Any] = {
-        "id": run_id, "status": "completed",
+        "id": run_id, "status": "completed", "conclusion": "success",
         "head_branch": "main", "path": ".github/workflows/continuous-paper.yml",
         "event": "workflow_dispatch", "run_attempt": 1, "head_sha": head,
         "display_title": f"Continuous Paper · {title_run}",
@@ -81,6 +81,7 @@ def _side(
     jobs: dict[str, Any] = {
         "jobs": [{
             "name": "paper", "run_attempt": 1,
+            "status": "completed", "conclusion": "success",
             "steps": [
                 {"name": name, "conclusion": "success"}
                 for name in REQUIRED_SUCCESSFUL_PAPER_STEPS
@@ -274,3 +275,83 @@ def test_completed_worker_audit_workflow_publishes_separate_chain_proof() -> Non
     assert "original-first-seen-short-rank-handoff-audit-" in workflow
     assert "first-seen-short-rank-handoff-audit.json" in workflow
     assert "continuous-paper-trader --" not in workflow
+
+
+
+def _upgrade_source(
+    item: tuple[dict[str, Any], dict[str, Any], dict[str, Any], bytes],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], bytes]:
+    run, jobs, artifacts, raw = item
+    original_paper = jobs["jobs"][0]
+    return (
+        {**run, "conclusion": "failure"},
+        {"jobs": [{
+            **original_paper,
+            "conclusion": "failure",
+            "steps": [
+                *original_paper["steps"],
+                {
+                    "name": "Upload durable continuous paper state",
+                    "conclusion": "success",
+                },
+                {
+                    "name": "Fail closed on upgrade handoff source",
+                    "conclusion": "failure",
+                },
+            ],
+        }]},
+        artifacts,
+        raw,
+    )
+
+
+def test_real_upgrade_predecessor_is_rank_integrity_only_not_economic_success(
+    tmp_path: Path,
+) -> None:
+    prior, successor = _both(tmp_path)
+    result = _audit(_upgrade_source(prior), successor)
+    assert result["rank_handoff_status"] == (
+        "github_api_bound_upgrade_handoff_prefix_only"
+    )
+    assert result["predecessor_worker_run_source_class"] == "upgrade_handoff_only"
+    assert result["successor_worker_run_source_class"] == "successful_research_run"
+    assert result["source_chain_contains_upgrade_only_worker"] is True
+    assert result["chain_is_successful_research_source"] is False
+    assert result["both_github_original_rank_artifacts_verified"] is True
+    assert result["original_rank_history_exact_prefix_reconciled"] is True
+    assert result["full_account_trial"] is False
+    assert result["ready_for_review"] is False
+    assert result["execution_authority"] is False
+    assert result["promotion_authority"] is False
+
+
+def test_upgrade_successor_is_also_not_solo_clean_economic_research(
+    tmp_path: Path,
+) -> None:
+    prior, successor = _both(tmp_path)
+    result = _audit(prior, _upgrade_source(successor))
+    assert result["source_chain_contains_upgrade_only_worker"] is True
+    assert result["chain_is_successful_research_source"] is False
+    assert result["successor_worker_run_source_class"] == "upgrade_handoff_only"
+
+
+def test_unexpected_failed_predecessor_rejected_even_with_intact_archive(
+    tmp_path: Path,
+) -> None:
+    prior, successor = _both(tmp_path)
+    run, jobs, artifacts, raw = _upgrade_source(prior)
+    paper = jobs["jobs"][0]
+    forged = {
+        "jobs": [{
+            **paper,
+            "steps": [
+                *paper["steps"],
+                {"name": "Unexpected data consistency failure",
+                 "conclusion": "failure"},
+            ],
+        }],
+    }
+    result = _audit((run, forged, artifacts, raw), successor)
+    assert result["rank_handoff_status"] == "unverified"
+    assert result["failure_reason_code"] == "predecessor_rank_source_unverified"
+    assert result["ready_for_review"] is False
