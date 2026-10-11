@@ -2124,6 +2124,15 @@ def test_sparse_mean_reversion_uses_first_two_fixed_weeks_not_daily_floor() -> N
     assert all(w["source_observation_window_mature"] for w in weeks)
     assert trial["first_two_fixed_7d_windows_have_mature_sample"] is True
     assert trial["first_two_fixed_7d_naive_skip_improves_cash_and_r"] is True
+    # Weekly reporting must never shadow or reset whole-forward original cash/R.
+    assert Decimal(trial["original_forward_net_cash"]) == Decimal("-60")
+    assert Decimal(trial["original_forward_net_r"]) == Decimal("-3")
+    assert sum(
+        (Decimal(w["original_booked_net_cash"]) for w in weeks), Decimal(0)
+    ) == Decimal(trial["original_forward_net_cash"])
+    assert sum(
+        (Decimal(w["original_booked_net_r"]) for w in weeks), Decimal(0)
+    ) == Decimal(trial["original_forward_net_r"])
     assert trial["first_two_fixed_24h_windows_have_mature_sample"] is False
     assert trial["descriptive_sample_floor_met_not_promotion"] is False
     assert trial["promotion_authority"] is False
