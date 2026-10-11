@@ -51,6 +51,13 @@ def _trade(
         "net_pnl": str(net),
         "net_r": str(net / Decimal("20")),
         "chart_coverage_complete": chart,
+        "chart_path_present": chart,
+        "chart_mark_count": 2 if chart else 0,
+        "chart_known_gap_duration_ms": 0 if chart else None,
+        "chart_longest_unobserved_mark_ms": 10 if chart else None,
+        "chart_unresolved_gap_starts_before_entry": 0,
+        "chart_unresolved_gap_starts_during_position": 0,
+        "chart_silent_gap_intervals_ms": [],
         "entry_context": None,
     }
     if strategy is not None:
@@ -1353,3 +1360,66 @@ def test_empty_journal_chart_evidence_has_no_fabricated_account_edge() -> None:
     assert result["strategy_chart_coverage_economics"] == []
     assert len(result["chronological_quartile_chart_coverage_economics"]) == 4
     assert split["promotion_authority"] is False
+
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        ({"chart_path_present": False}, "claimed complete"),
+        ({"chart_mark_count": 1}, "claimed complete"),
+        ({"chart_known_gap_duration_ms": 1}, "claimed complete"),
+        ({"chart_known_gap_duration_ms": None}, "claimed complete"),
+        ({"chart_longest_unobserved_mark_ms": 300_001}, "claimed complete"),
+        ({"chart_longest_unobserved_mark_ms": None}, "claimed complete"),
+        ({"chart_unresolved_gap_starts_before_entry": 1}, "claimed complete"),
+        ({"chart_unresolved_gap_starts_during_position": 1}, "claimed complete"),
+        ({"chart_silent_gap_intervals_ms": [[1_001, 1_010]]}, "claimed complete"),
+        ({"chart_mark_count": True}, "chart mark count"),
+        ({"chart_silent_gap_intervals_ms": [[1_010, 1_001]]}, "silent gap"),
+    ],
+)
+def test_forged_chart_complete_label_fails_without_real_source_witnesses(
+    mutation: dict[str, object], expected: str
+) -> None:
+    source = _audit()
+    verified = source["trades"][1]
+    assert verified["chart_coverage_complete"] is True
+    verified.update(mutation)
+    with pytest.raises(PaperProfitabilityScoreboardError, match=expected):
+        paper_profitability_scoreboard(source)
+
+
+def test_chart_absent_with_fabricated_mark_evidence_fails_closed() -> None:
+    source = _audit()
+    unverified = source["trades"][2]
+    assert unverified["chart_path_present"] is False
+    unverified["chart_mark_count"] = 2
+    with pytest.raises(
+        PaperProfitabilityScoreboardError, match="missing original price path"
+    ):
+        paper_profitability_scoreboard(source)
+
+
+def test_valid_source_chart_claim_and_incomplete_groups_reconcile() -> None:
+    source = _audit()
+    source["trades"][0].update({
+        "chart_path_present": True,
+        "chart_mark_count": 81,
+        "chart_known_gap_duration_ms": None,
+        "chart_longest_unobserved_mark_ms": 1_000,
+        "chart_unresolved_gap_starts_before_entry": 1,
+        "chart_unresolved_gap_starts_during_position": 0,
+        "chart_silent_gap_intervals_ms": [],
+        "chart_coverage_complete": False,
+    })
+    report = paper_profitability_scoreboard(source)
+    assert report["overall"]["trades"] == 4
+    assert report["overall"]["incomplete_chart_trades"] == 3
+    assert report["original_chart_coverage_economics"][
+        "complete_observed_path_original_closes"
+    ]["trades"] == 1
+    assert report["original_chart_coverage_economics"][
+        "incomplete_or_missing_path_original_closes"
+    ]["trades"] == 3
+    assert report["promotion_authority"] is False
