@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
@@ -20,6 +20,7 @@ from cocomelon.research.profit_lock_execution_readiness import (
 )
 from cocomelon.research.profit_lock_execution_shadow import (
     EXECUTION_SHADOW_STATE_SCHEMA_VERSION,
+    MAX_PROFIT_LOCK_ECONOMIC_DELTA_RESIDUAL,
     ProfitLockExecutionOutcome,
 )
 
@@ -459,6 +460,28 @@ def prospective_breakeven_profit_lock_summary(
             raise ProspectiveBreakevenProfitLockError(
                 "prospective breakeven outcome journal drift"
             )
+        if outcome.candidate_net_pnl_estimate is not None:
+            # A claimed candidate +R cannot contradict its own simulated
+            # after-cost dollars and original recorded entry risk.
+            candidate_r = outcome.candidate_net_r_estimate
+            if (
+                candidate_r is None
+                or not trade.initial_risk_amount.is_finite()
+                or trade.initial_risk_amount <= ZERO
+            ):
+                raise ProspectiveBreakevenProfitLockError(
+                    "prospective breakeven candidate risk normalization invalid"
+                )
+            with localcontext(prec=96):
+                risk_residual = (
+                    candidate_r * trade.initial_risk_amount
+                    - outcome.candidate_net_pnl_estimate
+                )
+            if abs(risk_residual) > MAX_PROFIT_LOCK_ECONOMIC_DELTA_RESIDUAL:
+                raise ProspectiveBreakevenProfitLockError(
+                    "prospective breakeven candidate net-R differs from "
+                    "candidate net dollars per original planned risk"
+                )
         pairs.append((trade, outcome))
     resolved_pairs = tuple(pairs)
 

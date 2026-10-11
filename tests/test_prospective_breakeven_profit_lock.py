@@ -1721,3 +1721,54 @@ def test_frozen_profit_targets_preserve_tiny_positive_edge_under_cancellation() 
     assert paired["one_half_minus_one_r_pnl"] == "1E-24"
     assert paired["one_half_minus_one_r_net_r"] == "1E-24"
     assert paired["waiting_beats_one_r_net"] is True
+
+
+
+def test_breakeven_exit_shadow_rejects_candidate_net_r_inflation() -> None:
+    # Deliberately preserve booked candidate dollars and its internally
+    # consistent incremental R while forging +5R from a -5-dollar close.
+    trade = _trade(
+        "inflated-r", opened_at_ms=EMBARGO_MS + 10, pnl="-5"
+    )
+    good = _outcome(trade, candidate_pnl="-5")
+    altered_r = Decimal("5")
+    bad = replace(
+        good,
+        candidate_net_r_estimate=altered_r,
+        delta_net_r_estimate=altered_r - trade.net_r,
+    )
+    with pytest.raises(
+        ProspectiveBreakevenProfitLockError, match="candidate net-R differs"
+    ):
+        prospective_breakeven_profit_lock_summary(
+            (trade,), _state((bad,)),
+            ProspectiveBreakevenProfitLockState(frozen_at_ms=0),
+        )
+
+
+def test_breakeven_shadow_accepts_small_arithmetic_precision_residual() -> None:
+    trade = _trade(
+        "precision", opened_at_ms=EMBARGO_MS + 10,
+        pnl="-5"
+    )
+    original = _outcome(trade, candidate_pnl="0")
+    assert original.delta_net_pnl_estimate is not None
+    good = replace(
+        original,
+        delta_net_pnl_estimate=(
+            original.delta_net_pnl_estimate + Decimal("1E-28")
+        ),
+    )
+    # A sub-atto signed rounding residue in the candidate delta is
+    # acceptable; do not construct a journal that itself violates
+    # actual trading PnL/fee/funding reconciliation.
+    assert good.candidate_net_pnl_estimate == Decimal("0")
+    assert good.delta_net_pnl_estimate is not None
+    source = ProfitLockExecutionOutcome.from_payload(good.payload())
+    assert source == good
+    report = prospective_breakeven_profit_lock_summary(
+        (trade,), _state((good,)),
+        ProspectiveBreakevenProfitLockState(frozen_at_ms=0),
+    )
+    assert report["economically_evaluated_trades"] == 1
+    assert report["readiness"]["ready_for_review"] is False

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, localcontext
 from typing import Final
 
 from cocomelon.domain.execution import (
@@ -26,6 +26,9 @@ from cocomelon.research.profit_lock_counterfactual import (
 
 ZERO: Final = Decimal("0")
 EXECUTION_SHADOW_STATE_SCHEMA_VERSION: Final = 2
+# Genuine booked Decimal arithmetic may have sub-cent precision residues.
+# Anything larger can forge a profitable robustness delta against cash.
+MAX_PROFIT_LOCK_ECONOMIC_DELTA_RESIDUAL: Final = Decimal("1E-18")
 
 
 class ProfitLockExecutionShadowError(RuntimeError):
@@ -319,6 +322,36 @@ class ProfitLockExecutionOutcome:
             ):
                 raise ValueError(
                     "candidate economics must be finite when present"
+                )
+        if self.candidate_net_pnl_estimate is not None:
+            # The economic readiness gate reports candidate dollars but
+            # tests leave-one-market/trade *deltas*. They must describe the
+            # same exact shadow fills; signing both inconsistent numbers
+            # cannot provide independent evidence of a profitable edge.
+            if (
+                self.candidate_net_r_estimate is None
+                or self.delta_net_pnl_estimate is None
+                or self.delta_net_r_estimate is None
+            ):
+                raise ValueError("candidate economic delta coverage incomplete")
+            with localcontext(prec=96):
+                pnl_residual = (
+                    self.delta_net_pnl_estimate
+                    - self.candidate_net_pnl_estimate
+                    + self.actual_net_pnl
+                )
+                r_residual = (
+                    self.delta_net_r_estimate
+                    - self.candidate_net_r_estimate
+                    + self.actual_net_r
+                )
+            if (
+                abs(pnl_residual) > MAX_PROFIT_LOCK_ECONOMIC_DELTA_RESIDUAL
+                or abs(r_residual) > MAX_PROFIT_LOCK_ECONOMIC_DELTA_RESIDUAL
+            ):
+                raise ValueError(
+                    "profit-lock delta must reconcile to actual and candidate "
+                    "booked net dollars and net-R"
                 )
         if self.candidate_source == "actual_close":
             if self.triggered:

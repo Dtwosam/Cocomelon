@@ -445,3 +445,61 @@ def test_profit_lock_execution_ledger_rejects_duplicate_source_drift() -> None:
             source_artifact_name="learning-70-1",
             source_artifact_digest=_digest("6"),
         )
+
+
+
+@pytest.mark.parametrize(
+    ("bad_field", "bad_value"),
+    [
+        ("delta_net_pnl_estimate", "500"),
+        ("delta_net_pnl_estimate", "-5"),
+        ("delta_net_r_estimate", "50"),
+        ("delta_net_r_estimate", "-0.5"),
+    ],
+)
+def test_signed_profit_lock_ledger_rejects_fake_robustness_delta(
+    bad_field: str, bad_value: str
+) -> None:
+    trade = _trade("fake-delta", pnl="-5", opened_at_ms=2_000)
+    state = _state((trade,))
+    outcomes = state["outcomes"]
+    assert isinstance(outcomes, list)
+    row = outcomes[0]
+    assert isinstance(row, dict)
+    # Keep the actual and candidate cash economics unchanged. A forged
+    # "incremental improvement" must be rejected BEFORE ledger signing.
+    assert row["actual_net_pnl"] == "-5"
+    assert row["candidate_net_pnl_estimate"] == "0"
+    row[bad_field] = bad_value
+    with pytest.raises(
+        ProfitLockExecutionLedgerError, match="execution-shadow outcome is invalid"
+    ):
+        update_profit_lock_execution_ledger(
+            (trade,), state, previous=None,
+            source_paper_run_id=80, source_paper_run_attempt=1,
+            source_artifact_name="learning-80-1",
+            source_artifact_digest=_digest("a"),
+        )
+
+
+def test_profit_lock_read_only_resigner_rejects_changed_deltas() -> None:
+    trade = _trade("read-only", pnl="-5", opened_at_ms=2_000)
+    signed = update_profit_lock_execution_ledger(
+        (trade,), _state((trade,)), previous=None,
+        source_paper_run_id=90, source_paper_run_attempt=1,
+        source_artifact_name="learning-90-1",
+        source_artifact_digest=_digest("b"),
+    )
+    altered = dict(signed)
+    rows = signed["rows"]
+    assert isinstance(rows, tuple)
+    new_rows = [dict(row) for row in rows]
+    target = next(
+        row for row in new_rows if row["rule_id"] == "breakeven_after_0_5r"
+    )
+    target["delta_net_pnl_estimate"] = "105"
+    altered["rows"] = tuple(new_rows)
+    with pytest.raises(
+        ProfitLockExecutionLedgerError, match="execution-shadow outcome is invalid"
+    ):
+        validate_profit_lock_execution_ledger(altered)
