@@ -756,3 +756,80 @@ def test_signed_paired_calendar_keeps_losses_even_if_candidate_lags(
     ), Decimal(0)) == Decimal("-5")
     assert cal["positive_full_account_paired_edge_certified"] is False
     assert cal["promotion_authority"] is False
+
+
+def test_signed_paired_cashflow_residual_includes_unattributed_account_cash(
+    tmp_path: Path,
+) -> None:
+    """Side-tagged closed PnL is not the entire signed account cashflow."""
+    freeze = _freeze()
+    ledger = tmp_path / "unattributed-forward-cash.jsonl"
+    for index in range(1, 10):
+        row = _checkpoint(freeze, index=index)
+        baseline = row["baseline"]
+        candidate = row["candidate"]
+        assert isinstance(baseline, dict)
+        assert isinstance(candidate, dict)
+        baseline_realized = Decimal("-1.9") * Decimal(index)
+        candidate_realized = Decimal("1.75") * Decimal(index)
+        baseline["realized_net_pnl"] = str(baseline_realized)
+        candidate["realized_net_pnl"] = str(candidate_realized)
+        row["candidate_minus_baseline_realized_net_pnl"] = str(
+            candidate_realized - baseline_realized
+        )
+        append_review_checkpoint(ledger, row)
+
+    report = build_paired_shadow_review(freeze, ledger)
+    assert report["ready_for_review"] is True
+    sides = report["forward_closed_trade_economics_by_direction"]
+    baseline_side = sides["baseline"]
+    candidate_side = sides["candidate"]
+    assert baseline_side["closed_trade_side_net_cash_sum"] == "-16"
+    assert candidate_side["closed_trade_side_net_cash_sum"] == "16"
+    assert Decimal(
+        baseline_side["signed_account_realized_net_pnl_forward"]
+    ) == Decimal("-15.2")
+    assert Decimal(
+        candidate_side["signed_account_realized_net_pnl_forward"]
+    ) == Decimal("14.00")
+    assert Decimal(
+        baseline_side["side_unattributed_realized_cashflow_residual"]
+    ) == Decimal("0.8")
+    assert Decimal(
+        candidate_side["side_unattributed_realized_cashflow_residual"]
+    ) == Decimal("-2")
+    payload = report["forward_signed_account_realized_cashflow_decomposition"]
+    assert payload["signed_forward_interval_certified"] is True
+    assert Decimal(
+        payload["forward_signed_candidate_minus_baseline_cash"]
+    ) == Decimal("29.2")
+    assert Decimal(
+        payload["closed_side_candidate_minus_baseline_net_cash"]
+    ) == Decimal("32")
+    assert Decimal(
+        payload["unattributed_candidate_minus_baseline_cash_residual"]
+    ) == Decimal("-2.8")
+    assert payload["sum_closed_side_plus_residual_equals_signed_account"] is True
+    assert payload["source_of_residual_independently_proven"] is False
+    assert payload["promotion_authority"] is False
+    assert report["candidate_minus_baseline_realized_net_pnl"] == "29.20"
+    assert report["realized_cashflow_decomposition_does_not_change_readiness"] is True
+
+
+def test_signed_paired_zero_side_residual_still_reconciles(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "zero-residual.jsonl"
+    _write_campaign(ledger, freeze)
+    report = build_paired_shadow_review(freeze, ledger)
+    payload = report["forward_signed_account_realized_cashflow_decomposition"]
+    assert payload["signed_forward_interval_certified"] is True
+    assert Decimal(
+        payload["unattributed_candidate_minus_baseline_cash_residual"]
+    ) == 0
+    assert Decimal(
+        payload["forward_signed_candidate_minus_baseline_cash"]
+    ) == Decimal("32")
+    assert report["ready_for_review"] is True
+    assert report["promotion_authority"] is False
