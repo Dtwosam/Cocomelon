@@ -1742,7 +1742,7 @@ def test_mean_reversion_abstention_excludes_all_discovery_rows() -> None:
     assert trial["forward_started_at_ms"] == MEAN_REVERSION_FORWARD_START_MS
     assert trial["forward_original_closed_trades"] == 0
     assert trial["verified_mean_reversion_avoided"]["trades"] == 0
-    assert trial["naive_zero_replacement_delta_net_cash"] == "0"
+    assert Decimal(trial["naive_zero_replacement_delta_net_cash"]) == Decimal("0")
     assert trial["arithmetic_candidate_positive_both_cash_and_r"] is False
     assert trial["descriptive_sample_floor_met_not_promotion"] is False
     assert trial["research_readiness_grant"] is False
@@ -1783,14 +1783,14 @@ def test_mean_reversion_forward_abstention_retains_unknowns_and_winners() -> Non
     assert trial["verified_mean_reversion_avoided"]["trades"] == 3
     assert trial["verified_mean_reversion_avoided"]["wins"] == 1
     assert trial["forward_unverified_entry_contexts_retained"] == 1
-    assert trial["original_forward_net_cash"] == "-8"
-    assert trial["verified_mean_reversion_avoided"]["net_pnl"] == "-12"
-    assert trial["retained_original_closes"]["net_pnl"] == "4"
-    assert trial["naive_zero_replacement_candidate_net_cash"] == "4"
-    assert trial["naive_zero_replacement_delta_net_cash"] == "12"
-    assert trial["naive_zero_replacement_delta_net_r"] == "0.6"
-    assert trial["leave_one_avoided_trade_min_delta_cash"] == "2"
-    assert trial["leave_one_avoided_market_min_delta_cash"] == "-2"
+    assert Decimal(trial["original_forward_net_cash"]) == Decimal("-8")
+    assert Decimal(trial["verified_mean_reversion_avoided"]["net_pnl"]) == Decimal("-12")
+    assert Decimal(trial["retained_original_closes"]["net_pnl"]) == Decimal("4")
+    assert Decimal(trial["naive_zero_replacement_candidate_net_cash"]) == Decimal("4")
+    assert Decimal(trial["naive_zero_replacement_delta_net_cash"]) == Decimal("12")
+    assert Decimal(trial["naive_zero_replacement_delta_net_r"]) == Decimal("0.6")
+    assert Decimal(trial["leave_one_avoided_trade_min_delta_cash"]) == Decimal("2")
+    assert Decimal(trial["leave_one_avoided_market_min_delta_cash"]) == Decimal("-2")
     assert trial["avoided_market_count"] == 2
     assert trial["chronological_forward_halves_avoided"][0]["avoided"]["trades"] == 1
     assert trial["chronological_forward_halves_avoided"][1]["avoided"]["trades"] == 2
@@ -1831,9 +1831,9 @@ def test_mean_reversion_abstention_never_credits_missing_original_context() -> N
     )["prospective_mean_reversion_abstention_contributions"]
     assert out["forward_original_closed_trades"] == 2
     assert out["verified_mean_reversion_avoided"]["trades"] == 1
-    assert out["verified_mean_reversion_avoided"]["net_pnl"] == "4"
-    assert out["naive_zero_replacement_delta_net_cash"] == "-4"
-    assert out["retained_original_closes"]["net_pnl"] == "-101"
+    assert Decimal(out["verified_mean_reversion_avoided"]["net_pnl"]) == Decimal("4")
+    assert Decimal(out["naive_zero_replacement_delta_net_cash"]) == Decimal("-4")
+    assert Decimal(out["retained_original_closes"]["net_pnl"]) == Decimal("-101")
     assert out["arithmetic_improvement_positive_both_cash_and_r"] is False
     assert out["descriptive_sample_floor_met_not_promotion"] is False
     assert out["research_readiness_grant"] is False
