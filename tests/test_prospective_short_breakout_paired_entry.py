@@ -84,9 +84,10 @@ def test_same_predecision_rank_and_starting_boundary_for_both_lanes() -> None:
     evaluation = _evaluation()
     start = candidate.freeze.started_at_ms
     assert start == 21_601_000
+    prestart_evaluation = _evaluation(decision_ms=start - 2)
     for lane in (baseline, candidate):
         assert lane.block_reason(
-            evaluation, attempt_timestamp_ms=start - 1
+            prestart_evaluation, attempt_timestamp_ms=start - 1
         ) == PRE_START_REASON
         assert lane.pre_start_blocked == 1
     assert baseline.block_reason(
