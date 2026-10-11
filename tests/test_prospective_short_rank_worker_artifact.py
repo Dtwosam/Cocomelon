@@ -44,7 +44,11 @@ CAPTURE_MS = OBS_MS + 50
 BOOK_MS = OBS_MS + 2_000
 
 
-def _artifact(root: Path) -> tuple[bytes, ExpectedGithubRankArtifact]:
+def _artifact(
+    root: Path, *,
+    restored_from_run_id: int | None = None,
+    restored_from_run_attempt: int | None = None,
+) -> tuple[bytes, ExpectedGithubRankArtifact]:
     state, output = root / "state", root / "output"
     store = FirstSeenRankSnapshotStore(
         state / "prospective-short-rank-first-seen"
@@ -60,6 +64,8 @@ def _artifact(root: Path) -> tuple[bytes, ExpectedGithubRankArtifact]:
         worker_run_id=RUN,
         worker_run_attempt=ATTEMPT,
         worker_head_sha=HEAD,
+        restored_from_run_id=restored_from_run_id,
+        restored_from_run_attempt=restored_from_run_attempt,
         sealed_at_ms=OBS_MS + 10_000,
     )
     assert receipt["rank_source_status"] == "locally_sealed"
@@ -313,3 +319,33 @@ def test_corrupt_outer_worker_artifact_does_not_create_any_account(
             selected_markets=(MARKET,), account_root=accounts,
         )
     assert not accounts.exists()
+
+
+
+def test_successor_restored_predecessor_is_checked_in_both_signed_zip_layers(
+    tmp_path: Path,
+) -> None:
+    zip_bytes, api = _artifact(
+        tmp_path,
+        restored_from_run_id=38141719700,
+        restored_from_run_attempt=2,
+    )
+    verified = verify_github_original_short_rank_artifact(
+        zip_bytes, expected=api,
+    )
+    assert verified.restored_from_run_id == 38141719700
+    assert verified.restored_from_run_attempt == 2
+    assert verified.receipt()["restored_from_run_id_claimed"] == 38141719700
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as outer:
+        receipt = json.loads(outer.read(RECEIPT_NAME))
+    receipt["restored_from_run_attempt_claimed"] = 1
+    tampered = _outer_replace(
+        zip_bytes, RECEIPT_NAME,
+        (json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n")
+        .encode(),
+    )
+    with pytest.raises(GithubShortRankArtifactError, match="manifest"):
+        verify_github_original_short_rank_artifact(
+            tampered, expected=_rebind(tampered, api),
+        )

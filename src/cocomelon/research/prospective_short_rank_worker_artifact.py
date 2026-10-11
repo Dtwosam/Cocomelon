@@ -119,12 +119,16 @@ class VerifiedGithubShortRankEvidence:
     worker_run_id: int
     worker_head_sha: str
     worker_run_attempt: int
+    restored_from_run_id: int | None = None
+    restored_from_run_attempt: int | None = None
 
     def receipt(self) -> dict[str, object]:
         return {
             "original_worker_run_id": self.worker_run_id,
             "original_worker_attempt": self.worker_run_attempt,
             "original_worker_head_sha": self.worker_head_sha,
+            "restored_from_run_id_claimed": self.restored_from_run_id,
+            "restored_from_run_attempt_claimed": self.restored_from_run_attempt,
             "rank_snapshot_count": len(self.snapshots),
             "rank_state_digest": self.rank_state_digest,
             "github_outer_artifact_sha256_reconciled": True,
@@ -183,6 +187,21 @@ def verify_github_original_short_rank_artifact(
             raise GithubShortRankArtifactError(
                 "worker seal completion timestamp invalid"
             )
+        source_run_id = receipt.get("restored_from_run_id_claimed")
+        source_attempt = receipt.get("restored_from_run_attempt_claimed")
+        if (
+            (source_run_id is None) != (source_attempt is None)
+            or (
+                source_run_id is not None and (
+                    type(source_run_id) is not int or source_run_id <= 0
+                    or type(source_attempt) is not int or source_attempt <= 0
+                    or source_run_id == expected.run_id
+                )
+            )
+        ):
+            raise GithubShortRankArtifactError(
+                "sealed predecessor run/attempt source identity invalid"
+            )
         identity = {
             "worker_run_id_claimed": expected.run_id,
             "worker_run_attempt_claimed": expected.run_attempt,
@@ -232,6 +251,8 @@ def verify_github_original_short_rank_artifact(
                 or len(files) != receipt.get("archive_snapshot_count")
                 or manifest.get("rank_snapshot_count") != len(files)
                 or any(manifest.get(k) != v for k, v in identity.items())
+                or manifest.get("restored_from_run_id_claimed") != source_run_id
+                or manifest.get("restored_from_run_attempt_claimed") != source_attempt
                 or manifest.get("rank_state_digest")
                 != receipt.get("rank_state_digest")
                 or manifest.get("sealed_at_ms") != receipt.get("sealed_at_ms")
@@ -310,6 +331,8 @@ def verify_github_original_short_rank_artifact(
         worker_run_id=expected.run_id,
         worker_head_sha=expected.head_sha,
         worker_run_attempt=expected.run_attempt,
+        restored_from_run_id=source_run_id,
+        restored_from_run_attempt=cast(int | None, source_attempt),
     )
 
 
