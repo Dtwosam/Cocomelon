@@ -1060,8 +1060,8 @@ def _predeclared_mean_reversion_abstention(
             and t.original_decision_source_match
             and t.lead_strategy == "mean_reversion"
         ]
-        original_cash = sum((t.net for t in members), ZERO)
-        original_r = sum((t.net_r for t in members), ZERO)
+        week_original_cash = sum((t.net for t in members), ZERO)
+        week_original_r = sum((t.net_r for t in members), ZERO)
         omitted_cash = sum((t.net for t in matching_avoided), ZERO)
         omitted_r = sum((t.net_r for t in matching_avoided), ZERO)
         window_start = (
@@ -1075,10 +1075,10 @@ def _predeclared_mean_reversion_abstention(
             "opened_at_ms_lt": window_end,
             "observed_original_closed_trades": len(members),
             "avoided_verified_mean_reversion": _metrics(matching_avoided),
-            "original_booked_net_cash": str(original_cash),
-            "original_booked_net_r": str(original_r),
-            "zero_replacement_net_cash": str(original_cash - omitted_cash),
-            "zero_replacement_net_r": str(original_r - omitted_r),
+            "original_booked_net_cash": str(week_original_cash),
+            "original_booked_net_r": str(week_original_r),
+            "zero_replacement_net_cash": str(week_original_cash - omitted_cash),
+            "zero_replacement_net_r": str(week_original_r - omitted_r),
             "naive_skip_delta_cash": str(-omitted_cash),
             "naive_skip_delta_r": str(-omitted_r),
             "source_observation_window_mature": (
