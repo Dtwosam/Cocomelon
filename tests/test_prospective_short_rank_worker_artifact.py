@@ -186,8 +186,18 @@ def test_mutated_inner_snapshot_after_recomputed_github_digest_fails(
                 row = row.replace(b'"ordinal":1', b'"ordinal":3')
                 assert row != zin.read(name)
             zout.writestr(name, row)
+    # Recompute both outer GitHub digest and inner file hash as an
+    # attacker could, yet the frozen manifest's per-row digest still fails.
+    with zipfile.ZipFile(io.BytesIO(data)) as zin:
+        receipt = json.loads(zin.read(RECEIPT_NAME))
+    receipt["archive_file_sha256"] = hashlib.sha256(modified.getvalue()).hexdigest()
+    receipt["archive_size_bytes"] = len(modified.getvalue())
+    receipt_bytes = (
+        json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
     rebuilt = _outer_replace(data, ARCHIVE_NAME, modified.getvalue())
-    with pytest.raises(GithubShortRankArtifactError):
+    rebuilt = _outer_replace(rebuilt, RECEIPT_NAME, receipt_bytes)
+    with pytest.raises(GithubShortRankArtifactError, match="row"):
         verify_github_original_short_rank_artifact(
             rebuilt, expected=_rebind(rebuilt, api),
         )
