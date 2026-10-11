@@ -1370,7 +1370,7 @@ def test_empty_journal_chart_evidence_has_no_fabricated_account_edge() -> None:
     ("mutation", "expected"),
     [
         ({"chart_path_present": False}, "claimed complete"),
-        ({"chart_mark_count": 1}, "claimed complete"),
+        ({"chart_mark_count": 1}, "samples exceed recorded raw marks"),
         ({"chart_known_gap_duration_ms": 1}, "claimed complete"),
         ({"chart_known_gap_duration_ms": None}, "claimed complete"),
         ({"chart_longest_unobserved_mark_ms": 300_001}, "claimed complete"),
