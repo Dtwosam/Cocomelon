@@ -32,6 +32,12 @@ The independent SHORT breakout >3 dual-paper simulator can now load **two separa
 
 This is **not yet an independently signed real forward comparison**: the external origin of both expected pins, feature derivation, historical gap coverage, worker handoff maturity, and account windows have not been verified. Economic/profitability readiness remains FALSE, all v5 negative evidence preserved, no permission to execute live or change paper stops/risk. See `docs/SHORT_RANK_PINNED_FIRST_SEEN_PAIR.md`.
 
+## October 11 — original SHORT rank independent paired-paper fixed UTC cashflow audit (PR pending)
+
+The separate SHORT rank>3 baseline/challenger account simulator now tracks immutable per-replay-record marked and realized account observations for both lanes. Four actual paper-account changes (baseline marked, baseline realized net, candidate marked, candidate realized net) are allocated to a fixed UTC calendar day **only if both adjacent observations are within that day**. A change spanning midnight is explicitly reported as **unallocated**, including negative losses and funding/fee cash movements. Every reported allocated + unallocated amount reconciles independently and exactly to each full end-account total. The candidate-minus-baseline marked and realized differences reconcile independently too. Failed, nonfinite, or out-of-order observations invalidate the entire economic report, without changing either underlying paper account.
+
+This addresses misleading day-by-day attribution, not unverified or absent data. It does not certify 24-hour market coverage, source provenance, first-seen rank origin, handoff state, position maturity, risk-match readiness or profitability. It leaves existing negative frozen v5 signed evidence and original worker untouched. Research only, LIVE=false, no promotion. See `prospective_short_rank_utc_window.py`.
+
 **Current profitability-first source:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Read the timestamped verified economics there before selecting strategy changes; this status page contains older history as well.
 
 **Last updated:** 2026-10-10  
