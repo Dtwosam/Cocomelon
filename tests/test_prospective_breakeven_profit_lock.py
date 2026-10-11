@@ -1749,12 +1749,19 @@ def test_breakeven_exit_shadow_rejects_candidate_net_r_inflation() -> None:
 def test_breakeven_shadow_accepts_small_arithmetic_precision_residual() -> None:
     trade = _trade(
         "precision", opened_at_ms=EMBARGO_MS + 10,
-        pnl="-5.0000000000000000000000000001"
+        pnl="-5"
     )
-    good = _outcome(trade, candidate_pnl="0")
-    # The underlying execution computes Decimal in ordinary context,
-    # preserving a booked 1E-28 residue. Economically material changes
-    # cannot pass the 1E-18 source precision bound.
+    original = _outcome(trade, candidate_pnl="0")
+    assert original.delta_net_pnl_estimate is not None
+    good = replace(
+        original,
+        delta_net_pnl_estimate=(
+            original.delta_net_pnl_estimate + Decimal("1E-28")
+        ),
+    )
+    # A sub-atto signed rounding residue in the candidate delta is
+    # acceptable; do not construct a journal that itself violates
+    # actual trading PnL/fee/funding reconciliation.
     assert good.candidate_net_pnl_estimate == Decimal("0")
     assert good.delta_net_pnl_estimate is not None
     source = ProfitLockExecutionOutcome.from_payload(good.payload())
