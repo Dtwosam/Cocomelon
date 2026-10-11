@@ -272,6 +272,23 @@ def test_two_real_simulated_paper_accounts_do_not_invent_skipped_fills(
     assert result["full_account_trial"] is False
     assert result["execution_authority"] is False
 
+    windows = result["fixed_utc_checkpoint_window_reconciliation"]
+    assert isinstance(windows, dict)
+    assert windows["all_four_account_metrics_reconciled"] is True
+    assert windows["midnight_crossing_interval_count"] == 0
+    final = windows["full_account_change"]
+    assert isinstance(final, dict)
+    assert final["baseline_marked"] == baseline["marked_account_pnl"]
+    assert final["baseline_realized"] == baseline["realized_net_account_pnl"]
+    assert final["candidate_marked"] == candidate["marked_account_pnl"]
+    assert final["candidate_realized"] == candidate["realized_net_account_pnl"]
+    assert final["candidate_minus_baseline_marked"] == (
+        result["candidate_minus_baseline_marked_account_pnl"]
+    )
+    assert final["candidate_minus_baseline_realized"] == (
+        result["candidate_minus_baseline_realized_net_pnl"]
+    )
+
 
 def test_missing_rank_retains_loser_in_both_real_paper_simulations(
     tmp_path: Path,
