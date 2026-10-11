@@ -114,7 +114,15 @@ def _verified_outcomes(
         )
     selected: dict[str, ProfitLockExecutionOutcome] = {}
     for raw in raw_outcomes:
-        outcome = ProfitLockExecutionOutcome.from_payload(raw)
+        try:
+            outcome = ProfitLockExecutionOutcome.from_payload(raw)
+        except ValueError as exc:
+            # Canonical outcome validation now rejects forged cash/R deltas
+            # before this evaluator reaches its older local cashflow gate.
+            # Preserve the frozen evaluator's fail-closed error contract.
+            raise ProspectiveProfitTargetComparisonError(
+                "candidate delta or execution-shadow outcome invalid"
+            ) from exc
         if (
             rule_id in {
                 TAKE_PROFIT_RULE_ID,
