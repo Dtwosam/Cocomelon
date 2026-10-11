@@ -1191,3 +1191,165 @@ def test_empty_original_journal_has_no_invented_booked_cash_residue() -> None:
     result = paper_profitability_scoreboard(_reconciled_audit_from_rows([]))
     assert result["overall"]["per_trade_nonzero_net_cash_residual_count"] == 0
     assert Decimal(result["overall"]["per_trade_max_abs_net_cash_residual"]) == 0
+
+
+
+def test_original_chart_coverage_exposes_breakout_winners_only_in_missing_paths() -> None:
+    """Chart-complete losses must not be masked by incomplete-path winners."""
+    rows = [
+        _trade(
+            1, side="short", market="BTC", strategy="breakout",
+            gross="101", chart=False,
+        ),
+        _trade(
+            2, side="long", market="ETH", strategy="breakout",
+            gross="-9", chart=True,
+        ),
+        _trade(
+            3, side="short", market="OP", strategy="trend",
+            gross="-4", chart=False,
+        ),
+        _trade(
+            4, side="long", market="SOL", strategy=None,
+            gross="-2", chart=False,
+        ),
+        _trade(
+            5, side="short", market="ARB", strategy="breakout",
+            gross="-3", chart=True,
+        ),
+    ]
+    result = paper_profitability_scoreboard(_reconciled_audit_from_rows(rows))
+    overall = result["original_chart_coverage_economics"]
+    assert overall["whole_original_cohort"]["trades"] == 5
+    assert overall["complete_observed_path_original_closes"]["trades"] == 2
+    assert overall["incomplete_or_missing_path_original_closes"]["trades"] == 3
+    assert overall["counterfactual_exit_cashflow_simulated"] is False
+    assert overall["ready_for_strategy_promotion"] is False
+    assert result["promotion_authority"] is False
+
+    groups = result["strategy_chart_coverage_economics"]
+    assert {row["lead_strategy"] for row in groups} == {
+        "breakout", "trend", "UNVERIFIED_ENTRY_CONTEXT"
+    }
+    breakout = next(row for row in groups if row["lead_strategy"] == "breakout")
+    assert breakout["whole_original_cohort"]["trades"] == 3
+    assert Decimal(breakout["whole_original_cohort"]["net_pnl"]) == 86
+    assert Decimal(
+        breakout["complete_observed_path_original_closes"]["net_pnl"]
+    ) == -14
+    assert Decimal(
+        breakout["incomplete_or_missing_path_original_closes"]["net_pnl"]
+    ) == 100
+    for row in (
+        overall, *groups, *result["side_strategy_chart_coverage_economics"],
+        *result["chronological_quartile_chart_coverage_economics"],
+    ):
+        whole = row["whole_original_cohort"]
+        complete = row["complete_observed_path_original_closes"]
+        incomplete = row["incomplete_or_missing_path_original_closes"]
+        assert whole["trades"] == complete["trades"] + incomplete["trades"]
+        for field in ("gross_realized_pnl", "fees", "funding_cash_pnl", "net_pnl", "net_r"):
+            assert Decimal(whole[field]) == (
+                Decimal(complete[field]) + Decimal(incomplete[field])
+            )
+    assert sum(
+        row["whole_original_cohort"]["trades"]
+        for row in result["chronological_quartile_chart_coverage_economics"]
+    ) == 5
+    assert sum(
+        row["whole_original_cohort"]["trades"]
+        for row in result["side_strategy_chart_coverage_economics"]
+    ) == 5
+
+
+def test_frozen_chart_economics_rejects_pre_embargo_winner_without_inventing_fill() -> None:
+    from cocomelon.research.prospective_trend_outside_top10 import (
+        ProspectiveTrendOutsideTop10State,
+    )
+
+    boundary = 6 * 3_600_000
+    rows = [
+        _move_trade_to_original_open_time(
+            _trade(
+                1, side="long", market="BTC", strategy="trend",
+                rank="outside10", gross="200", chart=True,
+            ), boundary - 1, closed_at_ms=boundary + 3,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                2, side="short", market="ETH", strategy="trend",
+                rank="outside10", gross="11", chart=False,
+            ), boundary, closed_at_ms=boundary + 4,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                3, side="long", market="OP", strategy="trend",
+                rank="top10", gross="-8", chart=True,
+            ), boundary + 1, closed_at_ms=boundary + 5,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                4, side="short", market="SOL", strategy="trend",
+                rank="missing", gross="-6", chart=False,
+            ), boundary + 2, closed_at_ms=boundary + 6,
+        ),
+    ]
+    result = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows(rows),
+        trend_outside_freeze=ProspectiveTrendOutsideTop10State(
+            frozen_at_ms=0
+        ).payload(),
+    )
+    f = result["frozen_hypotheses_original_forward_economics"]["hypotheses"][
+        "trend_outside_top10_both_sides_skip"
+    ]
+    assert f["forward_trade_count"] == 3
+    parts = (
+        (
+            "original_forward_hypothesis_context",
+            "original_forward_hypothesis_chart_coverage_economics",
+        ),
+        (
+            "preferred_rank_attributed_original_closes",
+            "preferred_original_chart_coverage_economics",
+        ),
+        (
+            "disfavored_rank_attributed_original_closes",
+            "disfavored_original_chart_coverage_economics",
+        ),
+        ("unresolved_rank_original_closes", "unresolved_original_chart_coverage_economics"),
+    )
+    for original, key in parts:
+        row = f[original]
+        split = f[key]
+        assert row["trades"] == split["whole_original_cohort"]["trades"]
+        assert row["trades"] == (
+            split["complete_observed_path_original_closes"]["trades"] +
+            split["incomplete_or_missing_path_original_closes"]["trades"]
+        )
+        for field in ("gross_realized_pnl", "fees", "funding_cash_pnl", "net_pnl", "net_r"):
+            assert Decimal(row[field]) == (
+                Decimal(split["complete_observed_path_original_closes"][field]) +
+                Decimal(split["incomplete_or_missing_path_original_closes"][field])
+            )
+    excluded = f["disfavored_original_chart_coverage_economics"]
+    assert excluded["whole_original_cohort"]["trades"] == 1
+    assert excluded["complete_observed_path_original_closes"]["trades"] == 0
+    assert Decimal(excluded["incomplete_or_missing_path_original_closes"]["net_pnl"]) == 10
+    assert f["unresolved_original_chart_coverage_economics"][
+        "incomplete_or_missing_path_original_closes"
+    ]["trades"] == 1
+    assert f["candidate_skip_cashflow_simulated"] is False
+    assert excluded["counterfactual_exit_cashflow_simulated"] is False
+    assert f["promotion_authority"] is False
+
+
+def test_empty_journal_chart_evidence_has_no_fabricated_account_edge() -> None:
+    result = paper_profitability_scoreboard(_reconciled_audit_from_rows([]))
+    split = result["original_chart_coverage_economics"]
+    assert split["whole_original_cohort"]["trades"] == 0
+    assert split["complete_observed_path_original_closes"]["trades"] == 0
+    assert split["incomplete_or_missing_path_original_closes"]["trades"] == 0
+    assert result["strategy_chart_coverage_economics"] == []
+    assert len(result["chronological_quartile_chart_coverage_economics"]) == 4
+    assert split["promotion_authority"] is False
