@@ -181,8 +181,11 @@ def test_bit_flip_fails_before_paired_accounts_or_profit_report(
     root = tmp_path / "archive"
     manifest = _fixture(root)
     accounts = tmp_path / "accounts"
-    path = next(root.rglob("segment-*.jsonl"))
-    path.write_bytes(path.read_bytes().replace(b'"100"', b'"101"'))
+    path = next(root.rglob(f"segment-{SNAPSHOT_MS}.jsonl"))
+    before = path.read_bytes()
+    after = before.replace(b'"100"', b'"101"')
+    assert after != before
+    path.write_bytes(after)
     with pytest.raises(ShortRankPinnedSourceError, match="byte/row"):
         run_digest_pinned_short_rank_paired_replay(
             source_root=root,
