@@ -6,6 +6,12 @@ A standalone, research-only `ProspectiveShortBreakoutPairedEntryFilter` now enco
 
 This is an **admission component, not yet a real paired account**: no second forward account is running for this rule, no fees/funding/fill/drawdown result is claimed, and the negative frozen v5 trial remains intact. Required independent dual-paper replay and signed after-cost account report are described in `docs/FORWARD_SHORT_RANK_PAIRED_ADMISSION.md`. Original paper worker, risk, stops, frozen hypotheses, promotion and LIVE=false remain unchanged.
 
+## October 11 — isolated forward SHORT rank dual-paper simulator (PR pending)
+
+`ShortRankIndependentPairedPaperReplay` provides a **new, separately persisted two-lane paper simulation** for the previously frozen forward SHORT breakout rank>3 hypothesis. It applies the merged causal admission rule only to the candidate; identical timestamp-ordered recorded microstructure inputs are fed through two ordinary independent baseline replay engines, risk, paper IOC/fill, fee, funding and stop management accounts. It emits actual simulated account marked/realized/net side-cash-residual, fees/funding, fills, positions, drawdown, and candidate-minus-baseline, not imaginary zero-replacement skip cash. Synthetic tests illustrate one losing filled baseline vs filtered candidate and a missing-rank loser that must fill in both.
+
+This is **offline simulation infrastructure**, not signed forward profitability evidence: a locally claimed manifest is not independently source authenticated, the externally provided rank-witness stream is not proven contemporaneous, and no durable end-of-worker replay handoff/mature forward-window guarantee exists. Explicit authority-negative receipt flags remain false for those proof obligations, trial readiness, and promotion. No original continuous paper trader, negative frozen v5 account, risk/stops or LIVE permission is modified. See `docs/SHORT_RANK_OFFLINE_PAIRED_REPLAY.md`.
+
 **Current profitability-first source:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Read the timestamped verified economics there before selecting strategy changes; this status page contains older history as well.
 
 **Last updated:** 2026-10-10  
