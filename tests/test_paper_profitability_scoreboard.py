@@ -2392,3 +2392,117 @@ def test_frozen_long_trend_volatility_week_zero_cannot_move_after_closes() -> No
         w["source_window_mature"] is False
         for w in open_end["weekly_open_time_windows"]
     )
+
+
+def test_same_millisecond_original_decision_never_earns_mean_reversion_skip() -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
+    )
+    tied = _move_trade_to_original_open_time(
+        _trade(1, side="long", market="ETH",
+               strategy="mean_reversion", gross="-9"),
+        start, closed_at_ms=start + 900,
+    )
+    earlier = _move_trade_to_original_open_time(
+        _trade(2, side="short", market="SOL",
+               strategy="mean_reversion", gross="5"),
+        start + 10, closed_at_ms=start + 901,
+    )
+    _add_original_opportunity_to_scoreboard_trade(
+        tied, lead="mean_reversion",
+    )
+    _add_original_opportunity_to_scoreboard_trade(
+        earlier, lead="mean_reversion",
+    )
+    original = tied["original_first_seen_opportunity"]
+    assert isinstance(original, dict)
+    original["opportunity_timestamp_ms"] = start
+    result = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows([tied, earlier])
+    )
+    coverage = result["original_first_seen_decision_coverage_economics"]
+    assert coverage["whole_original"]["trades"] == 2
+    assert coverage["first_seen_matched"]["trades"] == 1
+    assert coverage["first_seen_unmatched"]["trades"] == 1
+    assert (
+        coverage["first_seen_same_millisecond_not_provably_preopen"]["trades"]
+        == 1
+    )
+    assert coverage["same_millisecond_opening_decisions_never_qualify"] is True
+    assert Decimal(coverage["whole_original"]["net_pnl"]) == -6
+    assert Decimal(coverage["first_seen_unmatched"]["net_pnl"]) == -10
+    trial = result["prospective_mean_reversion_abstention_contributions"]
+    assert trial["forward_original_decision_matches"] == 1
+    assert trial["forward_same_millisecond_decisions_unproven"] == 1
+    assert trial["verified_mean_reversion_avoided"]["trades"] == 1
+    assert Decimal(trial["original_forward_net_cash"]) == -6
+    # Only the originally witnessed, causally earlier WINNER is skipped.
+    assert Decimal(trial["naive_zero_replacement_delta_net_cash"]) == -4
+    assert Decimal(trial["naive_zero_replacement_candidate_net_cash"]) == -10
+    assert trial["forward_mean_reversion_without_first_seen_match_retained"] == 1
+    uncertain = trial["unproven_mean_reversion_posttrade_classification"]
+    assert uncertain["original_retained_booked"]["trades"] == 1
+    assert Decimal(
+        uncertain["naive_skip_delta_cash_upper_if_unverified_losers_eligible"]
+    ) == 6
+    assert uncertain["unproven_skips_credited_to_candidate"] == 0
+    assert trial["promotion_authority"] is False
+
+
+def test_same_millisecond_original_long_trend_regime_never_earns_skip() -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        LONG_TREND_VOLATILITY_FORWARD_MS as start,
+    )
+    tied = _move_trade_to_original_open_time(
+        _trade(1, side="long", market="ETH",
+               strategy="trend", gross="-9"),
+        start, closed_at_ms=start + 900,
+    )
+    earlier = _move_trade_to_original_open_time(
+        _trade(2, side="long", market="SOL",
+               strategy="trend", gross="-9"),
+        start + 10, closed_at_ms=start + 901,
+    )
+    for row, regime in ((tied, "low"), (earlier, "high")):
+        context = row["entry_context"]
+        assert isinstance(context, dict)
+        context["volatility_regime"] = regime
+        _add_original_opportunity_to_scoreboard_trade(row, lead="trend")
+    original = tied["original_first_seen_opportunity"]
+    assert isinstance(original, dict)
+    original["opportunity_timestamp_ms"] = start
+    result = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows([tied, earlier])
+    )
+    trial = result["prospective_long_trend_volatility_abstention_contributions"]
+    assert trial["original_forward_closed_trades"] == 2
+    assert trial["forward_same_millisecond_decisions_unproven"] == 1
+    assert trial["verified_low_or_high_volatility_avoided"]["trades"] == 1
+    assert trial["unwitnessed_volatility_originals_retained"]["trades"] == 1
+    assert Decimal(trial["original_forward_booked_net_cash"]) == -20
+    assert Decimal(trial["zero_replacement_candidate_cash"]) == -10
+    assert Decimal(trial["zero_replacement_delta_cash"]) == 10
+    assert Decimal(trial["unwitnessed_context_cash_delta_upper"]) == 20
+    assert trial["unwitnessed_original_cannot_earn_skip_credit"] is True
+    assert trial["execution_authority"] is False
+    assert trial["promotion_authority"] is False
+
+
+def test_future_dated_original_opening_source_still_rejected() -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
+    )
+    row = _move_trade_to_original_open_time(
+        _trade(1, side="long", market="ETH",
+               strategy="mean_reversion", gross="-9"),
+        start, closed_at_ms=start + 200,
+    )
+    _add_original_opportunity_to_scoreboard_trade(row, lead="mean_reversion")
+    original = row["original_first_seen_opportunity"]
+    assert isinstance(original, dict)
+    original["opportunity_timestamp_ms"] = start + 1
+    with pytest.raises(
+        PaperProfitabilityScoreboardError,
+        match="approval or decision clock mismatch",
+    ):
+        paper_profitability_scoreboard(_reconciled_audit_from_rows([row]))
