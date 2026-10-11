@@ -147,7 +147,7 @@ def test_missing_or_extra_feature_payload_cannot_claim_full_rank_identity() -> N
 def test_future_received_or_feature_calculation_after_observation_rejected() -> None:
     now = 1_790_000_000_000
     feature = _feature("BTC", now + 500)
-    with pytest.raises(ValueError, match="source received"):
+    with pytest.raises(ValueError, match="source_received_at_ms"):
         replace(feature, source_received_at_ms=now + 700)
     rank = FirstSeenRankSnapshot(
         observed_at_ms=now, captured_at_ms=now + 30,
