@@ -49,6 +49,7 @@ class _Trade:
     closed_at_ms: int
     lead_strategy: str
     rank_band: str
+    exit_reason: str
     verified_context: bool
     rank_missing: bool
     chart_complete: bool
@@ -200,6 +201,9 @@ def _trade(raw: object) -> _Trade:
     closed = _integer(row.get("closed_at_ms"), "closed_at_ms")
     if closed < opened:
         raise PaperProfitabilityScoreboardError("trade closed before opening")
+    # Exit reasons are only known after an actual original trade exits.
+    # NEVER use this downstream attribution as an entry-time feature.
+    exit_reason = _text(row.get("exit_reason"), "original booked exit reason")
     gross = _number(row.get("gross_realized_pnl"), "gross realized PnL")
     entry_fee = _number(row.get("entry_fees"), "entry fee")
     exit_fee = _number(row.get("exit_fees"), "exit fee")
@@ -249,6 +253,7 @@ def _trade(raw: object) -> _Trade:
         closed_at_ms=closed,
         lead_strategy=lead,
         rank_band=rank,
+        exit_reason=exit_reason,
         verified_context=context_raw is not None,
         rank_missing=rank in {"missing", UNVERIFIED},
         chart_complete=chart,
@@ -628,7 +633,13 @@ def _frozen_forward_hypothesis_economics(
             ),
             "forward_trade_count": len(forward),
             "original_forward_whole_journal": _metrics(forward),
+            "original_forward_whole_exit_mechanisms": (
+                _original_booked_exit_mechanisms(forward)
+            ),
             "original_forward_hypothesis_context": _metrics(target),
+            "original_forward_hypothesis_exit_mechanisms": (
+                _original_booked_exit_mechanisms(target)
+            ),
             "original_forward_hypothesis_chart_coverage_economics": (
                 _original_chart_coverage_economics(target)
             ),
@@ -636,6 +647,9 @@ def _frozen_forward_hypothesis_economics(
                 _forward_side_economics(target)
             ),
             "preferred_rank_attributed_original_closes": _metrics(preferred),
+            "preferred_original_exit_mechanisms": (
+                _original_booked_exit_mechanisms(preferred)
+            ),
             "preferred_original_chart_coverage_economics": (
                 _original_chart_coverage_economics(preferred)
             ),
@@ -643,6 +657,9 @@ def _frozen_forward_hypothesis_economics(
                 _forward_side_economics(preferred)
             ),
             "disfavored_rank_attributed_original_closes": _metrics(disfavored),
+            "disfavored_original_exit_mechanisms": (
+                _original_booked_exit_mechanisms(disfavored)
+            ),
             "disfavored_original_chart_coverage_economics": (
                 _original_chart_coverage_economics(disfavored)
             ),
@@ -650,6 +667,9 @@ def _frozen_forward_hypothesis_economics(
                 _forward_side_economics(disfavored)
             ),
             "unresolved_rank_original_closes": _metrics(unresolved),
+            "unresolved_original_exit_mechanisms": (
+                _original_booked_exit_mechanisms(unresolved)
+            ),
             "unresolved_original_chart_coverage_economics": (
                 _original_chart_coverage_economics(unresolved)
             ),
@@ -713,6 +733,47 @@ def _cohorts(
             str(item["cohort"]),
         ),
     )
+
+
+def _original_booked_exit_mechanisms(
+    cohort: list[_Trade],
+) -> dict[str, object]:
+    """Actual closed-trade loss attribution, NEVER an entry-time filter.
+
+    Exit reason is an actual post-entry result. These partitions cannot
+    estimate trading the same openings with different fills, fees, exposure
+    or capital reuse and do not grant strategy/exit promotion authority.
+    """
+    return {
+        "source": "actual_original_post_exit_reason_and_booked_cashflow",
+        "whole_original_cohort": _metrics(cohort),
+        "by_exit_reason": _cohorts(cohort, ("exit_reason",)),
+        "by_side_and_exit_reason": _cohorts(
+            cohort, ("side", "exit_reason")
+        ),
+        "by_strategy_and_exit_reason": _cohorts(
+            cohort, ("lead_strategy", "exit_reason")
+        ),
+        "by_side_strategy_and_exit_reason": _cohorts(
+            cohort, ("side", "lead_strategy", "exit_reason")
+        ),
+        "by_exit_reason_with_original_chart_coverage": [
+            {
+                "exit_reason": reason,
+                **_original_chart_coverage_economics([
+                    trade for trade in cohort if trade.exit_reason == reason
+                ]),
+            }
+            for reason in sorted({trade.exit_reason for trade in cohort})
+        ],
+        "exit_reason_known_only_after_original_entry": True,
+        "all_original_closes_included": True,
+        "counterfactual_exit_or_skip_account_simulated": False,
+        "suitable_as_entry_filter": False,
+        "ready_for_review": False,
+        "promotion_authority": False,
+        "execution_authority": False,
+    }
 
 
 def paper_profitability_scoreboard(
@@ -857,6 +918,9 @@ def paper_profitability_scoreboard(
                 "All original losses and missing entry contexts remain included."
             ),
             "overall": overall,
+            "original_booked_exit_mechanisms": (
+                _original_booked_exit_mechanisms(trades)
+            ),
             "original_chart_coverage_economics": (
                 _original_chart_coverage_economics(trades)
             ),
@@ -896,6 +960,16 @@ def paper_profitability_scoreboard(
             "side_cohorts": _cohorts(trades, ("side",)),
             "strategy_cohorts": _cohorts(trades, ("lead_strategy",)),
             "market_cohorts": _cohorts(trades, ("market",)),
+            "exit_reason_cohorts": _cohorts(trades, ("exit_reason",)),
+            "side_exit_reason_cohorts": _cohorts(
+                trades, ("side", "exit_reason")
+            ),
+            "strategy_exit_reason_cohorts": _cohorts(
+                trades, ("lead_strategy", "exit_reason")
+            ),
+            "side_strategy_exit_reason_cohorts": _cohorts(
+                trades, ("side", "lead_strategy", "exit_reason")
+            ),
             "side_strategy_cohorts": _cohorts(
                 trades, ("side", "lead_strategy")
             ),

@@ -1384,6 +1384,13 @@ jobs:
                 f"complete {complete['trades']} closes / ${complete['net_pnl']}; "
                 f"incomplete {incomplete['trades']} closes / ${incomplete['net_pnl']} "
                 f"(NOT matched fills or promoted edge)")
+          print("- Actual original booked exits by exit mechanism "
+                "(post-exit outcome, NEVER an entry-time filter):")
+          for group in report["exit_reason_cohorts"]:
+              print(f"  - {group['cohort']['exit_reason']}: "
+                    f"{group['trades']} closes / ${group['net_pnl']} booked net / "
+                    f"{group['net_r']} booked net-R; "
+                    f"fees ${group['fees']}, funding ${group['funding_cash_pnl']}")
           print("- Side/strategy net losers (retrospective attribution only):")
           for group in report["side_strategy_cohorts"][:5]:
               c = group["cohort"]
