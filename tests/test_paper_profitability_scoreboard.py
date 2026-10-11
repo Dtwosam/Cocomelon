@@ -50,6 +50,7 @@ def _trade(
         "funding_cash_pnl": funding,
         "net_pnl": str(net),
         "net_r": str(net / Decimal("20")),
+        "initial_risk_amount": "20",
         "chart_coverage_complete": chart,
         "exit_reason": "MARK_STOP_TRIGGERED",
         "chart_path_present": chart,
@@ -1179,6 +1180,13 @@ def test_genuine_precision_scale_residuals_are_retained_not_erased() -> None:
     row = source["trades"][1]
     row["net_pnl"] = "4.000000000000000000000000005"
     row["entry_context"]["net_pnl"] = row["net_pnl"]
+    # A genuine journal also books its risk-normalized R at the same
+    # authoritative Decimal precision when its signed net cash changes.
+    from cocomelon.domain.journal import AUTHORITATIVE_CONTEXT
+    with localcontext(AUTHORITATIVE_CONTEXT):
+        row["net_r"] = str(
+            Decimal(str(row["net_pnl"])) / Decimal(str(row["initial_risk_amount"]))
+        )
     original = source["economics"]["overall"]
     with localcontext(prec=96):
         original["net_pnl"] = str(
@@ -1627,3 +1635,97 @@ def test_empty_exit_book_is_not_a_profitable_exit_strategy() -> None:
     assert diag["by_exit_reason"] == []
     assert diag["by_exit_reason_with_original_chart_coverage"] == []
     assert diag["promotion_authority"] is False
+
+
+
+def test_booked_original_net_r_cannot_be_forged_without_changing_cash() -> None:
+    source = _audit()
+    first = source["trades"][0]
+    assert Decimal(str(first["net_pnl"])) < 0
+    first["net_r"] = "100"
+    with pytest.raises(
+        PaperProfitabilityScoreboardError,
+        match="net-R contradicts booked cash",
+    ):
+        paper_profitability_scoreboard(source)
+
+
+def test_offsetting_r_forgery_cannot_hide_in_whole_account_total() -> None:
+    source = _audit()
+    first, second = source["trades"][:2]
+    first["net_r"] = str(Decimal(str(first["net_r"])) + Decimal("4"))
+    second["net_r"] = str(Decimal(str(second["net_r"])) - Decimal("4"))
+    assert sum(
+        Decimal(str(row["net_r"])) for row in source["trades"]
+    ) == sum(
+        Decimal(str(row["net_pnl"])) / Decimal("20")
+        for row in source["trades"]
+    )
+    with pytest.raises(
+        PaperProfitabilityScoreboardError,
+        match="net-R contradicts booked cash",
+    ):
+        paper_profitability_scoreboard(source)
+
+
+@pytest.mark.parametrize(
+    "risk",
+    [None, "0", "-10", "21", "not-a-number", "Infinity", True],
+)
+def test_original_immutable_r_denominator_missing_or_changed_fails_closed(
+    risk: object,
+) -> None:
+    audit = _audit()
+    audit["trades"][1]["initial_risk_amount"] = risk
+    with pytest.raises(PaperProfitabilityScoreboardError):
+        paper_profitability_scoreboard(audit)
+
+
+def test_original_journal_decimal_r_rounding_is_not_false_tamper() -> None:
+    from cocomelon.domain.journal import AUTHORITATIVE_CONTEXT
+
+    trade = _trade(
+        1, side="short", market="BTC", strategy="breakout",
+        gross="4", entry_fee="0", exit_fee="0",
+    )
+    trade["initial_risk_amount"] = "3"
+    with localcontext(AUTHORITATIVE_CONTEXT):
+        trade["net_r"] = str(Decimal("4") / Decimal("3"))
+    report = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows([trade])
+    )
+    assert report["overall"]["net_pnl"] == "4"
+    assert report["overall"]["net_r"] == trade["net_r"]
+    assert report["promotion_authority"] is False
+
+
+def test_original_risk_guard_blocks_frozen_forward_rank_r_inflation() -> None:
+    from cocomelon.research.prospective_short_breakout_rank import (
+        ProspectiveShortBreakoutRankState,
+    )
+
+    boundary = 6 * 3_600_000
+    past = _move_trade_to_original_open_time(
+        _trade(
+            1, side="short", market="BTC", strategy="breakout",
+            gross="90", rank="top3",
+        ), boundary - 1, closed_at_ms=boundary + 5
+    )
+    future = _move_trade_to_original_open_time(
+        _trade(
+            2, side="short", market="ETH", strategy="breakout",
+            gross="-6", rank="outside10",
+        ), boundary, closed_at_ms=boundary + 5
+    )
+    audit = _reconciled_audit_from_rows([past, future])
+    future["net_r"] = "10000"
+    with pytest.raises(
+        PaperProfitabilityScoreboardError,
+        match="net-R contradicts booked cash",
+    ):
+        paper_profitability_scoreboard(
+            audit,
+            short_rank_freeze=ProspectiveShortBreakoutRankState(
+                frozen_at_ms=0
+            ).payload(),
+        )

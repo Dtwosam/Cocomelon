@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, localcontext
 from typing import Final, cast
 
+from cocomelon.domain.journal import AUTHORITATIVE_CONTEXT
 from cocomelon.research.prospective_short_breakout_rank import (
     MIN_FUTURE as SHORT_MIN_FUTURE,
 )
@@ -218,6 +219,21 @@ def _trade(raw: object) -> _Trade:
             "authenticated source precision bound"
         )
     net_r = _number(row.get("net_r"), "booked net R")
+    planned_risk = _number(
+        row.get("initial_risk_amount"), "original immutable planned risk"
+    )
+    if planned_risk <= ZERO:
+        raise PaperProfitabilityScoreboardError(
+            "original immutable planned risk must be positive"
+        )
+    # The authentic journal uses exactly this Decimal context. Do not
+    # derive or infer the risk denominator from a supplied R multiple.
+    with localcontext(AUTHORITATIVE_CONTEXT):
+        if net / planned_risk != net_r:
+            raise PaperProfitabilityScoreboardError(
+                "original booked net-R contradicts booked cash and "
+                "immutable planned risk"
+            )
     chart = row.get("chart_coverage_complete")
     if type(chart) is not bool:
         raise PaperProfitabilityScoreboardError(
