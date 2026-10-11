@@ -39,6 +39,8 @@ UNVERIFIED: Final = "UNVERIFIED_ENTRY_CONTEXT"
 # losing mean-reversion trades are DISCOVERY only, never prospective rows.
 MEAN_REVERSION_DISCOVERY_FREEZE_MS: Final = 1_791_720_000_000  # Oct 11 12:00 UTC
 MEAN_REVERSION_EMBARGO_MS: Final = 6 * 3_600_000
+MEAN_REVERSION_FIXED_OPENING_DAY_MS: Final = 24 * 3_600_000
+MEAN_REVERSION_FIXED_OPENING_WEEK_MS: Final = 7 * MEAN_REVERSION_FIXED_OPENING_DAY_MS
 MEAN_REVERSION_FORWARD_START_MS: Final = (
     MEAN_REVERSION_DISCOVERY_FREEZE_MS + MEAN_REVERSION_EMBARGO_MS
 )
@@ -872,6 +874,9 @@ def _original_booked_exit_mechanisms(
 
 def _predeclared_mean_reversion_abstention(
     trades: list[_Trade],
+    *,
+    source_handoff_ended_at_ms: int | None = None,
+    source_handoff_open_positions: int | None = None,
 ) -> dict[str, object]:
     """Forward-only original-booked skip arithmetic, NEVER an account replay.
 
@@ -937,16 +942,178 @@ def _predeclared_mean_reversion_abstention(
     leave_market_r = [
         delta_r + pnl for pnl in market_r.values()
     ]
-    midpoint = len(forward) // 2
-    first_ids = {trade.trade_id for trade in forward[:midpoint]}
+    # The closing journal is ordered by EXIT. Stability cohorts must
+    # instead follow the *original opportunity opening time*.
+    opening_order = sorted(
+        forward, key=lambda t: (t.opened_at_ms, t.trade_id)
+    )
+    midpoint = len(opening_order) // 2
+    first_ids = {trade.trade_id for trade in opening_order[:midpoint]}
     first_avoided = [t for t in avoided if t.trade_id in first_ids]
     second_avoided = [t for t in avoided if t.trade_id not in first_ids]
+
+    # Neither the number of currently closed trades nor the last close may
+    # choose temporal split boundaries. Predeclare fixed 24-hour bins from
+    # the six-hour-embargo endpoint; bins remain stable when closes arrive.
+    by_open_day: dict[int, list[_Trade]] = {}
+    for trade in opening_order:
+        day = (
+            trade.opened_at_ms - MEAN_REVERSION_FORWARD_START_MS
+        ) // MEAN_REVERSION_FIXED_OPENING_DAY_MS
+        by_open_day.setdefault(day, []).append(trade)
+    days = sorted(set(by_open_day).union({0, 1}))
+    known_handoff = (
+        source_handoff_ended_at_ms is not None
+        and source_handoff_open_positions is not None
+    )
+    all_exposure_settled = (
+        known_handoff and source_handoff_open_positions == 0
+    )
+    blocks: list[dict[str, object]] = []
+    for day in days:
+        members = by_open_day.get(day, [])
+        matching_avoided = [
+            t for t in members
+            if t.verified_context
+            and t.original_decision_source_match
+            and t.lead_strategy == "mean_reversion"
+        ]
+        member_original_cash = sum((t.net for t in members), ZERO)
+        member_original_r = sum((t.net_r for t in members), ZERO)
+        omitted_cash = sum((t.net for t in matching_avoided), ZERO)
+        omitted_r = sum((t.net_r for t in matching_avoided), ZERO)
+        window_start = (
+            MEAN_REVERSION_FORWARD_START_MS
+            + day * MEAN_REVERSION_FIXED_OPENING_DAY_MS
+        )
+        window_end_exclusive = (
+            window_start + MEAN_REVERSION_FIXED_OPENING_DAY_MS
+        )
+        completed_window = (
+            all_exposure_settled
+            and source_handoff_ended_at_ms is not None
+            and source_handoff_ended_at_ms >= window_end_exclusive
+        )
+        blocks.append({
+            "opening_day_index": day,
+            "opened_at_ms_ge": window_start,
+            "opened_at_ms_lt": window_end_exclusive,
+            "observed_original_closed_trades": len(members),
+            "closed_origins_only_no_evidence_of_unclosed_fills": True,
+            "avoided_verified_mean_reversion": _metrics(matching_avoided),
+            "original_booked_net_cash": str(member_original_cash),
+            "original_booked_net_r": str(member_original_r),
+            "zero_replacement_net_cash": str(
+                member_original_cash - omitted_cash
+            ),
+            "zero_replacement_net_r": str(
+                member_original_r - omitted_r
+            ),
+            "naive_skip_delta_cash": str(-omitted_cash),
+            "naive_skip_delta_r": str(-omitted_r),
+            "source_observation_window_mature": completed_window,
+            "capital_reallocation_modeled": False,
+            "promotion_authority": False,
+        })
+    first_two = blocks[:2]  # Always opening days 0 and 1, never best days.
+    fixed_days_sampled = (
+        len(first_two) == 2
+        and all(
+            b["source_observation_window_mature"] is True
+            and _integer(
+                _object(
+                    b["avoided_verified_mean_reversion"],
+                    "fixed opening-day avoided cohort",
+                ).get("trades"),
+                "fixed opening-day avoided count",
+            ) >= 3
+            for b in first_two
+        )
+    )
+    first_two_positive = (
+        fixed_days_sampled
+        and all(
+            Decimal(str(b["naive_skip_delta_cash"])) > ZERO
+            and Decimal(str(b["naive_skip_delta_r"])) > ZERO
+            for b in first_two
+        )
+    )
+
+    # Mean-reversion opened only nine times in the discovery cohort. The
+    # frozen two-day splits are transparent diagnostics but an arbitrary
+    # >=3-trades-per-day maturity floor would make an otherwise promising
+    # 40+ close/12+ MR forward study practically unreviewable. The actual
+    # temporal sample gate uses *first two consecutive 7-day windows*.
+    by_open_week: dict[int, list[_Trade]] = {}
+    for trade in opening_order:
+        week = (
+            trade.opened_at_ms - MEAN_REVERSION_FORWARD_START_MS
+        ) // MEAN_REVERSION_FIXED_OPENING_WEEK_MS
+        by_open_week.setdefault(week, []).append(trade)
+    weeks = sorted(set(by_open_week).union({0, 1}))
+    week_blocks: list[dict[str, object]] = []
+    for week in weeks:
+        members = by_open_week.get(week, [])
+        matching_avoided = [
+            t for t in members
+            if t.verified_context
+            and t.original_decision_source_match
+            and t.lead_strategy == "mean_reversion"
+        ]
+        week_original_cash = sum((t.net for t in members), ZERO)
+        week_original_r = sum((t.net_r for t in members), ZERO)
+        omitted_cash = sum((t.net for t in matching_avoided), ZERO)
+        omitted_r = sum((t.net_r for t in matching_avoided), ZERO)
+        window_start = (
+            MEAN_REVERSION_FORWARD_START_MS
+            + week * MEAN_REVERSION_FIXED_OPENING_WEEK_MS
+        )
+        window_end = window_start + MEAN_REVERSION_FIXED_OPENING_WEEK_MS
+        week_blocks.append({
+            "opening_week_index": week,
+            "opened_at_ms_ge": window_start,
+            "opened_at_ms_lt": window_end,
+            "observed_original_closed_trades": len(members),
+            "avoided_verified_mean_reversion": _metrics(matching_avoided),
+            "original_booked_net_cash": str(week_original_cash),
+            "original_booked_net_r": str(week_original_r),
+            "zero_replacement_net_cash": str(week_original_cash - omitted_cash),
+            "zero_replacement_net_r": str(week_original_r - omitted_r),
+            "naive_skip_delta_cash": str(-omitted_cash),
+            "naive_skip_delta_r": str(-omitted_r),
+            "source_observation_window_mature": (
+                all_exposure_settled
+                and source_handoff_ended_at_ms is not None
+                and source_handoff_ended_at_ms >= window_end
+            ),
+            "unclosed_trades_not_claimed_absent_without_zero_exposure": True,
+            "capital_reallocation_modeled": False,
+            "promotion_authority": False,
+        })
+    fixed_weeks_sampled = all(
+        block["source_observation_window_mature"] is True
+        and _integer(
+            _object(
+                block["avoided_verified_mean_reversion"],
+                "fixed opening-week avoided cohort",
+            ).get("trades"),
+            "fixed opening-week avoided count",
+        ) >= 3
+        for block in week_blocks[:2]
+    )
+    fixed_weeks_improved = (
+        fixed_weeks_sampled
+        and all(
+            Decimal(str(block["naive_skip_delta_cash"])) > ZERO
+            and Decimal(str(block["naive_skip_delta_r"])) > ZERO
+            for block in week_blocks[:2]
+        )
+    )
     descriptive_floor = (
         len(forward) >= 40
         and len(avoided) >= 12
         and len(market_cash) >= 6
-        and len(first_avoided) >= 3
-        and len(second_avoided) >= 3
+        and fixed_weeks_sampled
         and all(t.verified_context for t in forward)
         and all(t.original_decision_source_match for t in forward)
     )
@@ -956,6 +1123,13 @@ def _predeclared_mean_reversion_abstention(
         "fixed_discovery_freeze_ms": MEAN_REVERSION_DISCOVERY_FREEZE_MS,
         "embargo_ms": MEAN_REVERSION_EMBARGO_MS,
         "forward_started_at_ms": MEAN_REVERSION_FORWARD_START_MS,
+        "fixed_opening_window_ms": MEAN_REVERSION_FIXED_OPENING_DAY_MS,
+        "fixed_stability_window_ms": MEAN_REVERSION_FIXED_OPENING_WEEK_MS,
+        "fixed_opening_windows_start_at_embargo_end": True,
+        "closed_only_right_censoring_explicit": True,
+        "source_handoff_ended_at_ms": source_handoff_ended_at_ms,
+        "source_handoff_open_positions": source_handoff_open_positions,
+        "source_handoff_exposure_zero_and_end_known": all_exposure_settled,
         "inclusion_rule": "original_trade_opened_at_ms_ge_fixed_forward_start",
         "rule": "skip_only_verified_mean_reversion_lead",
         "discovery_period_pnl_never_scored": True,
@@ -1014,6 +1188,13 @@ def _predeclared_mean_reversion_abstention(
         "leave_one_avoided_market_min_delta_r": (
             str(min(leave_market_r)) if len(market_cash) >= 2 else None
         ),
+        "fixed_24h_original_opening_windows": blocks,
+        "fixed_7d_original_opening_windows": week_blocks,
+        "first_two_fixed_7d_windows_have_mature_sample": fixed_weeks_sampled,
+        "first_two_fixed_7d_naive_skip_improves_cash_and_r": fixed_weeks_improved,
+        "first_two_fixed_24h_windows_have_mature_sample": fixed_days_sampled,
+        "first_two_fixed_24h_naive_skip_improves_cash_and_r": first_two_positive,
+        "chronological_count_halves_dynamic_not_fixed_stability": True,
         "chronological_forward_halves_avoided": [
             {
                 "half": 1,
@@ -1034,7 +1215,11 @@ def _predeclared_mean_reversion_abstention(
             "zero replacement cash, not a causal matched capital-constrained "
             "account. Verified posttrade context is not independently "
             "archived decision-time observation. Prior 9 losing trades are "
-            "discovery only and never validation. No trade authority."
+            "discovery only and never validation. Closed-only cohorts are "
+            "right-censored until the authenticated handoff end and zero "
+            "open positions establish observed window maturity. Fixed "
+            "opening-time day/week windows are descriptive, not a full-account "
+            "replacement simulation. No trade authority."
         ),
     }
 
@@ -1138,6 +1323,22 @@ def paper_profitability_scoreboard(
         ) != residual:
             raise PaperProfitabilityScoreboardError(
                 "whole-journal booked cash reconciliation residue mismatch"
+            )
+        handoff_ended_raw = audit.get("source_handoff_ended_at_ms")
+        handoff_open_raw = audit.get("source_handoff_open_positions")
+        handoff_ended: int | None = (
+            None if handoff_ended_raw is None
+            else _integer(handoff_ended_raw, "source handoff end")
+        )
+        handoff_open: int | None = (
+            None if handoff_open_raw is None
+            else _integer(handoff_open_raw, "source handoff open positions")
+        )
+        if handoff_ended is not None and any(
+            trade.closed_at_ms > handoff_ended for trade in trades
+        ):
+            raise PaperProfitabilityScoreboardError(
+                "original booked close exceeds source handoff end"
             )
         entry = _object(
             audit.get("verified_entry_exit_context"), "entry context audit"
@@ -1243,7 +1444,11 @@ def paper_profitability_scoreboard(
                 _short_breakout_top3_robustness(trades)
             ),
             "prospective_mean_reversion_abstention_contributions": (
-                _predeclared_mean_reversion_abstention(trades)
+                _predeclared_mean_reversion_abstention(
+                    trades,
+                    source_handoff_ended_at_ms=handoff_ended,
+                    source_handoff_open_positions=handoff_open,
+                )
             ),
             "frozen_hypotheses_original_forward_economics": (
                 _frozen_forward_hypothesis_economics(

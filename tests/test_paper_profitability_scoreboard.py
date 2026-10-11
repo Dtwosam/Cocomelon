@@ -1947,3 +1947,205 @@ def test_first_seen_uncertain_source_cannot_claim_matching_fields() -> None:
         paper_profitability_scoreboard(
             _reconciled_audit_from_rows([row])
         )
+
+
+def test_forward_fixed_opening_day_windows_never_follow_close_order() -> None:
+    """Long-lived day-0 loser closes after a day-1 winner; fixed bins do not flip."""
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FIXED_OPENING_DAY_MS as day,
+    )
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
+    )
+
+    original_day0 = _move_trade_to_original_open_time(
+        _trade(1, side="long", market="BTC", strategy="mean_reversion",
+               gross="-9"),
+        start + 1, closed_at_ms=start + 2 * day + 10,
+    )
+    original_day1 = _move_trade_to_original_open_time(
+        _trade(2, side="short", market="ETH", strategy="mean_reversion",
+               gross="5"),
+        start + day + 1, closed_at_ms=start + day + 20,
+    )
+    _add_original_opportunity_to_scoreboard_trade(
+        original_day0, lead="mean_reversion",
+    )
+    _add_original_opportunity_to_scoreboard_trade(
+        original_day1, lead="mean_reversion",
+    )
+    chronological_closes = [original_day1, original_day0]
+    audit = _reconciled_audit_from_rows(chronological_closes)
+    audit["source_handoff_ended_at_ms"] = start + 3 * day
+    audit["source_handoff_open_positions"] = 0
+    report = paper_profitability_scoreboard(audit)
+    trial = report["prospective_mean_reversion_abstention_contributions"]
+    blocks = trial["fixed_24h_original_opening_windows"]
+    assert [b["opening_day_index"] for b in blocks] == [0, 1]
+    assert all(b["source_observation_window_mature"] for b in blocks)
+    assert blocks[0]["observed_original_closed_trades"] == 1
+    assert Decimal(blocks[0]["naive_skip_delta_cash"]) == Decimal("10")
+    assert Decimal(blocks[1]["naive_skip_delta_cash"]) == Decimal("-4")
+    assert Decimal(blocks[0]["zero_replacement_net_cash"]) == 0
+    assert Decimal(blocks[1]["zero_replacement_net_cash"]) == 0
+    assert trial["chronological_forward_halves_avoided"][0]["avoided"]["trades"] == 1
+    assert trial["chronological_forward_halves_avoided"][1]["avoided"]["trades"] == 1
+    assert trial["first_two_fixed_24h_windows_have_mature_sample"] is False
+    assert trial["first_two_fixed_24h_naive_skip_improves_cash_and_r"] is False
+    assert trial["promotion_authority"] is False
+
+
+@pytest.mark.parametrize("open_positions,expected", [
+    (None, False),
+    (1, False),
+    (0, True),
+])
+def test_forward_window_maturity_requires_authenticated_zero_open_exposure(
+    open_positions: int | None,
+    expected: bool,
+) -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FIXED_OPENING_DAY_MS as day,
+    )
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
+    )
+
+    row = _move_trade_to_original_open_time(
+        _trade(1, side="long", market="SOL", strategy="mean_reversion",
+               gross="-9"),
+        start + 1, closed_at_ms=start + 100,
+    )
+    _add_original_opportunity_to_scoreboard_trade(
+        row, lead="mean_reversion",
+    )
+    audit = _reconciled_audit_from_rows([row])
+    audit["source_handoff_ended_at_ms"] = start + 2 * day
+    audit["source_handoff_open_positions"] = open_positions
+    trial = paper_profitability_scoreboard(audit)[
+        "prospective_mean_reversion_abstention_contributions"
+    ]
+    block0, block1 = trial["fixed_24h_original_opening_windows"]
+    assert block0["source_observation_window_mature"] is expected
+    assert block1["source_observation_window_mature"] is expected
+    assert trial["source_handoff_exposure_zero_and_end_known"] is expected
+    assert trial["descriptive_sample_floor_met_not_promotion"] is False
+    assert trial["research_readiness_grant"] is False
+
+
+def test_forward_window_current_incomplete_day_never_matures() -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FIXED_OPENING_DAY_MS as day,
+    )
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
+    )
+    row = _move_trade_to_original_open_time(
+        _trade(1, side="long", market="SOL", strategy="mean_reversion",
+               gross="-9"),
+        start + 1, closed_at_ms=start + 100,
+    )
+    _add_original_opportunity_to_scoreboard_trade(
+        row, lead="mean_reversion",
+    )
+    audit = _reconciled_audit_from_rows([row])
+    audit["source_handoff_ended_at_ms"] = start + day - 1
+    audit["source_handoff_open_positions"] = 0
+    block = paper_profitability_scoreboard(audit)[
+        "prospective_mean_reversion_abstention_contributions"
+    ]["fixed_24h_original_opening_windows"][0]
+    assert block["source_observation_window_mature"] is False
+
+
+@pytest.mark.parametrize("field,value", [
+    ("source_handoff_ended_at_ms", True),
+    ("source_handoff_ended_at_ms", -1),
+    ("source_handoff_open_positions", False),
+    ("source_handoff_open_positions", -1),
+])
+def test_forward_source_handoff_censor_fields_fail_closed(
+    field: str, value: object,
+) -> None:
+    audit = _audit()
+    audit[field] = value
+    with pytest.raises(
+        PaperProfitabilityScoreboardError, match="source handoff"
+    ):
+        paper_profitability_scoreboard(audit)
+
+
+def test_forward_original_close_cannot_postdate_completed_source_handoff() -> None:
+    audit = _audit()
+    audit["source_handoff_ended_at_ms"] = 0
+    audit["source_handoff_open_positions"] = 0
+    with pytest.raises(
+        PaperProfitabilityScoreboardError, match="exceeds source handoff"
+    ):
+        paper_profitability_scoreboard(audit)
+
+
+def test_sparse_mean_reversion_uses_first_two_fixed_weeks_not_daily_floor() -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FIXED_OPENING_DAY_MS as day,
+    )
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
+    )
+
+    # Three outcomes per calendar week, but only one in any 24h block.
+    days = (0, 1, 2, 7, 8, 9)
+    markets = ("BTC", "ETH", "SOL", "ADA", "CRV", "HYPE")
+    rows: list[dict[str, object]] = []
+    for i, (d, market) in enumerate(zip(days, markets, strict=True)):
+        opened = start + d * day + 1
+        row = _move_trade_to_original_open_time(
+            _trade(
+                i + 1, side="long", market=market,
+                strategy="mean_reversion", gross="-9",
+            ),
+            opened, closed_at_ms=opened + 100,
+        )
+        _add_original_opportunity_to_scoreboard_trade(
+            row, lead="mean_reversion",
+        )
+        rows.append(row)
+    audit = _reconciled_audit_from_rows(rows)
+    audit["source_handoff_ended_at_ms"] = start + 14 * day
+    audit["source_handoff_open_positions"] = 0
+    trial = paper_profitability_scoreboard(audit)[
+        "prospective_mean_reversion_abstention_contributions"
+    ]
+    weeks = trial["fixed_7d_original_opening_windows"]
+    assert [w["opening_week_index"] for w in weeks] == [0, 1]
+    assert trial["fixed_stability_window_ms"] == 7 * day
+    assert [w["avoided_verified_mean_reversion"]["trades"] for w in weeks] == [
+        3, 3,
+    ]
+    assert all(w["source_observation_window_mature"] for w in weeks)
+    assert trial["first_two_fixed_7d_windows_have_mature_sample"] is True
+    assert trial["first_two_fixed_7d_naive_skip_improves_cash_and_r"] is True
+    # Weekly reporting must never shadow or reset whole-forward original cash/R.
+    assert Decimal(trial["original_forward_net_cash"]) == Decimal("-60")
+    assert Decimal(trial["original_forward_net_r"]) == Decimal("-3")
+    assert sum(
+        (Decimal(w["original_booked_net_cash"]) for w in weeks), Decimal(0)
+    ) == Decimal(trial["original_forward_net_cash"])
+    assert sum(
+        (Decimal(w["original_booked_net_r"]) for w in weeks), Decimal(0)
+    ) == Decimal(trial["original_forward_net_r"])
+    assert trial["first_two_fixed_24h_windows_have_mature_sample"] is False
+    assert trial["descriptive_sample_floor_met_not_promotion"] is False
+    assert trial["promotion_authority"] is False
+
+    # The second week is not mature one millisecond before its exclusive end.
+    audit["source_handoff_ended_at_ms"] = start + 14 * day - 1
+    trial_early = paper_profitability_scoreboard(audit)[
+        "prospective_mean_reversion_abstention_contributions"
+    ]
+    assert trial_early["fixed_7d_original_opening_windows"][0][
+        "source_observation_window_mature"
+    ] is True
+    assert trial_early["fixed_7d_original_opening_windows"][1][
+        "source_observation_window_mature"
+    ] is False
+    assert trial_early["first_two_fixed_7d_windows_have_mature_sample"] is False
