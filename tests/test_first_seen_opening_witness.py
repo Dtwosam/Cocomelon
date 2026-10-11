@@ -168,3 +168,35 @@ def test_invalid_overlap_start_is_rejected() -> None:
         first_seen_opening_witness_summary(
             (), (), (), overlap_started_at_ms=-1
         )
+
+
+
+def test_equal_timestamp_close_remains_unproven_for_first_open_lineage() -> None:
+    """A same-ms terminal close has no established pre-decision order."""
+    tied = _trade("tie", opened=300, closed=400)
+    opportunity = _opportunity(timestamp=400)
+    unmatched = first_seen_opening_witness_summary(
+        (opportunity,), (tied,), (), overlap_started_at_ms=100,
+    )
+    witnessed = first_seen_opening_witness_summary(
+        (opportunity,), (tied,), (_lineage(tied),),
+        overlap_started_at_ms=100,
+    )
+    assert unmatched["future_finalized_overlap_opportunities"] == 1
+    assert unmatched["unwitnessed_overlap_opportunities"] == 1
+    assert witnessed["fully_lineage_witnessed_overlap_opportunities"] == 1
+    assert witnessed["decision_time_equivalence_verified"] is False
+    assert witnessed["research_readiness_grant"] is False
+    assert witnessed["promotion_authority"] is False
+
+    # One millisecond later the finalized trade can be known already.
+    after = first_seen_opening_witness_summary(
+        (_opportunity(timestamp=401),), (tied,), (),
+        overlap_started_at_ms=100,
+    )
+    assert after["future_finalized_overlap_opportunities"] == 0
+    other_side = first_seen_opening_witness_summary(
+        (_opportunity(timestamp=400, direction="long"),), (tied,), (),
+        overlap_started_at_ms=100,
+    )
+    assert other_side["future_finalized_overlap_opportunities"] == 0

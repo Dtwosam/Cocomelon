@@ -81,7 +81,7 @@ def first_seen_opening_witness_summary(
             trade
             for trade in all_trades
             if overlap_started_at_ms <= trade.opened_at_ms < timestamp
-            and trade.closed_at_ms > timestamp
+            and trade.closed_at_ms >= timestamp
             and trade.market.canonical == evidence.market
             and trade.direction.value == evidence.direction
         )

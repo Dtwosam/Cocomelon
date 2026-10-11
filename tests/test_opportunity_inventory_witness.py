@@ -156,7 +156,7 @@ def test_market_side_and_close_clock_never_generate_false_overlap(
     store.record(opp, (), recorded_at_ms=401)
     records = store.iter_records()
     for trade in (
-        _trade(closed=400),
+        _trade(closed=399),
         _trade(opened=400),
         _trade(market="BTC"),
         _trade(direction="long"),
@@ -264,3 +264,41 @@ def test_unwitnessed_overlap_has_no_fictitious_observed_receipt_lag() -> None:
     assert report[
         "all_later_finalized_overlaps_witnessed_within_freshness"
     ] is False
+
+
+
+def test_same_ms_terminal_close_cannot_disappear_from_inventory_census(
+    tmp_path: Path,
+) -> None:
+    """Treat tied closes as as-of uncertain, never reclassify as pre-known."""
+    store = OpportunityInventoryWitnessStore(tmp_path)
+    opportunity = _opportunity(timestamp=400)
+    tied = _trade(opened=300, closed=400)
+    store.record(opportunity, (_position(),), recorded_at_ms=401)
+    present = original_inventory_overlap_audit(
+        (opportunity,), (tied,), store.iter_records(),
+        overlap_started_at_ms=100,
+    )
+    assert present["later_finalized_overlap_opportunities"] == 1
+    assert present["overlap_original_census_matches"] == 1
+    assert present["research_readiness_grant"] is False
+    assert present["decision_time_filter_state_verified"] is False
+    assert present["promotion_authority"] is False
+
+    missing = original_inventory_overlap_audit(
+        (opportunity,), (tied,), (), overlap_started_at_ms=100,
+    )
+    assert missing["later_finalized_overlap_opportunities"] == 1
+    assert missing["overlap_missing_original_census"] == 1
+    assert missing["all_later_finalized_overlaps_witnessed_within_freshness"] is False
+
+    for out_of_scope in (
+        _trade(opened=300, closed=399),
+        _trade(opened=400, closed=400),
+        _trade(opened=300, closed=400, direction="long"),
+        _trade(opened=300, closed=400, market="ETH"),
+    ):
+        result = original_inventory_overlap_audit(
+            (opportunity,), (out_of_scope,), (), overlap_started_at_ms=100,
+        )
+        assert result["later_finalized_overlap_opportunities"] == 0
