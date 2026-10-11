@@ -477,3 +477,98 @@ def test_reflow_review_fails_closed_on_tampered_digest() -> None:
     altered["rows"][0]["exact_realized_pnl"] = "999"
     with pytest.raises(ProspectiveFullStackReflowExactLedgerError):
         review_full_stack_reflow_capacity(altered)
+
+
+def test_one_slot_reflow_calendar_weeks_do_not_move_with_later_options() -> None:
+    from cocomelon.research.full_stack_reflow_capacity_review import (
+        FROZEN_CALENDAR_WEEK_MS as week,
+    )
+    # The 24 exact-option synthetic source spans two immutable calendar
+    # weeks. A different terminal close order would NOT rebalance the weeks.
+    source = _capacity_review_ledger(spacing_ms=week // 12)
+    report = review_full_stack_reflow_capacity(source)
+    assert report["original_campaign_overlap_started_at_ms"] == 10_000_000
+    assert report["fixed_calendar_blocks_use_immutable_campaign_anchor"] is True
+    assert report["execution_authority"] is False
+    for horizon in HORIZONS:
+        item = report["by_horizon"][str(horizon)]
+        assert item["fixed_calendar_week_ms"] == week
+        fixed = item["fixed_calendar_entry_week_windows"]
+        assert [w["opening_week_index"] for w in fixed] == [0, 1]
+        assert [w["selected_exact_one_slot_options"] for w in fixed] == [12, 12]
+        assert [Decimal(w["selected_fixed_horizon_economics"]["net_pnl"])
+                for w in fixed] == [Decimal("24"), Decimal("24")]
+        assert sum(
+            (Decimal(w["selected_fixed_horizon_economics"]["net_pnl"])
+             for w in fixed), Decimal(0)
+        ) == Decimal(item["one_slot_selected_economics"]["net_pnl"])
+        assert item["first_two_frozen_weeks_sampled_and_arithmetically_positive"] is True
+        # Both blocks can be arithmetically positive, but the exact exit
+        # ledger lacks a contemporaneous observation-end/open-risk census.
+        assert item["calendar_week_observation_maturity_verified"] is False
+        assert item["fixed_calendar_temporal_stability_validated"] is False
+        assert item["count_quartiles_move_as_new_closes_arrive"] is True
+        assert item["economic_screen_passes"] is True
+        assert item["portfolio_profitability_proven"] is False
+
+
+def test_fixed_reflow_calendar_windows_keep_week_zero_when_later_trade_added(
+) -> None:
+    from cocomelon.research.full_stack_reflow_capacity_review import (
+        FROZEN_CALENDAR_WEEK_MS as week,
+    )
+    options: list[dict[str, object]] = []
+    for index in range(13):
+        option = _option(
+            str(index),
+            direction="long" if index % 2 == 0 else "short",
+            market=("BTC", "ETH", "SOL", "AVAX")[index % 4],
+        )
+        when = 20_000_000 + index * week // 12
+        option["opportunity_timestamp_ms"] = when
+        option["entry_attempt_timestamp_ms"] = when + 1_000
+        options.append(option)
+    first = update_full_stack_reflow_exact_ledger(
+        _summary(options[:12]), previous=None, source_paper_run_id=610,
+        source_paper_run_attempt=1, source_artifact_name="first-week-source",
+        source_artifact_digest=_digest("8"),
+    )
+    second = update_full_stack_reflow_exact_ledger(
+        _summary(options), previous=first, source_paper_run_id=611,
+        source_paper_run_attempt=1, source_artifact_name="week-two-source",
+        source_artifact_digest=_digest("9"),
+    )
+    first_review = review_full_stack_reflow_capacity(first)
+    second_review = review_full_stack_reflow_capacity(second)
+    for horizon in HORIZONS:
+        f = first_review["by_horizon"][str(horizon)]
+        s = second_review["by_horizon"][str(horizon)]
+        assert f["fixed_calendar_entry_week_windows"][0] == (
+            s["fixed_calendar_entry_week_windows"][0]
+        )
+        assert s["fixed_calendar_entry_week_windows"][1][
+            "selected_exact_one_slot_options"
+        ] == 1
+        assert s["fixed_calendar_temporal_stability_validated"] is False
+
+
+def test_one_slot_reflow_pre_campaign_entry_does_not_pass_structural_screen(
+) -> None:
+    option = _option("11", exact_horizons=HORIZONS)
+    option["opportunity_timestamp_ms"] = 9_000_000
+    option["entry_attempt_timestamp_ms"] = 9_001_000
+    ledger = update_full_stack_reflow_exact_ledger(
+        _summary([option]), previous=None,
+        source_paper_run_id=612, source_paper_run_attempt=1,
+        source_artifact_name="pre-campaign-exact", source_artifact_digest=_digest("a"),
+    )
+    report = review_full_stack_reflow_capacity(ledger)
+    for horizon in HORIZONS:
+        item = report["by_horizon"][str(horizon)]
+        assert item["pre_campaign_selected_entry_rows"] == 1
+        assert item["source_structurally_complete"] is False
+        assert item["economic_screen_passes"] is False
+        assert [w["opening_week_index"]
+                for w in item["fixed_calendar_entry_week_windows"]] == [-1, 0, 1]
+        assert item["one_slot_selected_economics"]["net_pnl"] == "2"
+        assert item["fixed_calendar_temporal_stability_validated"] is False
