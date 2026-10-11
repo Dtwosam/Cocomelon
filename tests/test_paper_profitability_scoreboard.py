@@ -53,6 +53,9 @@ def _trade(
         "chart_coverage_complete": chart,
         "chart_path_present": chart,
         "chart_mark_count": 2 if chart else 0,
+        "chart_mark_samples": (
+            [[opened, "10"], [closed, "9"]] if chart else []
+        ),
         "chart_known_gap_duration_ms": 0 if chart else None,
         "chart_longest_unobserved_mark_ms": 10 if chart else None,
         "chart_unresolved_gap_starts_before_entry": 0,
@@ -1423,3 +1426,46 @@ def test_valid_source_chart_claim_and_incomplete_groups_reconcile() -> None:
         "incomplete_or_missing_path_original_closes"
     ]["trades"] == 3
     assert report["promotion_authority"] is False
+
+
+
+@pytest.mark.parametrize(
+    ("samples", "error"),
+    [
+        ([[2_010, "10"], [2_010, "9"]], "claimed complete"),
+        ([[2_010, "10"]], "claimed complete"),
+        ([[2_011, "10"], [2_010, "9"]], "chronology"),
+        ([[True, "10"], [2_011, "9"]], "malformed"),
+        ([[2_010, "10"], [2_011, "9"], [2_012, "9"]], "exceed"),
+        ([[2_010, "10"], [2_011, None]], "malformed"),
+    ],
+)
+def test_complete_original_chart_claim_needs_distinct_valid_mark_times(
+    samples: list[list[object]], error: str
+) -> None:
+    source = _audit()
+    trade = source["trades"][1]
+    assert trade["chart_coverage_complete"] is True
+    trade["chart_mark_samples"] = samples
+    with pytest.raises(PaperProfitabilityScoreboardError, match=error):
+        paper_profitability_scoreboard(source)
+
+
+def test_incomplete_simultaneous_marks_preserve_booked_losing_trade() -> None:
+    source = _audit()
+    trade = source["trades"][0]
+    trade.update({
+        "chart_path_present": True,
+        "chart_mark_count": 2,
+        "chart_mark_samples": [[1_005, "100"], [1_005, "99"]],
+        "chart_known_gap_duration_ms": 0,
+        "chart_longest_unobserved_mark_ms": 15,
+        "chart_coverage_complete": False,
+    })
+    result = paper_profitability_scoreboard(source)
+    assert result["overall"]["trades"] == 4
+    assert result["overall"]["net_pnl"] == "-13.9"
+    assert result["original_chart_coverage_economics"][
+        "complete_observed_path_original_closes"
+    ]["trades"] == 1
+    assert result["promotion_authority"] is False
