@@ -305,6 +305,11 @@ def _all_paper_trade_chart_audit_precise(
             complete = (
                 candidate.get("path_complete") is True
                 and len(compact) >= 2
+                # Distinct event keys at an identical receive millisecond
+                # are NOT two independent in-position temporal observations.
+                # Original mark times stay immutable; do not infer missing
+                # observations from price changes or candle endpoints.
+                and compact[0][0] < compact[-1][0]
                 and gap_ms == 0
                 and longest_unobserved_ms is not None
                 and longest_unobserved_ms <= MAX_UNOBSERVED_MARK_INTERVAL_MS
