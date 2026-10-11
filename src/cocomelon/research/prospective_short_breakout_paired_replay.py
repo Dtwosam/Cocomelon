@@ -215,13 +215,17 @@ class ShortRankIndependentPairedPaperReplay:
         if record.record_kind is SourceRecordKind.DATA_GAP:
             self._gap_records += 1
         self._record_hash.update(canonical_record)
-        self._utc_window_ledger.record(
-            at_ms=record.available_at_ms,
-            baseline_equity=self._baseline_execution.account.equity,
-            baseline_realized=self._realized_net(self._baseline_execution.account),
-            candidate_equity=self._candidate_execution.account.equity,
-            candidate_realized=self._realized_net(self._candidate_execution.account),
-        )
+        try:
+            self._utc_window_ledger.record(
+                at_ms=record.available_at_ms,
+                baseline_equity=self._baseline_execution.account.equity,
+                baseline_realized=self._realized_net(self._baseline_execution.account),
+                candidate_equity=self._candidate_execution.account.equity,
+                candidate_realized=self._realized_net(self._candidate_execution.account),
+            )
+        except Exception:
+            self._failed = True
+            raise
         for execution, lane in (
             (self._baseline_execution, "baseline"),
             (self._candidate_execution, "candidate"),
