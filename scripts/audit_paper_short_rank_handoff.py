@@ -108,9 +108,10 @@ def audit_completed_original_rank_handoff(
         candidate = predecessor_run_json.get("id")
         if type(candidate) is int and candidate > 0:
             predecessor_id = candidate
-    rejected = lambda code: _negative(
-        code, source_id=source_run_id, predecessor_id=predecessor_id,
-    )
+    def rejected(code: str) -> dict[str, object]:
+        return _negative(
+            code, source_id=source_run_id, predecessor_id=predecessor_id,
+        )
     if (
         type(source_run_id) is not int or source_run_id <= 0
         or type(source_run_attempt) is not int or source_run_attempt <= 0
