@@ -2250,3 +2250,134 @@ def test_missing_source_bounds_cannot_borrow_pre_embargo_or_unknown_lead() -> No
     assert trial["verified_mean_reversion_avoided"]["trades"] == 0
     assert Decimal(trial["original_forward_net_cash"]) == -61
     assert r["overall"]["trades"] == 3
+
+
+def test_frozen_long_trend_volatility_only_counts_genuine_forward_opening() -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        LONG_TREND_VOLATILITY_FORWARD_MS as start,
+    )
+    assert start == 1_791_763_200_000  # Oct 12 at 00:00 UTC
+    args = (
+        # A huge discovery loss that closes after the embargo is excluded.
+        (1, "BTC", "long", "trend", "low", "-100", start - 1, False),
+        (2, "ETH", "long", "trend", "low", "-9", start, True),
+        # A winning high-volatility trend must ALSO be skipped.
+        (3, "SOL", "long", "trend", "high", "5", start + 1, True),
+        # Original normal-volatility LONG loss must remain in candidate.
+        (4, "ADA", "long", "trend", "normal", "-7", start + 2, True),
+        # Unwitnessed original low-volatility LONG loser is never credited.
+        (5, "JUP", "long", "trend", "low", "-3", start + 3, False),
+        # Even extreme volatility cannot skip an original short.
+        (6, "CRV", "short", "trend", "low", "-20", start + 4, True),
+    )
+    rows: list[dict[str, object]] = []
+    for n, market, side, strategy, vol, gross, opened, matched in args:
+        row = _move_trade_to_original_open_time(
+            _trade(n, side=side, market=market, strategy=strategy,
+                   gross=gross),
+            opened, closed_at_ms=start + 200 + n,
+        )
+        context = row["entry_context"]
+        assert isinstance(context, dict)
+        context["volatility_regime"] = vol
+        if matched:
+            _add_original_opportunity_to_scoreboard_trade(row, lead=strategy)
+        rows.append(row)
+    report = paper_profitability_scoreboard(_reconciled_audit_from_rows(rows))
+    study = report["prospective_long_trend_volatility_abstention_contributions"]
+    assert study["frozen_at_ms"] == 1_791_741_600_000
+    assert study["forward_started_at_ms"] == start
+    assert report["overall"]["trades"] == 6
+    assert study["original_forward_closed_trades"] == 5
+    assert study["verified_low_or_high_volatility_avoided"]["trades"] == 2
+    assert study["verified_low_or_high_volatility_avoided"]["wins"] == 1
+    assert Decimal(study["original_forward_booked_net_cash"]) == -39
+    assert Decimal(study["verified_low_or_high_volatility_avoided"]["net_pnl"]) == -6
+    assert Decimal(study["zero_replacement_candidate_cash"]) == -33
+    assert Decimal(study["zero_replacement_delta_cash"]) == 6
+    assert study["unwitnessed_volatility_originals_retained"]["trades"] == 1
+    assert Decimal(study["unwitnessed_context_cash_delta_lower"]) == 6
+    assert Decimal(study["unwitnessed_context_cash_delta_upper"]) == 10
+    assert study["unwitnessed_original_cannot_earn_skip_credit"] is True
+    assert study["risk_matched_full_account_trial"] is False
+    assert study["descriptive_sample_floor_met_not_promotion"] is False
+    assert study["execution_authority"] is False
+    assert study["promotion_authority"] is False
+    assert study["changes_strategy"] is False
+    assert study["changes_risk_limits"] is False
+    assert study["independent_online_filter_state_certified"] is False
+    weeks = study["weekly_open_time_windows"]
+    assert [w["week_index"] for w in weeks] == [0, 1]
+    assert Decimal(weeks[0]["original_booked_net_cash"]) == -39
+    assert Decimal(weeks[1]["original_booked_net_cash"]) == 0
+    assert sum((Decimal(w["original_booked_net_cash"]) for w in weeks),
+               Decimal(0)) == Decimal(study["original_forward_booked_net_cash"])
+
+
+def test_frozen_long_trend_volatility_discovery_never_counts_as_forward() -> None:
+    report = paper_profitability_scoreboard(_audit())
+    study = report["prospective_long_trend_volatility_abstention_contributions"]
+    assert study["original_forward_closed_trades"] == 0
+    assert study["verified_low_or_high_volatility_avoided"]["trades"] == 0
+    assert Decimal(study["zero_replacement_delta_cash"]) == 0
+    assert study["weekly_open_time_windows"][0]["source_window_mature"] is False
+    assert study["research_readiness_grant"] is False
+    assert study["ready_for_strategy_promotion"] is False
+    assert report["overall"]["trades"] == 4
+    assert study["discovery_never_forward"] is True
+    assert sum(
+        v["original_booked"]["trades"]
+        for v in study["discovery_only_long_trend_volatility_cohorts"]
+    ) == 2
+
+
+def test_frozen_long_trend_volatility_week_zero_cannot_move_after_closes() -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        LONG_TREND_VOLATILITY_FORWARD_MS as start,
+    )
+    day = 86_400_000
+    one = _move_trade_to_original_open_time(
+        _trade(1, side="long", market="BTC",
+               strategy="trend", gross="-9"),
+        start + 1, closed_at_ms=start + 8 * day + 500,
+    )
+    two = _move_trade_to_original_open_time(
+        _trade(2, side="long", market="ETH",
+               strategy="trend", gross="5"),
+        start + 7 * day + 1, closed_at_ms=start + 8 * day,
+    )
+    for row, regime in ((one, "low"), (two, "high")):
+        context = row["entry_context"]
+        assert isinstance(context, dict)
+        context["volatility_regime"] = regime
+        _add_original_opportunity_to_scoreboard_trade(row, lead="trend")
+    audit = _reconciled_audit_from_rows([two, one])
+    audit["source_handoff_ended_at_ms"] = start + 14 * day
+    audit["source_handoff_open_positions"] = 0
+    study = paper_profitability_scoreboard(audit)[
+        "prospective_long_trend_volatility_abstention_contributions"
+    ]
+    windows = study["weekly_open_time_windows"]
+    assert [w["week_index"] for w in windows] == [0, 1]
+    assert [w["verified_abstention_closes"]["trades"] for w in windows] == [1, 1]
+    assert all(w["source_window_mature"] for w in windows)
+    assert Decimal(windows[0]["naive_skip_delta_cash"]) == 10
+    assert Decimal(windows[1]["naive_skip_delta_cash"]) == -4
+    assert study["fixed_first_two_weeks_mature_sample"] is False
+    assert study["promotion_authority"] is False
+
+    audit["source_handoff_ended_at_ms"] = start + 14 * day - 1
+    early = paper_profitability_scoreboard(audit)[
+        "prospective_long_trend_volatility_abstention_contributions"
+    ]
+    assert early["weekly_open_time_windows"][0]["source_window_mature"] is True
+    assert early["weekly_open_time_windows"][1]["source_window_mature"] is False
+    audit["source_handoff_ended_at_ms"] = start + 14 * day
+    audit["source_handoff_open_positions"] = 1
+    open_end = paper_profitability_scoreboard(audit)[
+        "prospective_long_trend_volatility_abstention_contributions"
+    ]
+    assert all(
+        w["source_window_mature"] is False
+        for w in open_end["weekly_open_time_windows"]
+    )
