@@ -230,4 +230,9 @@ def test_original_worker_records_full_inputs_only_after_first_seen_rank_capture(
         "rank_input_store.append("
     )
     assert worker.count("capture_rank_first_seen(") == 4
+    assert "if not was_new_rank_snapshot:" in worker
+    assert "return" in worker[
+        worker.index("if not was_new_rank_snapshot:"):
+        worker.index("if not was_new_rank_snapshot:") + 400
+    ]
     assert '"execution_authority": False' in worker
