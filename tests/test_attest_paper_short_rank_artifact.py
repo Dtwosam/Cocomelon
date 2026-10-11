@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import io
-import json
 import zipfile
 from pathlib import Path
 
@@ -13,8 +12,8 @@ from cocomelon.research.prospective_short_rank_first_seen import (
     FirstSeenRankSnapshotStore,
 )
 from scripts.attest_paper_short_rank_artifact import (
-    OriginalWorkerAttestationError,
     REQUIRED_SUCCESSFUL_PAPER_STEPS,
+    OriginalWorkerAttestationError,
     attest_original_worker_rank_artifact,
 )
 from scripts.seal_paper_short_rank_archive import (
