@@ -2,6 +2,13 @@
 
 **Profitability-first evidence anchor:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Negative signed forward economics remain the binding result; archive engineering does not authorize promotion.
 
+## October 11 — automatic completed-worker original SHORT coarse ranking recomputation (PR pending)
+
+The previously separate read-only rank score arithmetic checker is now wired into the **independent completed original-paper GitHub Actions audit**, without starting any trader. The audit obtains the actual original run/attempt/HEAD and both rank and full feature input artifact names, SHA256 and byte counts from the real GitHub API, checks full rank/export/upload steps, validates both original ZIP layers and all full feature payload batches, then recomputes every original coarse rank ordinal, exact Decimal score and reason ordering for the genuine prospective full-input suffix. It publishes an immutable explicit positive *arithmetic-only* or negative audit artifact. An upgrade-only predecessor remains marked upgrade-only even with perfect source arithmetic; an absent source or altered/forged rank never becomes successful research.
+
+**Remaining decisive gaps**: complete original source feature payload batches first need to appear in a genuine completed worker ZIP on the corrected export code; historical ID-only scans remain uncovered. Original ranked/unranked eligibility membership is not independently reconstructable until original market metadata and price/context-age inputs are authenticated. Market L2/gap origin, terminal risk/capital-matched after-cost economics and positive expectancy remain uncertified. Original paper risk/stops, frozen losing v5 trial and LIVE=false unchanged.
+
+
 ## October 11 — original completed-worker SHORT rank seal CLI regression repaired (PR pending)
 
 A direct inspection of the **actual** `.github/workflows/continuous-paper.yml` discovered an introduced source-export defect: the original after-exit rank sealer was invoked as `python scripts/seal_paper_short_rank_archive.py scripts/seal_paper_short_rank_full_features.py --state-root ...`, passing a second script filename as an unexpected positional argument. The same edit failed to place the full-input exporter in the independent runtime upgrade-watcher dependency closure. On a real completed original worker this would prevent the rank artifact from being published despite a valid account handoff and separate full-feature export.
