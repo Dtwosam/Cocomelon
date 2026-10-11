@@ -61,6 +61,8 @@ def _verified(
     run_id: int,
     head: str,
     attempt: int = 1,
+    restored_from_run_id: int | None = None,
+    restored_from_run_attempt: int | None = None,
 ) -> VerifiedGithubShortRankEvidence:
     return VerifiedGithubShortRankEvidence(
         snapshots=rows,
@@ -69,6 +71,8 @@ def _verified(
         worker_run_id=run_id,
         worker_head_sha=head,
         worker_run_attempt=attempt,
+        restored_from_run_id=restored_from_run_id,
+        restored_from_run_attempt=restored_from_run_attempt,
     )
 
 
@@ -87,6 +91,7 @@ def _run(
         "path": ".github/workflows/continuous-paper.yml",
         "status": status,
         "event": "workflow_dispatch",
+        "display_title": f"Continuous Paper · {source_id or PRIOR_ID}",
         "created_at": (
             "2026-10-11T18:30:00Z"
             if run_id == PRIOR_ID else "2026-10-11T18:45:00Z"
@@ -110,6 +115,8 @@ def _valid() -> tuple[
         rows=history + (_snapshot(OBS + 10_000, "SOL"),),
         run_id=NEW_ID,
         head=NEW_HEAD,
+        restored_from_run_id=PRIOR_ID,
+        restored_from_run_attempt=1,
     )
     return (
         prior, current,
@@ -137,7 +144,7 @@ def test_complete_original_rank_history_is_exact_prefix_after_real_dispatch() ->
     before, after, previous_run, next_run = _valid()
     result = _verify(before, after, previous_run, next_run)
     assert result["original_rank_history_exact_prefix_reconciled"] is True
-    assert result["successor_workflow_dispatch_inputs_matched"] is True
+    assert result["successor_github_title_and_sealed_restore_identity_matched"] is True
     assert result["original_predecessor_snapshot_count"] == 2
     assert result["original_successor_snapshot_count"] == 3
     assert result["new_complete_rank_snapshots"] == 1
@@ -322,3 +329,28 @@ def test_bad_unpinned_artifact_fails_before_creating_either_account(
         )
     assert prev.worker_run_id == PRIOR_ID
     assert not accounts.exists()
+
+
+def test_real_github_api_omits_inputs_but_dispatch_title_and_seal_agree() -> None:
+    previous, successor, p_run, s_run = _valid()
+    del s_run["inputs"]
+    outcome = _verify(previous, successor, p_run, s_run)
+    assert outcome["original_rank_history_exact_prefix_reconciled"] is True
+    assert outcome["successor_workflow_dispatch_inputs_independently_exposed"] is False
+    with pytest.raises(ShortRankHandoffError, match="restore identity"):
+        _verify(
+            previous, successor, p_run,
+            dict(s_run, display_title="Continuous Paper · 38162541395"),
+        )
+    with pytest.raises(ShortRankHandoffError, match="restore identity"):
+        _verify(
+            previous,
+            replace(successor, restored_from_run_attempt=2),
+            p_run, s_run,
+        )
+    with pytest.raises(ShortRankHandoffError, match="restore identity"):
+        _verify(
+            previous,
+            replace(successor, restored_from_run_id=None),
+            p_run, s_run,
+        )
