@@ -132,7 +132,7 @@ def test_rank_must_have_complete_causal_feature_identity() -> None:
             features=_features(1_000),
             ranks=(_rank(MarketId("", "DOGE"), 1),),
         )
-    with pytest.raises(ShortRankFirstSeenError, match="received after"):
+    with pytest.raises(ShortRankFirstSeenError, match="future dated"):
         FirstSeenRankSnapshot.from_observation(
             observed_at_ms=1_000,
             captured_at_ms=1_001,
