@@ -896,6 +896,13 @@ def build_paired_shadow_review(
     forward_gap_fraction: Decimal | None = None
     latest_open_gaps: int | None = None
     side_performance: dict[str, object] = {}
+    realized_cashflow_decomposition: dict[str, object] = {
+        "signed_forward_interval_certified": False,
+        "reason": "missing_complete_forward_side_attribution",
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+    }
     if eligible and any(
         _side_counters(row, lane) is None
         for row in eligible
@@ -919,6 +926,20 @@ def build_paired_shadow_review(
                 - _lane_closed_trades(anchor, lane)
             )
             attributed_closed = long_count + short_count
+            lane_start = _mapping(anchor.get(lane), "anchor." + lane)
+            lane_end = _mapping(latest.get(lane), "latest." + lane)
+            signed_realized = (
+                _decimal(
+                    lane_end.get("realized_net_pnl"),
+                    "latest." + lane + ".realized_net_pnl",
+                )
+                - _decimal(
+                    lane_start.get("realized_net_pnl"),
+                    "anchor." + lane + ".realized_net_pnl",
+                )
+            )
+            closed_side_cash = long_net + short_net
+            side_residual = signed_realized - closed_side_cash
             side_performance[lane] = {
                 "long_closed_trades": long_count,
                 "short_closed_trades": short_count,
@@ -926,6 +947,15 @@ def build_paired_shadow_review(
                 "total_forward_closed_trades": forward_closed,
                 "long_realized_net_pnl": str(long_net),
                 "short_realized_net_pnl": str(short_net),
+                "closed_trade_side_net_cash_sum": str(closed_side_cash),
+                "signed_account_realized_net_pnl_forward": str(
+                    signed_realized
+                ),
+                "side_unattributed_realized_cashflow_residual": str(
+                    side_residual
+                ),
+                "side_residual_cause_proven": False,
+                "unattributed_open_fee_funding_timing_possible_not_proven": True,
             }
             if attributed_closed != forward_closed:
                 reasons.append(f"{lane}_incomplete_forward_direction_attribution")
@@ -938,6 +968,76 @@ def build_paired_shadow_review(
                     reasons.append("candidate_long_realized_net_pnl_not_positive")
                 if short_net <= ZERO:
                     reasons.append("candidate_short_realized_net_pnl_not_positive")
+
+
+    if (
+        "baseline" in side_performance
+        and "candidate" in side_performance
+    ):
+        baseline_side = _mapping(
+            side_performance["baseline"], "baseline side economics",
+        )
+        candidate_side = _mapping(
+            side_performance["candidate"], "candidate side economics",
+        )
+        candidate_signed = _decimal(
+            candidate_side["signed_account_realized_net_pnl_forward"],
+            "candidate signed forward realized net",
+        )
+        baseline_signed = _decimal(
+            baseline_side["signed_account_realized_net_pnl_forward"],
+            "baseline signed forward realized net",
+        )
+        signed_advantage = candidate_signed - baseline_signed
+        side_advantage = (
+            _decimal(
+                candidate_side["closed_trade_side_net_cash_sum"],
+                "candidate closed-side net",
+            )
+            - _decimal(
+                baseline_side["closed_trade_side_net_cash_sum"],
+                "baseline closed-side net",
+            )
+        )
+        residual_advantage = (
+            _decimal(
+                candidate_side["side_unattributed_realized_cashflow_residual"],
+                "candidate residual",
+            )
+            - _decimal(
+                baseline_side["side_unattributed_realized_cashflow_residual"],
+                "baseline residual",
+            )
+        )
+        if signed_advantage != side_advantage + residual_advantage:
+            raise LossContextPairedShadowReviewError(
+                "paired closed-side net and residual cash do not reconcile"
+            )
+        realized_cashflow_decomposition = {
+            "signed_forward_interval_certified": True,
+            "forward_signed_baseline_realized_net_cash": str(
+                baseline_signed
+            ),
+            "forward_signed_candidate_realized_net_cash": str(
+                candidate_signed
+            ),
+            "forward_signed_candidate_minus_baseline_cash": str(
+                signed_advantage
+            ),
+            "closed_side_candidate_minus_baseline_net_cash": str(
+                side_advantage
+            ),
+            "unattributed_candidate_minus_baseline_cash_residual": str(
+                residual_advantage
+            ),
+            "sum_closed_side_plus_residual_equals_signed_account": True,
+            "residual_is_not_attributed_to_market_or_side": True,
+            "residual_may_include_open_entry_fees_funding_or_timing": True,
+            "source_of_residual_independently_proven": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+        }
 
     if eligible and not all(_gap_counters(row) is not None for row in eligible):
         reasons.append("missing_forward_market_data_gap_evidence")
@@ -1071,6 +1171,10 @@ def build_paired_shadow_review(
         "latest_open_market_data_gaps": latest_open_gaps,
         "gap_scope_lineage_clean": gap_scope_lineage_clean,
         "forward_closed_trade_economics_by_direction": side_performance,
+        "forward_signed_account_realized_cashflow_decomposition": (
+            realized_cashflow_decomposition
+        ),
+        "realized_cashflow_decomposition_does_not_change_readiness": True,
         "matching_context_blocks": matching,
         "unattributed_legacy_matching_context_blocks": (
             unattributed_matching
