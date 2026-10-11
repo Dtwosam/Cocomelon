@@ -38,6 +38,12 @@ The separate SHORT rank>3 baseline/challenger account simulator now tracks immut
 
 This addresses misleading day-by-day attribution, not unverified or absent data. It does not certify 24-hour market coverage, source provenance, first-seen rank origin, handoff state, position maturity, risk-match readiness or profitability. It leaves existing negative frozen v5 signed evidence and original worker untouched. Research only, LIVE=false, no promotion. See `prospective_short_rank_utc_window.py`.
 
+## October 11 — seal original forward SHORT rank source from completed paper workers (PR pending)
+
+After original paper execution ends and the exact successor has been dispatched from the unchanged, state-preserving resume artifact, the workflow now attempts a **separate read-only first-seen rank archive seal**. It rejects any producer failure receipt, missing/empty snapshot population, symlinked or unexpected files, changed snapshot hash/contents, archive ordering errors or future-stamped captures. Valid outputs contain the exact immutable snapshot bytes, a canonical per-row SHA256 source manifest, rank state digest, and **claimed original worker run ID / attempt / head SHA**. An explicit rejection receipt is uploaded rather than inventing a clean source. This extra upload is best-effort and cannot stop the original trading worker, skip its ordinary account restore, or modify its existing SQLite/stop/risk state. Tests cover exact bytes and worker identity, tampering, no backfill, symlinks, empty source and workflow order.
+
+This is deliberately an **artifact-export step, not an independent signature or a forward profitability claim**. Independently verify GitHub Actions run metadata, uploader result, and artifact digest before trusting any claimed worker identity, bind the rank receipt against market-data provenance and gap continuity, then run the frozen paired risk-matched accounts. A matching local state digest alone cannot authenticate the exchange observation. The original account and negative v5 challenger evidence remain intact, with research-only and LIVE disabled.
+
 **Current profitability-first source:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Read the timestamped verified economics there before selecting strategy changes; this status page contains older history as well.
 
 **Last updated:** 2026-10-10  
