@@ -67,7 +67,7 @@ def _side(
     data = zip_buffer.getvalue()
     title_run = restored_from_id or run_id
     run: dict[str, Any] = {
-        "id": run_id, "status": "completed",
+        "id": run_id, "status": "completed", "conclusion": "success",
         "head_branch": "main", "path": ".github/workflows/continuous-paper.yml",
         "event": "workflow_dispatch", "run_attempt": 1, "head_sha": head,
         "display_title": f"Continuous Paper · {title_run}",
@@ -81,6 +81,7 @@ def _side(
     jobs: dict[str, Any] = {
         "jobs": [{
             "name": "paper", "run_attempt": 1,
+            "status": "completed", "conclusion": "success",
             "steps": [
                 {"name": name, "conclusion": "success"}
                 for name in REQUIRED_SUCCESSFUL_PAPER_STEPS
