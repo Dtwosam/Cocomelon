@@ -23,6 +23,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+      SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -80,6 +81,7 @@ jobs:
             --artifacts-json /tmp/original-short-rank-api/artifacts.json \
             --artifact-zip /tmp/original-short-rank-api/artifact.zip \
             --source-run-id "$SOURCE_RUN_ID" \
+            --source-run-attempt "$SOURCE_RUN_ATTEMPT" \
             --repository "$GITHUB_REPOSITORY" \
             --output first-seen-short-rank-audit.json \
             | tee -a "$GITHUB_STEP_SUMMARY"
