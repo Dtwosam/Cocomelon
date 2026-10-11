@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -283,3 +284,24 @@ def test_offline_runner_uses_checked_source_then_independent_simulations(
     assert (
         tmp_path / "paper-only-account-pair" / "candidate-execution.sqlite3"
     ).exists()
+
+
+
+def test_future_exchange_time_cannot_be_used_as_predecision_source(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "archive"
+    manifest = _fixture(root)
+    path = next(root.rglob(f"segment-{BOOK_MS}.jsonl"))
+    original = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(original, dict)
+    original["exchange_time_ms"] = BOOK_MS + 100
+    path.write_text(
+        json.dumps(original, separators=(",", ":"), sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    changed_manifest = replace(manifest, segments=validate_recording(root))
+    with pytest.raises(ShortRankPinnedSourceError, match="from the future"):
+        _source(root, changed_manifest).verified_records(
+            forward_not_before_ms=FREEZE.started_at_ms
+        )
