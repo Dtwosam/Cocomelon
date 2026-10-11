@@ -80,24 +80,45 @@ def _fixed_calendar_opening_windows(
             "promotion_authority": False,
         })
     if (
-        sum((w["selected_exact_one_slot_options"] for w in output), 0)
-        != len(selected)
-        or sum((
-            Decimal(cast(dict[str, object],
-                         w["selected_fixed_horizon_economics"])["net_pnl"])
+        sum(
+            cast(int, w["selected_exact_one_slot_options"])
             for w in output
-        ), ZERO) != sum((
-            _decimal(row, "exact_realized_pnl") for row in selected
-        ), ZERO)
-        or sum((
-            Decimal(cast(dict[str, object],
-                         w["selected_fixed_horizon_economics"])[
-                         "net_normalized_return_sum"])
-            for w in output
-        ), ZERO) != sum((
-            _decimal(row, "exact_realized_return_fraction")
-            for row in selected
-        ), ZERO)
+        ) != len(selected)
+        or sum(
+            (
+                _decimal(
+                    cast(
+                        dict[str, object],
+                        w["selected_fixed_horizon_economics"],
+                    ),
+                    "net_pnl",
+                )
+                for w in output
+            ),
+            ZERO,
+        ) != sum(
+            (_decimal(row, "exact_realized_pnl") for row in selected),
+            ZERO,
+        )
+        or sum(
+            (
+                _decimal(
+                    cast(
+                        dict[str, object],
+                        w["selected_fixed_horizon_economics"],
+                    ),
+                    "net_normalized_return_sum",
+                )
+                for w in output
+            ),
+            ZERO,
+        ) != sum(
+            (
+                _decimal(row, "exact_realized_return_fraction")
+                for row in selected
+            ),
+            ZERO,
+        )
     ):
         raise FullStackReflowCapacityReviewError(
             "fixed calendar entry windows do not reconcile one-slot economics"
