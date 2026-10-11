@@ -118,6 +118,14 @@ class PinnedShortRankReplaySource:
             raise ShortRankPinnedSourceError(
                 "pinned archive and replay record populations differ"
             )
+        if any(
+            record.exchange_time_ms is not None
+            and record.exchange_time_ms > record.available_at_ms
+            for record in records
+        ):
+            raise ShortRankPinnedSourceError(
+                "replay source contains exchange observations from the future"
+            )
         if not any(record.available_at_ms >= forward_not_before_ms for record in records):
             raise ShortRankPinnedSourceError(
                 "source has no actual post-freeze observation"
