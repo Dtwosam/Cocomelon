@@ -334,6 +334,8 @@ def _all_paper_trade_chart_audit_precise(
             "entry_price": str(trade.entry_price),
             "exit_price": str(trade.exit_price),
             "initial_stop": str(trade.initial_stop),
+            # Export the genuine journal risk, NEVER infer it from net-R.
+            "initial_risk_amount": str(trade.initial_risk_amount),
             "exit_reason": trade.exit_reason,
             "holding_duration_ms": trade.holding_duration_ms,
             "gross_realized_pnl": str(trade.gross_realized_pnl),
