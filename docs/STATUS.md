@@ -50,6 +50,12 @@ The new `prospective_short_rank_worker_artifact.py` is a read-only **consumer** 
 
 The verifier cannot prove GitHub API metadata was fetched authentically if a caller forges it, or prove the rank producer's feature inputs came from complete mainnet data. It explicitly reports this as unverified and leaves `full_account_trial=false`, `ready_for_review=false`, `promotion_authority=false`, and `execution_authority=false`. No independently authenticated real forward result has yet been generated. Original paper worker, frozen losing v5, stops, sizing, and live trading disabled remain untouched.
 
+## October 11 — independent completed-worker rank artifact audit (PR pending)
+
+An entirely read-only `workflow_run: completed` audit now fetches original paper-worker identity, the exact paper-job steps, and the independently published artifact SHA256/size from GitHub's API with a restricted read token. It requires successful real paper-trader, full first-seen rank sealing, and artifact upload steps on the *same run and attempt*, and verifies both ZIP layers and every original rank row against immutable outer and inner hashes. A failed/missing/ambiguous artifact or rerun-attempt mismatch produces a durable negative `unverified` receipt rather than fabricated completeness. The audit publishes only source identity/digest metadata and no trading or private position data, and **never launches an additional trader**.
+
+The audit can authenticate rank archive origin only to an original completed GitHub paper-worker artifact. It cannot yet establish mainnet market source coverage, rank feature/decision identity relative to original market observations, worker-to-worker continuity, or profitable risk-matched forward account economics. All readiness, full-trial, promotion and live-authority flags remain false, and the frozen negative signed v5 trial is untouched.
+
 **Current profitability-first source:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Read the timestamped verified economics there before selecting strategy changes; this status page contains older history as well.
 
 **Last updated:** 2026-10-10  
