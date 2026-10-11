@@ -9262,9 +9262,9 @@ async def run_continuous_paper_session(
             rank_snapshot_store = FirstSeenRankSnapshotStore(
                 root / "prospective-short-rank-first-seen"
             )
-        except Exception as exc:
+        except Exception as rank_restore_error:
             rank_snapshot_capture_error = (
-                f"{type(exc).__name__}: {exc}"
+                f"{type(rank_restore_error).__name__}: {rank_restore_error}"
             )
             try:
                 _write_json_atomic(
