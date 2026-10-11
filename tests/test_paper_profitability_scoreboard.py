@@ -1180,6 +1180,13 @@ def test_genuine_precision_scale_residuals_are_retained_not_erased() -> None:
     row = source["trades"][1]
     row["net_pnl"] = "4.000000000000000000000000005"
     row["entry_context"]["net_pnl"] = row["net_pnl"]
+    # A genuine journal also books its risk-normalized R at the same
+    # authoritative Decimal precision when its signed net cash changes.
+    from cocomelon.domain.journal import AUTHORITATIVE_CONTEXT
+    with localcontext(AUTHORITATIVE_CONTEXT):
+        row["net_r"] = str(
+            Decimal(str(row["net_pnl"])) / Decimal(str(row["initial_risk_amount"]))
+        )
     original = source["economics"]["overall"]
     with localcontext(prec=96):
         original["net_pnl"] = str(
