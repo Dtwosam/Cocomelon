@@ -2,6 +2,13 @@
 
 **Profitability-first evidence anchor:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Negative signed forward economics remain the binding result; archive engineering does not authorize promotion.
 
+## October 11 — original completed-worker SHORT rank seal CLI regression repaired (PR pending)
+
+A direct inspection of the **actual** `.github/workflows/continuous-paper.yml` discovered an introduced source-export defect: the original after-exit rank sealer was invoked as `python scripts/seal_paper_short_rank_archive.py scripts/seal_paper_short_rank_full_features.py --state-root ...`, passing a second script filename as an unexpected positional argument. The same edit failed to place the full-input exporter in the independent runtime upgrade-watcher dependency closure. On a real completed original worker this would prevent the rank artifact from being published despite a valid account handoff and separate full-feature export.
+
+The corrected workflow now invokes **each exact sealer once and independently**, and the safe upgrade watcher includes both scripts. Regression tests assert both commands, expected restore-run claims, and all three dependency occurrences for each script. Export remains best-effort after original trading/handoff, preserving original account, existing stops, frozen negative v5 and LIVE=false. No historical rank/source data is fabricated; a worker still running an older checkout cannot be treated as having adopted this fix until a new authenticated successor heartbeat confirms it.
+
+
 ## October 11 — independently recompute original SHORT coarse ranks from full payloads
 
 A new standalone, research-only `recompute_original_short_rank_coarse_scores` takes the two originally SHA-verified rank and complete input-feature sources from #1167–#1169. It recomputes each ranked market's exact coarse percentile-weighted score, ordinal, reason order, and necessary observed volume/OI eligibility quantile floors across the **entire original feature universe**. False rank scores or misleading reordered SHORT>3 labels are fatal even when an attacker locally reseals a self-consistent rank-feature batch. Older historical rank observations with only source IDs remain explicitly uncovered; no backfill or fake avoided trades. See `docs/SHORT_RANK_COARSE_SCORE_RECOMPUTATION.md`.
