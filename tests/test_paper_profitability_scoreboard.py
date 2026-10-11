@@ -2082,3 +2082,61 @@ def test_forward_original_close_cannot_postdate_completed_source_handoff() -> No
         PaperProfitabilityScoreboardError, match="exceeds source handoff"
     ):
         paper_profitability_scoreboard(audit)
+
+
+def test_sparse_mean_reversion_uses_first_two_fixed_weeks_not_daily_floor() -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FIXED_OPENING_DAY_MS as day,
+    )
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
+    )
+
+    # Three outcomes per calendar week, but only one in any 24h block.
+    days = (0, 1, 2, 7, 8, 9)
+    markets = ("BTC", "ETH", "SOL", "ADA", "CRV", "HYPE")
+    rows: list[dict[str, object]] = []
+    for i, (d, market) in enumerate(zip(days, markets, strict=True)):
+        opened = start + d * day + 1
+        row = _move_trade_to_original_open_time(
+            _trade(
+                i + 1, side="long", market=market,
+                strategy="mean_reversion", gross="-9",
+            ),
+            opened, closed_at_ms=opened + 100,
+        )
+        _add_original_opportunity_to_scoreboard_trade(
+            row, lead="mean_reversion",
+        )
+        rows.append(row)
+    audit = _reconciled_audit_from_rows(rows)
+    audit["source_handoff_ended_at_ms"] = start + 14 * day
+    audit["source_handoff_open_positions"] = 0
+    trial = paper_profitability_scoreboard(audit)[
+        "prospective_mean_reversion_abstention_contributions"
+    ]
+    weeks = trial["fixed_7d_original_opening_windows"]
+    assert [w["opening_week_index"] for w in weeks] == [0, 1]
+    assert trial["fixed_stability_window_ms"] == 7 * day
+    assert [w["avoided_verified_mean_reversion"]["trades"] for w in weeks] == [
+        3, 3,
+    ]
+    assert all(w["source_observation_window_mature"] for w in weeks)
+    assert trial["first_two_fixed_7d_windows_have_mature_sample"] is True
+    assert trial["first_two_fixed_7d_naive_skip_improves_cash_and_r"] is True
+    assert trial["first_two_fixed_24h_windows_have_mature_sample"] is False
+    assert trial["descriptive_sample_floor_met_not_promotion"] is False
+    assert trial["promotion_authority"] is False
+
+    # The second week is not mature one millisecond before its exclusive end.
+    audit["source_handoff_ended_at_ms"] = start + 14 * day - 1
+    trial_early = paper_profitability_scoreboard(audit)[
+        "prospective_mean_reversion_abstention_contributions"
+    ]
+    assert trial_early["fixed_7d_original_opening_windows"][0][
+        "source_observation_window_mature"
+    ] is True
+    assert trial_early["fixed_7d_original_opening_windows"][1][
+        "source_observation_window_mature"
+    ] is False
+    assert trial_early["first_two_fixed_7d_windows_have_mature_sample"] is False
