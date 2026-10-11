@@ -2149,3 +2149,104 @@ def test_sparse_mean_reversion_uses_first_two_fixed_weeks_not_daily_floor() -> N
         "source_observation_window_mature"
     ] is False
     assert trial_early["first_two_fixed_7d_windows_have_mature_sample"] is False
+
+
+def test_unwitnessed_mean_reversion_selection_bounds_keep_all_original_cash() -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
+    )
+    cases = [
+        (1, "BTC", "mean_reversion", "-9", True),
+        (2, "ETH", "mean_reversion", "-6", False),
+        (3, "SOL", "mean_reversion", "5", False),
+        (4, "ADA", "trend", "2", False),
+        (5, "JUP", None, "-3", False),
+    ]
+    rows: list[dict[str, object]] = []
+    for n, market, strategy, gross, witnessed in cases:
+        row = _move_trade_to_original_open_time(
+            _trade(n, side="long", market=market, strategy=strategy,
+                   gross=gross),
+            start + n, closed_at_ms=start + 100 + n,
+        )
+        if witnessed:
+            _add_original_opportunity_to_scoreboard_trade(
+                row, lead="mean_reversion",
+            )
+        rows.append(row)
+    report = paper_profitability_scoreboard(_reconciled_audit_from_rows(rows))
+    coverage = report["original_first_seen_decision_coverage_economics"]
+    assert coverage["whole_original"]["trades"] == 5
+    assert coverage["first_seen_matched"]["trades"] == 1
+    assert coverage["first_seen_unmatched"]["trades"] == 4
+    assert Decimal(coverage["whole_original"]["net_pnl"]) == -16
+    assert Decimal(coverage["first_seen_matched"]["net_pnl"]) == -10
+    assert Decimal(coverage["first_seen_unmatched"]["net_pnl"]) == -6
+    mr = next(x for x in coverage["by_original_verified_lead_strategy"]
+              if x["lead_strategy"] == "mean_reversion")
+    assert mr["matched_first_seen"]["trades"] == 1
+    assert mr["unmatched_first_seen"]["trades"] == 2
+    assert coverage["independent_archive_receipt_certified"] is False
+
+    trial = report["prospective_mean_reversion_abstention_contributions"]
+    assert trial["verified_mean_reversion_avoided"]["trades"] == 1
+    assert Decimal(trial["original_forward_net_cash"]) == -16
+    assert Decimal(trial["naive_zero_replacement_delta_net_cash"]) == 10
+    assert Decimal(trial["naive_zero_replacement_candidate_net_cash"]) == -6
+    bound = trial["unproven_mean_reversion_posttrade_classification"]
+    assert bound["original_retained_booked"]["trades"] == 2
+    assert bound["unwitnessed_original_loss_count"] == 1
+    assert bound["unwitnessed_original_win_count"] == 1
+    assert Decimal(
+        bound["naive_skip_delta_cash_lower_if_unverified_winners_eligible"]
+    ) == 6
+    assert Decimal(
+        bound["naive_skip_delta_cash_upper_if_unverified_losers_eligible"]
+    ) == 17
+    assert Decimal(bound["zero_replacement_cash_lower"]) == -10
+    assert Decimal(bound["zero_replacement_cash_upper"]) == 1
+    assert bound["unproven_skips_credited_to_candidate"] == 0
+    assert bound["interval_is_not_statistical_confidence"] is True
+    assert bound["nominal_skip_cash_positive_at_worst_eligibility"] is True
+    assert bound["research_readiness_grant"] is False
+    assert trial["promotion_authority"] is False
+
+
+def test_missing_source_bounds_cannot_borrow_pre_embargo_or_unknown_lead() -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
+    )
+    rows = [
+        _move_trade_to_original_open_time(
+            _trade(1, side="short", market="BTC",
+                   strategy="mean_reversion", gross="-500"),
+            start - 1, closed_at_ms=start + 900,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(2, side="short", market="ETH",
+                   strategy=None, gross="-50"),
+            start, closed_at_ms=start + 901,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(3, side="short", market="SOL",
+                   strategy="trend", gross="-9"),
+            start + 1, closed_at_ms=start + 902,
+        ),
+    ]
+    r = paper_profitability_scoreboard(_reconciled_audit_from_rows(rows))
+    trial = r["prospective_mean_reversion_abstention_contributions"]
+    assert trial["forward_original_closed_trades"] == 2
+    assert trial["forward_mean_reversion_without_first_seen_match_retained"] == 0
+    b = trial["unproven_mean_reversion_posttrade_classification"]
+    assert b["original_retained_booked"]["trades"] == 0
+    assert Decimal(
+        b["naive_skip_delta_cash_lower_if_unverified_winners_eligible"]
+    ) == 0
+    assert Decimal(
+        b["naive_skip_delta_cash_upper_if_unverified_losers_eligible"]
+    ) == 0
+    assert b["nominal_skip_cash_positive_at_worst_eligibility"] is False
+    assert b["even_best_eligibility_cannot_make_original_forward_cash_and_r_positive"] is True
+    assert trial["verified_mean_reversion_avoided"]["trades"] == 0
+    assert Decimal(trial["original_forward_net_cash"]) == -61
+    assert r["overall"]["trades"] == 3

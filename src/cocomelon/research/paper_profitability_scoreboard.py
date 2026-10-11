@@ -872,6 +872,57 @@ def _original_booked_exit_mechanisms(
 
 
 
+
+def _original_first_seen_decision_coverage(
+    trades: list[_Trade],
+) -> dict[str, object]:
+    """Book ALL original trades even when first-seen source is missing."""
+    matched = [t for t in trades if t.original_decision_source_match]
+    unmatched = [t for t in trades if not t.original_decision_source_match]
+    if len(matched) + len(unmatched) != len(trades):
+        raise PaperProfitabilityScoreboardError(
+            "original decision coverage partition mismatch"
+        )
+    all_cash = sum((t.net for t in trades), ZERO)
+    all_r = sum((t.net_r for t in trades), ZERO)
+    if (
+        sum((t.net for t in matched), ZERO)
+        + sum((t.net for t in unmatched), ZERO) != all_cash
+        or sum((t.net_r for t in matched), ZERO)
+        + sum((t.net_r for t in unmatched), ZERO) != all_r
+    ):
+        raise PaperProfitabilityScoreboardError(
+            "first-seen coverage booked cash/R mismatch"
+        )
+    contexts = [
+        {
+            "lead_strategy": strategy,
+            "matched_first_seen": _metrics([
+                t for t in matched if t.lead_strategy == strategy
+            ]),
+            "unmatched_first_seen": _metrics([
+                t for t in unmatched if t.lead_strategy == strategy
+            ]),
+        }
+        for strategy in sorted(set(t.lead_strategy for t in trades))
+    ]
+    return {
+        "kind": "original-booked-first-seen-decision-coverage-diagnostic",
+        "whole_original": _metrics(trades),
+        "first_seen_matched": _metrics(matched),
+        "first_seen_unmatched": _metrics(unmatched),
+        "by_original_verified_lead_strategy": contexts,
+        "original_trades_preserved": True,
+        "independent_archive_receipt_certified": False,
+        "independent_online_filter_state_certified": False,
+        "counterfactual_skips_authorized": False,
+        "selection_bias_possible_when_unmatched": bool(unmatched),
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+    }
+
+
 def _predeclared_mean_reversion_abstention(
     trades: list[_Trade],
     *,
@@ -928,6 +979,29 @@ def _predeclared_mean_reversion_abstention(
         market_r[trade.market] = market_r.get(trade.market, ZERO) + trade.net_r
     delta_cash = -avoided_cash
     delta_r = -avoided_r
+
+    # Unmatched first-seen source cannot earn an official candidate skip.
+    # This merely bounds unproven eligibility from contemporaneously
+    # unverifiable, posttrade-labeled mean-reversion original trades.
+    uncertain_mr = [
+        t for t in retained
+        if t.verified_context
+        and t.lead_strategy == "mean_reversion"
+        and not t.original_decision_source_match
+    ]
+    unknown_winners = [t for t in uncertain_mr if t.net > ZERO]
+    unknown_losers = [t for t in uncertain_mr if t.net < ZERO]
+    lower_cash = delta_cash - sum((t.net for t in unknown_winners), ZERO)
+    upper_cash = delta_cash - sum((t.net for t in unknown_losers), ZERO)
+    lower_r = delta_r - sum((t.net_r for t in unknown_winners), ZERO)
+    upper_r = delta_r - sum((t.net_r for t in unknown_losers), ZERO)
+    if (
+        not lower_cash <= delta_cash <= upper_cash
+        or not lower_r <= delta_r <= upper_r
+    ):
+        raise PaperProfitabilityScoreboardError(
+            "unwitnessed-original uncertainty interval excludes official delta"
+        )
     # A leave-out cannot simulate what risk/capital would have replaced a
     # skipped position with. It only probes concentration of signed cash/R.
     leave_trade_cash = [
@@ -1157,12 +1231,46 @@ def _predeclared_mean_reversion_abstention(
         "forward_original_decision_matches": sum(
             trade.original_decision_source_match for trade in forward
         ),
-        "forward_mean_reversion_without_first_seen_match_retained": sum(
-            trade.verified_context
-            and trade.lead_strategy == "mean_reversion"
-            and not trade.original_decision_source_match
-            for trade in retained
+        "forward_mean_reversion_without_first_seen_match_retained": (
+            len(uncertain_mr)
         ),
+        "unproven_mean_reversion_posttrade_classification": {
+            "original_retained_booked": _metrics(uncertain_mr),
+            "unwitnessed_original_loss_count": len(unknown_losers),
+            "unwitnessed_original_win_count": len(unknown_winners),
+            "naive_skip_delta_cash_lower_if_unverified_winners_eligible": (
+                str(lower_cash)
+            ),
+            "naive_skip_delta_cash_upper_if_unverified_losers_eligible": (
+                str(upper_cash)
+            ),
+            "naive_skip_delta_r_lower_if_unverified_winners_eligible": (
+                str(lower_r)
+            ),
+            "naive_skip_delta_r_upper_if_unverified_losers_eligible": (
+                str(upper_r)
+            ),
+            "zero_replacement_cash_lower": str(original_cash + lower_cash),
+            "zero_replacement_cash_upper": str(original_cash + upper_cash),
+            "zero_replacement_net_r_lower": str(original_r + lower_r),
+            "zero_replacement_net_r_upper": str(original_r + upper_r),
+            "nominal_skip_cash_positive_at_worst_eligibility": (
+                bool(avoided) and lower_cash > ZERO and lower_r > ZERO
+            ),
+            "even_best_eligibility_cannot_make_original_forward_cash_and_r_positive": (
+                bool(forward) and (
+                    original_cash + upper_cash <= ZERO
+                    or original_r + upper_r <= ZERO
+                )
+            ),
+            "interval_is_not_statistical_confidence": True,
+            "unproven_skips_credited_to_candidate": 0,
+            "source_provenance_claim": "none_for_missing_first_seen_records",
+            "capital_reallocation_modeled": False,
+            "full_account_trial": False,
+            "research_readiness_grant": False,
+            "promotion_authority": False,
+        },
         "verified_mean_reversion_avoided": _metrics(avoided),
         "retained_original_closes": _metrics(retained),
         "naive_zero_replacement_candidate_net_cash": str(retained_cash),
@@ -1215,7 +1323,10 @@ def _predeclared_mean_reversion_abstention(
             "zero replacement cash, not a causal matched capital-constrained "
             "account. Verified posttrade context is not independently "
             "archived decision-time observation. Prior 9 losing trades are "
-            "discovery only and never validation. Closed-only cohorts are "
+            "discovery only and never validation. Unwitnessed-original "
+            "bounds are mechanical unknown-eligibility arithmetic, not "
+            "authorized skips or statistical confidence. Closed-only "
+            "cohorts are "
             "right-censored until the authenticated handoff end and zero "
             "open positions establish observed window maturity. Fixed "
             "opening-time day/week windows are descriptive, not a full-account "
@@ -1442,6 +1553,9 @@ def paper_profitability_scoreboard(
             ),
             "short_breakout_top3_robustness": (
                 _short_breakout_top3_robustness(trades)
+            ),
+            "original_first_seen_decision_coverage_economics": (
+                _original_first_seen_decision_coverage(trades)
             ),
             "prospective_mean_reversion_abstention_contributions": (
                 _predeclared_mean_reversion_abstention(
