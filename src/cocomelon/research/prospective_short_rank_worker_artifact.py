@@ -331,7 +331,7 @@ def verify_github_original_short_rank_artifact(
         worker_run_id=expected.run_id,
         worker_head_sha=expected.head_sha,
         worker_run_attempt=expected.run_attempt,
-        restored_from_run_id=cast(int | None, source_run_id),
+        restored_from_run_id=source_run_id,
         restored_from_run_attempt=cast(int | None, source_attempt),
     )
 
