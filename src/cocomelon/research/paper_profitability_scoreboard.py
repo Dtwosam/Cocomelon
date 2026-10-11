@@ -35,6 +35,13 @@ ZERO: Final = Decimal("0")
 # from laundering strategy/rank cohort PnL through a zero whole-journal sum.
 MAX_PER_TRADE_NET_CASH_RESIDUAL: Final = Decimal("1E-18")
 UNVERIFIED: Final = "UNVERIFIED_ENTRY_CONTEXT"
+# Pre-registered on 2026-10-11 before its trial start; the 9 historical
+# losing mean-reversion trades are DISCOVERY only, never prospective rows.
+MEAN_REVERSION_DISCOVERY_FREEZE_MS: Final = 1_791_720_000_000  # Oct 11 12:00 UTC
+MEAN_REVERSION_EMBARGO_MS: Final = 6 * 3_600_000
+MEAN_REVERSION_FORWARD_START_MS: Final = (
+    MEAN_REVERSION_DISCOVERY_FREEZE_MS + MEAN_REVERSION_EMBARGO_MS
+)
 
 
 class PaperProfitabilityScoreboardError(ValueError):
@@ -792,6 +799,154 @@ def _original_booked_exit_mechanisms(
     }
 
 
+
+def _predeclared_mean_reversion_abstention(
+    trades: list[_Trade],
+) -> dict[str, object]:
+    """Forward-only original-booked skip arithmetic, NEVER an account replay.
+
+    The prior 9/9 realized losing mean-reversion originals selected this
+    hypothesis. No trade that opened before the fixed embargo endpoint can
+    count as validation, even when it closes afterwards. The source's
+    verified decision context is joined AFTER the original trade, so it
+    cannot certify online filter-state or capital displacement.
+    """
+    forward = [
+        trade for trade in trades
+        if trade.opened_at_ms >= MEAN_REVERSION_FORWARD_START_MS
+    ]
+    # Missing/unverified original entry contexts never receive skip credit.
+    avoided = [
+        trade for trade in forward
+        if trade.verified_context and trade.lead_strategy == "mean_reversion"
+    ]
+    retained = [
+        trade for trade in forward
+        if not (trade.verified_context and trade.lead_strategy == "mean_reversion")
+    ]
+    original_cash = sum((trade.net for trade in forward), ZERO)
+    original_r = sum((trade.net_r for trade in forward), ZERO)
+    avoided_cash = sum((trade.net for trade in avoided), ZERO)
+    avoided_r = sum((trade.net_r for trade in avoided), ZERO)
+    retained_cash = sum((trade.net for trade in retained), ZERO)
+    retained_r = sum((trade.net_r for trade in retained), ZERO)
+    if (
+        len(avoided) + len(retained) != len(forward)
+        or original_cash != retained_cash + avoided_cash
+        or original_r != retained_r + avoided_r
+    ):
+        raise PaperProfitabilityScoreboardError(
+            "forward mean-reversion original cash/R partition mismatch"
+        )
+    market_cash: dict[str, Decimal] = {}
+    market_r: dict[str, Decimal] = {}
+    for trade in avoided:
+        market_cash[trade.market] = market_cash.get(trade.market, ZERO) + trade.net
+        market_r[trade.market] = market_r.get(trade.market, ZERO) + trade.net_r
+    delta_cash = -avoided_cash
+    delta_r = -avoided_r
+    # A leave-out cannot simulate what risk/capital would have replaced a
+    # skipped position with. It only probes concentration of signed cash/R.
+    leave_trade_cash = [
+        delta_cash + trade.net for trade in avoided
+    ]
+    leave_trade_r = [
+        delta_r + trade.net_r for trade in avoided
+    ]
+    leave_market_cash = [
+        delta_cash + pnl for pnl in market_cash.values()
+    ]
+    leave_market_r = [
+        delta_r + pnl for pnl in market_r.values()
+    ]
+    midpoint = len(forward) // 2
+    first_ids = {trade.trade_id for trade in forward[:midpoint]}
+    first_avoided = [t for t in avoided if t.trade_id in first_ids]
+    second_avoided = [t for t in avoided if t.trade_id not in first_ids]
+    descriptive_floor = (
+        len(forward) >= 40
+        and len(avoided) >= 12
+        and len(market_cash) >= 6
+        and len(first_avoided) >= 3
+        and len(second_avoided) >= 3
+        and all(t.verified_context for t in forward)
+    )
+    return {
+        "hypothesis_id": "discovery-mean-reversion-abstain-after-cost-v1",
+        "kind": "forward-original-booked-trade-contribution-only",
+        "fixed_discovery_freeze_ms": MEAN_REVERSION_DISCOVERY_FREEZE_MS,
+        "embargo_ms": MEAN_REVERSION_EMBARGO_MS,
+        "forward_started_at_ms": MEAN_REVERSION_FORWARD_START_MS,
+        "inclusion_rule": "original_trade_opened_at_ms_ge_fixed_forward_start",
+        "rule": "skip_only_verified_mean_reversion_lead",
+        "discovery_period_pnl_never_scored": True,
+        "source": "authenticated_completed_original_journal_with_posttrade_entry_context",
+        "independent_online_filter_state_certified": False,
+        "trading_replacements_modeled": False,
+        "capital_reallocation_modeled": False,
+        "full_account_trial": False,
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "changes_strategy": False,
+        "changes_positions": False,
+        "changes_risk_limits": False,
+        "research_readiness_grant": False,
+        "ready_for_strategy_promotion": False,
+        "forward_original_closed_trades": len(forward),
+        "original_forward_net_cash": str(original_cash),
+        "original_forward_net_r": str(original_r),
+        "forward_unverified_entry_contexts_retained": sum(
+            not trade.verified_context for trade in retained
+        ),
+        "verified_mean_reversion_avoided": _metrics(avoided),
+        "retained_original_closes": _metrics(retained),
+        "naive_zero_replacement_candidate_net_cash": str(retained_cash),
+        "naive_zero_replacement_candidate_net_r": str(retained_r),
+        "naive_zero_replacement_delta_net_cash": str(delta_cash),
+        "naive_zero_replacement_delta_net_r": str(delta_r),
+        "arithmetic_candidate_positive_both_cash_and_r": (
+            bool(forward) and retained_cash > ZERO and retained_r > ZERO
+        ),
+        "arithmetic_improvement_positive_both_cash_and_r": (
+            bool(avoided) and delta_cash > ZERO and delta_r > ZERO
+        ),
+        "avoided_market_count": len(market_cash),
+        "leave_one_avoided_trade_min_delta_cash": (
+            str(min(leave_trade_cash)) if len(avoided) >= 2 else None
+        ),
+        "leave_one_avoided_trade_min_delta_r": (
+            str(min(leave_trade_r)) if len(avoided) >= 2 else None
+        ),
+        "leave_one_avoided_market_min_delta_cash": (
+            str(min(leave_market_cash)) if len(market_cash) >= 2 else None
+        ),
+        "leave_one_avoided_market_min_delta_r": (
+            str(min(leave_market_r)) if len(market_cash) >= 2 else None
+        ),
+        "chronological_forward_halves_avoided": [
+            {
+                "half": 1,
+                "total_original_closes": midpoint,
+                "avoided": _metrics(first_avoided),
+            },
+            {
+                "half": 2,
+                "total_original_closes": len(forward) - midpoint,
+                "avoided": _metrics(second_avoided),
+            },
+        ],
+        "descriptive_sample_floor_met_not_promotion": descriptive_floor,
+        "warning": (
+            "Only new post-embargo original booked fills count. The skip is "
+            "zero replacement cash, not a causal matched capital-constrained "
+            "account. Verified posttrade context is not independently "
+            "archived decision-time observation. Prior 9 losing trades are "
+            "discovery only and never validation. No trade authority."
+        ),
+    }
+
+
 def paper_profitability_scoreboard(
     raw: object,
     *,
@@ -994,6 +1149,9 @@ def paper_profitability_scoreboard(
             ),
             "short_breakout_top3_robustness": (
                 _short_breakout_top3_robustness(trades)
+            ),
+            "prospective_mean_reversion_abstention_contributions": (
+                _predeclared_mean_reversion_abstention(trades)
             ),
             "frozen_hypotheses_original_forward_economics": (
                 _frozen_forward_hypothesis_economics(
