@@ -26,6 +26,12 @@ Original continuous paper's three real rank refresh paths now write these append
 
 Historical ranks **cannot** be retroactively supplied. This is the first prospective source producer for future independent SHORT rank paired-account research, not a new profitable trade/account, not a signed first-seen authority until a real post-merge worker handoff and completed artifact are authenticated. Original frozen v5 signed challenger still loses and is untouched. All new observations remain research-only; LIVE=false.
 
+## October 11 — full first-seen rank archive bound to paired paper replay (PR pending)
+
+The independent SHORT breakout >3 dual-paper simulator can now load **two separately pinned exact sources**: the original recorder JSONL market-source manifest and the separately append-only `FirstSeenRankSnapshotStore` created by the authenticated original worker after #1156. Both are fully verified for local hash, source window, canonical bytes, symlinks, and completeness of each archived rank snapshot before creating **either** account. It freezes the entire rank source in memory for deterministic candidate/baseline decisions, without an untrusted caller-controlled rank callback. Latest complete rank snapshots must precede decisions; missing markets stay missing rather than resurrecting past filtered losses. Two ordinary independent paper accounts then simulate risk, fills, exits, fees, and funding against the same recorded source, reporting absolute signed-account PnL, not hypothetical zero replacement cash.
+
+This is **not yet an independently signed real forward comparison**: the external origin of both expected pins, feature derivation, historical gap coverage, worker handoff maturity, and account windows have not been verified. Economic/profitability readiness remains FALSE, all v5 negative evidence preserved, no permission to execute live or change paper stops/risk. See `docs/SHORT_RANK_PINNED_FIRST_SEEN_PAIR.md`.
+
 **Current profitability-first source:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Read the timestamped verified economics there before selecting strategy changes; this status page contains older history as well.
 
 **Last updated:** 2026-10-10  
