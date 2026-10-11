@@ -664,24 +664,24 @@ def test_signed_paired_calendar_does_not_invent_cross_boundary_pnl(
     assert cal["fixed_calendar_day_ms"] == 86_400_000
     assert cal["signed_account_snapshot_based"] is True
     assert cal["signed_full_forward_account_pnl_partition_reconciles"] is True
-    assert cal["within_day_signed_checkpoint_transitions"] == 6
-    assert cal["cross_boundary_unattributed_checkpoint_transitions"] == 2
+    assert cal["within_day_signed_checkpoint_transitions"] == 5
+    assert cal["cross_boundary_unattributed_checkpoint_transitions"] == 3
     assert cal["cross_boundary_unattributed_account_delta"] == {
-        "candidate_total_account_pnl": "6",
-        "candidate_realized_net_pnl": "4",
-        "candidate_minus_baseline_total_account_pnl": "10",
-        "candidate_minus_baseline_realized_net_pnl": "8",
+        "candidate_total_account_pnl": "9",
+        "candidate_realized_net_pnl": "6",
+        "candidate_minus_baseline_total_account_pnl": "15",
+        "candidate_minus_baseline_realized_net_pnl": "12",
     }
     days = cal["fixed_calendar_checkpoint_day_blocks"]
     assert [day["calendar_day_index"] for day in days] == [0, 1, 2]
     assert [
         day["fully_within_day_signed_checkpoint_transitions"]
         for day in days
-    ] == [2, 2, 2]
+    ] == [2, 2, 1]
     assert [
         Decimal(day["signed_candidate_minus_baseline_total_account_pnl_delta"])
         for day in days
-    ] == [Decimal("10")] * 3
+    ] == [Decimal("10"), Decimal("10"), Decimal("5")]
     assert sum((
         Decimal(day["signed_candidate_total_account_pnl_delta"])
         for day in days
@@ -749,10 +749,10 @@ def test_signed_paired_calendar_keeps_losses_even_if_candidate_lags(
     assert result["candidate_total_account_pnl"] == "-8"
     assert cal["cross_boundary_unattributed_account_delta"][
         "candidate_total_account_pnl"
-    ] == "-2"
+    ] == "-3"
     assert sum((
         Decimal(day["signed_candidate_total_account_pnl_delta"])
         for day in cal["fixed_calendar_checkpoint_day_blocks"]
-    ), Decimal(0)) == Decimal("-6")
+    ), Decimal(0)) == Decimal("-5")
     assert cal["positive_full_account_paired_edge_certified"] is False
     assert cal["promotion_authority"] is False
