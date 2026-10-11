@@ -34,11 +34,9 @@ from cocomelon.research.prospective_short_rank_worker_artifact import (
     VerifiedGithubShortRankEvidence,
     verify_github_original_short_rank_artifact,
 )
-from scripts.seal_paper_short_rank_archive import (
-    ARCHIVE_NAME as RANK_ARCHIVE,
-    RECEIPT_NAME as RANK_RECEIPT,
-    seal_completed_short_rank_archive,
-)
+from scripts.seal_paper_short_rank_archive import ARCHIVE_NAME as RANK_ARCHIVE
+from scripts.seal_paper_short_rank_archive import RECEIPT_NAME as RANK_RECEIPT
+from scripts.seal_paper_short_rank_archive import seal_completed_short_rank_archive
 from scripts.seal_paper_short_rank_full_features import (
     BUNDLE_FILE,
     RECEIPT_FILE,
