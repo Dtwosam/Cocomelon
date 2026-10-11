@@ -159,7 +159,10 @@ def test_missing_or_rewritten_predecessor_rank_snapshot_is_fatal() -> None:
             replace(successor, snapshots=successor.snapshots[:1]),
             p_run, s_run,
         )
-    edited = _snapshot(OBS, "BTC", ordinal=2)
+    edited = replace(
+        previous.snapshots[0],
+        ranks=(("BTC", 1, "0.8", ("immutable-test",)),),
+    )
     with pytest.raises(ShortRankHandoffError, match="rewritten"):
         _verify(
             previous,
