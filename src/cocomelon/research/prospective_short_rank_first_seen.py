@@ -197,6 +197,10 @@ class FirstSeenRankSnapshot:
             raise ShortRankFirstSeenError(
                 "rank source feature keys do not match market"
             )
+        if any(feat.as_of_ms > observed_at_ms for feat in features.values()):
+            raise ShortRankFirstSeenError(
+                "rank source feature as-of is future dated"
+            )
         return cls(
             observed_at_ms=observed_at_ms,
             captured_at_ms=captured_at_ms,
