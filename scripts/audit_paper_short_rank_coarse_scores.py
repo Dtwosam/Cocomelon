@@ -100,6 +100,12 @@ def _input_binding(
     )
 
 
+FULL_FEATURE_SUCCESS_STEPS = (
+    "Seal entire original SHORT rank input features after paper exit",
+    "Upload original SHORT rank full-input seal or rejection",
+)
+
+
 def audit_original_worker_rank_score_sources(
     *,
     run_id: int,
@@ -143,6 +149,27 @@ def audit_original_worker_rank_score_sources(
             )
         ):
             return _refuse("original_worker_rank_source_unverified", run_id)
+        if not isinstance(jobs_json, dict):
+            return _refuse("original_full_input_worker_jobs_invalid", run_id)
+        job_rows = jobs_json.get("jobs")
+        if not isinstance(job_rows, list):
+            return _refuse("original_full_input_worker_jobs_invalid", run_id)
+        paper_jobs = [
+            row for row in job_rows
+            if isinstance(row, dict) and row.get("name") == "paper"
+        ]
+        if len(paper_jobs) != 1 or not isinstance(
+            paper_jobs[0].get("steps"), list
+        ):
+            return _refuse("original_full_input_worker_jobs_invalid", run_id)
+        steps = paper_jobs[0]["steps"]
+        for step_name in FULL_FEATURE_SUCCESS_STEPS:
+            matches = [
+                step for step in steps
+                if isinstance(step, dict) and step.get("name") == step_name
+            ]
+            if len(matches) != 1 or matches[0].get("conclusion") != "success":
+                return _refuse("original_full_input_export_step_not_successful", run_id)
         if not isinstance(run_json, dict) or not isinstance(artifacts_json, dict):
             return _refuse("original_github_worker_metadata_invalid", run_id)
         run = cast(dict[str, Any], run_json)
