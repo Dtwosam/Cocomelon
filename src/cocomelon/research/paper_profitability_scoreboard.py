@@ -251,6 +251,36 @@ def _metrics(trades: list[_Trade]) -> dict[str, object]:
     }
 
 
+def _original_chart_coverage_economics(
+    cohort: list[_Trade],
+) -> dict[str, object]:
+    """Partition *every* executed original close by witnessed chart quality.
+
+    Actual booked dollars/R remain attributable when prices are missing;
+    missing mark paths cannot validate an exit replay or be imputed as fills.
+    The partition is never a counterfactual replacement trading strategy.
+    """
+    complete = [trade for trade in cohort if trade.chart_complete]
+    incomplete = [trade for trade in cohort if not trade.chart_complete]
+    if len(complete) + len(incomplete) != len(cohort):
+        raise PaperProfitabilityScoreboardError(
+            "original chart coverage partition incomplete"
+        )
+    return {
+        "source": "original_completed_in_position_mark_chart_coverage",
+        "whole_original_cohort": _metrics(cohort),
+        "complete_observed_path_original_closes": _metrics(complete),
+        "incomplete_or_missing_path_original_closes": _metrics(incomplete),
+        "all_original_closes_preserved": True,
+        "unknown_or_missing_paths_are_not_filled": True,
+        "chart_coverage_is_random_or_causal": False,
+        "counterfactual_exit_cashflow_simulated": False,
+        "ready_for_strategy_promotion": False,
+        "promotion_authority": False,
+        "execution_authority": False,
+    }
+
+
 def _short_breakout_top3_robustness(
     trades: list[_Trade],
 ) -> dict[str, object]:
@@ -505,18 +535,30 @@ def _frozen_forward_hypothesis_economics(
             "forward_trade_count": len(forward),
             "original_forward_whole_journal": _metrics(forward),
             "original_forward_hypothesis_context": _metrics(target),
+            "original_forward_hypothesis_chart_coverage_economics": (
+                _original_chart_coverage_economics(target)
+            ),
             "original_forward_hypothesis_context_by_side": (
                 _forward_side_economics(target)
             ),
             "preferred_rank_attributed_original_closes": _metrics(preferred),
+            "preferred_original_chart_coverage_economics": (
+                _original_chart_coverage_economics(preferred)
+            ),
             "preferred_rank_attributed_original_closes_by_side": (
                 _forward_side_economics(preferred)
             ),
             "disfavored_rank_attributed_original_closes": _metrics(disfavored),
+            "disfavored_original_chart_coverage_economics": (
+                _original_chart_coverage_economics(disfavored)
+            ),
             "disfavored_rank_attributed_original_closes_by_side": (
                 _forward_side_economics(disfavored)
             ),
             "unresolved_rank_original_closes": _metrics(unresolved),
+            "unresolved_original_chart_coverage_economics": (
+                _original_chart_coverage_economics(unresolved)
+            ),
             "unresolved_rank_original_closes_by_side": (
                 _forward_side_economics(unresolved)
             ),
@@ -721,7 +763,42 @@ def paper_profitability_scoreboard(
                 "All original losses and missing entry contexts remain included."
             ),
             "overall": overall,
+            "original_chart_coverage_economics": (
+                _original_chart_coverage_economics(trades)
+            ),
+            "strategy_chart_coverage_economics": [
+                {
+                    "lead_strategy": strategy,
+                    **_original_chart_coverage_economics(
+                        [trade for trade in trades if trade.lead_strategy == strategy]
+                    ),
+                }
+                for strategy in sorted({trade.lead_strategy for trade in trades})
+            ],
+            "side_strategy_chart_coverage_economics": [
+                {
+                    "side": side,
+                    "lead_strategy": strategy,
+                    **_original_chart_coverage_economics([
+                        trade for trade in trades
+                        if (trade.side, trade.lead_strategy) == (side, strategy)
+                    ]),
+                }
+                for side, strategy in sorted({
+                    (trade.side, trade.lead_strategy) for trade in trades
+                })
+            ],
             "chronological_quartiles": blocks,
+            "chronological_quartile_chart_coverage_economics": [
+                {
+                    "quartile": i + 1,
+                    **_original_chart_coverage_economics([
+                        trade for index, trade in enumerate(trades)
+                        if min(3, 4 * index // max(1, count)) == i
+                    ]),
+                }
+                for i in range(4)
+            ],
             "side_cohorts": _cohorts(trades, ("side",)),
             "strategy_cohorts": _cohorts(trades, ("lead_strategy",)),
             "market_cohorts": _cohorts(trades, ("market",)),
