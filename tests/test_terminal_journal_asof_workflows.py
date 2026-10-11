@@ -60,3 +60,21 @@ def test_original_overlap_witnesses_match_strict_terminal_asof_boundary(
     assert f"{witness_var}.direction.value == evidence.direction" in source
     assert '"research_readiness_grant": False' in source
     assert '"promotion_authority": False' in source
+
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    ["prospective_two_strike_stop_filter", "prospective_momentum_band_entry"],
+)
+def test_frozen_research_strike_event_replays_never_assume_same_ms_exit_first(
+    module_name: str,
+) -> None:
+    source = (
+        Path("src/cocomelon/research") / f"{module_name}.py"
+    ).read_text(encoding="utf-8")
+    assert "if trade.closed_at_ms < timestamp_ms:" in source
+    assert "if trade.closed_at_ms <= timestamp_ms:" not in source
+    # Both point-in-time reconstruction and end-to-end terminal replay
+    # order opening events before close events within an unordered ms.
+    assert source.count("-item[1],  # opening precedes an unordered same-ms close") == 2

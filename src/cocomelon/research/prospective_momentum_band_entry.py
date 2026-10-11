@@ -252,12 +252,12 @@ def prospective_momentum_band_prior_strikes_at(
     events: list[tuple[int, int, TradeJournalEntry]] = []
     for trade in prospective:
         events.append((trade.opened_at_ms, 1, trade))
-        if trade.closed_at_ms <= timestamp_ms:
+        if trade.closed_at_ms < timestamp_ms:
             events.append((trade.closed_at_ms, 0, trade))
     events.sort(
         key=lambda item: (
             item[0],
-            item[1],
+            -item[1],  # opening precedes an unordered same-ms close
             item[2].opened_at_ms,
             item[2].trade_id,
         )
@@ -402,7 +402,7 @@ def prospective_momentum_band_entry_summary(
     events.sort(
         key=lambda item: (
             item[0],
-            item[1],
+            -item[1],  # opening precedes an unordered same-ms close
             item[2].opened_at_ms,
             item[2].trade_id,
         )

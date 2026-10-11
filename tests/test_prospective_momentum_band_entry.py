@@ -744,3 +744,51 @@ def test_momentum_rejects_less_bad_losing_candidate(
     assert readiness["improvement_positive"] is True
     assert readiness["economics_positive"] is False
     assert readiness["ready_for_review"] is False
+
+
+
+def test_momentum_close_at_decision_cannot_turn_weak_open_into_admit(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    state = ProspectiveMomentumBandEntryState(frozen_at_ms=0)
+    start = state.started_at_ms
+    strong_id = _record(
+        store, "SOL", as_of_ms=start - 1,
+        return_1h="0.02", day_return="0.08",
+    )
+    close_time = start + 80_000
+    weak_id = _record(
+        store, "SOL", as_of_ms=close_time - 1,
+        return_1h="0.001", day_return="0.02",
+    )
+    loss = _trade(
+        "tie-loss", market="SOL", direction=Direction.LONG,
+        opened_at_ms=start + 20_000, pnl="-5",
+        feature_snapshot_id=strong_id,
+    )
+    weak = _trade(
+        "tie-weak", market="SOL", direction=Direction.LONG,
+        opened_at_ms=loss.closed_at_ms, pnl="7",
+        feature_snapshot_id=weak_id,
+        exit_reason="OPPOSITE_FRESH_THESIS",
+    )
+    assert loss.closed_at_ms == close_time
+    assert prospective_momentum_band_prior_strikes_at(
+        (loss,), store, state, market=MarketId("", "SOL"),
+        direction=Direction.LONG, timestamp_ms=close_time,
+    ) == 0
+    assert prospective_momentum_band_prior_strikes_at(
+        (loss,), store, state, market=MarketId("", "SOL"),
+        direction=Direction.LONG, timestamp_ms=close_time + 1,
+    ) == 1
+
+    outcome = prospective_momentum_band_entry_summary(
+        (loss, weak), store, state,
+    )
+    assert outcome["decision_prior_strikes"][weak.trade_id] == 0
+    assert outcome["decision_details"][weak.trade_id]["decision"] == "BLOCK"
+    assert outcome["blocked_trades"] == 1
+    assert outcome["blocked_net_pnl"] == "7"
+    assert outcome["delta_net_pnl"] == "-7"
+    assert outcome["promotion_authority"] is False
