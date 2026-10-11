@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import io
 import json
 import sys
 import time
 import zipfile
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 from cocomelon.research.prospective_short_rank_first_seen import (
     FirstSeenRankSnapshotStore,
