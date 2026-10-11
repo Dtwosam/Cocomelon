@@ -272,3 +272,34 @@ def test_unresolved_gap_cannot_hide_a_later_forged_gap_interval() -> None:
     candidate["known_gap_intervals"] = [[500, None], [1_020, "fake"]]
     with pytest.raises(AllPaperTradeChartAuditError, match="gap times"):
         all_paper_trade_chart_audit((_trade(1),), EmptyFacts(), (candidate,))
+
+
+
+def test_simultaneous_distinct_mark_events_do_not_prove_price_path() -> None:
+    path = _path()
+    path["marks"] = [
+        {"available_at_ms": 1_050, "mark_px": "10"},
+        {"available_at_ms": 1_050, "mark_px": "9"},
+    ]
+    report = all_paper_trade_chart_audit((_trade(),), EmptyFacts(), (path,))
+    trade = report["trades"][0]
+    assert trade["chart_path_present"] is True
+    assert trade["chart_mark_count"] == 2
+    assert trade["chart_mark_samples"] == [[1_050, "10"], [1_050, "9"]]
+    assert trade["chart_longest_unobserved_mark_ms"] == 50
+    assert trade["chart_known_gap_duration_ms"] == 0
+    assert trade["chart_coverage_complete"] is False
+    assert report["complete_chart_paths"] == 0
+    assert report["economics"]["overall"]["net_pnl"] == "-2.4"
+    assert report["promotion_authority"] is False
+
+
+def test_actual_distinct_mark_times_remain_chart_eligible() -> None:
+    path = _path()
+    path["marks"] = [
+        {"available_at_ms": 1_050, "mark_px": "10"},
+        {"available_at_ms": 1_051, "mark_px": "9"},
+    ]
+    report = all_paper_trade_chart_audit((_trade(),), EmptyFacts(), (path,))
+    assert report["trades"][0]["chart_coverage_complete"] is True
+    assert report["complete_chart_paths"] == 1
