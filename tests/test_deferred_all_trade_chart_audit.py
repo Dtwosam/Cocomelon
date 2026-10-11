@@ -33,6 +33,7 @@ def _trade(n: int = 1) -> SimpleNamespace:
         entry_price=Decimal("10"),
         exit_price=Decimal("9"),
         initial_stop=Decimal("9.5"),
+        initial_risk_amount=Decimal("2"),
         filled_quantity=Decimal("2"),
         replay_run_id="continuous-paper-mainnet-v1",
         strategy_decision_id="decision",
@@ -80,6 +81,8 @@ def test_all_paper_trades_included_even_when_chart_missing() -> None:
     assert report["complete_chart_paths"] == 1
     assert report["missing_chart_path_trade_ids"] == ["t2"]
     assert report["trades"][1]["chart_coverage_complete"] is False
+    assert report["trades"][0]["initial_risk_amount"] == "2"
+    assert report["trades"][1]["initial_risk_amount"] == "2"
     assert report["execution_authority"] is False
     page = render_trade_charts(report)
     assert "MARK_STOP_TRIGGERED" in page
