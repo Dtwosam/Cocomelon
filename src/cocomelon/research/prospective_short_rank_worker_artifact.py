@@ -178,6 +178,11 @@ def verify_github_original_short_rank_artifact(
             raise GithubShortRankArtifactError(
                 "rank seal receipt has altered canonical bytes"
             )
+        seal_ms = receipt.get("sealed_at_ms")
+        if not isinstance(seal_ms, int) or isinstance(seal_ms, bool):
+            raise GithubShortRankArtifactError(
+                "worker seal completion timestamp invalid"
+            )
         identity = {
             "worker_run_id_claimed": expected.run_id,
             "worker_run_attempt_claimed": expected.run_attempt,
@@ -268,7 +273,7 @@ def verify_github_original_short_rank_artifact(
                     or descriptor.get("captured_at_ms") != snapshot.captured_at_ms
                     or snapshot.observed_at_ms <= prev_observed
                     or snapshot.captured_at_ms < prev_captured
-                    or snapshot.captured_at_ms > receipt.get("sealed_at_ms", -1)
+                    or snapshot.captured_at_ms > seal_ms
                 ):
                     raise GithubShortRankArtifactError(
                         "original rank row bytes or chronology mismatch"
