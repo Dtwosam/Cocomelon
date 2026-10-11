@@ -199,6 +199,14 @@ def verify_github_original_rank_full_input_artifact(
         receipt = _json(receipt_data, "original full rank input seal")
         historical = receipt.get("historical_rank_snapshots_without_full_inputs")
         count = receipt.get("verified_full_input_batch_count")
+        seal_time = receipt.get("sealed_at_ms")
+        if (
+            type(seal_time) is not int or seal_time < 0
+            or receipt.get("schema_version") != 1
+        ):
+            raise OriginalRankFeatureArtifactError(
+                "original full rank seal timestamp or schema invalid"
+            )
         if (
             any(receipt.get(key) != value for key, value in identity.items())
             or receipt.get("full_rank_feature_status")
@@ -243,7 +251,8 @@ def verify_github_original_rank_full_input_artifact(
             )
             descriptions = manifest.get("files")
             if (
-                not isinstance(descriptions, list)
+                manifest.get("schema_version") != 1
+                or not isinstance(descriptions, list)
                 or len(descriptions) != count
                 or any(manifest.get(key) != value for key, value in identity.items())
                 or manifest.get("rank_state_digest")
@@ -289,7 +298,7 @@ def verify_github_original_rank_full_input_artifact(
                     or descriptor.get("feature_market_count") != len(batch.features)
                     or descriptor.get("observed_at_ms") != batch.observed_at_ms
                     or descriptor.get("captured_at_ms") != batch.captured_at_ms
-                    or batch.captured_at_ms > receipt.get("sealed_at_ms", -1)
+                    or batch.captured_at_ms > seal_time
                 ):
                     raise OriginalRankFeatureArtifactError(
                         "exact original rank input file/source digest mismatch"
