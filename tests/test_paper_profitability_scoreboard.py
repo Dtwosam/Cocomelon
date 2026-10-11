@@ -1952,8 +1952,10 @@ def test_first_seen_uncertain_source_cannot_claim_matching_fields() -> None:
 def test_forward_fixed_opening_day_windows_never_follow_close_order() -> None:
     """Long-lived day-0 loser closes after a day-1 winner; fixed bins do not flip."""
     from cocomelon.research.paper_profitability_scoreboard import (
-        MEAN_REVERSION_FORWARD_START_MS as start,
         MEAN_REVERSION_FIXED_OPENING_DAY_MS as day,
+    )
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
     )
 
     original_day0 = _move_trade_to_original_open_time(
@@ -2003,8 +2005,10 @@ def test_forward_window_maturity_requires_authenticated_zero_open_exposure(
     expected: bool,
 ) -> None:
     from cocomelon.research.paper_profitability_scoreboard import (
-        MEAN_REVERSION_FORWARD_START_MS as start,
         MEAN_REVERSION_FIXED_OPENING_DAY_MS as day,
+    )
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
     )
 
     row = _move_trade_to_original_open_time(
@@ -2031,8 +2035,10 @@ def test_forward_window_maturity_requires_authenticated_zero_open_exposure(
 
 def test_forward_window_current_incomplete_day_never_matures() -> None:
     from cocomelon.research.paper_profitability_scoreboard import (
-        MEAN_REVERSION_FORWARD_START_MS as start,
         MEAN_REVERSION_FIXED_OPENING_DAY_MS as day,
+    )
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
     )
     row = _move_trade_to_original_open_time(
         _trade(1, side="long", market="SOL", strategy="mean_reversion",
