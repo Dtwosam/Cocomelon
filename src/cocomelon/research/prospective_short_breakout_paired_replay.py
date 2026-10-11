@@ -126,7 +126,8 @@ class ShortRankIndependentPairedPaperReplay:
             ),
             opening_candidate_filter=self._candidate_admission,
         )
-        self._last_sort_key: tuple[int, str, str, str] | None = None
+        self._last_available_at_ms: int | None = None
+        self._seen_records: set[bytes] = set()
         self._record_count = 0
         self._gap_records = 0
         self._record_hash = hashlib.sha256()
@@ -148,13 +149,34 @@ class ShortRankIndependentPairedPaperReplay:
             record.available_at_ms < self._manifest.start_ms
             or record.available_at_ms > self._manifest.end_ms
             or (
-                self._last_sort_key is not None
-                and record.sort_key <= self._last_sort_key
+                self._last_available_at_ms is not None
+                and record.available_at_ms < self._last_available_at_ms
             )
         ):
             self._failed = True
             raise ShortRankPairedReplayError(
                 "paired replay has out-of-manifest or nonmonotonic source"
+            )
+        canonical_record = json.dumps(
+            (
+                record.record_kind.value,
+                record.available_at_ms,
+                record.source,
+                record.schema_version,
+                record.market,
+                record.exchange_time_ms,
+                record.event_key,
+                record.event_kind,
+                record.payload_json,
+            ),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        record_identity = hashlib.sha256(canonical_record).digest()
+        if record_identity in self._seen_records:
+            self._failed = True
+            raise ShortRankPairedReplayError(
+                "paired replay duplicate source record"
             )
         # The exact same record is presented to both independent replay
         # engines. Any exception invalidates BOTH lanes, not only the loser.
@@ -164,27 +186,12 @@ class ShortRankIndependentPairedPaperReplay:
         except Exception:
             self._failed = True
             raise
-        self._last_sort_key = record.sort_key
+        self._last_available_at_ms = record.available_at_ms
+        self._seen_records.add(record_identity)
         self._record_count += 1
         if record.record_kind is SourceRecordKind.DATA_GAP:
             self._gap_records += 1
-        self._record_hash.update(
-            json.dumps(
-                (
-                    record.record_kind.value,
-                    record.available_at_ms,
-                    record.source,
-                    record.schema_version,
-                    record.market,
-                    record.exchange_time_ms,
-                    record.event_key,
-                    record.event_kind,
-                    record.payload_json,
-                ),
-                ensure_ascii=False,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        )
+        self._record_hash.update(canonical_record)
         for execution, lane in (
             (self._baseline_execution, "baseline"),
             (self._candidate_execution, "candidate"),
