@@ -212,3 +212,105 @@ def test_source_audit_workflow_fetches_real_github_api_step_and_artifact_metadat
     assert "original-first-seen-short-rank-audit-" in source
     assert "cocomelon-continuous-paper" not in source
     assert "github_artifact_digest_and_step_metadata_checked" in source
+
+
+
+def _upgrade_only_failure(
+    jobs: dict[str, object],
+) -> None:
+    paper = jobs["jobs"][0]  # type: ignore[index]
+    paper["conclusion"] = "failure"
+    paper["steps"].extend([
+        {
+            "name": "Upload durable continuous paper state",
+            "conclusion": "success",
+        },
+        {
+            "name": "Fail closed on upgrade handoff source",
+            "conclusion": "failure",
+        },
+    ])
+
+
+def test_actual_intentionally_failed_worker_seal_is_only_upgrade_handoff_source(
+    tmp_path: Path,
+) -> None:
+    run, jobs, artifacts, raw = _inputs(tmp_path)
+    run["conclusion"] = "failure"
+    _upgrade_only_failure(jobs)
+    receipt = _assess(run, jobs, artifacts, raw)
+    assert receipt["first_seen_rank_artifact_status"] == (
+        "github_api_bound_upgrade_handoff_only"
+    )
+    assert receipt["original_worker_run_source_class"] == "upgrade_handoff_only"
+    assert receipt["rank_artifact_from_failed_original_workflow"] is True
+    assert receipt["successful_research_run_proven"] is False
+    assert receipt["upgrade_handoff_exit_reason_independently_attested"] is False
+    assert receipt["github_artifact_digest_and_step_metadata_checked"] is True
+    assert receipt["rank_snapshot_count"] == 1
+    assert receipt["full_account_trial"] is False
+    assert receipt["ready_for_review"] is False
+    assert receipt["execution_authority"] is False
+
+
+def test_any_other_failed_original_worker_step_can_never_be_rank_provenance(
+    tmp_path: Path,
+) -> None:
+    run, jobs, artifacts, raw = _inputs(tmp_path)
+    run["conclusion"] = "failure"
+    _upgrade_only_failure(jobs)
+    paper = jobs["jobs"][0]  # type: ignore[index]
+    for failure in (
+        {"name": "Unverified state after exit", "conclusion": "failure"},
+        {"name": "Original paper order execution", "conclusion": "failure"},
+    ):
+        changed = {
+            "jobs": [{
+                **paper,
+                "steps": [*paper["steps"], failure],
+            }],
+        }
+        receipt = _assess(run, changed, artifacts, raw)
+        assert receipt["first_seen_rank_artifact_status"] == "unverified"
+        assert receipt["failure_reason_code"] == (
+            "failed_worker_not_exact_state_preserving_upgrade"
+        )
+    missing_durable = {"jobs": [{
+        **paper,
+        "steps": [
+            step for step in paper["steps"]
+            if step["name"] != "Upload durable continuous paper state"
+        ],
+    }]}
+    assert _assess(run, missing_durable, artifacts, raw)[
+        "failure_reason_code"
+    ] == "failed_worker_not_exact_state_preserving_upgrade"
+
+
+def test_forged_successful_paper_job_on_failed_run_not_accepted(
+    tmp_path: Path,
+) -> None:
+    run, jobs, artifacts, raw = _inputs(tmp_path)
+    run["conclusion"] = "failure"
+    proof = _assess(run, jobs, artifacts, raw)
+    assert proof["first_seen_rank_artifact_status"] == "unverified"
+    assert proof["failure_reason_code"] == (
+        "worker_run_and_paper_job_outcomes_disagree"
+    )
+    run["conclusion"] = "success"
+    _upgrade_only_failure(jobs)
+    proof = _assess(run, jobs, artifacts, raw)
+    assert proof["first_seen_rank_artifact_status"] == "unverified"
+    assert proof["failure_reason_code"] == (
+        "worker_run_and_paper_job_outcomes_disagree"
+    )
+
+
+def test_original_still_running_cannot_be_passed_off_as_completed(
+    tmp_path: Path,
+) -> None:
+    run, jobs, artifacts, raw = _inputs(tmp_path)
+    jobs["jobs"][0]["status"] = "in_progress"  # type: ignore[index]
+    assert _assess(run, jobs, artifacts, raw)[
+        "failure_reason_code"
+    ] == "original_paper_run_or_job_not_completed"
