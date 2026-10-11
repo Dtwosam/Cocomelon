@@ -126,7 +126,7 @@ class PinnedFirstSeenRankArchive:
             "rank_capture_gaps_max_ms": max(
                 (
                     later.captured_at_ms - earlier.captured_at_ms
-                    for earlier, later in zip(snapshots, snapshots[1:])
+                    for earlier, later in zip(snapshots, snapshots[1:], strict=False)
                 ),
                 default=0,
             ),
