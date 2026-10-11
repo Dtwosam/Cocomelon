@@ -51,7 +51,7 @@ def _inputs(
         zipout.writestr(ARCHIVE_NAME, (output / ARCHIVE_NAME).read_bytes())
     raw = outer.getvalue()
     run: dict[str, object] = {
-        "id": RUN, "status": "completed",
+        "id": RUN, "status": "completed", "conclusion": "success",
         "head_branch": "main", "path": ".github/workflows/continuous-paper.yml",
         "event": "workflow_dispatch", "run_attempt": 1, "head_sha": HEAD,
         "repository": {"full_name": REPOSITORY},
@@ -60,6 +60,7 @@ def _inputs(
     jobs: dict[str, object] = {
         "jobs": [{
             "name": "paper", "run_attempt": 1,
+            "status": "completed", "conclusion": "success",
             "steps": [
                 {"name": name, "conclusion": "success"}
                 for name in REQUIRED_SUCCESSFUL_PAPER_STEPS
