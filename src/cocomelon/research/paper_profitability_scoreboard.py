@@ -1019,7 +1019,13 @@ def _predeclared_mean_reversion_abstention(
         len(first_two) == 2
         and all(
             b["source_observation_window_mature"] is True
-            and int(b["avoided_verified_mean_reversion"]["trades"]) >= 3
+            and _integer(
+                _object(
+                    b["avoided_verified_mean_reversion"],
+                    "fixed opening-day avoided cohort",
+                ).get("trades"),
+                "fixed opening-day avoided count",
+            ) >= 3
             for b in first_two
         )
     )
