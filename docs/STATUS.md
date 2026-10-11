@@ -2,6 +2,13 @@
 
 **Profitability-first evidence anchor:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Negative signed forward economics remain the binding result; archive engineering does not authorize promotion.
 
+## October 11 — automated original-worker rank-source handoff audit (PR pending)
+
+The original first-seen SHORT rank artifact is now actually published by the completed-original-worker handoff **38162541394** (GitHub artifact 11711759572, exact 18,642,998 bytes, outer GitHub SHA256 `c2f1527724ac12b19029717ca57be5a0ce4de4aec318af2dce46cec14afc5189`), while the successor **38166151613** has authenticated deployment of the new sealed dispatch identity. The first archive's publication is **not** an authenticated source-continuity or profitability result; it must be checked in full when the original source workflow completes.
+
+A separate **read-only** completed original-worker GitHub artifact audit now automatically retrieves the real successor's predecessor from GitHub's `display_title`, independently fetches **both exact original** worker runs, job steps, artifact metadata and rank ZIPs using restricted Actions read credentials, runs the original source authenticator for each, then checks the entire previously sealed rank-history prefix and successor's original source run/attempt. Any missing/still-running/expired/altered source, false title, rank rewrite, original paper-export-step failure, or missing predecessor identity produces `rank_handoff_status=unverified`; a positive archive-chain result still says **source market data gaps, feature derivation, fixed-window economics, and trade authority are uncertified**. This automation neither starts paper traders nor modifies the original paper account, positions, orders, stops, risk budget, frozen v5 comparator, or LIVE permission.
+
+
 ## October 11 — original worker rank immutable-prefix continuity (PR pending)
 
 Separate GitHub-authenticated original paper-worker rank archive seals must now have **an exact source handoff**: the successor's real GitHub workflow-dispatch inputs identify the predecessor run and attempt, and the successor archive must start with every original predecessor rank/feature/capture record unchanged, with an independently recomputed matching prefix digest. At least one new forward rank snapshot must follow. This rejects resets and omitted losing ranks before creating either risk-matched baseline/candidate paper account. It cannot by itself authenticate market gaps or after-fee profitability; all actual original paper stops/risk/orders and v5 frozen losing evidence remain untouched. See `docs/SHORT_RANK_WORKER_HANDOFF_PROOF.md`.
