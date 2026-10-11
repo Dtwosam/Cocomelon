@@ -71,6 +71,8 @@ def seal_completed_short_rank_archive(
     worker_run_id: int,
     worker_run_attempt: int,
     worker_head_sha: str,
+    restored_from_run_id: int | None = None,
+    restored_from_run_attempt: int | None = None,
     sealed_at_ms: int | None = None,
 ) -> dict[str, object]:
     """Make either a verified local archive or an explicit rejected receipt.
@@ -83,6 +85,17 @@ def seal_completed_short_rank_archive(
         attempt=worker_run_attempt,
         head_sha=worker_head_sha,
     )
+    if (restored_from_run_id is None) != (restored_from_run_attempt is None):
+        raise ShortRankSealError("partial original predecessor source identity")
+    if restored_from_run_id is not None and (
+        type(restored_from_run_id) is not int or restored_from_run_id <= 0
+        or type(restored_from_run_attempt) is not int
+        or restored_from_run_attempt <= 0
+        or restored_from_run_id == worker_run_id
+    ):
+        raise ShortRankSealError("invalid original predecessor source identity")
+    identity["restored_from_run_id_claimed"] = restored_from_run_id
+    identity["restored_from_run_attempt_claimed"] = restored_from_run_attempt
     if sealed_at_ms is None:
         sealed_at_ms = time.time_ns() // 1_000_000
     if type(sealed_at_ms) is not int or sealed_at_ms < 0:
@@ -222,12 +235,29 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--worker-run-id", type=int, required=True)
     parser.add_argument("--worker-run-attempt", type=int, required=True)
     parser.add_argument("--worker-head-sha", required=True)
+    parser.add_argument("--restored-from-run-id", default="")
+    parser.add_argument("--restored-from-run-attempt", default="")
     args = parser.parse_args(argv)
+    def optional_positive_integer(value: str) -> int | None:
+        if not value:
+            return None
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise ShortRankSealError(
+                "original workflow predecessor identity is malformed"
+            ) from exc
     receipt = seal_completed_short_rank_archive(
         args.state_root, args.output_dir,
         worker_run_id=args.worker_run_id,
         worker_run_attempt=args.worker_run_attempt,
         worker_head_sha=args.worker_head_sha,
+        restored_from_run_id=optional_positive_integer(
+            args.restored_from_run_id
+        ),
+        restored_from_run_attempt=optional_positive_integer(
+            args.restored_from_run_attempt
+        ),
     )
     print(_canonical(receipt).decode("utf-8").strip())
     return 0 if receipt["rank_source_status"] == "locally_sealed" else 2
