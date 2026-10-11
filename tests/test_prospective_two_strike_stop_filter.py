@@ -615,3 +615,55 @@ def test_same_millisecond_terminal_close_cannot_be_used_at_decision() -> None:
         market="SOL",
         direction="short",
     )
+
+
+
+def test_two_strike_query_ignores_terminal_loss_closed_exactly_at_decision() -> None:
+    state = ProspectiveTwoStrikeStopFilterState(frozen_at_ms=0)
+    start = state.started_at_ms
+    loss = _trade(
+        "equal-query-loss", opened_at_ms=start + 20_000, pnl="-5",
+    )
+    tied_decision_ms = loss.closed_at_ms
+    assert prospective_two_strike_prior_strikes_at(
+        (loss,), state, market="SOL", direction=Direction.LONG,
+        timestamp_ms=tied_decision_ms,
+    ) == 0
+    assert prospective_two_strike_prior_strikes_at(
+        (loss,), state, market="SOL", direction=Direction.LONG,
+        timestamp_ms=tied_decision_ms + 1,
+    ) == 1
+
+
+def test_two_strike_summary_does_not_block_on_same_ms_second_loss() -> None:
+    state = ProspectiveTwoStrikeStopFilterState(frozen_at_ms=0)
+    start = state.started_at_ms
+    first = _trade(
+        "first-before-tie", opened_at_ms=start + 10_000, pnl="-5",
+    )
+    second = _trade(
+        "second-closes-at-opening", opened_at_ms=start + 120_000,
+        pnl="-6",
+    )
+    third = _trade(
+        "same-ms-opening", opened_at_ms=second.closed_at_ms,
+        pnl="9", exit_reason="OPPOSITE_FRESH_THESIS",
+    )
+    summary = prospective_two_strike_stop_filter_summary(
+        (first, second, third), state,
+    )
+    assert summary["decision_prior_strikes"][third.trade_id] == 1
+    assert summary["blocked_trades"] == 0
+    assert summary["candidate_net_pnl"] == summary["actual_net_pnl"]
+    assert summary["promotion_authority"] is False
+    # The second loss becomes known strictly after its terminal time.
+    assert prospective_two_strike_prior_strikes_at(
+        (first, second, third), state,
+        market="SOL", direction=Direction.LONG,
+        timestamp_ms=second.closed_at_ms,
+    ) == 1
+    assert prospective_two_strike_prior_strikes_at(
+        (first, second, third), state,
+        market="SOL", direction=Direction.LONG,
+        timestamp_ms=second.closed_at_ms + 1,
+    ) == 2
