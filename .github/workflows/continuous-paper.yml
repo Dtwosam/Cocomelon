@@ -1377,6 +1377,13 @@ jobs:
                 f"gross-minus-booked-net: ${o['gross_minus_booked_net_pnl']}")
           print(f"- Missing verified entry context: {o['unverified_entry_context_trades']}")
           print(f"- Incomplete original trade charts: {o['incomplete_chart_trades']}")
+          coverage = report["original_chart_coverage_economics"]
+          complete = coverage["complete_observed_path_original_closes"]
+          incomplete = coverage["incomplete_or_missing_path_original_closes"]
+          print(f"- Realized net by actual in-position chart evidence: "
+                f"complete {complete['trades']} closes / ${complete['net_pnl']}; "
+                f"incomplete {incomplete['trades']} closes / ${incomplete['net_pnl']} "
+                f"(NOT matched fills or promoted edge)")
           print("- Side/strategy net losers (retrospective attribution only):")
           for group in report["side_strategy_cohorts"][:5]:
               c = group["cohort"]
