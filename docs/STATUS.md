@@ -2,6 +2,11 @@
 
 **Profitability-first evidence anchor:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Negative signed forward economics remain the binding result; archive engineering does not authorize promotion.
 
+## October 11 — original worker rank immutable-prefix continuity (PR pending)
+
+Separate GitHub-authenticated original paper-worker rank archive seals must now have **an exact source handoff**: the successor's real GitHub workflow-dispatch inputs identify the predecessor run and attempt, and the successor archive must start with every original predecessor rank/feature/capture record unchanged, with an independently recomputed matching prefix digest. At least one new forward rank snapshot must follow. This rejects resets and omitted losing ranks before creating either risk-matched baseline/candidate paper account. It cannot by itself authenticate market gaps or after-fee profitability; all actual original paper stops/risk/orders and v5 frozen losing evidence remain untouched. See `docs/SHORT_RANK_WORKER_HANDOFF_PROOF.md`.
+
+
 ## October 11 — frozen short-rank paired-paper admission preflight (merged #1153)
 
 A standalone, research-only `ProspectiveShortBreakoutPairedEntryFilter` now encodes the frozen post-embargo SHORT breakout rank>3 admission decision for future **independent** baseline/challenger paper replay. Its candidate rejects only a witnessed predecision rank>3; baseline retains. Pre-start attempts are barred in both; future-stamped rank or decision/feature mismatch is fatal; same-ms/stale/missing rank or unknown lead retains both lanes and disqualifies complete source. Counts and per-market blocks are exposed without simulated skip-credit. Regression tests cover source causality, direction, rank, boundary, and immutability of paper/live permission.
