@@ -1,0 +1,115 @@
+name: Original First-Seen SHORT Rank Artifact Audit
+
+on:
+  workflow_run:
+    workflows:
+      - Continuous Mainnet Paper Trader
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: original-short-rank-source-audit-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  cancel-in-progress: false
+
+jobs:
+  attest:
+    if: ${{ github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+      SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install read-only rank verifier
+        run: python -m pip install -e .
+
+      - name: Fetch independent original GitHub worker and artifact metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/original-short-rank-api
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" \
+            > /tmp/original-short-rank-api/run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100" \
+            > /tmp/original-short-rank-api/jobs.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+            > /tmp/original-short-rank-api/artifacts.json
+
+      - name: Download only the exact original worker artifact if published
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          attempt="$(jq -r '.run_attempt' /tmp/original-short-rank-api/run.json)"
+          name="continuous-paper-first-seen-short-rank-$SOURCE_RUN_ID-$attempt"
+          artifact_id="$(
+            jq -r --arg name "$name" '
+              [.artifacts[] | select(.name == $name)]
+              | if length == 1 then .[0].id else empty end
+            ' /tmp/original-short-rank-api/artifacts.json
+          )"
+          if [ -z "$artifact_id" ]; then
+            echo "::notice::no exact original first-seen rank artifact for this completed worker"
+            exit 0
+          fi
+          curl --fail --silent --show-error --location \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+            --output /tmp/original-short-rank-api/artifact.zip
+
+      - name: Audit exact worker steps and both rank archive SHA256 layers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/attest_paper_short_rank_artifact.py \
+            --run-json /tmp/original-short-rank-api/run.json \
+            --jobs-json /tmp/original-short-rank-api/jobs.json \
+            --artifacts-json /tmp/original-short-rank-api/artifacts.json \
+            --artifact-zip /tmp/original-short-rank-api/artifact.zip \
+            --source-run-id "$SOURCE_RUN_ID" \
+            --source-run-attempt "$SOURCE_RUN_ATTEMPT" \
+            --repository "$GITHUB_REPOSITORY" \
+            --output first-seen-short-rank-audit.json \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          proof = json.loads(
+              Path("first-seen-short-rank-audit.json").read_text(encoding="utf-8")
+          )
+          print("\n## Original first-seen SHORT rank provenance")
+          print(f"- status: {proof['first_seen_rank_artifact_status']}")
+          print(f"- failure reason: {proof['failure_reason_code']}")
+          print(f"- source run: {proof['source_worker_run_id_claimed']}")
+          print(
+              "- archived original source authenticated: "
+              f"{proof['github_artifact_digest_and_step_metadata_checked']}"
+          )
+          print("- rank-to-market observation reconciliation: NOT YET CERTIFIED")
+          print("- profitable full-account edge: NOT PROVEN")
+          print("- live execution authority: FALSE")
+          PY
+
+      - name: Publish immutable rank source audit receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: original-first-seen-short-rank-audit-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: first-seen-short-rank-audit.json
+          retention-days: 90
+          if-no-files-found: warn

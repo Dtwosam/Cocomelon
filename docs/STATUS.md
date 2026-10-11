@@ -1,12 +1,14 @@
 # Cocomelon Project Status
 
-## October 11 — frozen short-rank paired-paper admission preflight (PR pending)
+**Profitability-first evidence anchor:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Negative signed forward economics remain the binding result; archive engineering does not authorize promotion.
+
+## October 11 — frozen short-rank paired-paper admission preflight (merged #1153)
 
 A standalone, research-only `ProspectiveShortBreakoutPairedEntryFilter` now encodes the frozen post-embargo SHORT breakout rank>3 admission decision for future **independent** baseline/challenger paper replay. Its candidate rejects only a witnessed predecision rank>3; baseline retains. Pre-start attempts are barred in both; future-stamped rank or decision/feature mismatch is fatal; same-ms/stale/missing rank or unknown lead retains both lanes and disqualifies complete source. Counts and per-market blocks are exposed without simulated skip-credit. Regression tests cover source causality, direction, rank, boundary, and immutability of paper/live permission.
 
 This is an **admission component, not yet a real paired account**: no second forward account is running for this rule, no fees/funding/fill/drawdown result is claimed, and the negative frozen v5 trial remains intact. Required independent dual-paper replay and signed after-cost account report are described in `docs/FORWARD_SHORT_RANK_PAIRED_ADMISSION.md`. Original paper worker, risk, stops, frozen hypotheses, promotion and LIVE=false remain unchanged.
 
-## October 11 — isolated forward SHORT rank dual-paper simulator (PR pending)
+## October 11 — isolated forward SHORT rank dual-paper simulator (merged #1154)
 
 `ShortRankIndependentPairedPaperReplay` provides a **new, separately persisted two-lane paper simulation** for the previously frozen forward SHORT breakout rank>3 hypothesis. It applies the merged causal admission rule only to the candidate; identical timestamp-ordered recorded microstructure inputs are fed through two ordinary independent baseline replay engines, risk, paper IOC/fill, fee, funding and stop management accounts. It emits actual simulated account marked/realized/net side-cash-residual, fees/funding, fills, positions, drawdown, and candidate-minus-baseline, not imaginary zero-replacement skip cash. Synthetic tests illustrate one losing filled baseline vs filtered candidate and a missing-rank loser that must fill in both.
 
@@ -18,7 +20,7 @@ The separate SHORT breakout rank>3 dual-paper replay now has a *read-only source
 
 **Source verification boundaries:** An expected digest supplied by a caller is *not* proof that its caller obtained that digest independently from authenticated original-paper GitHub artifacts, nor that an observation was actually collected on Hyperliquid mainnet. That provenance, the rank witness first-seen archive, end-of-worker continuity, complete market-gap coverage, and open-position maturity are still absent. New local verification receipt explicitly declares these uncertified and never flips original `ready_for_review=false`, `full_account_trial=false`, or execution/promotion authority. Actual negative frozen v5 signed account evidence remains intact. This source preflight is offline research; the active original paper worker is not to be restarted or modified for this.
 
-## October 11 — prospective append-only SHORT rank first-seen capture (PR pending)
+## October 11 — prospective append-only SHORT rank first-seen capture (merged #1156)
 
 This adds a future-only, append-once store of the *entire actual coarse market rank snapshot* with every ranked market, position, score and corresponding source feature snapshot ID/received time. It also records **actual completion/capture time after ranking computation**, distinct from the earlier start-of-computation clock. A prospective SHORT breakout skip can use a rank only if this durable completion time precedes the decision, so no timestamp backdating or same-millisecond unsupported skip is permitted. Idempotent same-record writes are accepted; changed earlier rows, backdated snapshots, noncanonical ordering, duplicate rank keys and source feature contradictions fail closed. Empty/market-omitted complete snapshots prevent resurrecting favorable stale ranks.
 
@@ -26,29 +28,35 @@ Original continuous paper's three real rank refresh paths now write these append
 
 Historical ranks **cannot** be retroactively supplied. This is the first prospective source producer for future independent SHORT rank paired-account research, not a new profitable trade/account, not a signed first-seen authority until a real post-merge worker handoff and completed artifact are authenticated. Original frozen v5 signed challenger still loses and is untouched. All new observations remain research-only; LIVE=false.
 
-## October 11 — full first-seen rank archive bound to paired paper replay (PR pending)
+## October 11 — full first-seen rank archive bound to paired paper replay (merged #1157)
 
 The independent SHORT breakout >3 dual-paper simulator can now load **two separately pinned exact sources**: the original recorder JSONL market-source manifest and the separately append-only `FirstSeenRankSnapshotStore` created by the authenticated original worker after #1156. Both are fully verified for local hash, source window, canonical bytes, symlinks, and completeness of each archived rank snapshot before creating **either** account. It freezes the entire rank source in memory for deterministic candidate/baseline decisions, without an untrusted caller-controlled rank callback. Latest complete rank snapshots must precede decisions; missing markets stay missing rather than resurrecting past filtered losses. Two ordinary independent paper accounts then simulate risk, fills, exits, fees, and funding against the same recorded source, reporting absolute signed-account PnL, not hypothetical zero replacement cash.
 
 This is **not yet an independently signed real forward comparison**: the external origin of both expected pins, feature derivation, historical gap coverage, worker handoff maturity, and account windows have not been verified. Economic/profitability readiness remains FALSE, all v5 negative evidence preserved, no permission to execute live or change paper stops/risk. See `docs/SHORT_RANK_PINNED_FIRST_SEEN_PAIR.md`.
 
-## October 11 — original SHORT rank independent paired-paper fixed UTC cashflow audit (PR pending)
+## October 11 — original SHORT rank independent paired-paper fixed UTC cashflow audit (merged #1158)
 
 The separate SHORT rank>3 baseline/challenger account simulator now tracks immutable per-replay-record marked and realized account observations for both lanes. Four actual paper-account changes (baseline marked, baseline realized net, candidate marked, candidate realized net) are allocated to a fixed UTC calendar day **only if both adjacent observations are within that day**. A change spanning midnight is explicitly reported as **unallocated**, including negative losses and funding/fee cash movements. Every reported allocated + unallocated amount reconciles independently and exactly to each full end-account total. The candidate-minus-baseline marked and realized differences reconcile independently too. Failed, nonfinite, or out-of-order observations invalidate the entire economic report, without changing either underlying paper account.
 
 This addresses misleading day-by-day attribution, not unverified or absent data. It does not certify 24-hour market coverage, source provenance, first-seen rank origin, handoff state, position maturity, risk-match readiness or profitability. It leaves existing negative frozen v5 signed evidence and original worker untouched. Research only, LIVE=false, no promotion. See `prospective_short_rank_utc_window.py`.
 
-## October 11 — seal original forward SHORT rank source from completed paper workers (PR pending)
+## October 11 — seal original forward SHORT rank source from completed paper workers (merged #1159)
 
 After original paper execution ends and the exact successor has been dispatched from the unchanged, state-preserving resume artifact, the workflow now attempts a **separate read-only first-seen rank archive seal**. It rejects any producer failure receipt, missing/empty snapshot population, symlinked or unexpected files, changed snapshot hash/contents, archive ordering errors or future-stamped captures. Valid outputs contain the exact immutable snapshot bytes, a canonical per-row SHA256 source manifest, rank state digest, and **claimed original worker run ID / attempt / head SHA**. An explicit rejection receipt is uploaded rather than inventing a clean source. This extra upload is best-effort and cannot stop the original trading worker, skip its ordinary account restore, or modify its existing SQLite/stop/risk state. Tests cover exact bytes and worker identity, tampering, no backfill, symlinks, empty source and workflow order.
 
 This is deliberately an **artifact-export step, not an independent signature or a forward profitability claim**. Independently verify GitHub Actions run metadata, uploader result, and artifact digest before trusting any claimed worker identity, bind the rank receipt against market-data provenance and gap continuity, then run the frozen paired risk-matched accounts. A matching local state digest alone cannot authenticate the exchange observation. The original account and negative v5 challenger evidence remain intact, with research-only and LIVE disabled.
 
-## October 11 — independent SHA-bound GitHub worker rank artifacts enter SHORT paired paper replay (PR pending)
+## October 11 — independent SHA-bound GitHub worker rank artifacts enter SHORT paired paper replay (merged #1160)
 
 The new `prospective_short_rank_worker_artifact.py` is a read-only **consumer** of the completed-worker first-seen SHORT rank source ZIP from PR #1159. The caller supplies *separately fetched* authenticated GitHub run + artifact metadata (exact original run ID, attempt, repository HEAD SHA, artifact name, ZIP size, and outer artifact sha256 digest). Before either separate paper account exists, it verifies the downloaded GitHub artifact ZIP digest/size, rejects missing/extra members, and cross-checks the inner completed-worker receipt, sealed rank ZIP hash, inner manifest run/attempt/head, every canonical unmodified snapshot row SHA256/digest, complete rank state digest and strictly monotone capture chronology. It then passes the **entire verified immutable rank population**, with latest-only decision-time rank selection, to the two paper accounts after checking the entire independently pinned market microstructure archive. Synthetic tests cover a complete dual-account replay, mismatched run/attempt/HEAD, altered artifact bytes, extra ZIP members, altered snapshot rows with recomputed hashes, and source failure before account creation.
 
 The verifier cannot prove GitHub API metadata was fetched authentically if a caller forges it, or prove the rank producer's feature inputs came from complete mainnet data. It explicitly reports this as unverified and leaves `full_account_trial=false`, `ready_for_review=false`, `promotion_authority=false`, and `execution_authority=false`. No independently authenticated real forward result has yet been generated. Original paper worker, frozen losing v5, stops, sizing, and live trading disabled remain untouched.
+
+## October 11 — independent completed-worker rank artifact audit (PR pending)
+
+An entirely read-only `workflow_run: completed` audit now fetches original paper-worker identity, the exact paper-job steps, and the independently published artifact SHA256/size from GitHub's API with a restricted read token. It requires successful real paper-trader, full first-seen rank sealing, and artifact upload steps on the *same run and attempt*, and verifies both ZIP layers and every original rank row against immutable outer and inner hashes. A failed/missing/ambiguous artifact or rerun-attempt mismatch produces a durable negative `unverified` receipt rather than fabricated completeness. The audit publishes only source identity/digest metadata and no trading or private position data, and **never launches an additional trader**.
+
+The audit can authenticate rank archive origin only to an original completed GitHub paper-worker artifact. It cannot yet establish mainnet market source coverage, rank feature/decision identity relative to original market observations, worker-to-worker continuity, or profitable risk-matched forward account economics. All readiness, full-trial, promotion and live-authority flags remain false, and the frozen negative signed v5 trial is untouched.
 
 **Current profitability-first source:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Read the timestamped verified economics there before selecting strategy changes; this status page contains older history as well.
 
