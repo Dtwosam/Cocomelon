@@ -71,6 +71,7 @@ class _Trade:
     exit_reason: str
     verified_context: bool
     original_decision_source_match: bool
+    original_decision_same_millisecond_uncertain: bool
     rank_missing: bool
     chart_complete: bool
     gross: Decimal
@@ -285,6 +286,7 @@ def _trade(raw: object) -> _Trade:
             volatility = _text(raw_volatility, "original entry volatility regime")
     original_source = row.get("original_first_seen_opportunity")
     original_source_match = False
+    original_source_same_ms = False
     if original_source is not None:
         original = _object(original_source, "first-seen opportunity source")
         status = _text(original.get("status"), "first-seen opportunity status")
@@ -337,7 +339,12 @@ def _trade(raw: object) -> _Trade:
                 raise PaperProfitabilityScoreboardError(
                     "original opportunity approval or decision clock mismatch"
                 )
-            original_source_match = True
+            # A matching decision ID at precisely the same millisecond
+            # as a fill does not prove it existed BEFORE that fill. Preserve
+            # the source/entire booked trade, but do not authorize a
+            # hypothetical abstention or treat this as an as-of match.
+            original_source_same_ms = timestamp == opened
+            original_source_match = timestamp < opened
         else:
             if any(
                 original.get(key) is not None
@@ -363,6 +370,7 @@ def _trade(raw: object) -> _Trade:
         exit_reason=exit_reason,
         verified_context=context_raw is not None,
         original_decision_source_match=original_source_match,
+        original_decision_same_millisecond_uncertain=original_source_same_ms,
         rank_missing=rank in {"missing", UNVERIFIED},
         chart_complete=chart,
         gross=gross,
@@ -892,6 +900,7 @@ def _original_first_seen_decision_coverage(
     """Book ALL original trades even when first-seen source is missing."""
     matched = [t for t in trades if t.original_decision_source_match]
     unmatched = [t for t in trades if not t.original_decision_source_match]
+    tied = [t for t in trades if t.original_decision_same_millisecond_uncertain]
     if len(matched) + len(unmatched) != len(trades):
         raise PaperProfitabilityScoreboardError(
             "original decision coverage partition mismatch"
@@ -924,6 +933,8 @@ def _original_first_seen_decision_coverage(
         "whole_original": _metrics(trades),
         "first_seen_matched": _metrics(matched),
         "first_seen_unmatched": _metrics(unmatched),
+        "first_seen_same_millisecond_not_provably_preopen": _metrics(tied),
+        "same_millisecond_opening_decisions_never_qualify": True,
         "by_original_verified_lead_strategy": contexts,
         "original_trades_preserved": True,
         "independent_archive_receipt_certified": False,
@@ -1244,6 +1255,10 @@ def _predeclared_mean_reversion_abstention(
         "forward_original_decision_matches": sum(
             trade.original_decision_source_match for trade in forward
         ),
+        "forward_same_millisecond_decisions_unproven": sum(
+            trade.original_decision_same_millisecond_uncertain
+            for trade in forward
+        ),
         "forward_mean_reversion_without_first_seen_match_retained": (
             len(uncertain_mr)
         ),
@@ -1505,6 +1520,9 @@ def _predeclared_long_trend_volatility_abstention(
         "zero_replacement_delta_cash": str(delta_cash),
         "zero_replacement_delta_r": str(delta_r),
         "unwitnessed_volatility_originals_retained": _metrics(uncertain),
+        "forward_same_millisecond_decisions_unproven": sum(
+            t.original_decision_same_millisecond_uncertain for t in forward
+        ),
         "unwitnessed_original_cannot_earn_skip_credit": True,
         "unwitnessed_context_cash_delta_lower": str(lower_cash),
         "unwitnessed_context_cash_delta_upper": str(upper_cash),
