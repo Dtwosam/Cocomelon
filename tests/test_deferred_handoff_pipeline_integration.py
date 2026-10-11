@@ -265,3 +265,47 @@ def test_crashed_real_store_handoff_cannot_generate_research_artifacts(
         write_long_entry_loss_attribution(tmp_path)
     assert not (tmp_path / "all-paper-trade-chart-audit.json").exists()
     assert not (tmp_path / "long-entry-loss-attribution.json").exists()
+
+
+def test_completed_worker_reads_genuine_first_seen_decision_store(
+    tmp_path: Path,
+) -> None:
+    from cocomelon.research.continuous_paper_opening_opportunity import (
+        ContinuousPaperOpeningOpportunityEvidence,
+        ContinuousPaperOpeningOpportunityStore,
+    )
+    _populate_state(tmp_path)
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    try:
+        trades = tuple(journal.iter_trades())
+    finally:
+        journal.close()
+    first = next(t for t in trades if t.opened_at_ms == 1_000_000)
+    store = ContinuousPaperOpeningOpportunityStore(
+        tmp_path / "opening-opportunities"
+    )
+    store.record(ContinuousPaperOpeningOpportunityEvidence(
+        strategy_decision_id=first.strategy_decision_id,
+        feature_snapshot_id=first.feature_snapshot_id,
+        market=first.market.canonical,
+        direction=first.direction.value,
+        lead_strategy="trend",
+        opportunity_timestamp_ms=first.opened_at_ms - 100,
+        baseline_risk_approved=True,
+        baseline_risk_reason_codes=(),
+        baseline_risk_decision_id=first.risk_decision_id,
+        equity_before=D("10000"),
+        risk_request={},
+        instrument={},
+        book={"event_key": "real-original-book"},
+    ))
+    _, _, report = write_deferred_trade_charts(tmp_path)
+    rows = {row["opened_at_ms"]: row for row in report["trades"]}
+    assert rows[1_000_000]["original_first_seen_opportunity"]["status"] == "matched"
+    assert rows[1_000_000]["original_first_seen_opportunity"]["lead_strategy"] == "trend"
+    assert rows[2_000_000]["original_first_seen_opportunity"]["status"] == "missing"
+    assert report["original_first_seen_opportunity_parity"]["counts"] == {
+        "matched": 1, "missing": 2,
+        "ambiguous": 0, "contradictory_or_stale": 0,
+    }
+    assert report["original_first_seen_opportunity_parity"]["promotion_authority"] is False

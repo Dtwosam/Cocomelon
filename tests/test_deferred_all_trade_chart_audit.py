@@ -306,3 +306,61 @@ def test_actual_distinct_mark_times_remain_chart_eligible() -> None:
     report = all_paper_trade_chart_audit((_trade(),), EmptyFacts(), (path,))
     assert report["trades"][0]["chart_coverage_complete"] is True
     assert report["complete_chart_paths"] == 1
+
+
+def test_missing_first_seen_opportunity_never_creates_decision_proof() -> None:
+    from cocomelon.research.deferred_all_trade_chart_audit import (
+        _original_first_seen_opportunity_parity,
+    )
+
+    trade = _trade()
+    trade.risk_decision_id = "risk-real"
+    report = _original_first_seen_opportunity_parity(
+        trade, (), context_lead="mean_reversion",
+    )
+    assert report["status"] == "missing"
+    assert report["lead_strategy"] is None
+    assert report["online_filter_state_certified"] is False
+    assert report["promotion_authority"] is False
+
+
+def test_first_seen_trade_decision_join_rejects_stale_conflicting_ambiguous() -> None:
+    from cocomelon.research.deferred_all_trade_chart_audit import (
+        _original_first_seen_opportunity_parity,
+    )
+    trade = _trade()
+    trade.risk_decision_id = "risk-real"
+    matched = SimpleNamespace(
+        strategy_decision_id=trade.strategy_decision_id,
+        feature_snapshot_id=trade.feature_snapshot_id,
+        baseline_risk_decision_id=trade.risk_decision_id,
+        market=trade.market.canonical,
+        direction=trade.direction.value,
+        baseline_risk_approved=True,
+        opportunity_timestamp_ms=trade.opened_at_ms - 1,
+        lead_strategy="mean_reversion",
+    )
+    proven = _original_first_seen_opportunity_parity(
+        trade, (matched,), context_lead="mean_reversion",
+    )
+    assert proven["status"] == "matched"
+    assert proven["lead_strategy"] == "mean_reversion"
+    assert proven["independently_archived_before_trade"] is False
+    assert _original_first_seen_opportunity_parity(
+        trade, (matched, matched), context_lead="mean_reversion"
+    )["status"] == "ambiguous"
+    from dataclasses import replace
+    for wrong in (
+        {"opportunity_timestamp_ms": trade.opened_at_ms + 1},
+        {"opportunity_timestamp_ms": trade.opened_at_ms - 300_001},
+        {"baseline_risk_approved": False},
+        {"baseline_risk_decision_id": "other-risk"},
+        {"feature_snapshot_id": "other-feature"},
+        {"market": "BTC"},
+        {"direction": "short"},
+        {"lead_strategy": "trend"},
+    ):
+        altered = SimpleNamespace(**{**vars(matched), **wrong})
+        assert _original_first_seen_opportunity_parity(
+            trade, (altered,), context_lead="mean_reversion",
+        )["status"] == "contradictory_or_stale"

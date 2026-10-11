@@ -59,6 +59,7 @@ class _Trade:
     rank_band: str
     exit_reason: str
     verified_context: bool
+    original_decision_source_match: bool
     rank_missing: bool
     chart_complete: bool
     gross: Decimal
@@ -268,6 +269,73 @@ def _trade(raw: object) -> _Trade:
             )
         lead = _text(context.get("lead_strategy"), "lead strategy")
         rank = _text(context.get("rank_band"), "entry rank band")
+    original_source = row.get("original_first_seen_opportunity")
+    original_source_match = False
+    if original_source is not None:
+        original = _object(original_source, "first-seen opportunity source")
+        status = _text(original.get("status"), "first-seen opportunity status")
+        if status not in {
+            "matched", "missing", "ambiguous", "contradictory_or_stale"
+        }:
+            raise PaperProfitabilityScoreboardError(
+                "unsupported original opportunity source status"
+            )
+        if (
+            original.get("source_phase") != (
+                "original_paper_opening_opportunity_after_risk_evaluation"
+            )
+            or original.get("independently_archived_before_trade") is not False
+            or original.get("online_filter_state_certified") is not False
+            or original.get("promotion_authority") is not False
+        ):
+            raise PaperProfitabilityScoreboardError(
+                "invalid original first-seen source authority"
+            )
+        if status == "matched":
+            if context_raw is None:
+                raise PaperProfitabilityScoreboardError(
+                    "matched original decision has no verified trade context"
+                )
+            for key, expected in (
+                ("market", market),
+                ("direction", side),
+                ("lead_strategy", lead),
+                ("strategy_decision_id", row.get("strategy_decision_id")),
+                ("feature_snapshot_id", row.get("feature_snapshot_id")),
+                ("risk_decision_id", row.get("risk_decision_id")),
+            ):
+                if not isinstance(expected, str) or not expected or (
+                    original.get(key) != expected
+                ):
+                    raise PaperProfitabilityScoreboardError(
+                        f"original opportunity lineage mismatch: {key}"
+                    )
+            timestamp = _integer(
+                original.get("opportunity_timestamp_ms"),
+                "original opportunity decision time",
+            )
+            if (
+                original.get("baseline_risk_approved") is not True
+                or timestamp > opened
+                or opened - timestamp > 300_000
+            ):
+                raise PaperProfitabilityScoreboardError(
+                    "original opportunity approval or decision clock mismatch"
+                )
+            original_source_match = True
+        else:
+            if any(
+                original.get(key) is not None
+                for key in (
+                    "market", "direction", "lead_strategy",
+                    "strategy_decision_id", "feature_snapshot_id",
+                    "risk_decision_id", "opportunity_timestamp_ms",
+                    "baseline_risk_approved",
+                )
+            ):
+                raise PaperProfitabilityScoreboardError(
+                    "uncertain original source claims matching decision"
+                )
     return _Trade(
         trade_id=trade_id,
         market=market,
@@ -278,6 +346,7 @@ def _trade(raw: object) -> _Trade:
         rank_band=rank,
         exit_reason=exit_reason,
         verified_context=context_raw is not None,
+        original_decision_source_match=original_source_match,
         rank_missing=rank in {"missing", UNVERIFIED},
         chart_complete=chart,
         gross=gross,
@@ -818,11 +887,19 @@ def _predeclared_mean_reversion_abstention(
     # Missing/unverified original entry contexts never receive skip credit.
     avoided = [
         trade for trade in forward
-        if trade.verified_context and trade.lead_strategy == "mean_reversion"
+        if (
+            trade.verified_context
+            and trade.original_decision_source_match
+            and trade.lead_strategy == "mean_reversion"
+        )
     ]
     retained = [
         trade for trade in forward
-        if not (trade.verified_context and trade.lead_strategy == "mean_reversion")
+        if not (
+            trade.verified_context
+            and trade.original_decision_source_match
+            and trade.lead_strategy == "mean_reversion"
+        )
     ]
     original_cash = sum((trade.net for trade in forward), ZERO)
     original_r = sum((trade.net_r for trade in forward), ZERO)
@@ -870,6 +947,7 @@ def _predeclared_mean_reversion_abstention(
         and len(first_avoided) >= 3
         and len(second_avoided) >= 3
         and all(t.verified_context for t in forward)
+        and all(t.original_decision_source_match for t in forward)
     )
     return {
         "hypothesis_id": "discovery-mean-reversion-abstain-after-cost-v1",
@@ -882,6 +960,8 @@ def _predeclared_mean_reversion_abstention(
         "discovery_period_pnl_never_scored": True,
         "source": "authenticated_completed_original_journal_with_posttrade_entry_context",
         "independent_online_filter_state_certified": False,
+        "requires_first_seen_original_decision_join": True,
+        "independent_archive_receipt_certified": False,
         "trading_replacements_modeled": False,
         "capital_reallocation_modeled": False,
         "full_account_trial": False,
@@ -898,6 +978,15 @@ def _predeclared_mean_reversion_abstention(
         "original_forward_net_r": str(original_r),
         "forward_unverified_entry_contexts_retained": sum(
             not trade.verified_context for trade in retained
+        ),
+        "forward_original_decision_matches": sum(
+            trade.original_decision_source_match for trade in forward
+        ),
+        "forward_mean_reversion_without_first_seen_match_retained": sum(
+            trade.verified_context
+            and trade.lead_strategy == "mean_reversion"
+            and not trade.original_decision_source_match
+            for trade in retained
         ),
         "verified_mean_reversion_avoided": _metrics(avoided),
         "retained_original_closes": _metrics(retained),
@@ -938,7 +1027,9 @@ def _predeclared_mean_reversion_abstention(
         ],
         "descriptive_sample_floor_met_not_promotion": descriptive_floor,
         "warning": (
-            "Only new post-embargo original booked fills count. The skip is "
+            "Only new post-embargo originals with a matching first-seen "
+            "original approved decision and verified entry context are "
+            "counted as skipped. The skip is "
             "zero replacement cash, not a causal matched capital-constrained "
             "account. Verified posttrade context is not independently "
             "archived decision-time observation. Prior 9 losing trades are "

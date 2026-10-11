@@ -20,6 +20,10 @@ from cocomelon.research.closed_trade_lifecycle_economics import (
 from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankStore,
 )
+from cocomelon.research.continuous_paper_opening_opportunity import (
+    ContinuousPaperOpeningOpportunityEvidence,
+    ContinuousPaperOpeningOpportunityStore,
+)
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
@@ -541,6 +545,72 @@ function render(){svg.replaceChildren();const r=rows[Number(sel.value)||0];if(!r
 """
 
 
+
+# Descriptive upper bound for an original decision/actual opening join;
+# not an alteration to online rank, entry or execution freshness checks.
+MAX_ORIGINAL_DECISION_TO_OPEN_LAG_MS: Final = 300_000
+ORIGINAL_DECISION_SOURCE_PHASE: Final = (
+    "original_paper_opening_opportunity_after_risk_evaluation"
+)
+
+
+def _original_first_seen_opportunity_parity(
+    trade: TradeJournalEntry,
+    candidates: Sequence[ContinuousPaperOpeningOpportunityEvidence],
+    *,
+    context_lead: str | None,
+) -> dict[str, object]:
+    """Use first-written original opportunity only; never infer from exit."""
+    status = "missing"
+    match: ContinuousPaperOpeningOpportunityEvidence | None = None
+    if len(candidates) > 1:
+        status = "ambiguous"
+    elif len(candidates) == 1:
+        candidate = candidates[0]
+        if (
+            candidate.strategy_decision_id != trade.strategy_decision_id
+            or candidate.feature_snapshot_id != trade.feature_snapshot_id
+            or candidate.baseline_risk_decision_id != trade.risk_decision_id
+            or candidate.market != trade.market.canonical
+            or candidate.direction != trade.direction.value
+            or candidate.baseline_risk_approved is not True
+            or candidate.opportunity_timestamp_ms > trade.opened_at_ms
+            or trade.opened_at_ms - candidate.opportunity_timestamp_ms
+            > MAX_ORIGINAL_DECISION_TO_OPEN_LAG_MS
+            or context_lead is None
+            or candidate.lead_strategy != context_lead
+        ):
+            status = "contradictory_or_stale"
+        else:
+            status = "matched"
+            match = candidate
+    return {
+        "status": status,
+        "source_phase": ORIGINAL_DECISION_SOURCE_PHASE,
+        "independently_archived_before_trade": False,
+        "online_filter_state_certified": False,
+        "promotion_authority": False,
+        "strategy_decision_id": (
+            None if match is None else match.strategy_decision_id
+        ),
+        "feature_snapshot_id": (
+            None if match is None else match.feature_snapshot_id
+        ),
+        "risk_decision_id": (
+            None if match is None else match.baseline_risk_decision_id
+        ),
+        "market": None if match is None else match.market,
+        "direction": None if match is None else match.direction,
+        "lead_strategy": None if match is None else match.lead_strategy,
+        "opportunity_timestamp_ms": (
+            None if match is None else match.opportunity_timestamp_ms
+        ),
+        "baseline_risk_approved": (
+            None if match is None else match.baseline_risk_approved
+        ),
+    }
+
+
 def write_deferred_trade_charts(
     state_root: str | Path,
 ) -> tuple[Path, Path, dict[str, object]]:
@@ -571,11 +641,54 @@ def write_deferred_trade_charts(
         )
         verified_context = entry_analysis["entry_context_by_trade_id"]
         assert isinstance(verified_context, dict)
+        # The original write-once opening opportunity is distinct from
+        # retrospective closed-trade decision/fact reconstruction.
+        originals = ContinuousPaperOpeningOpportunityStore(
+            root / "opening-opportunities"
+        ).iter_records()
+        by_decision: dict[
+            str, list[ContinuousPaperOpeningOpportunityEvidence]
+        ] = {}
+        for opportunity in originals:
+            by_decision.setdefault(
+                opportunity.strategy_decision_id, []
+            ).append(opportunity)
+        by_trade_id = {trade.trade_id: trade for trade in trades}
         rows = report["trades"]
         assert isinstance(rows, list)
+        parity_counts: dict[str, int] = {
+            "matched": 0, "missing": 0,
+            "ambiguous": 0, "contradictory_or_stale": 0,
+        }
         for item in rows:
             assert isinstance(item, dict)
-            item["entry_context"] = verified_context.get(item["trade_id"])
+            ident = str(item["trade_id"])
+            context = verified_context.get(ident)
+            item["entry_context"] = context
+            context_lead = (
+                str(context["lead_strategy"])
+                if isinstance(context, dict)
+                and isinstance(context.get("lead_strategy"), str)
+                else None
+            )
+            trade = by_trade_id[ident]
+            parity = _original_first_seen_opportunity_parity(
+                trade, by_decision.get(trade.strategy_decision_id, ()),
+                context_lead=context_lead,
+            )
+            item["original_first_seen_opportunity"] = parity
+            status = str(parity["status"])
+            parity_counts[status] += 1
+        report["original_first_seen_opportunity_parity"] = {
+            "source": ORIGINAL_DECISION_SOURCE_PHASE,
+            "total_closed_trades": len(trades),
+            "distinct_persisted_opportunities": len(originals),
+            "counts": parity_counts,
+            "independently_archived_before_trade": False,
+            "online_filter_state_certified": False,
+            "research_readiness_grant": False,
+            "promotion_authority": False,
+        }
         overall = report["economics"]
         assert isinstance(overall, dict)
         total = overall["overall"]
