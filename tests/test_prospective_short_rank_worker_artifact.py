@@ -196,7 +196,7 @@ def test_mutated_inner_snapshot_after_recomputed_github_digest_fails(
                 ).hexdigest()
                 row = (
                     json.dumps(payload, sort_keys=True, separators=(",", ":"))
-                    + "\\n"
+                    + "\n"
                 ).encode()
                 assert row != zin.read(name)
             zout.writestr(name, row)
