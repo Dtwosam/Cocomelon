@@ -327,3 +327,43 @@ def test_out_of_order_market_observation_fails_closed(tmp_path: Path) -> None:
             replay.summary()
     finally:
         replay.close()
+
+
+
+def test_baseline_and_candidate_share_single_immutable_rank_snapshot(
+    tmp_path: Path,
+) -> None:
+    calls = 0
+
+    def alternating_provider(
+        market: MarketId, timestamp_ms: int,
+    ) -> ObservedRankWitness | None:
+        nonlocal calls
+        calls += 1
+        # A second call would make the candidate keep a losing entry,
+        # retrospectively changing the frozen comparison.
+        if calls == 1:
+            return ObservedRankWitness(ordinal=8, observed_at_ms=EVALUATED_MS - 1_000)
+        return None
+
+    config = BaselineReplayConfig(execution=PaperExecutionConfig())
+    replay = ShortRankIndependentPairedPaperReplay(
+        freeze=FREEZE,
+        config=config,
+        manifest=_manifest(),
+        selected_markets=(MARKET,),
+        rank_witness_provider=alternating_provider,
+        state_root=tmp_path / "shared-source",
+        decision_engine_factory=lambda: _ShortScriptedEngine(config),
+    )
+    try:
+        for record in _records():
+            replay.on_record(record)
+        result = replay.summary()
+    finally:
+        replay.close()
+    assert calls == 1
+    assert result["rank_witness_values_shared_between_lanes"] is True
+    admission = result["candidate_admission"]
+    assert isinstance(admission, dict)
+    assert admission["rank4plus_blocked"] == 1
