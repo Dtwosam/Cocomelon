@@ -30,6 +30,9 @@ from cocomelon.research.prospective_short_breakout_paired_entry import (
 from cocomelon.research.prospective_short_breakout_rank import (
     ProspectiveShortBreakoutRankState,
 )
+from cocomelon.research.prospective_short_rank_utc_window import (
+    PairedAccountUtcWindowLedger,
+)
 
 ZERO: Final = Decimal("0")
 
@@ -153,6 +156,10 @@ class ShortRankIndependentPairedPaperReplay:
         self._candidate_peak = config.starting_cash
         self._baseline_max_drawdown = ZERO
         self._candidate_max_drawdown = ZERO
+        self._utc_window_ledger = PairedAccountUtcWindowLedger(
+            started_at_ms=manifest.start_ms,
+            starting_cash=config.starting_cash,
+        )
 
     @staticmethod
     def _drawdown(account: PaperAccountState, peak: Decimal) -> Decimal:
@@ -208,6 +215,17 @@ class ShortRankIndependentPairedPaperReplay:
         if record.record_kind is SourceRecordKind.DATA_GAP:
             self._gap_records += 1
         self._record_hash.update(canonical_record)
+        try:
+            self._utc_window_ledger.record(
+                at_ms=record.available_at_ms,
+                baseline_equity=self._baseline_execution.account.equity,
+                baseline_realized=self._realized_net(self._baseline_execution.account),
+                candidate_equity=self._candidate_execution.account.equity,
+                candidate_realized=self._realized_net(self._candidate_execution.account),
+            )
+        except Exception:
+            self._failed = True
+            raise
         for execution, lane in (
             (self._baseline_execution, "baseline"),
             (self._candidate_execution, "candidate"),
@@ -227,6 +245,14 @@ class ShortRankIndependentPairedPaperReplay:
                 )
 
     @staticmethod
+    def _realized_net(account: PaperAccountState) -> Decimal:
+        return (
+            account.realized_gross_pnl
+            - account.cumulative_fees
+            + account.cumulative_funding
+        )
+
+    @staticmethod
     def _account_report(
         account: PaperAccountState,
         trades_net: Decimal,
@@ -236,11 +262,7 @@ class ShortRankIndependentPairedPaperReplay:
         peak: Decimal,
         max_drawdown: Decimal,
     ) -> dict[str, object]:
-        realized = (
-            account.realized_gross_pnl
-            - account.cumulative_fees
-            + account.cumulative_funding
-        )
+        realized = ShortRankIndependentPairedPaperReplay._realized_net(account)
         marked = account.equity - account.starting_cash
         return {
             "starting_cash": str(account.starting_cash),
@@ -297,6 +319,12 @@ class ShortRankIndependentPairedPaperReplay:
             and self._candidate_execution.health.healthy_for_new_exposure
         ):
             raise ShortRankPairedReplayError("paired execution health degraded")
+        utc_windows = self._utc_window_ledger.reconciled_payload(
+            baseline_equity=baseline_account.equity,
+            baseline_realized=self._realized_net(baseline_account),
+            candidate_equity=candidate_account.equity,
+            candidate_realized=self._realized_net(candidate_account),
+        )
         return {
             "candidate_id": self._freeze.candidate_id,
             "frozen_forward_start_ms": self._freeze.started_at_ms,
@@ -304,6 +332,7 @@ class ShortRankIndependentPairedPaperReplay:
             "paired_observed_record_count": self._record_count,
             "paired_record_stream_sha256": self._record_hash.hexdigest(),
             "source_data_gap_record_count": self._gap_records,
+            "fixed_utc_checkpoint_window_reconciliation": utc_windows,
             "baseline": baseline,
             "candidate": candidate,
             "candidate_minus_baseline_marked_account_pnl": str(
