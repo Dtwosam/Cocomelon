@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
+import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -314,3 +317,37 @@ def test_original_still_running_cannot_be_passed_off_as_completed(
     assert _assess(run, jobs, artifacts, raw)[
         "failure_reason_code"
     ] == "original_paper_run_or_job_not_completed"
+
+
+def test_real_attestor_script_publishes_negative_receipt_for_corrupt_api_json(
+    tmp_path: Path,
+) -> None:
+    """Malformed original GitHub metadata must not crash before publication."""
+    (tmp_path / "run.json").write_text("{unparseable", encoding="utf-8")
+    (tmp_path / "jobs.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "artifacts.json").write_text("{}", encoding="utf-8")
+    receipt = tmp_path / "attestation.json"
+    result = subprocess.run([
+        sys.executable,
+        "scripts/attest_paper_short_rank_artifact.py",
+        "--run-json", str(tmp_path / "run.json"),
+        "--jobs-json", str(tmp_path / "jobs.json"),
+        "--artifacts-json", str(tmp_path / "artifacts.json"),
+        "--artifact-zip", str(tmp_path / "not-published.zip"),
+        "--source-run-id", str(RUN),
+        "--source-run-attempt", "1",
+        "--repository", REPOSITORY,
+        "--output", str(receipt),
+    ], check=False, capture_output=True, text=True,
+        cwd=Path(__file__).resolve().parents[1])
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    assert json.loads(result.stdout.strip()) == payload
+    assert payload["first_seen_rank_artifact_status"] == "unverified"
+    assert payload["failure_reason_code"] == (
+        "original_worker_source_metadata_or_artifact_invalid"
+    )
+    assert payload["github_artifact_digest_and_step_metadata_checked"] is False
+    assert payload["ready_for_review"] is False
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False

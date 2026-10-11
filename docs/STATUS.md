@@ -2,6 +2,12 @@
 
 **Profitability-first evidence anchor:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Negative signed forward economics remain the binding result; archive engineering does not authorize promotion.
 
+## October 11 — negative receipts survive corrupted independent rank-audit API inputs
+
+The three completed-worker original SHORT rank source auditors now treat missing, malformed, or unreadable GitHub API JSON/ZIP source files as **unverified evidence**, rather than throwing before a receipt can be published. The first rank attestor also catches malformed source identity/archive errors and writes its existing explicit negative, no-authority result to the normal output path. Integration tests execute each real CLI entrypoint against corrupted source files and assert an on-disk JSON receipt, unverified outcome, and false readiness/execution/promotion. This protects artifact publication when an independent source download or local file becomes damaged; it does **not** turn missing evidence into success.
+
+The first matching corrected completed worker rank ZIP is still outstanding. The earlier 86 intact full-feature batches are inputs only, not independently proven rank scores or profitable trades. Complete eligibility, source market coverage, signed whole-account expectancy and any live authorization remain unproven. Original paper execution, account, stops, risk and frozen v5 remain unchanged.
+
 ## October 11 — automatic completed-worker original SHORT coarse ranking recomputation (PR pending)
 
 The previously separate read-only rank score arithmetic checker is now wired into the **independent completed original-paper GitHub Actions audit**, without starting any trader. The audit obtains the actual original run/attempt/HEAD and both rank and full feature input artifact names, SHA256 and byte counts from the real GitHub API, checks full rank/export/upload steps, validates both original ZIP layers and all full feature payload batches, then recomputes every original coarse rank ordinal, exact Decimal score and reason ordering for the genuine prospective full-input suffix. It publishes an immutable explicit positive *arithmetic-only* or negative audit artifact. An upgrade-only predecessor remains marked upgrade-only even with perfect source arithmetic; an absent source or altered/forged rank never becomes successful research.
