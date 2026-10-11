@@ -350,3 +350,36 @@ def test_real_workflow_cli_module_returns_durable_negative_missing_source(
     )
     assert payload["ready_for_review"] is False
     assert json.loads(result.stdout.strip()) == payload
+
+
+def test_coarse_score_cli_corrupt_github_metadata_emits_negative_receipt(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "api"
+    source.mkdir()
+    (source / "run.json").write_text("{broken", encoding="utf-8")
+    (source / "jobs.json").write_text("{}", encoding="utf-8")
+    (source / "artifacts.json").write_text("{}", encoding="utf-8")
+    (source / "artifact.zip").write_bytes(b"not an archive")
+    (source / "full-input-artifact.zip").write_bytes(b"not an archive")
+    receipt = tmp_path / "coarse-invalid-source.json"
+    result = subprocess.run([
+        sys.executable, "-m", "scripts.audit_paper_short_rank_coarse_scores",
+        "--source-dir", str(source),
+        "--source-run-id", str(RUN),
+        "--source-run-attempt", "1",
+        "--repository", REPO,
+        "--output", str(receipt),
+    ], check=False, capture_output=True, text=True,
+        cwd=Path(__file__).resolve().parents[1])
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    assert json.loads(result.stdout.strip()) == payload
+    assert payload["rank_coarse_score_audit_status"] == "unverified"
+    assert payload["failure_reason_code"] == (
+        "original_worker_coarse_score_source_or_arithmetic_invalid"
+    )
+    assert payload["both_original_worker_artifact_sha256s_verified"] is False
+    assert payload["ready_for_review"] is False
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
