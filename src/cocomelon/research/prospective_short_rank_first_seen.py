@@ -228,6 +228,8 @@ class FirstSeenRankSnapshotStore:
         self.root = Path(root)
         self.records = self.root / "snapshots"
         self.records.mkdir(parents=True, exist_ok=True)
+        previous = self.iter_records()
+        self._last = previous[-1] if previous else None
 
     def iter_records(self) -> tuple[FirstSeenRankSnapshot, ...]:
         result: list[FirstSeenRankSnapshot] = []
@@ -256,7 +258,6 @@ class FirstSeenRankSnapshotStore:
         return tuple(result)
 
     def append(self, snapshot: FirstSeenRankSnapshot) -> bool:
-        existing = self.iter_records()
         path = self.records / f"{snapshot.observed_at_ms:016d}.json"
         encoded = (_canonical_json(snapshot.to_dict()) + "\n").encode("utf-8")
         if path.exists():
@@ -265,9 +266,9 @@ class FirstSeenRankSnapshotStore:
                     "FIRST_SEEN_RANK_SNAPSHOT_CONFLICT"
                 )
             return False
-        if existing and (
-            snapshot.observed_at_ms <= existing[-1].observed_at_ms
-            or snapshot.captured_at_ms < existing[-1].captured_at_ms
+        if self._last is not None and (
+            snapshot.observed_at_ms <= self._last.observed_at_ms
+            or snapshot.captured_at_ms < self._last.captured_at_ms
         ):
             raise ShortRankFirstSeenError(
                 "first-seen rank snapshot backdated across handoff"
@@ -289,6 +290,7 @@ class FirstSeenRankSnapshotStore:
         finally:
             if temp.exists():
                 temp.unlink()
+        self._last = snapshot
         return True
 
     def witness_for_decision(
