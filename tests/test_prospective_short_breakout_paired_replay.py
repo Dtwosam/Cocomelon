@@ -293,13 +293,13 @@ def test_missing_rank_retains_loser_in_both_real_paper_simulations(
     assert admission["unverifiable_by_reason"] == {"missing_rank_witness": 1}
 
 
-def test_nonmonotonic_source_is_fatal_and_never_publishes_report(
+def test_duplicate_source_is_fatal_and_never_publishes_report(
     tmp_path: Path,
 ) -> None:
     replay = _paired(tmp_path / "bad-order", None)
     try:
         replay.on_record(_records()[0])
-        with pytest.raises(ShortRankPairedReplayError, match="nonmonotonic"):
+        with pytest.raises(ShortRankPairedReplayError, match="duplicate"):
             replay.on_record(_records()[0])
         with pytest.raises(ShortRankPairedReplayError, match="valid"):
             replay.summary()
@@ -315,3 +315,15 @@ def test_unchanged_second_run_cannot_reuse_or_reset_an_account(
     first.close()
     with pytest.raises(ShortRankPairedReplayError, match="new and empty"):
         _paired(root, None)
+
+
+def test_out_of_order_market_observation_fails_closed(tmp_path: Path) -> None:
+    replay = _paired(tmp_path / "out-of-order", None)
+    try:
+        replay.on_record(_records()[1])
+        with pytest.raises(ShortRankPairedReplayError, match="nonmonotonic"):
+            replay.on_record(_records()[0])
+        with pytest.raises(ShortRankPairedReplayError, match="valid"):
+            replay.summary()
+    finally:
+        replay.close()
