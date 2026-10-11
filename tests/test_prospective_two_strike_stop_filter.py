@@ -571,3 +571,47 @@ def test_shared_terminal_journal_asof_guard_never_backfills_unclosed_open() -> N
         market="SOL",
         direction="long",
     )
+
+
+def test_same_millisecond_terminal_close_cannot_be_used_at_decision() -> None:
+    """Close and opportunity sharing one ms lack an authoritative event order."""
+    state = ProspectiveTwoStrikeStopFilterState(frozen_at_ms=0)
+    start = state.started_at_ms
+    decision_ms = start + 400_000
+    earlier = _trade(
+        "closed-before", opened_at_ms=start + 200_000,
+        pnl="-5", hold_ms=60_000,
+    )
+    tied = _trade(
+        "closed-at-decision", opened_at_ms=start + 340_000,
+        pnl="-6", hold_ms=60_000,
+    )
+    assert tied.closed_at_ms == decision_ms
+    assert terminal_trades_known_at(
+        (earlier, tied), timestamp_ms=decision_ms
+    ) == (earlier,)
+    assert future_finalized_open_exposure(
+        (earlier, tied),
+        timestamp_ms=decision_ms,
+        overlap_started_at_ms=start,
+        market="SOL",
+        direction="long",
+    )
+    # A strictly later query may now use the finalized close; no lookahead.
+    assert terminal_trades_known_at(
+        (earlier, tied), timestamp_ms=decision_ms + 1
+    ) == (earlier, tied)
+    assert not future_finalized_open_exposure(
+        (earlier, tied),
+        timestamp_ms=decision_ms + 1,
+        overlap_started_at_ms=start,
+        market="SOL",
+        direction="long",
+    )
+    assert not future_finalized_open_exposure(
+        (earlier, tied),
+        timestamp_ms=decision_ms,
+        overlap_started_at_ms=start,
+        market="SOL",
+        direction="short",
+    )

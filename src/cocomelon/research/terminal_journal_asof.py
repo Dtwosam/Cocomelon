@@ -1,7 +1,7 @@
 """Conservative as-of projections from the original terminal-only paper journal.
 
 This is a RESEARCH-ONLY input filter. A finalized trade must not contribute
-its historical opening to an opportunity evaluated before that finalization.
+its historical opening to an opportunity evaluated at or before that finalization.
 
 A terminal-only journal cannot certify an earlier open was observed. When
 such a trade overlaps an opportunity, callers must flag research integrity
@@ -19,9 +19,9 @@ def terminal_trades_known_at(
     *,
     timestamp_ms: int,
 ) -> tuple[TradeJournalEntry, ...]:
-    """Use only original terminal records finalized by the query clock."""
+    """Require strictly earlier close time; same-ms event ordering is unknown."""
     return tuple(
-        trade for trade in trades if trade.closed_at_ms <= timestamp_ms
+        trade for trade in trades if trade.closed_at_ms < timestamp_ms
     )
 
 
@@ -33,11 +33,11 @@ def future_finalized_open_exposure(
     market: str,
     direction: str,
 ) -> bool:
-    """Potential online-open provenance gap; never grant readiness when true."""
+    """Include same-millisecond closes: no proof close preceded decision."""
     return any(
         trade.opened_at_ms >= overlap_started_at_ms
         and trade.opened_at_ms < timestamp_ms
-        and trade.closed_at_ms > timestamp_ms
+        and trade.closed_at_ms >= timestamp_ms
         and trade.market.canonical == market
         and trade.direction.value == direction
         for trade in trades

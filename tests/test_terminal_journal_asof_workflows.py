@@ -32,8 +32,8 @@ def test_asof_helpers_are_read_only_and_do_not_use_advance_knowledge() -> None:
     source = Path(
         "src/cocomelon/research/terminal_journal_asof.py"
     ).read_text(encoding="utf-8")
-    assert "trade.closed_at_ms <= timestamp_ms" in source
-    assert "trade.closed_at_ms > timestamp_ms" in source
+    assert "trade.closed_at_ms < timestamp_ms" in source
+    assert "trade.closed_at_ms >= timestamp_ms" in source
     assert "trade.opened_at_ms < timestamp_ms" in source
     assert "trade.direction.value == direction" in source
     assert "trade.market.canonical == market" in source
