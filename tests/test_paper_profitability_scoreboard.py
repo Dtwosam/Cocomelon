@@ -51,6 +51,7 @@ def _trade(
         "net_pnl": str(net),
         "net_r": str(net / Decimal("20")),
         "chart_coverage_complete": chart,
+        "exit_reason": "MARK_STOP_TRIGGERED",
         "chart_path_present": chart,
         "chart_mark_count": 2 if chart else 0,
         "chart_mark_samples": (
@@ -1469,3 +1470,160 @@ def test_incomplete_simultaneous_marks_preserve_booked_losing_trade() -> None:
         "complete_observed_path_original_closes"
     ]["trades"] == 1
     assert result["promotion_authority"] is False
+
+
+
+def test_original_exit_mechanisms_reconcile_actual_cash_and_missing_context() -> None:
+    """The book loses on stops; closing thesis wins elsewhere do not vanish."""
+    rows = [
+        _trade(
+            1, side="short", market="BTC", strategy="trend",
+            gross="-31", chart=True,
+        ),
+        _trade(
+            2, side="short", market="ETH", strategy="breakout",
+            gross="21", chart=False,
+        ),
+        _trade(
+            3, side="long", market="SOL", strategy=None,
+            gross="-8", chart=False,
+        ),
+        _trade(
+            4, side="long", market="OP", strategy="trend",
+            gross="-6", chart=True,
+        ),
+        _trade(
+            5, side="short", market="ADA", strategy="trend",
+            gross="50", chart=False,
+        ),
+    ]
+    rows[1]["exit_reason"] = "OPPOSITE_FRESH_THESIS"
+    rows[4]["exit_reason"] = "OPPOSITE_FRESH_THESIS"
+    result = paper_profitability_scoreboard(_reconciled_audit_from_rows(rows))
+    diag = result["original_booked_exit_mechanisms"]
+    assert diag["suitable_as_entry_filter"] is False
+    assert diag["counterfactual_exit_or_skip_account_simulated"] is False
+    assert diag["exit_reason_known_only_after_original_entry"] is True
+    assert diag["promotion_authority"] is False
+    assert diag["whole_original_cohort"]["trades"] == 5
+    assert diag["whole_original_cohort"]["net_pnl"] == "21.0"
+    for key in (
+        "by_exit_reason", "by_side_and_exit_reason",
+        "by_strategy_and_exit_reason", "by_side_strategy_and_exit_reason",
+    ):
+        groups = diag[key]
+        assert sum(group["trades"] for group in groups) == 5
+        for field in ("gross_realized_pnl", "fees", "funding_cash_pnl", "net_pnl", "net_r"):
+            assert sum(Decimal(group[field]) for group in groups) == Decimal(
+                diag["whole_original_cohort"][field]
+            )
+    stops = next(
+        group for group in diag["by_exit_reason"]
+        if group["cohort"]["exit_reason"] == "MARK_STOP_TRIGGERED"
+    )
+    thesis = next(
+        group for group in diag["by_exit_reason"]
+        if group["cohort"]["exit_reason"] == "OPPOSITE_FRESH_THESIS"
+    )
+    assert stops["trades"] == 3
+    assert Decimal(stops["net_pnl"]) == -48
+    assert thesis["trades"] == 2
+    assert Decimal(thesis["net_pnl"]) == 69
+    assert sum(
+        group["trades"] for group in diag["by_strategy_and_exit_reason"]
+        if group["cohort"]["lead_strategy"] == "UNVERIFIED_ENTRY_CONTEXT"
+    ) == 1
+    charts = diag["by_exit_reason_with_original_chart_coverage"]
+    assert sum(
+        row["complete_observed_path_original_closes"]["trades"] for row in charts
+    ) == 2
+    assert sum(
+        row["incomplete_or_missing_path_original_closes"]["trades"] for row in charts
+    ) == 3
+    assert result["ready_for_strategy_promotion"] is False
+
+
+def test_original_exit_mechanism_missing_reason_is_not_imputed() -> None:
+    audit = _audit()
+    audit["trades"][0].pop("exit_reason")
+    with pytest.raises(PaperProfitabilityScoreboardError, match="exit reason"):
+        paper_profitability_scoreboard(audit)
+
+
+def test_frozen_exit_reason_attribution_excludes_pre_embargo_openings() -> None:
+    from cocomelon.research.prospective_trend_outside_top10 import (
+        ProspectiveTrendOutsideTop10State,
+    )
+
+    cutoff = 6 * 3_600_000
+    rows = [
+        _move_trade_to_original_open_time(
+            _trade(
+                1, side="short", market="BTC", strategy="trend",
+                rank="outside10", gross="150",
+            ), cutoff - 1, closed_at_ms=cutoff + 8,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                2, side="long", market="ETH", strategy="trend",
+                rank="outside10", gross="-10",
+            ), cutoff, closed_at_ms=cutoff + 9,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                3, side="short", market="SOL", strategy="trend",
+                rank="top10", gross="30",
+            ), cutoff + 1, closed_at_ms=cutoff + 10,
+        ),
+        _move_trade_to_original_open_time(
+            _trade(
+                4, side="long", market="OP", strategy="trend",
+                rank="missing", gross="-4",
+            ), cutoff + 2, closed_at_ms=cutoff + 11,
+        ),
+    ]
+    rows[0]["exit_reason"] = "OPPOSITE_FRESH_THESIS"
+    rows[2]["exit_reason"] = "OPPOSITE_FRESH_THESIS"
+    result = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows(rows),
+        trend_outside_freeze=ProspectiveTrendOutsideTop10State(
+            frozen_at_ms=0
+        ).payload(),
+    )
+    frozen = result["frozen_hypotheses_original_forward_economics"]["hypotheses"][
+        "trend_outside_top10_both_sides_skip"
+    ]
+    assert frozen["forward_trade_count"] == 3
+    for expected, key in (
+        ("original_forward_whole_journal", "original_forward_whole_exit_mechanisms"),
+        ("original_forward_hypothesis_context", "original_forward_hypothesis_exit_mechanisms"),
+        ("preferred_rank_attributed_original_closes", "preferred_original_exit_mechanisms"),
+        ("disfavored_rank_attributed_original_closes", "disfavored_original_exit_mechanisms"),
+        ("unresolved_rank_original_closes", "unresolved_original_exit_mechanisms"),
+    ):
+        original = frozen[expected]
+        split = frozen[key]
+        assert split["whole_original_cohort"]["trades"] == original["trades"]
+        assert sum(row["trades"] for row in split["by_exit_reason"]) == original["trades"]
+        for field in ("gross_realized_pnl", "fees", "funding_cash_pnl", "net_pnl", "net_r"):
+            assert sum(Decimal(row[field]) for row in split["by_exit_reason"]) == Decimal(
+                original[field]
+            )
+        assert split["promotion_authority"] is False
+    preferred = frozen["preferred_original_exit_mechanisms"]
+    assert preferred["whole_original_cohort"]["trades"] == 1
+    assert Decimal(preferred["by_exit_reason"][0]["net_pnl"]) == 29
+    # The huge prior-to-freeze +$149 thesis winner was NOT counted forward.
+    assert Decimal(
+        frozen["original_forward_hypothesis_context"]["net_pnl"]
+    ) == 13
+    assert frozen["candidate_skip_cashflow_simulated"] is False
+
+
+def test_empty_exit_book_is_not_a_profitable_exit_strategy() -> None:
+    report = paper_profitability_scoreboard(_reconciled_audit_from_rows([]))
+    diag = report["original_booked_exit_mechanisms"]
+    assert diag["whole_original_cohort"]["trades"] == 0
+    assert diag["by_exit_reason"] == []
+    assert diag["by_exit_reason_with_original_chart_coverage"] == []
+    assert diag["promotion_authority"] is False
