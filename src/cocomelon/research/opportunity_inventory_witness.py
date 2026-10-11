@@ -266,7 +266,7 @@ def original_inventory_overlap_audit(
         future = tuple(
             t for t in closed_trades
             if overlap_started_at_ms <= t.opened_at_ms < timestamp
-            and t.closed_at_ms > timestamp
+            and t.closed_at_ms >= timestamp
             and t.market.canonical == evidence.market
             and t.direction.value == evidence.direction
         )
