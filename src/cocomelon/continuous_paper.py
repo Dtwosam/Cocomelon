@@ -413,6 +413,11 @@ from cocomelon.research.prospective_short_rank_first_seen import (
     FirstSeenRankSnapshot,
     FirstSeenRankSnapshotStore,
 )
+from cocomelon.research.prospective_short_rank_full_features import (
+    OriginalRankFeatureInputBatch,
+    OriginalRankFeatureInputBatchStore,
+    OriginalRankInputBatchError,
+)
 from cocomelon.research.prospective_side_conditioned_delay import (
     ProspectiveSideConditionedDelayState,
 )
@@ -9279,26 +9284,94 @@ async def run_continuous_paper_session(
             except OSError:
                 pass
 
+    rank_input_error_path = (
+        root / "prospective-short-rank-full-feature-inputs-error.json"
+    )
+    rank_input_capture_error: str | None = None
+    rank_input_store: OriginalRankFeatureInputBatchStore | None = None
+    if rank_input_error_path.exists():
+        # Research-source failure persists across handoffs. Never pretend an
+        # incomplete cohort became fully captured merely by restarting.
+        try:
+            prior_error = json.loads(
+                rank_input_error_path.read_text(encoding="utf-8")
+            )
+            if not isinstance(prior_error, dict) or not isinstance(
+                prior_error.get("error"), str
+            ):
+                raise ValueError("rank full-input failure receipt is invalid")
+            rank_input_capture_error = prior_error["error"]
+        except (OSError, ValueError):
+            rank_input_capture_error = "unreadable_rank_input_failure_receipt"
+    elif rank_snapshot_store is not None and rank_snapshot_capture_error is None:
+        try:
+            rank_input_store = OriginalRankFeatureInputBatchStore(
+                root / "prospective-short-rank-full-feature-inputs"
+            )
+            existing_inputs = rank_input_store.iter_verified()
+            if existing_inputs:
+                existing_ranks = rank_snapshot_store.iter_records()
+                first_index = next(
+                    (
+                        i for i, item in enumerate(existing_ranks)
+                        if item.observed_at_ms == existing_inputs[0].observed_at_ms
+                    ),
+                    None,
+                )
+                if (
+                    first_index is None
+                    or len(existing_ranks) - first_index != len(existing_inputs)
+                ):
+                    raise OriginalRankInputBatchError(
+                        "original rank feature input archive lost a saved rank"
+                    )
+                for rank_row, input_batch in zip(
+                    existing_ranks[first_index:], existing_inputs,
+                    strict=True,
+                ):
+                    input_batch.bind_to(rank_row)
+        except Exception as feature_restore_error:
+            rank_input_capture_error = (
+                f"{type(feature_restore_error).__name__}: "
+                f"{feature_restore_error}"
+            )
+            try:
+                _write_json_atomic(
+                    rank_input_error_path,
+                    {
+                        "error": rank_input_capture_error,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                    },
+                )
+            except OSError:
+                pass
+
     def capture_rank_first_seen(
         *,
         features: dict[str, FeatureSnapshot],
         ranks: tuple[OpportunityRank, ...],
         observed_at_ms: int,
     ) -> None:
-        nonlocal rank_snapshot_capture_error
+        nonlocal rank_snapshot_capture_error, rank_input_capture_error
         if rank_snapshot_capture_error is not None:
             return
-        if rank_snapshot_store is None:
-            raise RuntimeError("rank snapshot store is missing")
         try:
-            rank_snapshot_store.append(
-                FirstSeenRankSnapshot.from_observation(
-                    observed_at_ms=observed_at_ms,
-                    captured_at_ms=utc_now_ms(),
-                    features=features,
-                    ranks=ranks,
-                )
+            if rank_snapshot_store is None:
+                raise RuntimeError("rank snapshot store is missing")
+            rank_row = FirstSeenRankSnapshot.from_observation(
+                observed_at_ms=observed_at_ms,
+                captured_at_ms=utc_now_ms(),
+                features=features,
+                ranks=ranks,
             )
+            was_new_rank_snapshot = rank_snapshot_store.append(rank_row)
+            if not was_new_rank_snapshot:
+                # An identical historical rank may be replayed idempotently,
+                # but a brand-new feature batch must never be backfilled for
+                # its original earlier captured_at_ms.
+                return
         except Exception as exc:
             # This is append-only research. An archive failure disables rank
             # attribution, NOT the original paper-trading or position exits.
@@ -9308,6 +9381,39 @@ async def run_continuous_paper_session(
                     rank_snapshot_error_path,
                     {
                         "error": rank_snapshot_capture_error,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                    },
+                )
+            except OSError:
+                pass
+            return
+
+        if rank_input_capture_error is not None:
+            return
+        try:
+            if rank_input_store is None:
+                raise OriginalRankInputBatchError(
+                    "rank feature input store is missing"
+                )
+            rank_input_store.append(
+                OriginalRankFeatureInputBatch.from_original_rank(
+                    rank_row, features,
+                )
+            )
+        except Exception as feature_capture_error:
+            # An independent rank-input failure is irreversible for this
+            # research cohort, not a reason to stop original paper execution.
+            rank_input_capture_error = (
+                f"{type(feature_capture_error).__name__}: "
+                f"{feature_capture_error}"
+            )
+            try:
+                _write_json_atomic(
+                    rank_input_error_path,
+                    {
+                        "error": rank_input_capture_error,
                         "research_only": True,
                         "execution_authority": False,
                         "promotion_authority": False,

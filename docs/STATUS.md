@@ -2,6 +2,15 @@
 
 **Profitability-first evidence anchor:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Negative signed forward economics remain the binding result; archive engineering does not authorize promotion.
 
+## October 11 — prospective complete first-seen ranking FEATURE payload capture (PR pending)
+
+The genuine original paper worker rank artifact contains 374 immutable rank refreshes, but the earlier comparison proved **0 of 87,516** full-universe ranked feature IDs were preserved in the separate decision-learning feature store. Input *IDs* alone cannot establish what OI, mark/oracle, funding, returns, trend, volatility, L2 depth, and provenance produced those ranks. No historical feature payload can be safely reconstructed after the fact.
+
+Original paper rank refresh capture now writes one **canonical append-only complete feature-input batch per new rank observation**, containing the entire source `FeatureSnapshot` payload of every coarse-universe market, the independently recomputable `FeatureSnapshot.snapshot_id`, original feature source receipt time, the matching rank snapshot identity and capture clock, and a hash of the complete batch. Only a new `FirstSeenRankSnapshotStore.append()` observation can write the batch; an idempotent historical rank can **never** be silently backfilled. Canonical source bytes are fsync'd and linked into a new durable original-worker state directory, with strict ordering/hash/feature-as-of/market checks. At a worker restore, previously captured input batches must align with **every rank snapshot since the first recorded input batch**. Missing, changed, reordered or conflicting feature sources create a permanent research-only error receipt; they never reset old rank evidence or interrupt the original trader.
+
+This is **capture infrastructure, not a completed authenticated source export**. Existing historical rank snapshots remain uncovered. A separate independently GitHub-attested exporter and input-to-ranked-score recomputation still must be built and exercised on actual mainnet-forward data. Original paper positions, stops, risk budgets, selector, strategy, frozen negative v5 and LIVE disabled remain unchanged.
+
+
 ## October 11 — original-worker upgrade handoff source is not a successful economic research run (PR pending)
 
 An actual completed original paper worker `38162541394` sealed and uploaded its 374 genuine first-seen rank snapshots successfully, and the next worker `38166151613` restored the original account. However its GitHub paper job and full workflow concluded **FAILURE by design**: exactly one failed step, `Fail closed on upgrade handoff source`, after successful trader exit, durable state upload, rank seal and rank artifact upload. This prevents misleading positive research based on an upgrade-only interval. The earlier GitHub artifact attestor checked the component steps but did not independently classify overall workflow/job failure. An intact ZIP alone must not turn that failed research run green.
