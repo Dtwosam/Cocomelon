@@ -2258,7 +2258,8 @@ def test_frozen_long_trend_volatility_only_counts_genuine_forward_opening() -> N
     )
     assert start == 1_791_763_200_000  # Oct 12 at 00:00 UTC
     args = (
-        # A huge discovery loss that closes after the embargo is excluded.
+        # A loss opened inside the six-hour embargo (after discovery freeze)
+        # and closed inside the trial is excluded from BOTH cohorts.
         (1, "BTC", "long", "trend", "low", "-100", start - 1, False),
         (2, "ETH", "long", "trend", "low", "-9", start, True),
         # A winning high-volatility trend must ALSO be skipped.
@@ -2292,7 +2293,7 @@ def test_frozen_long_trend_volatility_only_counts_genuine_forward_opening() -> N
     assert next(
         c for c in study["discovery_only_long_trend_volatility_cohorts"]
         if c["original_entry_volatility"] == "low"
-    )["original_booked"]["trades"] == 1
+    )["original_booked"]["trades"] == 0
     assert study["verified_low_or_high_volatility_avoided"]["trades"] == 2
     assert study["verified_low_or_high_volatility_avoided"]["wins"] == 1
     assert Decimal(study["original_forward_booked_net_cash"]) == -39
@@ -2332,7 +2333,13 @@ def test_frozen_long_trend_volatility_discovery_never_counts_as_forward() -> Non
     assert sum(
         v["original_booked"]["trades"]
         for v in study["discovery_only_long_trend_volatility_cohorts"]
-    ) == 0
+    ) == 1
+    # The original historical fixture has one LONG trend with no
+    # independently witnessed volatility label; never infer normal/low.
+    assert next(
+        v for v in study["discovery_only_long_trend_volatility_cohorts"]
+        if v["original_entry_volatility"] == "UNVERIFIED_ENTRY_CONTEXT"
+    )["original_booked"]["trades"] == 1
 
 
 def test_frozen_long_trend_volatility_week_zero_cannot_move_after_closes() -> None:
