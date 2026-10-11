@@ -10,7 +10,7 @@ import pytest
 
 from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.domain.market import MarketId
-from cocomelon.domain.replay import EvidenceClass, ReplayManifest
+from cocomelon.domain.replay import EvidenceClass, ReplayManifest, SourceSegment
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.research.prospective_short_breakout_rank import (
     ProspectiveShortBreakoutRankState,
@@ -287,7 +287,17 @@ def test_bad_unpinned_artifact_fails_before_creating_either_account(
             market_manifest=ReplayManifest(
                 evidence_class=EvidenceClass.MICROSTRUCTURE,
                 start_ms=OBS, end_ms=OBS + 11_000,
-                segments=(), gap_refs=(),
+                segments=(SourceSegment(
+                    relative_path="events/fixture.jsonl",
+                    partition="fixture",
+                    sha256="f" * 64,
+                    byte_count=1,
+                    row_count=1,
+                    schema_version=1,
+                    first_available_at_ms=OBS,
+                    last_available_at_ms=OBS,
+                ),),
+                gap_refs=(),
                 code_revision="fixture", config_digest="a" * 64,
                 feature_version="fixture",
                 strategy_version="fixture",
