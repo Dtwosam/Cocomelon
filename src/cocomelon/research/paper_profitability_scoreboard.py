@@ -296,14 +296,15 @@ def _trade(raw: object) -> _Trade:
                 raise PaperProfitabilityScoreboardError(
                     "matched original decision has no verified trade context"
                 )
-            for key, expected in (
-                ("market", market),
-                ("direction", side),
-                ("lead_strategy", lead),
-                ("strategy_decision_id", row.get("strategy_decision_id")),
-                ("feature_snapshot_id", row.get("feature_snapshot_id")),
-                ("risk_decision_id", row.get("risk_decision_id")),
-            ):
+            original_identity: dict[str, object] = {
+                "market": market,
+                "direction": side,
+                "lead_strategy": lead,
+                "strategy_decision_id": row.get("strategy_decision_id"),
+                "feature_snapshot_id": row.get("feature_snapshot_id"),
+                "risk_decision_id": row.get("risk_decision_id"),
+            }
+            for key, expected in original_identity.items():
                 if not isinstance(expected, str) or not expected or (
                     original.get(key) != expected
                 ):
