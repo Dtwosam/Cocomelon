@@ -90,8 +90,7 @@ def verify_exact_original_rank_handoff(
         )
     if (
         newer.get("event") != "workflow_dispatch"
-        or newer.get("id") == previous.get("id")
-        or newer.get("id") <= previous.get("id")
+        or successor.worker_run_id <= predecessor.worker_run_id
         or newer.get("created_at") is None
         or previous.get("created_at") is None
         or not isinstance(newer.get("created_at"), str)
