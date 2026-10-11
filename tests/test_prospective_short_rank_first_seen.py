@@ -217,3 +217,18 @@ def test_paired_filter_reads_only_archived_predecision_rank_witness(
     }
     assert challenger.rank4plus_blocked == 1
     assert challenger.summary_payload()["execution_authority"] is False
+
+
+
+def test_original_paper_worker_instruments_all_three_rank_refresh_points() -> None:
+    code = (
+        Path(__file__).resolve().parents[1]
+        / "src/cocomelon/continuous_paper.py"
+    ).read_text(encoding="utf-8")
+    assert code.count("        capture_rank_first_seen(") == 1
+    assert code.count("            capture_rank_first_seen(") == 1
+    assert code.count("                capture_rank_first_seen(") == 1
+    for original in ("_initial_features", "_startup_features", "_refreshed_features"):
+        assert f"features={original}" in code
+    assert "prospective-short-rank-first-seen-error.json" in code
+    assert "rank_snapshot_capture_error" in code
