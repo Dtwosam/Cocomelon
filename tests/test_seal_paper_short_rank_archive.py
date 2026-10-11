@@ -210,3 +210,69 @@ def test_workflow_seals_rank_only_after_worker_exit_with_nonblocking_upload() ->
         "continuous-paper-first-seen-short-rank-${{ github.run_id }}-"
         "${{ github.run_attempt }}"
     ) in source
+
+
+
+def test_original_worker_seals_actual_restored_predecessor_run_and_attempt(
+    tmp_path: Path,
+) -> None:
+    root, out = tmp_path / "state", tmp_path / "sealed"
+    _source(root)
+    receipt = seal_completed_short_rank_archive(
+        root, out,
+        worker_run_id=38162541394,
+        worker_run_attempt=1,
+        worker_head_sha=HEAD_SHA,
+        restored_from_run_id=38152483456,
+        restored_from_run_attempt=1,
+        sealed_at_ms=OBSERVED_MS + 60,
+    )
+    assert receipt["rank_source_status"] == "locally_sealed"
+    assert receipt["restored_from_run_id_claimed"] == 38152483456
+    assert receipt["restored_from_run_attempt_claimed"] == 1
+    with zipfile.ZipFile(out / ARCHIVE_NAME) as bundle:
+        manifest = json.loads(bundle.read("manifest.json"))
+    assert manifest["restored_from_run_id_claimed"] == 38152483456
+    assert manifest["restored_from_run_attempt_claimed"] == 1
+
+
+def test_no_partial_or_self_claimed_predecessor_source_can_be_sealed(
+    tmp_path: Path,
+) -> None:
+    root, out = tmp_path / "state", tmp_path / "sealed"
+    _source(root)
+    for source_id, attempt in (
+        (38152483456, None),
+        (None, 1),
+        (0, 1),
+        (38162541394, 1),
+        (38152483456, 0),
+    ):
+        with pytest.raises(ShortRankSealError, match="predecessor"):
+            seal_completed_short_rank_archive(
+                root, out,
+                worker_run_id=38162541394,
+                worker_run_attempt=1,
+                worker_head_sha=HEAD_SHA,
+                restored_from_run_id=source_id,
+                restored_from_run_attempt=attempt,
+                sealed_at_ms=OBSERVED_MS + 60,
+            )
+    assert not out.exists()
+
+
+def test_real_workflow_dispatch_sources_are_written_into_rank_seal() -> None:
+    workflow = Path(".github/workflows/continuous-paper.yml").read_text(
+        encoding="utf-8"
+    )
+    step_start = workflow.index(
+        "- name: Seal original first-seen SHORT rank source after worker exit"
+    )
+    step_end = workflow.index(
+        "- name: Upload original first-seen SHORT rank seal and failure receipt"
+    )
+    source = workflow[step_start:step_end]
+    assert '--restored-from-run-id "${{ inputs.source_run_id || \'\' }}"' in source
+    assert '--restored-from-run-attempt "${{ inputs.source_run_attempt || \'\' }}"' in source
+    assert "--worker-run-attempt" in source
+    assert "continue-on-error: true" in source
