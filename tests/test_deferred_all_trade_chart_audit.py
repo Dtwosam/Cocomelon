@@ -349,7 +349,6 @@ def test_first_seen_trade_decision_join_rejects_stale_conflicting_ambiguous() ->
     assert _original_first_seen_opportunity_parity(
         trade, (matched, matched), context_lead="mean_reversion"
     )["status"] == "ambiguous"
-    from dataclasses import replace
     for wrong in (
         {"opportunity_timestamp_ms": trade.opened_at_ms + 1},
         {"opportunity_timestamp_ms": trade.opened_at_ms - 300_001},
