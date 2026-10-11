@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
+import subprocess
+import sys
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -271,7 +274,8 @@ def test_completed_worker_audit_workflow_publishes_separate_chain_proof() -> Non
         "$PREDECESSOR_RUN_ID\""
     ) in workflow
     assert "jq -r '.display_title // \"\"'" in workflow
-    assert "scripts/audit_paper_short_rank_handoff.py" in workflow
+    assert "python -m scripts.audit_paper_short_rank_handoff" in workflow
+    assert "python scripts/audit_paper_short_rank_handoff.py" not in workflow
     assert "original-first-seen-short-rank-handoff-audit-" in workflow
     assert "first-seen-short-rank-handoff-audit.json" in workflow
     assert "continuous-paper-trader --" not in workflow
@@ -355,3 +359,48 @@ def test_unexpected_failed_predecessor_rejected_even_with_intact_archive(
     assert result["rank_handoff_status"] == "unverified"
     assert result["failure_reason_code"] == "predecessor_rank_source_unverified"
     assert result["ready_for_review"] is False
+
+
+def test_real_audit_module_startup_can_publish_immutable_negative_receipt(
+    tmp_path: Path,
+) -> None:
+    """Regression: actual CI job previously failed before audit due to
+    'ModuleNotFoundError: No module named scripts' on script-path invocation.
+    """
+    receipt = tmp_path / "rank-source-unverified.json"
+    command = [
+        sys.executable,
+        "-m",
+        "scripts.audit_paper_short_rank_handoff",
+        "--source-run-id",
+        str(SUCCESSOR_ID),
+        "--source-run-attempt",
+        "1",
+        "--repository",
+        REPO,
+        "--source-dir",
+        str(tmp_path / "missing-successor"),
+        "--predecessor-dir",
+        str(tmp_path / "missing-predecessor"),
+        "--output",
+        str(receipt),
+    ]
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[1],
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    assert payload["rank_handoff_status"] == "unverified"
+    assert payload["failure_reason_code"] == (
+        "exact_predecessor_source_or_artifact_missing"
+    )
+    assert payload["both_github_original_rank_artifacts_verified"] is False
+    assert payload["original_rank_history_exact_prefix_reconciled"] is False
+    assert payload["ready_for_review"] is False
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert json.loads(result.stdout.strip()) == payload
