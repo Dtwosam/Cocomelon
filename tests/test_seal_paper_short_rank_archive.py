@@ -301,11 +301,11 @@ def test_separate_original_rank_seal_commands_never_consume_other_script_as_argu
     rank_step = workflow[rank_start:rank_end]
     full_step = workflow[full_start:full_end]
 
-    assert "python scripts/seal_paper_short_rank_archive.py \\n" in rank_step
+    assert "python scripts/seal_paper_short_rank_archive.py \\" in rank_step
     assert "scripts/seal_paper_short_rank_full_features.py" not in rank_step
     assert "--restored-from-run-id" in rank_step
     assert "--restored-from-run-attempt" in rank_step
-    assert "python scripts/seal_paper_short_rank_full_features.py \\n" in full_step
+    assert "python scripts/seal_paper_short_rank_full_features.py \\" in full_step
     assert "scripts/seal_paper_short_rank_archive.py" not in full_step
 
     # One trigger path, one independent upgrade watcher dependency, and
