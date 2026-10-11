@@ -1,5 +1,11 @@
 # Cocomelon Project Status
 
+## October 11 — frozen short-rank paired-paper admission preflight (PR pending)
+
+A standalone, research-only `ProspectiveShortBreakoutPairedEntryFilter` now encodes the frozen post-embargo SHORT breakout rank>3 admission decision for future **independent** baseline/challenger paper replay. Its candidate rejects only a witnessed predecision rank>3; baseline retains. Pre-start attempts are barred in both; future-stamped rank or decision/feature mismatch is fatal; same-ms/stale/missing rank or unknown lead retains both lanes and disqualifies complete source. Counts and per-market blocks are exposed without simulated skip-credit. Regression tests cover source causality, direction, rank, boundary, and immutability of paper/live permission.
+
+This is an **admission component, not yet a real paired account**: no second forward account is running for this rule, no fees/funding/fill/drawdown result is claimed, and the negative frozen v5 trial remains intact. Required independent dual-paper replay and signed after-cost account report are described in `docs/FORWARD_SHORT_RANK_PAIRED_ADMISSION.md`. Original paper worker, risk, stops, frozen hypotheses, promotion and LIVE=false remain unchanged.
+
 **Current profitability-first source:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Read the timestamped verified economics there before selecting strategy changes; this status page contains older history as well.
 
 **Last updated:** 2026-10-10  
