@@ -174,7 +174,7 @@ class OriginalRankFeatureInputBatch:
             observed_at_ms=observed, captured_at_ms=captured,
             rank_snapshot_digest=parent, features=tuple(parsed),
         )
-        if result.to_dict() != value:
+        if _bytes(result.to_dict()) != _bytes(value):
             raise OriginalRankInputBatchError(
                 "original rank batch digest or content changed"
             )
