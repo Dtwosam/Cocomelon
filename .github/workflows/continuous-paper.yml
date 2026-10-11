@@ -1125,6 +1125,8 @@ jobs:
             --worker-run-id "$GITHUB_RUN_ID" \
             --worker-run-attempt "$GITHUB_RUN_ATTEMPT" \
             --worker-head-sha "$GITHUB_SHA" \
+            --restored-from-run-id "${{ inputs.source_run_id || '' }}" \
+            --restored-from-run-attempt "${{ inputs.source_run_attempt || '' }}" \
             | tee /tmp/continuous-paper-short-rank-seal-result.json
 
       - name: Upload original first-seen SHORT rank seal and failure receipt
