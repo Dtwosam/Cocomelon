@@ -23,6 +23,8 @@ REQUIRED_SUCCESSFUL_PAPER_STEPS = (
     "Seal original first-seen SHORT rank source after worker exit",
     "Upload original first-seen SHORT rank seal and failure receipt",
 )
+UPGRADE_ONLY_FAILURE_STEP = "Fail closed on upgrade handoff source"
+DURABLE_HANDOFF_STEP = "Upload durable continuous paper state"
 
 
 class OriginalWorkerAttestationError(RuntimeError):
@@ -126,6 +128,48 @@ def attest_original_worker_rank_artifact(
                 "paper_proof_step_missing_or_unsuccessful",
                 run_id=expected_run_id,
             )
+    # A worker exiting for an upgrade intentionally fails the late research
+    # source gate after preserving the original state and sealing ranks. Never
+    # portray its overall failed run as successful standalone research, and
+    # never reject its SHA-verified historical rank bytes solely because that
+    # explicit *expected* upgrade gate failed. Any other failure is untrusted.
+    paper_conclusion = paper.get("conclusion")
+    run_conclusion = run.get("conclusion")
+    if run.get("status") != "completed" or paper.get("status") != "completed":
+        return _refuse("original_paper_run_or_job_not_completed", run_id=expected_run_id)
+    if paper_conclusion == "success" and run_conclusion == "success":
+        if any(
+            isinstance(step, dict) and step.get("conclusion") == "failure"
+            for step in steps
+        ):
+            return _refuse(
+                "successful_worker_contains_failed_step", run_id=expected_run_id,
+            )
+        rank_run_outcome = "successful_research_run"
+    elif paper_conclusion == "failure" and run_conclusion == "failure":
+        failed = [
+            step.get("name") for step in steps
+            if isinstance(step, dict) and step.get("conclusion") == "failure"
+        ]
+        durable = [
+            step for step in steps
+            if isinstance(step, dict) and step.get("name") == DURABLE_HANDOFF_STEP
+        ]
+        if (
+            failed != [UPGRADE_ONLY_FAILURE_STEP]
+            or len(durable) != 1
+            or durable[0].get("conclusion") != "success"
+        ):
+            return _refuse(
+                "failed_worker_not_exact_state_preserving_upgrade",
+                run_id=expected_run_id,
+            )
+        rank_run_outcome = "upgrade_handoff_only"
+    else:
+        return _refuse(
+            "worker_run_and_paper_job_outcomes_disagree",
+            run_id=expected_run_id,
+        )
     artifact_rows = artifacts.get("artifacts")
     if not isinstance(artifact_rows, list):
         return _refuse("original_rank_artifacts_missing", run_id=expected_run_id)
@@ -166,7 +210,19 @@ def attest_original_worker_rank_artifact(
     return {
         **_refuse("none", run_id=expected_run_id),
         **result.receipt(),
-        "first_seen_rank_artifact_status": "github_api_bound_bytes_verified",
+        "first_seen_rank_artifact_status": (
+            "github_api_bound_bytes_verified"
+            if rank_run_outcome == "successful_research_run"
+            else "github_api_bound_upgrade_handoff_only"
+        ),
+        "original_worker_run_source_class": rank_run_outcome,
+        "rank_artifact_from_failed_original_workflow": (
+            rank_run_outcome == "upgrade_handoff_only"
+        ),
+        "successful_research_run_proven": (
+            rank_run_outcome == "successful_research_run"
+        ),
+        "upgrade_handoff_exit_reason_independently_attested": False,
         "failure_reason_code": None,
         "rank_artifact_id": candidate.get("id"),
         "rank_artifact_name": artifact_name,
