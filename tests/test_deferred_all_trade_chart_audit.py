@@ -37,6 +37,7 @@ def _trade(n: int = 1) -> SimpleNamespace:
         filled_quantity=Decimal("2"),
         replay_run_id="continuous-paper-mainnet-v1",
         strategy_decision_id="decision",
+        risk_decision_id="original-test-risk",
         feature_snapshot_id="feature",
         gross_realized_pnl=Decimal("-2"),
         entry_fees=Decimal("0.2"),
