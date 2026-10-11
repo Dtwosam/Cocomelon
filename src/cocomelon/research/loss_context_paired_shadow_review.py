@@ -25,6 +25,13 @@ MAX_FORWARD_MARKET_DATA_GAP_FRACTION: Final = Decimal("0.01")
 MIN_CLOSED_TRADES_PER_LANE: Final = 30
 MIN_CLOSED_TRADES_PER_DIRECTION: Final = 8
 REVIEW_BLOCK_COUNT: Final = 3
+SIGNED_PAIRED_CALENDAR_DAY_MS: Final = 24 * 60 * 60 * 1000
+SIGNED_PAIRED_METRIC_KEYS: Final = (
+    "candidate_total_account_pnl",
+    "candidate_realized_net_pnl",
+    "candidate_minus_baseline_total_account_pnl",
+    "candidate_minus_baseline_realized_net_pnl",
+)
 MIN_MATCHES_PER_BLOCK: Final = 5
 MIN_MARKETS_PER_BLOCK: Final = 2
 
@@ -658,6 +665,164 @@ def _chronological_blocks(
     return tuple(blocks)
 
 
+
+def _signed_account_metric(
+    row: dict[str, object],
+    key: str,
+) -> Decimal:
+    if key in (
+        "candidate_minus_baseline_total_account_pnl",
+        "candidate_minus_baseline_realized_net_pnl",
+    ):
+        return _metric(row, key)
+    candidate = _mapping(row.get("candidate"), "candidate")
+    return _decimal(candidate.get(key), "candidate." + key)
+
+
+def _fixed_signed_checkpoint_calendar_blocks(
+    eligible: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    """Attribute exact paired ACCOUNT snapshot deltas; never interpolate.
+
+    A checkpoint-to-checkpoint transition crossing a calendar boundary has
+    unknowable within-day PnL without finer signed samples. Put it in an
+    explicit non-attributed bucket, not the most profitable adjacent day.
+    """
+    anchor = eligible[0] if eligible else None
+    first_ms = (
+        None if anchor is None
+        else _integer(anchor.get("end_ms"), "end_ms")
+    )
+    buckets: dict[int, dict[str, object]] = {}
+    crossing = {key: ZERO for key in SIGNED_PAIRED_METRIC_KEYS}
+    crossing_intervals = 0
+    for start, end in zip(eligible, eligible[1:], strict=False):
+        if first_ms is None:
+            raise LossContextPairedShadowReviewError(
+                "paired calendar anchor cannot be missing"
+            )
+        previous_ms = _integer(start.get("end_ms"), "end_ms")
+        current_ms = _integer(end.get("end_ms"), "end_ms")
+        if previous_ms < first_ms or current_ms <= previous_ms:
+            raise LossContextPairedShadowReviewError(
+                "signed calendar checkpoints are not strictly ordered"
+            )
+        start_index = (
+            previous_ms - first_ms
+        ) // SIGNED_PAIRED_CALENDAR_DAY_MS
+        end_index = (
+            current_ms - first_ms
+        ) // SIGNED_PAIRED_CALENDAR_DAY_MS
+        delta = {
+            key: (
+                _signed_account_metric(end, key)
+                - _signed_account_metric(start, key)
+            )
+            for key in SIGNED_PAIRED_METRIC_KEYS
+        }
+        if start_index != end_index:
+            crossing_intervals += 1
+            for key, value in delta.items():
+                crossing[key] += value
+            continue
+        bucket = buckets.setdefault(end_index, {
+            "transitions": 0,
+            "values": {key: ZERO for key in SIGNED_PAIRED_METRIC_KEYS},
+        })
+        bucket["transitions"] = cast(int, bucket["transitions"]) + 1
+        values = cast(dict[str, Decimal], bucket["values"])
+        for key, value in delta.items():
+            values[key] += value
+
+    days: list[dict[str, object]] = []
+    for index in sorted(set(buckets).union({0, 1})):
+        data = buckets.get(index)
+        values = (
+            {key: ZERO for key in SIGNED_PAIRED_METRIC_KEYS}
+            if data is None
+            else cast(dict[str, Decimal], data["values"])
+        )
+        start = (
+            None if first_ms is None
+            else first_ms + index * SIGNED_PAIRED_CALENDAR_DAY_MS
+        )
+        days.append({
+            "calendar_day_index": index,
+            "checkpoint_end_ms_ge": start,
+            "checkpoint_end_ms_lt": (
+                None if start is None
+                else start + SIGNED_PAIRED_CALENDAR_DAY_MS
+            ),
+            "fully_within_day_signed_checkpoint_transitions": (
+                0 if data is None else data["transitions"]
+            ),
+            "signed_candidate_total_account_pnl_delta": str(
+                values["candidate_total_account_pnl"]
+            ),
+            "signed_candidate_realized_net_pnl_delta": str(
+                values["candidate_realized_net_pnl"]
+            ),
+            "signed_candidate_minus_baseline_total_account_pnl_delta": str(
+                values["candidate_minus_baseline_total_account_pnl"]
+            ),
+            "signed_candidate_minus_baseline_realized_net_pnl_delta": str(
+                values["candidate_minus_baseline_realized_net_pnl"]
+            ),
+            "all_boundary_transitions_assigned_to_day": False,
+            "source_market_data_gap_free_for_day_certified": False,
+            "complete_day_signed_economics_certified": False,
+            "promotion_authority": False,
+        })
+
+    if anchor is not None:
+        latest = eligible[-1]
+        for key in SIGNED_PAIRED_METRIC_KEYS:
+            original = (
+                _signed_account_metric(latest, key)
+                - _signed_account_metric(anchor, key)
+            )
+            attributed = sum((
+                cast(dict[str, Decimal], b["values"])[key]
+                for b in buckets.values()
+            ), ZERO)
+            if original != attributed + crossing[key]:
+                raise LossContextPairedShadowReviewError(
+                    "signed fixed-calendar account economics do not reconcile "
+                    + key
+                )
+    if sum(
+        cast(int, b["transitions"]) for b in buckets.values()
+    ) + crossing_intervals != max(0, len(eligible) - 1):
+        raise LossContextPairedShadowReviewError(
+            "signed fixed-calendar checkpoint interval count mismatch"
+        )
+    return {
+        "calendar_anchor_first_eligible_checkpoint_end_ms": first_ms,
+        "fixed_calendar_day_ms": SIGNED_PAIRED_CALENDAR_DAY_MS,
+        "signed_account_snapshot_based": bool(eligible),
+        "signed_full_forward_account_pnl_partition_reconciles": True,
+        "within_day_signed_checkpoint_transitions": sum(
+            cast(int, b["transitions"]) for b in buckets.values()
+        ),
+        "cross_boundary_unattributed_checkpoint_transitions": (
+            crossing_intervals
+        ),
+        "cross_boundary_unattributed_account_delta": {
+            key: str(value) for key, value in crossing.items()
+        },
+        "fixed_calendar_checkpoint_day_blocks": tuple(days),
+        "count_partition_blocks_move_on_append": True,
+        "calendar_boundaries_prevent_pnl_cherry_pick": True,
+        "no_interpolation_or_cross_boundary_assignment": True,
+        "mature_complete_calendar_day_certified": False,
+        "source_gap_free_interval_certified": False,
+        "positive_full_account_paired_edge_certified": False,
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+    }
+
+
 def build_paired_shadow_review(
     freeze: LossContextPortfolioShadowFreeze,
     ledger_path: str | Path,
@@ -684,6 +849,7 @@ def build_paired_shadow_review(
             - _integer(anchor.get("end_ms"), "end_ms"),
         )
     )
+    fixed_calendar = _fixed_signed_checkpoint_calendar_blocks(eligible)
     blocks = (
         ()
         if anchor is None
@@ -943,6 +1109,9 @@ def build_paired_shadow_review(
             drawdown_delta
         ),
         "chronological_blocks": blocks,
+        "fixed_calendar_signed_account_diagnostics": fixed_calendar,
+        "chronological_blocks_move_with_checkpoint_count": True,
+        "fixed_calendar_account_diagnostics_do_not_change_review_gate": True,
         "readiness_failures": tuple(reasons),
         "ready_for_review": not reasons,
         "thresholds": {

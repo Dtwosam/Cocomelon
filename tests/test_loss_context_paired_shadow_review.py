@@ -648,3 +648,111 @@ def test_paired_review_rejects_forged_gap_scope_boolean(
         LossContextPairedShadowReviewError, match="gap scope lineage witness",
     ):
         append_review_checkpoint(tmp_path / "review.jsonl", row)
+
+
+def test_signed_paired_calendar_does_not_invent_cross_boundary_pnl(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "calendar-intervals.jsonl"
+    _write_campaign(ledger, freeze)
+    result = build_paired_shadow_review(freeze, ledger)
+    cal = result["fixed_calendar_signed_account_diagnostics"]
+    assert cal["calendar_anchor_first_eligible_checkpoint_end_ms"] == (
+        PROSPECTIVE_MS + NINE_HOURS_MS
+    )
+    assert cal["fixed_calendar_day_ms"] == 86_400_000
+    assert cal["signed_account_snapshot_based"] is True
+    assert cal["signed_full_forward_account_pnl_partition_reconciles"] is True
+    assert cal["within_day_signed_checkpoint_transitions"] == 6
+    assert cal["cross_boundary_unattributed_checkpoint_transitions"] == 2
+    assert cal["cross_boundary_unattributed_account_delta"] == {
+        "candidate_total_account_pnl": "6",
+        "candidate_realized_net_pnl": "4",
+        "candidate_minus_baseline_total_account_pnl": "10",
+        "candidate_minus_baseline_realized_net_pnl": "8",
+    }
+    days = cal["fixed_calendar_checkpoint_day_blocks"]
+    assert [day["calendar_day_index"] for day in days] == [0, 1, 2]
+    assert [
+        day["fully_within_day_signed_checkpoint_transitions"]
+        for day in days
+    ] == [2, 2, 2]
+    assert [
+        Decimal(day["signed_candidate_minus_baseline_total_account_pnl_delta"])
+        for day in days
+    ] == [Decimal("10")] * 3
+    assert sum((
+        Decimal(day["signed_candidate_total_account_pnl_delta"])
+        for day in days
+    ), Decimal(0)) + Decimal(
+        cal["cross_boundary_unattributed_account_delta"][
+            "candidate_total_account_pnl"
+        ]
+    ) == Decimal(result["candidate_total_account_pnl"])
+    assert sum((
+        Decimal(day["signed_candidate_minus_baseline_realized_net_pnl_delta"])
+        for day in days
+    ), Decimal(0)) + Decimal(
+        cal["cross_boundary_unattributed_account_delta"][
+            "candidate_minus_baseline_realized_net_pnl"
+        ]
+    ) == Decimal(
+        result["candidate_minus_baseline_realized_net_pnl"]
+    )
+    assert cal["mature_complete_calendar_day_certified"] is False
+    assert cal["source_gap_free_interval_certified"] is False
+    assert cal["positive_full_account_paired_edge_certified"] is False
+    assert result["fixed_calendar_account_diagnostics_do_not_change_review_gate"] is True
+    assert result["ready_for_review"] is True
+    assert cal["promotion_authority"] is False
+    assert cal["execution_authority"] is False
+
+
+def test_signed_paired_fixed_day_does_not_shift_on_later_checkpoint(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "calendar-append.jsonl"
+    _write_campaign(ledger, freeze)
+    before = build_paired_shadow_review(freeze, ledger)
+    extra = _checkpoint(freeze, index=10)
+    append_review_checkpoint(ledger, extra)
+    after = build_paired_shadow_review(freeze, ledger)
+    old_blocks = before["fixed_calendar_signed_account_diagnostics"][
+        "fixed_calendar_checkpoint_day_blocks"
+    ]
+    new_blocks = after["fixed_calendar_signed_account_diagnostics"][
+        "fixed_calendar_checkpoint_day_blocks"
+    ]
+    assert old_blocks[0] == new_blocks[0]
+    assert old_blocks[1] == new_blocks[1]
+    assert after["fixed_calendar_signed_account_diagnostics"][
+        "cross_boundary_unattributed_checkpoint_transitions"
+    ] == 3
+    assert after["candidate_total_account_pnl"] == "27"
+    assert after["candidate_minus_baseline_total_account_pnl"] == "45"
+    assert after["fixed_calendar_signed_account_diagnostics"][
+        "positive_full_account_paired_edge_certified"
+    ] is False
+
+
+def test_signed_paired_calendar_keeps_losses_even_if_candidate_lags(
+    tmp_path: Path,
+) -> None:
+    freeze = _freeze()
+    ledger = tmp_path / "calendar-losses.jsonl"
+    _write_campaign(ledger, freeze, candidate_profitable=False)
+    result = build_paired_shadow_review(freeze, ledger)
+    cal = result["fixed_calendar_signed_account_diagnostics"]
+    assert result["ready_for_review"] is False
+    assert result["candidate_total_account_pnl"] == "-8"
+    assert cal["cross_boundary_unattributed_account_delta"][
+        "candidate_total_account_pnl"
+    ] == "-2"
+    assert sum((
+        Decimal(day["signed_candidate_total_account_pnl_delta"])
+        for day in cal["fixed_calendar_checkpoint_day_blocks"]
+    ), Decimal(0)) == Decimal("-6")
+    assert cal["positive_full_account_paired_edge_certified"] is False
+    assert cal["promotion_authority"] is False
