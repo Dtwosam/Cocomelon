@@ -404,3 +404,34 @@ def test_real_audit_module_startup_can_publish_immutable_negative_receipt(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert json.loads(result.stdout.strip()) == payload
+
+
+def test_handoff_cli_corrupt_predecessor_metadata_is_durable_unverified(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    predecessor = tmp_path / "predecessor"
+    source.mkdir()
+    predecessor.mkdir()
+    (predecessor / "run.json").write_bytes(b"\\xff\\xfe")
+    receipt = tmp_path / "handoff-invalid-source.json"
+    result = subprocess.run([
+        sys.executable, "-m", "scripts.audit_paper_short_rank_handoff",
+        "--source-run-id", str(SUCCESSOR_ID),
+        "--source-run-attempt", "1",
+        "--repository", REPO,
+        "--source-dir", str(source),
+        "--predecessor-dir", str(predecessor),
+        "--output", str(receipt),
+    ], check=False, capture_output=True, text=True,
+        cwd=Path(__file__).resolve().parents[1])
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    assert json.loads(result.stdout.strip()) == payload
+    assert payload["rank_handoff_status"] == "unverified"
+    assert payload["failure_reason_code"] == (
+        "exact_predecessor_source_or_artifact_missing"
+    )
+    assert payload["ready_for_review"] is False
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
