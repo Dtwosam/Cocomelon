@@ -135,9 +135,11 @@ def audit_completed_original_rank_handoff(
             expected_repository=expected_repository,
             original_artifact_zip=source_artifact_zip,
         )
-        if source_receipt["first_seen_rank_artifact_status"] != (
-            "github_api_bound_bytes_verified"
-        ):
+        recognized = {
+            "github_api_bound_bytes_verified",
+            "github_api_bound_upgrade_handoff_only",
+        }
+        if source_receipt["first_seen_rank_artifact_status"] not in recognized:
             return rejected("successor_rank_source_unverified")
         prior_attempt = predecessor_run_json.get("run_attempt")
         if type(prior_attempt) is not int or prior_attempt <= 0:
@@ -151,9 +153,7 @@ def audit_completed_original_rank_handoff(
             expected_repository=expected_repository,
             original_artifact_zip=predecessor_artifact_zip,
         )
-        if prev_receipt["first_seen_rank_artifact_status"] != (
-            "github_api_bound_bytes_verified"
-        ):
+        if prev_receipt["first_seen_rank_artifact_status"] not in recognized:
             return rejected("predecessor_rank_source_unverified")
         prev = verify_github_original_short_rank_artifact(
             predecessor_artifact_zip,
@@ -183,10 +183,28 @@ def audit_completed_original_rank_handoff(
         GithubShortRankArtifactError, TypeError, ValueError,
     ):
         return rejected("original_rank_handoff_provenance_or_prefix_invalid")
+    includes_upgrade_only = (
+        source_receipt["original_worker_run_source_class"]
+        == "upgrade_handoff_only"
+        or prev_receipt["original_worker_run_source_class"]
+        == "upgrade_handoff_only"
+    )
     return {
         **rejected("none"),
         **handoff,
-        "rank_handoff_status": "github_api_bound_immutable_prefix",
+        "rank_handoff_status": (
+            "github_api_bound_upgrade_handoff_prefix_only"
+            if includes_upgrade_only
+            else "github_api_bound_immutable_prefix"
+        ),
+        "predecessor_worker_run_source_class": (
+            prev_receipt["original_worker_run_source_class"]
+        ),
+        "successor_worker_run_source_class": (
+            source_receipt["original_worker_run_source_class"]
+        ),
+        "source_chain_contains_upgrade_only_worker": includes_upgrade_only,
+        "chain_is_successful_research_source": not includes_upgrade_only,
         "failure_reason_code": None,
         "both_github_original_rank_artifacts_verified": True,
         "original_rank_history_exact_prefix_reconciled": True,
