@@ -304,9 +304,9 @@ def _trade(raw: object) -> _Trade:
                 "feature_snapshot_id": row.get("feature_snapshot_id"),
                 "risk_decision_id": row.get("risk_decision_id"),
             }
-            for key, expected in original_identity.items():
-                if not isinstance(expected, str) or not expected or (
-                    original.get(key) != expected
+            for key, original_value in original_identity.items():
+                if not isinstance(original_value, str) or not original_value or (
+                    original.get(key) != original_value
                 ):
                     raise PaperProfitabilityScoreboardError(
                         f"original opportunity lineage mismatch: {key}"
