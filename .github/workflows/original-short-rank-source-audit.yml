@@ -188,6 +188,69 @@ jobs:
           print("- live order authority: FALSE")
           PY
 
+      - name: Download independently identified original rank feature-input artifact
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          attempt="$(jq -r '.run_attempt' /tmp/original-short-rank-api/run.json)"
+          name="continuous-paper-first-seen-short-rank-full-inputs-$SOURCE_RUN_ID-$attempt"
+          artifact_id="$(
+            jq -r --arg name "$name" '
+              [.artifacts[] | select(.name == $name)]
+              | if length == 1 then .[0].id else empty end
+            ' /tmp/original-short-rank-api/artifacts.json
+          )"
+          if [[ -z "$artifact_id" ]]; then
+            echo "::notice::no original full rank feature-input source; arithmetic audit will reject"
+            exit 0
+          fi
+          curl --fail --silent --show-error --location \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+            --output /tmp/original-short-rank-api/full-input-artifact.zip
+
+      - name: Independently recompute full-input original SHORT coarse scores
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.audit_paper_short_rank_coarse_scores \
+            --source-dir /tmp/original-short-rank-api \
+            --source-run-id "$SOURCE_RUN_ID" \
+            --source-run-attempt "$SOURCE_RUN_ATTEMPT" \
+            --repository "$GITHUB_REPOSITORY" \
+            --output original-short-rank-score-audit.json
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          proof = json.loads(
+              Path("original-short-rank-score-audit.json")
+              .read_text(encoding="utf-8")
+          )
+          print("\n## Original SHORT coarse score arithmetic")
+          print(f"- status: {proof['rank_coarse_score_audit_status']}")
+          print(f"- failure: {proof['failure_reason_code']}")
+          print(f"- source run: {proof['original_worker_run_id_claimed']}")
+          print(
+              "- original scores actually recomputed: "
+              f"{proof['original_rank_feature_scores_recomputed']}"
+          )
+          print("- full market eligibility and feed provenance: NOT CERTIFIED")
+          print("- risk-matched after-cost account edge: NOT PROVEN")
+          print("- live execution authority: FALSE")
+          PY
+
+      - name: Publish immutable original SHORT coarse-score source audit
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: original-first-seen-short-rank-coarse-score-audit-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: original-short-rank-score-audit.json
+          retention-days: 90
+          if-no-files-found: warn
+
       - name: Publish immutable two-worker rank continuity receipt
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
