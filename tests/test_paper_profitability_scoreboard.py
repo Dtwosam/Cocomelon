@@ -2289,6 +2289,10 @@ def test_frozen_long_trend_volatility_only_counts_genuine_forward_opening() -> N
     assert study["forward_started_at_ms"] == start
     assert report["overall"]["trades"] == 6
     assert study["original_forward_closed_trades"] == 5
+    assert next(
+        c for c in study["discovery_only_long_trend_volatility_cohorts"]
+        if c["original_entry_volatility"] == "low"
+    )["original_booked"]["trades"] == 1
     assert study["verified_low_or_high_volatility_avoided"]["trades"] == 2
     assert study["verified_low_or_high_volatility_avoided"]["wins"] == 1
     assert Decimal(study["original_forward_booked_net_cash"]) == -39
@@ -2328,7 +2332,7 @@ def test_frozen_long_trend_volatility_discovery_never_counts_as_forward() -> Non
     assert sum(
         v["original_booked"]["trades"]
         for v in study["discovery_only_long_trend_volatility_cohorts"]
-    ) == 2
+    ) == 0
 
 
 def test_frozen_long_trend_volatility_week_zero_cannot_move_after_closes() -> None:
