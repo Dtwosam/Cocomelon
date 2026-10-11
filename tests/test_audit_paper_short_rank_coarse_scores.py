@@ -36,8 +36,10 @@ from scripts.audit_paper_short_rank_coarse_scores import (
 )
 from scripts.seal_paper_short_rank_archive import (
     ARCHIVE_NAME,
-    RECEIPT_NAME as RANK_RECEIPT,
     seal_completed_short_rank_archive,
+)
+from scripts.seal_paper_short_rank_archive import (
+    RECEIPT_NAME as RANK_RECEIPT,
 )
 from scripts.seal_paper_short_rank_full_features import (
     BUNDLE_FILE,
