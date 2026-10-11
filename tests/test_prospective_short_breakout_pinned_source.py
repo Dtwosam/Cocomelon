@@ -186,7 +186,7 @@ def test_bit_flip_fails_before_paired_accounts_or_profit_report(
     after = before.replace(b'"100"', b'"101"')
     assert after != before
     path.write_bytes(after)
-    with pytest.raises(ShortRankPinnedSourceError, match="byte/row"):
+    with pytest.raises(ShortRankPinnedSourceError, match="segment identity"):
         run_digest_pinned_short_rank_paired_replay(
             source_root=root,
             manifest=manifest,
