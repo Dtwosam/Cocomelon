@@ -14,6 +14,7 @@ on:
       - "scripts/restore_continuous_paper_state.sh"
       - "scripts/stream_zip_member.py"
       - "scripts/seal_paper_short_rank_archive.py"
+      - "scripts/seal_paper_short_rank_full_features.py"
       - "src/cocomelon/config.py"
       - "src/cocomelon/continuous_paper.py"
       - "src/cocomelon/continuous_paper_cli.py"
@@ -1120,7 +1121,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/seal_paper_short_rank_archive.py \
+          python scripts/seal_paper_short_rank_archive.py                    scripts/seal_paper_short_rank_full_features.py \
             --state-root "$STATE_ROOT" \
             --output-dir /tmp/continuous-paper-short-rank-seal \
             --worker-run-id "$GITHUB_RUN_ID" \
@@ -1139,6 +1140,34 @@ jobs:
         with:
           name: continuous-paper-first-seen-short-rank-${{ github.run_id }}-${{ github.run_attempt }}
           path: /tmp/continuous-paper-short-rank-seal/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - name: Seal entire original SHORT rank input features after paper exit
+        id: full_rank_feature_seal
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/seal_paper_short_rank_full_features.py \
+            --state-root "$STATE_ROOT" \
+            --output-dir /tmp/continuous-paper-full-rank-feature-seal \
+            --worker-run-id "$GITHUB_RUN_ID" \
+            --worker-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --worker-head-sha "$GITHUB_SHA" \
+            | tee /tmp/continuous-paper-full-rank-feature-seal-result.json
+
+      - name: Upload original SHORT rank full-input seal or rejection
+        id: full_rank_feature_seal_upload
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        continue-on-error: true
+        timeout-minutes: 12
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-first-seen-short-rank-full-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/continuous-paper-full-rank-feature-seal/
           if-no-files-found: error
           retention-days: 90
           compression-level: 0

@@ -2,6 +2,13 @@
 
 **Profitability-first evidence anchor:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Negative signed forward economics remain the binding result; archive engineering does not authorize promotion.
 
+## October 11 — independent original-worker FULL SHORT rank feature-input source seal (PR pending)
+
+The newly prospective original full rank input batches from #1167 are now read-only exported in a **separate, post-exit, research-only GitHub artifact**. The exporter verifies the entire original first-seen rank archive plus every **actual full feature payload** batch, requiring each batch to match its associated original rank snapshot digest, captured/observed clocks and every coarse-universe market's complete `FeatureSnapshot` values, content-derived ID and source receive time. Every batch is byte-canonical and SHA-256 verified. The exporter rejects producer errors, empty/altered/missing batches, unexpected/symlinked files and any missing batch *after* the first genuine full-feature capture.
+
+An exact ZIP manifest includes original worker run/attempt/head claims, complete source rank digest, full feature input source digest, complete per-file hashes, number of full-input batches and the **honest count of older ranks that never had full payloads**. For those older ranks it never claims completeness or backfills inputs. Failure uploads an explicit rejection receipt rather than a success archive. This new source is not independently GitHub-API-attested until a separate consumer validates its original artifact ID/SHA against the producing run and against mainnet market events. The original paper worker must **first adopt #1167** before any true full source payload exists. No strategy/risk/stops/order changes or promotion/LIVE permissions are authorized.
+
+
 ## October 11 — prospective complete first-seen ranking FEATURE payload capture (PR pending)
 
 The genuine original paper worker rank artifact contains 374 immutable rank refreshes, but the earlier comparison proved **0 of 87,516** full-universe ranked feature IDs were preserved in the separate decision-learning feature store. Input *IDs* alone cannot establish what OI, mark/oracle, funding, returns, trend, volatility, L2 depth, and provenance produced those ranks. No historical feature payload can be safely reconstructed after the fact.
