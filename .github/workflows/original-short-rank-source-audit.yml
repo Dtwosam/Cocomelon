@@ -157,7 +157,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/original-short-rank-predecessor
-          python scripts/audit_paper_short_rank_handoff.py \
+          python -m scripts.audit_paper_short_rank_handoff \
             --source-dir /tmp/original-short-rank-api \
             --predecessor-dir /tmp/original-short-rank-predecessor \
             --source-run-id "$SOURCE_RUN_ID" \
