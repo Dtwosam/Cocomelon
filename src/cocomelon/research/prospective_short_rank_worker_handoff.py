@@ -19,6 +19,9 @@ from cocomelon.evidence.lifecycle import DecisionEpochEngine
 from cocomelon.research.prospective_short_breakout_rank import (
     ProspectiveShortBreakoutRankState,
 )
+from cocomelon.research.prospective_short_rank_capture_timing import (
+    SHORT_INTERVAL_DIAGNOSTIC_MS,
+)
 from cocomelon.research.prospective_short_rank_worker_artifact import (
     ExpectedGithubRankArtifact,
     VerifiedGithubShortRankEvidence,
@@ -178,6 +181,14 @@ def verify_exact_original_rank_handoff(
         "original_predecessor_snapshot_count": len(before),
         "original_successor_snapshot_count": len(after),
         "new_complete_rank_snapshots": len(newer_rows),
+        "cross_worker_first_new_rank_capture_interval_ms": (
+            newer_rows[0].captured_at_ms - before[-1].captured_at_ms
+        ),
+        "cross_worker_first_rank_interval_over_60s": (
+            newer_rows[0].captured_at_ms - before[-1].captured_at_ms
+            > SHORT_INTERVAL_DIAGNOSTIC_MS
+        ),
+        "cross_worker_interval_60s_threshold_is_diagnostic_only": True,
         "original_rank_history_exact_prefix_reconciled": True,
         "successor_github_title_and_sealed_restore_identity_matched": True,
         "successor_workflow_dispatch_inputs_independently_exposed": (

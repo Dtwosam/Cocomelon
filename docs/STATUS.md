@@ -2,6 +2,13 @@
 
 **Profitability-first evidence anchor:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Negative signed forward economics remain the binding result; archive engineering does not authorize promotion.
 
+## October 11 — actual first-seen rank capture timing census (PR pending)
+
+The original worker `38162541394` first-seen SHORT rank artifact `11711759572` was downloaded and its **full 18,642,998-byte GitHub ZIP SHA256**, 374 canonical first-seen rank records, every file SHA256, row digest, immutable full archive state digest, chronological capture times and complete saved market rank indices verified independently. This genuine source spans **2026-10-11 15:45:14.132 UTC to 18:57:27.941 UTC**, each rank snapshot contains 178 ranked markets with 234 source feature market identities; rank computation-to-capture lag ranged **25–50 ms**. It is not yet a signed full forward paired trading/economic result. Earlier original worker `38152483456` really began **15:43:36 UTC**, before this rank cohort; the original `38162541394` uploader still requires its completed-worker API attest and the `38166151613` successor's completed artifact for source-prefix audit.
+
+The 373 actual rank inter-capture intervals had **30,010 ms median, four exceeding 60 seconds, one exceeding 90 seconds and a 283,083-ms maximum**, so a local complete ZIP checksum alone does not prove continuous rank observations. A new research-only `rank_capture_timing_census` now reports each exact long interval and full counts, median/maximum, and observed excess time in the independently digest-verified original-worker receipt. It does **not** interpolate or invent missing snapshots, classify absent rank receipts as exchange L2 gaps, relax the immutable frozen 300-second rank-age rule, promote an unproven strategy, or change original paper orders, risk, stops, account or LIVE=false.
+
+
 ## October 11 — automated original-worker rank-source handoff audit (PR pending)
 
 The original first-seen SHORT rank artifact is now actually published by the completed-original-worker handoff **38162541394** (GitHub artifact 11711759572, exact 18,642,998 bytes, outer GitHub SHA256 `c2f1527724ac12b19029717ca57be5a0ce4de4aec318af2dce46cec14afc5189`), while the successor **38166151613** has authenticated deployment of the new sealed dispatch identity. The first archive's publication is **not** an authenticated source-continuity or profitability result; it must be checked in full when the original source workflow completes.

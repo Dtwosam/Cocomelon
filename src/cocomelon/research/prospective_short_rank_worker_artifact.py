@@ -32,6 +32,9 @@ from cocomelon.research.prospective_short_breakout_rank import (
 from cocomelon.research.prospective_short_rank_bound_archive import (
     FrozenFirstSeenRankWitnesses,
 )
+from cocomelon.research.prospective_short_rank_capture_timing import (
+    rank_capture_timing_census,
+)
 from cocomelon.research.prospective_short_rank_first_seen import (
     FirstSeenRankSnapshot,
     ShortRankFirstSeenError,
@@ -124,6 +127,7 @@ class VerifiedGithubShortRankEvidence:
 
     def receipt(self) -> dict[str, object]:
         return {
+            **rank_capture_timing_census(self.snapshots),
             "original_worker_run_id": self.worker_run_id,
             "original_worker_attempt": self.worker_run_attempt,
             "original_worker_head_sha": self.worker_head_sha,
