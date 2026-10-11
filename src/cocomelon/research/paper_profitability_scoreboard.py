@@ -113,6 +113,28 @@ def _verified_chart_complete_claim(row: dict[str, object], chart: bool) -> None:
     mark_count = _integer(
         row.get("chart_mark_count"), "original chart mark count"
     )
+    samples = row.get("chart_mark_samples")
+    if not isinstance(samples, list) or len(samples) > 144 or any(
+        not isinstance(sample, list)
+        or len(sample) != 2
+        or type(sample[0]) is not int
+        or sample[0] < 0
+        or not isinstance(sample[1], str)
+        or not sample[1]
+        for sample in samples
+    ):
+        raise PaperProfitabilityScoreboardError(
+            "original compact mark sample witness malformed"
+        )
+    times = [sample[0] for sample in samples]
+    if any(later < earlier for earlier, later in zip(times, times[1:])):
+        raise PaperProfitabilityScoreboardError(
+            "original compact mark sample chronology invalid"
+        )
+    if len(samples) > mark_count:
+        raise PaperProfitabilityScoreboardError(
+            "original compact samples exceed recorded raw marks"
+        )
     gap_raw = row.get("chart_known_gap_duration_ms")
     gap_ms = (
         None if gap_raw is None else
@@ -145,6 +167,8 @@ def _verified_chart_complete_claim(row: dict[str, object], chart: bool) -> None:
     if chart and not (
         present
         and mark_count >= 2
+        and len(samples) >= 2
+        and times[0] < times[-1]
         and gap_ms == 0
         and longest_ms is not None
         and longest_ms <= 300_000
@@ -157,8 +181,8 @@ def _verified_chart_complete_claim(row: dict[str, object], chart: bool) -> None:
             "mark or known-gap witnesses"
         )
     if not present and (
-        mark_count != 0 or gap_ms is not None or longest_ms is not None
-        or before != 0 or during != 0 or silent
+        mark_count != 0 or samples or gap_ms is not None
+        or longest_ms is not None or before != 0 or during != 0 or silent
     ):
         raise PaperProfitabilityScoreboardError(
             "missing original price path contradicts recorded witnesses"
