@@ -9366,7 +9366,12 @@ async def run_continuous_paper_session(
                 features=features,
                 ranks=ranks,
             )
-            rank_snapshot_store.append(rank_row)
+            was_new_rank_snapshot = rank_snapshot_store.append(rank_row)
+            if not was_new_rank_snapshot:
+                # An identical historical rank may be replayed idempotently,
+                # but a brand-new feature batch must never be backfilled for
+                # its original earlier captured_at_ms.
+                return
         except Exception as exc:
             # This is append-only research. An archive failure disables rank
             # attribution, NOT the original paper-trading or position exits.
