@@ -96,6 +96,75 @@ def _text(raw: object, label: str) -> str:
     return raw
 
 
+def _verified_chart_complete_claim(row: dict[str, object], chart: bool) -> None:
+    """Validate necessary independent chart witnesses, not a synthetic exit.
+
+    The source chart auditor establishes complete-path status from the full
+    contemporaneous mark sequence. This downstream booked-PnL report must not
+    trust a flipped coverage label without its recorded supporting witnesses.
+    Passing the checks is necessary, never proof of executable exit coverage
+    or an independently authenticated input artifact.
+    """
+    present = row.get("chart_path_present")
+    if type(present) is not bool:
+        raise PaperProfitabilityScoreboardError(
+            "original chart path presence witness must be boolean"
+        )
+    mark_count = _integer(
+        row.get("chart_mark_count"), "original chart mark count"
+    )
+    gap_raw = row.get("chart_known_gap_duration_ms")
+    gap_ms = (
+        None if gap_raw is None else
+        _integer(gap_raw, "original chart known gap duration")
+    )
+    longest_raw = row.get("chart_longest_unobserved_mark_ms")
+    longest_ms = (
+        None if longest_raw is None else
+        _integer(longest_raw, "original chart longest unobserved mark interval")
+    )
+    before = _integer(
+        row.get("chart_unresolved_gap_starts_before_entry"),
+        "original chart unresolved pre-entry gap count",
+    )
+    during = _integer(
+        row.get("chart_unresolved_gap_starts_during_position"),
+        "original chart unresolved in-position gap count",
+    )
+    silent = row.get("chart_silent_gap_intervals_ms")
+    if not isinstance(silent, list) or any(
+        not isinstance(item, list)
+        or len(item) != 2
+        or any(type(value) is not int or value < 0 for value in item)
+        or item[1] < item[0]
+        for item in silent
+    ):
+        raise PaperProfitabilityScoreboardError(
+            "original chart silent gap intervals malformed"
+        )
+    if chart and not (
+        present
+        and mark_count >= 2
+        and gap_ms == 0
+        and longest_ms is not None
+        and longest_ms <= 300_000
+        and before == 0
+        and during == 0
+        and not silent
+    ):
+        raise PaperProfitabilityScoreboardError(
+            "claimed complete original price path contradicts recorded "
+            "mark or known-gap witnesses"
+        )
+    if not present and (
+        mark_count != 0 or gap_ms is not None or longest_ms is not None
+        or before != 0 or during != 0 or silent
+    ):
+        raise PaperProfitabilityScoreboardError(
+            "missing original price path contradicts recorded witnesses"
+        )
+
+
 def _trade(raw: object) -> _Trade:
     row = _object(raw, "original trade")
     trade_id = _text(row.get("trade_id"), "trade ID")
@@ -126,6 +195,7 @@ def _trade(raw: object) -> _Trade:
         raise PaperProfitabilityScoreboardError(
             "chart completeness must be recorded"
         )
+    _verified_chart_complete_claim(row, chart)
     context_raw = row.get("entry_context")
     lead, rank = UNVERIFIED, UNVERIFIED
     if context_raw is not None:
