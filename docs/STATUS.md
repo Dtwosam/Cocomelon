@@ -2,6 +2,13 @@
 
 **Profitability-first evidence anchor:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Negative signed forward economics remain the binding result; archive engineering does not authorize promotion.
 
+## October 11 — independently recompute original SHORT coarse ranks from full payloads
+
+A new standalone, research-only `recompute_original_short_rank_coarse_scores` takes the two originally SHA-verified rank and complete input-feature sources from #1167–#1169. It recomputes each ranked market's exact coarse percentile-weighted score, ordinal, reason order, and necessary observed volume/OI eligibility quantile floors across the **entire original feature universe**. False rank scores or misleading reordered SHORT>3 labels are fatal even when an attacker locally reseals a self-consistent rank-feature batch. Older historical rank observations with only source IDs remain explicitly uncovered; no backfill or fake avoided trades. See `docs/SHORT_RANK_COARSE_SCORE_RECOMPUTATION.md`.
+
+Full independent eligibility still needs original authenticated market metadata/context and price/age inputs. Passing arithmetic **does not** authenticate original market source/gaps, prove causal trade attribution, mature signed after-fee account economics or authorize promotion. Original paper account, v5 loss, risk/stops and live-trading disablement unchanged.
+
+
 ## October 11 — independent original rank full-input GitHub artifact verification (PR pending)
 
 Now that #1167 captures actual full original rank feature values and #1168 exports a separately SHA-sealed prospective suffix, the new `prospective_short_rank_full_feature_artifact.py` verifies **both immutable original artifacts together**. It requires independently supplied GitHub run/attempt/head and full-input artifact ZIP SHA256/size, plus a previously independently verified original first-seen rank source. It re-verifies the full-input outer ZIP, producer receipt, inner manifest, exact per-batch bytes/SHA256, entire input population digest and every feature's content-derived ID, market, source receipt/as-of and rank parent digest. It rejects any alteration, missing suffix batch, extra ZIP member, different original worker, invented old feature payload or unbounded archive. The result explicitly counts original legacy rank scans without inputs and states full market provenance, mature account profitability and promotion authority are **not proven**.
