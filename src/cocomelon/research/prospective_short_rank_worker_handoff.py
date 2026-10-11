@@ -100,16 +100,34 @@ def verify_exact_original_rank_handoff(
         raise ShortRankHandoffError(
             "successor is not a later exact workflow dispatch"
         )
-    inputs = _object(newer.get("inputs"))
+    # GitHub's REST workflow-run endpoint exposes display_title but does NOT
+    # expose workflow_dispatch.inputs. A completed original-worker source
+    # archive must therefore carry its actual dispatch predecessor run/attempt
+    # (sealed after state restore), and the GitHub-computed run title must
+    # separately confirm the predecessor run ID.
     if (
-        inputs.get("source_run_id") != str(predecessor.worker_run_id)
-        or inputs.get("source_run_attempt") != str(
-            predecessor.worker_run_attempt
+        successor.restored_from_run_id != predecessor.worker_run_id
+        or successor.restored_from_run_attempt
+        != predecessor.worker_run_attempt
+        or newer.get("display_title") != (
+            f"Continuous Paper · {predecessor.worker_run_id}"
         )
     ):
         raise ShortRankHandoffError(
-            "successor workflow inputs do not name exact original predecessor"
+            "successor GitHub title and sealed restore identity mismatch"
         )
+    inputs = newer.get("inputs")
+    if inputs is not None:
+        actual_inputs = _object(inputs)
+        if (
+            actual_inputs.get("source_run_id")
+            != str(predecessor.worker_run_id)
+            or actual_inputs.get("source_run_attempt")
+            != str(predecessor.worker_run_attempt)
+        ):
+            raise ShortRankHandoffError(
+                "successor workflow inputs conflict with rank seal identity"
+            )
     if not predecessor.snapshots or not successor.snapshots:
         raise ShortRankHandoffError("rank archive population missing")
     before = predecessor.snapshots
@@ -161,7 +179,10 @@ def verify_exact_original_rank_handoff(
         "original_successor_snapshot_count": len(after),
         "new_complete_rank_snapshots": len(newer_rows),
         "original_rank_history_exact_prefix_reconciled": True,
-        "successor_workflow_dispatch_inputs_matched": True,
+        "successor_github_title_and_sealed_restore_identity_matched": True,
+        "successor_workflow_dispatch_inputs_independently_exposed": (
+            inputs is not None
+        ),
         "github_run_metadata_authenticated_by_caller": False,
         "original_market_stream_and_gaps_authenticated": False,
         "forward_account_maturity_certified": False,
