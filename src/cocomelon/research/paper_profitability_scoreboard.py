@@ -41,6 +41,14 @@ MEAN_REVERSION_DISCOVERY_FREEZE_MS: Final = 1_791_720_000_000  # Oct 11 12:00 UT
 MEAN_REVERSION_EMBARGO_MS: Final = 6 * 3_600_000
 MEAN_REVERSION_FIXED_OPENING_DAY_MS: Final = 24 * 3_600_000
 MEAN_REVERSION_FIXED_OPENING_WEEK_MS: Final = 7 * MEAN_REVERSION_FIXED_OPENING_DAY_MS
+
+# Separate predeclared exploratory economic candidate, selected from the
+# 191-close discovery cohort: never counts discovery trade cash as forward.
+LONG_TREND_VOLATILITY_FREEZE_MS: Final = 1_791_741_600_000  # Oct 11 18:00 UTC
+LONG_TREND_VOLATILITY_EMBARGO_MS: Final = 6 * 3_600_000
+LONG_TREND_VOLATILITY_FORWARD_MS: Final = (
+    LONG_TREND_VOLATILITY_FREEZE_MS + LONG_TREND_VOLATILITY_EMBARGO_MS
+)
 MEAN_REVERSION_FORWARD_START_MS: Final = (
     MEAN_REVERSION_DISCOVERY_FREEZE_MS + MEAN_REVERSION_EMBARGO_MS
 )
@@ -59,6 +67,7 @@ class _Trade:
     closed_at_ms: int
     lead_strategy: str
     rank_band: str
+    volatility_regime: str
     exit_reason: str
     verified_context: bool
     original_decision_source_match: bool
@@ -251,7 +260,7 @@ def _trade(raw: object) -> _Trade:
         )
     _verified_chart_complete_claim(row, chart)
     context_raw = row.get("entry_context")
-    lead, rank = UNVERIFIED, UNVERIFIED
+    lead, rank, volatility = UNVERIFIED, UNVERIFIED, UNVERIFIED
     if context_raw is not None:
         context = _object(context_raw, "verified entry context")
         for field, expected in (
@@ -271,6 +280,9 @@ def _trade(raw: object) -> _Trade:
             )
         lead = _text(context.get("lead_strategy"), "lead strategy")
         rank = _text(context.get("rank_band"), "entry rank band")
+        raw_volatility = context.get("volatility_regime")
+        if raw_volatility is not None:
+            volatility = _text(raw_volatility, "original entry volatility regime")
     original_source = row.get("original_first_seen_opportunity")
     original_source_match = False
     if original_source is not None:
@@ -347,6 +359,7 @@ def _trade(raw: object) -> _Trade:
         closed_at_ms=closed,
         lead_strategy=lead,
         rank_band=rank,
+        volatility_regime=volatility,
         exit_reason=exit_reason,
         verified_context=context_raw is not None,
         original_decision_source_match=original_source_match,
@@ -1335,6 +1348,196 @@ def _predeclared_mean_reversion_abstention(
     }
 
 
+
+def _predeclared_long_trend_volatility_abstention(
+    trades: list[_Trade],
+    *,
+    source_handoff_ended_at_ms: int | None,
+    source_handoff_open_positions: int | None,
+) -> dict[str, object]:
+    """Another frozen hypothesis, explicitly not a trading-account replay."""
+    discovery = [
+        t for t in trades
+        if t.opened_at_ms < LONG_TREND_VOLATILITY_FREEZE_MS
+        and t.verified_context and t.lead_strategy == "trend"
+        and t.side == "long"
+    ]
+    forward = [
+        t for t in trades
+        if t.opened_at_ms >= LONG_TREND_VOLATILITY_FORWARD_MS
+    ]
+    def eligible(t: _Trade) -> bool:
+        return (
+            t.verified_context and t.original_decision_source_match
+            and t.side == "long" and t.lead_strategy == "trend"
+            and t.volatility_regime in {"low", "high"}
+        )
+    avoided = [t for t in forward if eligible(t)]
+    retained = [t for t in forward if not eligible(t)]
+    uncertain = [
+        t for t in retained
+        if t.verified_context and not t.original_decision_source_match
+        and t.side == "long" and t.lead_strategy == "trend"
+        and t.volatility_regime in {"low", "high"}
+    ]
+    original_cash = sum((t.net for t in forward), ZERO)
+    original_r = sum((t.net_r for t in forward), ZERO)
+    avoided_cash = sum((t.net for t in avoided), ZERO)
+    avoided_r = sum((t.net_r for t in avoided), ZERO)
+    retained_cash = sum((t.net for t in retained), ZERO)
+    retained_r = sum((t.net_r for t in retained), ZERO)
+    if (
+        len(avoided) + len(retained) != len(forward)
+        or original_cash != avoided_cash + retained_cash
+        or original_r != avoided_r + retained_r
+    ):
+        raise PaperProfitabilityScoreboardError(
+            "long-trend volatility full original booked cash/R does not reconcile"
+        )
+    delta_cash = -avoided_cash
+    delta_r = -avoided_r
+    unmatched_winners = [t for t in uncertain if t.net > ZERO]
+    unmatched_losers = [t for t in uncertain if t.net < ZERO]
+    lower_cash = delta_cash - sum((t.net for t in unmatched_winners), ZERO)
+    upper_cash = delta_cash - sum((t.net for t in unmatched_losers), ZERO)
+    lower_r = delta_r - sum((t.net_r for t in unmatched_winners), ZERO)
+    upper_r = delta_r - sum((t.net_r for t in unmatched_losers), ZERO)
+    if (
+        not lower_cash <= delta_cash <= upper_cash
+        or not lower_r <= delta_r <= upper_r
+    ):
+        raise PaperProfitabilityScoreboardError(
+            "unwitnessed original volatility abstention interval mismatch"
+        )
+    # Fixed week windows are enumerated from the immutable embargo
+    # endpoint, not retrospectively chosen from trade count or PnL.
+    day_ms = MEAN_REVERSION_FIXED_OPENING_DAY_MS
+    week_ms = 7 * day_ms
+    by_week: dict[int, list[_Trade]] = {}
+    for t in forward:
+        idx = (t.opened_at_ms - LONG_TREND_VOLATILITY_FORWARD_MS) // week_ms
+        by_week.setdefault(idx, []).append(t)
+    exposure_settled = (
+        source_handoff_ended_at_ms is not None
+        and source_handoff_open_positions == 0
+    )
+    weeks: list[dict[str, object]] = []
+    for week in sorted(set(by_week).union({0, 1})):
+        members = by_week.get(week, [])
+        omitted = [t for t in members if eligible(t)]
+        week_cash = sum((t.net for t in members), ZERO)
+        week_r = sum((t.net_r for t in members), ZERO)
+        omitted_cash = sum((t.net for t in omitted), ZERO)
+        omitted_r = sum((t.net_r for t in omitted), ZERO)
+        start = LONG_TREND_VOLATILITY_FORWARD_MS + week * week_ms
+        weeks.append({
+            "week_index": week,
+            "opened_at_ms_ge": start,
+            "opened_at_ms_lt": start + week_ms,
+            "observed_original_closed_trades": len(members),
+            "original_booked_net_cash": str(week_cash),
+            "original_booked_net_r": str(week_r),
+            "verified_abstention_closes": _metrics(omitted),
+            "naive_skip_delta_cash": str(-omitted_cash),
+            "naive_skip_delta_r": str(-omitted_r),
+            "source_window_mature": (
+                exposure_settled
+                and source_handoff_ended_at_ms is not None
+                and source_handoff_ended_at_ms >= start + week_ms
+            ),
+            "research_only": True,
+            "promotion_authority": False,
+        })
+    if (
+        sum((Decimal(str(w["original_booked_net_cash"])) for w in weeks), ZERO)
+        != original_cash
+        or sum((Decimal(str(w["original_booked_net_r"])) for w in weeks), ZERO)
+        != original_r
+    ):
+        raise PaperProfitabilityScoreboardError(
+            "frozen long-trend volatility weekly partition changes original cash/R"
+        )
+    first_two = weeks[:2]
+    weeks_sampled = (
+        len(first_two) == 2 and all(
+            w["source_window_mature"] is True
+            and _integer(
+                _object(w["verified_abstention_closes"], "LT volatility week")
+                .get("trades"),
+                "LT volatility week eligible closes",
+            ) >= 3
+            for w in first_two
+        )
+    )
+    distinct_markets = {t.market for t in avoided}
+    descriptive_floor = (
+        len(forward) >= 40 and len(avoided) >= 12
+        and len(distinct_markets) >= 6 and weeks_sampled
+        and all(t.verified_context for t in forward)
+        and all(t.original_decision_source_match for t in forward)
+    )
+    return {
+        "hypothesis_id": "original-long-trend-low-or-high-volatility-abstain-v1",
+        "kind": "research-original-booked-zero-replacement-abstention",
+        "frozen_at_ms": LONG_TREND_VOLATILITY_FREEZE_MS,
+        "embargo_ms": LONG_TREND_VOLATILITY_EMBARGO_MS,
+        "forward_started_at_ms": LONG_TREND_VOLATILITY_FORWARD_MS,
+        "rule": "skip_verified_long_trend_when_original_volatility_low_or_high",
+        "discovery_never_forward": True,
+        "discovery_only_long_trend_volatility_cohorts": [
+            {
+                "original_entry_volatility": regime,
+                "original_booked": _metrics([
+                    t for t in discovery if t.volatility_regime == regime
+                ]),
+            }
+            for regime in ("low", "normal", "high", UNVERIFIED)
+        ],
+        "source": "complete_original_paper_closes_and_first_seen_decision",
+        "original_forward_closed_trades": len(forward),
+        "original_forward_booked_net_cash": str(original_cash),
+        "original_forward_booked_net_r": str(original_r),
+        "verified_low_or_high_volatility_avoided": _metrics(avoided),
+        "all_unmodified_original_trades_retained_for_benchmark": True,
+        "hypothetically_retained_original_closes": _metrics(retained),
+        "zero_replacement_candidate_cash": str(retained_cash),
+        "zero_replacement_candidate_r": str(retained_r),
+        "zero_replacement_delta_cash": str(delta_cash),
+        "zero_replacement_delta_r": str(delta_r),
+        "unwitnessed_volatility_originals_retained": _metrics(uncertain),
+        "unwitnessed_original_cannot_earn_skip_credit": True,
+        "unwitnessed_context_cash_delta_lower": str(lower_cash),
+        "unwitnessed_context_cash_delta_upper": str(upper_cash),
+        "unwitnessed_context_r_delta_lower": str(lower_r),
+        "unwitnessed_context_r_delta_upper": str(upper_r),
+        "weekly_open_time_windows": weeks,
+        "fixed_first_two_weeks_mature_sample": weeks_sampled,
+        "distinct_forward_avoided_markets": len(distinct_markets),
+        "descriptive_sample_floor_met_not_promotion": descriptive_floor,
+        "no_replacement_capital_reallocation": True,
+        "independent_online_filter_state_certified": False,
+        "independently_archived_decision_receipt_certified": False,
+        "risk_matched_full_account_trial": False,
+        "statistical_confidence_interval": False,
+        "research_readiness_grant": False,
+        "ready_for_strategy_promotion": False,
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "changes_strategy": False,
+        "changes_positions": False,
+        "changes_risk_limits": False,
+        "warning": (
+            "Preselected from losing 191-trade discovery sample; calendar "
+            "holdout only starts after its 6h embargo. Live paper takes all "
+            "original entries; skipped winners and losers both count. A "
+            "naive zero-replacement booked contribution cannot infer net "
+            "cash from released margin, new fills or changed risk. No "
+            "statistical or executable profit/promotion inference."
+        ),
+    }
+
+
 def paper_profitability_scoreboard(
     raw: object,
     *,
@@ -1559,6 +1762,13 @@ def paper_profitability_scoreboard(
             ),
             "prospective_mean_reversion_abstention_contributions": (
                 _predeclared_mean_reversion_abstention(
+                    trades,
+                    source_handoff_ended_at_ms=handoff_ended,
+                    source_handoff_open_positions=handoff_open,
+                )
+            ),
+            "prospective_long_trend_volatility_abstention_contributions": (
+                _predeclared_long_trend_volatility_abstention(
                     trades,
                     source_handoff_ended_at_ms=handoff_ended,
                     source_handoff_open_positions=handoff_open,
