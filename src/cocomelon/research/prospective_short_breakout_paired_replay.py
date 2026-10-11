@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from decimal import Decimal
 from pathlib import Path
 from typing import Final
@@ -16,7 +16,10 @@ from cocomelon.domain.replay import (
 )
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.contracts import BaselineReplayConfig
-from cocomelon.evidence.lifecycle import BaselineReplayPipeline
+from cocomelon.evidence.lifecycle import (
+    BaselineReplayPipeline,
+    DecisionEpochEngine,
+)
 from cocomelon.execution.accounting import PaperAccountState
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.research.prospective_short_breakout_paired_entry import (
@@ -53,6 +56,7 @@ class ShortRankIndependentPairedPaperReplay:
         selected_markets: Sequence[MarketId],
         rank_witness_provider: RankWitnessProvider,
         state_root: str | Path,
+        decision_engine_factory: Callable[[], DecisionEpochEngine] | None = None,
     ) -> None:
         if manifest.evidence_class is not EvidenceClass.MICROSTRUCTURE:
             raise ShortRankPairedReplayError(
@@ -103,6 +107,10 @@ class ShortRankIndependentPairedPaperReplay:
             selected_markets=markets,
             replay_run_id=f"{freeze.candidate_id}:independent-baseline",
             evidence_class=EvidenceClass.MICROSTRUCTURE,
+            decision_engine=(
+                None if decision_engine_factory is None
+                else decision_engine_factory()
+            ),
             opening_candidate_filter=self._baseline_admission,
         )
         self._candidate = BaselineReplayPipeline(
@@ -112,6 +120,10 @@ class ShortRankIndependentPairedPaperReplay:
             selected_markets=markets,
             replay_run_id=f"{freeze.candidate_id}:independent-candidate",
             evidence_class=EvidenceClass.MICROSTRUCTURE,
+            decision_engine=(
+                None if decision_engine_factory is None
+                else decision_engine_factory()
+            ),
             opening_candidate_filter=self._candidate_admission,
         )
         self._last_sort_key: tuple[int, str, str, str] | None = None
