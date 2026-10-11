@@ -675,8 +675,16 @@ def _signed_account_metric(
         "candidate_minus_baseline_realized_net_pnl",
     ):
         return _metric(row, key)
+    if not key.startswith("candidate_"):
+        raise LossContextPairedShadowReviewError(
+            "unsupported signed paired account metric " + key
+        )
+    account_field = key.removeprefix("candidate_")
     candidate = _mapping(row.get("candidate"), "candidate")
-    return _decimal(candidate.get(key), "candidate." + key)
+    return _decimal(
+        candidate.get(account_field),
+        "candidate." + account_field,
+    )
 
 
 def _fixed_signed_checkpoint_calendar_blocks(
