@@ -1731,6 +1731,32 @@ def test_original_risk_guard_blocks_frozen_forward_rank_r_inflation() -> None:
         )
 
 
+
+def _add_original_opportunity_to_scoreboard_trade(
+    row: dict[str, object], *, lead: str,
+) -> None:
+    """Preserve genuine row identity in the synthetic first-seen fixture."""
+    ident = str(row["trade_id"])
+    row["strategy_decision_id"] = "strategy-" + ident
+    row["feature_snapshot_id"] = "feature-" + ident
+    row["risk_decision_id"] = "risk-" + ident
+    row["original_first_seen_opportunity"] = {
+        "status": "matched",
+        "source_phase": "original_paper_opening_opportunity_after_risk_evaluation",
+        "independently_archived_before_trade": False,
+        "online_filter_state_certified": False,
+        "promotion_authority": False,
+        "strategy_decision_id": row["strategy_decision_id"],
+        "feature_snapshot_id": row["feature_snapshot_id"],
+        "risk_decision_id": row["risk_decision_id"],
+        "market": row["market"],
+        "direction": row["side"],
+        "lead_strategy": lead,
+        "opportunity_timestamp_ms": int(row["opened_at_ms"]) - 1,
+        "baseline_risk_approved": True,
+    }
+
+
 def test_mean_reversion_abstention_excludes_all_discovery_rows() -> None:
     from cocomelon.research.paper_profitability_scoreboard import (
         MEAN_REVERSION_FORWARD_START_MS,
@@ -1774,6 +1800,12 @@ def test_mean_reversion_forward_abstention_retains_unknowns_and_winners() -> Non
         )
         for n, market, strategy, gross, opened, closed in args
     ]
+    for row in rows:
+        context = row["entry_context"]
+        if isinstance(context, dict):
+            _add_original_opportunity_to_scoreboard_trade(
+                row, lead=str(context["lead_strategy"]),
+            )
     report = paper_profitability_scoreboard(
         _reconciled_audit_from_rows(rows)
     )
@@ -1826,6 +1858,9 @@ def test_mean_reversion_abstention_never_credits_missing_original_context() -> N
             gross="5",
         ), start + 1, closed_at_ms=start + 52,
     )
+    _add_original_opportunity_to_scoreboard_trade(
+        winning, lead="mean_reversion",
+    )
     out = paper_profitability_scoreboard(
         _reconciled_audit_from_rows([old, unknown, winning])
     )["prospective_mean_reversion_abstention_contributions"]
@@ -1837,3 +1872,78 @@ def test_mean_reversion_abstention_never_credits_missing_original_context() -> N
     assert out["arithmetic_improvement_positive_both_cash_and_r"] is False
     assert out["descriptive_sample_floor_met_not_promotion"] is False
     assert out["research_readiness_grant"] is False
+
+
+def test_unmatched_first_seen_mean_reversion_stays_in_actual_original_cash() -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
+    )
+    row = _move_trade_to_original_open_time(
+        _trade(1, side="long", market="SOL", strategy="mean_reversion",
+               gross="-9"),
+        start, closed_at_ms=start + 60_000,
+    )
+    report = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows([row])
+    )
+    trial = report["prospective_mean_reversion_abstention_contributions"]
+    assert trial["forward_original_closed_trades"] == 1
+    assert trial["forward_mean_reversion_without_first_seen_match_retained"] == 1
+    assert trial["verified_mean_reversion_avoided"]["trades"] == 0
+    assert Decimal(trial["naive_zero_replacement_delta_net_cash"]) == 0
+    assert Decimal(trial["original_forward_net_cash"]) == Decimal("-10")
+
+
+@pytest.mark.parametrize("bad", [
+    ("lead_strategy", "trend"),
+    ("market", "BTC"),
+    ("direction", "short"),
+    ("strategy_decision_id", "forged-decision"),
+    ("feature_snapshot_id", "forged-feature"),
+    ("risk_decision_id", "forged-risk"),
+    ("baseline_risk_approved", False),
+    ("opportunity_timestamp_ms", 0),
+    ("independently_archived_before_trade", True),
+    ("online_filter_state_certified", True),
+])
+def test_first_seen_opportunity_must_match_original_and_cannot_claim_authority(
+    bad: tuple[str, object],
+) -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
+    )
+    row = _move_trade_to_original_open_time(
+        _trade(1, side="long", market="SOL", strategy="mean_reversion",
+               gross="-9"),
+        start, closed_at_ms=start + 50,
+    )
+    _add_original_opportunity_to_scoreboard_trade(row, lead="mean_reversion")
+    source = row["original_first_seen_opportunity"]
+    assert isinstance(source, dict)
+    field, value = bad
+    source[field] = value
+    with pytest.raises(
+        PaperProfitabilityScoreboardError, match="original|first-seen"
+    ):
+        paper_profitability_scoreboard(
+            _reconciled_audit_from_rows([row])
+        )
+
+
+def test_first_seen_uncertain_source_cannot_claim_matching_fields() -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        MEAN_REVERSION_FORWARD_START_MS as start,
+    )
+    row = _move_trade_to_original_open_time(
+        _trade(1, side="short", market="SOL",
+               strategy="mean_reversion", gross="-5"),
+        start, closed_at_ms=start + 50,
+    )
+    _add_original_opportunity_to_scoreboard_trade(row, lead="mean_reversion")
+    source = row["original_first_seen_opportunity"]
+    assert isinstance(source, dict)
+    source["status"] = "missing"
+    with pytest.raises(PaperProfitabilityScoreboardError, match="uncertain"):
+        paper_profitability_scoreboard(
+            _reconciled_audit_from_rows([row])
+        )
