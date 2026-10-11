@@ -742,16 +742,16 @@ def _fixed_signed_checkpoint_calendar_blocks(
             if data is None
             else cast(dict[str, Decimal], data["values"])
         )
-        start = (
+        calendar_start_ms = (
             None if first_ms is None
             else first_ms + index * SIGNED_PAIRED_CALENDAR_DAY_MS
         )
         days.append({
             "calendar_day_index": index,
-            "checkpoint_end_ms_ge": start,
+            "checkpoint_end_ms_ge": calendar_start_ms,
             "checkpoint_end_ms_lt": (
-                None if start is None
-                else start + SIGNED_PAIRED_CALENDAR_DAY_MS
+                None if calendar_start_ms is None
+                else calendar_start_ms + SIGNED_PAIRED_CALENDAR_DAY_MS
             ),
             "fully_within_day_signed_checkpoint_transitions": (
                 0 if data is None else data["transitions"]
