@@ -127,7 +127,7 @@ def _verified_chart_complete_claim(row: dict[str, object], chart: bool) -> None:
             "original compact mark sample witness malformed"
         )
     times = [sample[0] for sample in samples]
-    if any(later < earlier for earlier, later in zip(times, times[1:])):
+    if any(later < earlier for earlier, later in zip(times, times[1:], strict=False)):
         raise PaperProfitabilityScoreboardError(
             "original compact mark sample chronology invalid"
         )
