@@ -242,6 +242,21 @@ def attest_original_worker_rank_artifact(
     }
 
 
+def _safe_json(path: Path) -> object | None:
+    """Untrusted GitHub API file damage must produce a negative receipt."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        return None
+
+
+def _safe_zip(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--run-json", type=Path, required=True)
@@ -253,18 +268,25 @@ def main() -> int:
     p.add_argument("--repository", required=True)
     p.add_argument("--output", type=Path, required=True)
     args = p.parse_args()
-    raw = (
-        args.artifact_zip.read_bytes() if args.artifact_zip.is_file() else None
-    )
-    evidence = attest_original_worker_rank_artifact(
-        run_json=json.loads(args.run_json.read_text(encoding="utf-8")),
-        jobs_json=json.loads(args.jobs_json.read_text(encoding="utf-8")),
-        artifacts_json=json.loads(args.artifacts_json.read_text(encoding="utf-8")),
-        expected_run_id=args.source_run_id,
-        expected_run_attempt=args.source_run_attempt,
-        expected_repository=args.repository,
-        original_artifact_zip=raw,
-    )
+    try:
+        evidence = attest_original_worker_rank_artifact(
+            run_json=_safe_json(args.run_json),
+            jobs_json=_safe_json(args.jobs_json),
+            artifacts_json=_safe_json(args.artifacts_json),
+            expected_run_id=args.source_run_id,
+            expected_run_attempt=args.source_run_attempt,
+            expected_repository=args.repository,
+            original_artifact_zip=_safe_zip(args.artifact_zip),
+        )
+    except (
+        OriginalWorkerAttestationError,
+        GithubShortRankArtifactError,
+        OSError, ValueError, TypeError,
+    ):
+        evidence = _refuse(
+            "original_worker_source_metadata_or_artifact_invalid",
+            run_id=args.source_run_id,
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(
