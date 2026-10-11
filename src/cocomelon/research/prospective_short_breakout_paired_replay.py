@@ -23,6 +23,7 @@ from cocomelon.evidence.lifecycle import (
 from cocomelon.execution.accounting import PaperAccountState
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.research.prospective_short_breakout_paired_entry import (
+    ObservedRankWitness,
     ProspectiveShortBreakoutPairedEntryFilter,
     RankWitnessProvider,
 )
@@ -80,11 +81,26 @@ class ShortRankIndependentPairedPaperReplay:
         self._manifest = manifest
         self._freeze = freeze
         self._root = root
+        # Never let two replay lanes read different rank values because the
+        # callback changed its mind between baseline and candidate calls.
+        # Source authenticity still needs independent archive verification.
+        self._rank_witnesses: dict[
+            tuple[str, int], ObservedRankWitness | None
+        ] = {}
+
+        def shared_rank_witness(
+            market: MarketId, at_ms: int,
+        ) -> ObservedRankWitness | None:
+            key = (market.canonical, at_ms)
+            if key not in self._rank_witnesses:
+                self._rank_witnesses[key] = rank_witness_provider(market, at_ms)
+            return self._rank_witnesses[key]
+
         self._baseline_admission = ProspectiveShortBreakoutPairedEntryFilter(
-            freeze, False, rank_witness_provider
+            freeze, False, shared_rank_witness
         )
         self._candidate_admission = ProspectiveShortBreakoutPairedEntryFilter(
-            freeze, True, rank_witness_provider
+            freeze, True, shared_rank_witness
         )
         self._baseline_execution = PaperExecutionAdapter(
             root / "baseline-execution.sqlite3",
@@ -300,6 +316,7 @@ class ShortRankIndependentPairedPaperReplay:
             "baseline_admission": self._baseline_admission.summary_payload(),
             "candidate_admission": self._candidate_admission.summary_payload(),
             "same_exact_records_consumed_by_both": True,
+            "rank_witness_values_shared_between_lanes": True,
             "independent_simulated_paper_accounts": True,
             "actual_simulated_fills_not_skipped_cash": True,
             "source_manifest_independently_authenticated": False,
