@@ -183,7 +183,21 @@ def test_mutated_inner_snapshot_after_recomputed_github_digest_fails(
         for name in zin.namelist():
             row = zin.read(name)
             if name.startswith("snapshots/"):
-                row = row.replace(b'"ordinal":1', b'"ordinal":3')
+                payload = json.loads(row)
+                payload["ranks"][0]["score"] = "0.86"
+                unsigned = {
+                    key: value for key, value in payload.items()
+                    if key != "snapshot_digest"
+                }
+                payload["snapshot_digest"] = hashlib.sha256(
+                    json.dumps(
+                        unsigned, sort_keys=True, separators=(",", ":"),
+                    ).encode(),
+                ).hexdigest()
+                row = (
+                    json.dumps(payload, sort_keys=True, separators=(",", ":"))
+                    + "\\n"
+                ).encode()
                 assert row != zin.read(name)
             zout.writestr(name, row)
     # Recompute both outer GitHub digest and inner file hash as an
