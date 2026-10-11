@@ -309,7 +309,7 @@ def _all_paper_trade_chart_audit_precise(
                 # are NOT two independent in-position temporal observations.
                 # Original mark times stay immutable; do not infer missing
                 # observations from price changes or candle endpoints.
-                and compact[0][0] < compact[-1][0]
+                and cast(int, compact[0][0]) < cast(int, compact[-1][0])
                 and gap_ms == 0
                 and longest_unobserved_ms is not None
                 and longest_unobserved_ms <= MAX_UNOBSERVED_MARK_INTERVAL_MS
