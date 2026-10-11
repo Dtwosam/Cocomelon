@@ -331,6 +331,9 @@ def _all_paper_trade_chart_audit_precise(
         cumulative_net += trade.net_pnl
         rows.append({
             "trade_id": trade.trade_id,
+            "strategy_decision_id": trade.strategy_decision_id,
+            "feature_snapshot_id": trade.feature_snapshot_id,
+            "risk_decision_id": trade.risk_decision_id,
             "market": trade.market.canonical,
             "side": trade.direction.value,
             "opened_at_ms": trade.opened_at_ms,
