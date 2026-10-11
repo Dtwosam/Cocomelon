@@ -15,6 +15,7 @@ from typing import Final, cast
 
 from cocomelon.domain.features import FeatureSnapshot
 from cocomelon.research.learning_feature_snapshots import (
+    LearningFeatureSnapshotError,
     _snapshot_from_payload,
     feature_snapshot_payload,
 )
@@ -148,7 +149,7 @@ class OriginalRankFeatureInputBatch:
                 raise OriginalRankInputBatchError("rank input feature schema drift")
             try:
                 feature = _snapshot_from_payload(_obj(row["feature"]))
-            except (ValueError, TypeError) as exc:
+            except (ValueError, TypeError, LearningFeatureSnapshotError) as exc:
                 raise OriginalRankInputBatchError(
                     "original rank source feature cannot be reconstructed"
                 ) from exc
