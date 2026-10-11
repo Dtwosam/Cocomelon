@@ -225,9 +225,10 @@ def test_original_paper_worker_instruments_all_three_rank_refresh_points() -> No
         Path(__file__).resolve().parents[1]
         / "src/cocomelon/continuous_paper.py"
     ).read_text(encoding="utf-8")
-    assert code.count("        capture_rank_first_seen(") == 1
-    assert code.count("            capture_rank_first_seen(") == 1
-    assert code.count("                capture_rank_first_seen(") == 1
+    source_lines = code.splitlines()
+    assert source_lines.count("        capture_rank_first_seen(") == 1
+    assert source_lines.count("            capture_rank_first_seen(") == 1
+    assert source_lines.count("                capture_rank_first_seen(") == 1
     for original in ("_initial_features", "_startup_features", "_refreshed_features"):
         assert f"features={original}" in code
     assert "prospective-short-rank-first-seen-error.json" in code
