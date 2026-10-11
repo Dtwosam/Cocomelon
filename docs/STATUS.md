@@ -2,6 +2,13 @@
 
 **Profitability-first evidence anchor:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Negative signed forward economics remain the binding result; archive engineering does not authorize promotion.
 
+## October 11 — exact first-seen SHORT rank input feature lineage is not yet available (PR pending)
+
+A genuine original-worker artifact join now shows an **economically important evidence blocker**, not a win: rank source `11711759572` contains 374 original first-seen rankings *234 source feature IDs = **87,516 rank-feature references**. The separate original decision-learning artifact `11711789549` contains **25,466 stored learning features** and **25,909 decision facts**. Both exact outer ZIP checksums match independently downloaded GitHub bytes, but **zero of the 87,516 ranked-source feature IDs occur in the separate saved learning-feature population**. The rank refresh and decision-learning writers save features at different times. This is **not evidence that ranks were fabricated**; it establishes that the current completed evidence source cannot independently reconstruct the full original rank inputs.
+
+A new fail-closed `rank_feature_source_coverage` compares every contemporaneous rank feature source identity to a separately verified saved feature record, requiring identical 24-hex snapshot ID, market, source receipt timestamp, and pre-observation `as_of_ms`. The strict variant rejects any unmatched input rather than crediting filtered losses. Even complete internal ID closure would not independently authenticate Hyperliquid L2, market gaps or positive paired-account expectancy. Do not alter the frozen 300s SHORT-rank rule, original strategy/stops/limits, signed negative v5, readiness or LIVE disabled. See `docs/SHORT_RANK_FEATURE_ID_LINEAGE.md`.
+
+
 ## October 11 — actual first-seen rank capture timing census (PR pending)
 
 The original worker `38162541394` first-seen SHORT rank artifact `11711759572` was downloaded and its **full 18,642,998-byte GitHub ZIP SHA256**, 374 canonical first-seen rank records, every file SHA256, row digest, immutable full archive state digest, chronological capture times and complete saved market rank indices verified independently. This genuine source spans **2026-10-11 15:45:14.132 UTC to 18:57:27.941 UTC**, each rank snapshot contains 178 ranked markets with 234 source feature market identities; rank computation-to-capture lag ranged **25–50 ms**. It is not yet a signed full forward paired trading/economic result. Earlier original worker `38152483456` really began **15:43:36 UTC**, before this rank cohort; the original `38162541394` uploader still requires its completed-worker API attest and the `38166151613` successor's completed artifact for source-prefix audit.
