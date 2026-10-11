@@ -10,6 +10,15 @@ import pytest
 
 from cocomelon.domain.features import FeatureSnapshot, OpportunityRank
 from cocomelon.domain.market import MarketId
+from cocomelon.domain.strategy import Direction
+from cocomelon.evidence.epochs import EpochMarketEvaluation
+from cocomelon.research.prospective_short_breakout_paired_entry import (
+    RANK_FILTER_REASON,
+    ProspectiveShortBreakoutPairedEntryFilter,
+)
+from cocomelon.research.prospective_short_breakout_rank import (
+    ProspectiveShortBreakoutRankState,
+)
 from cocomelon.research.prospective_short_rank_first_seen import (
     FirstSeenRankSnapshot,
     FirstSeenRankSnapshotStore,
@@ -146,3 +155,65 @@ def test_complete_record_digest_excludes_none_of_the_ranked_universe() -> None:
     changed["captured_at_ms"] = 1_011
     with pytest.raises(ShortRankFirstSeenError, match="digest"):
         FirstSeenRankSnapshot.from_dict(changed)
+
+
+
+def test_paired_filter_reads_only_archived_predecision_rank_witness(
+    tmp_path: Path,
+) -> None:
+    archive = FirstSeenRankSnapshotStore(tmp_path)
+    target = MarketId("", "DOGE")
+    observed = 21_602_000
+    captured = 21_602_050
+    markets = (BTC, ETH, MarketId("", "SOL"), target)
+    features = {
+        market.canonical: cast(FeatureSnapshot, SimpleNamespace(
+            market=market,
+            as_of_ms=observed,
+            source_received_at_ms=observed - 10,
+            snapshot_id=f"{market.canonical}:fixture-feature",
+        )) for market in markets
+    }
+    archive.append(FirstSeenRankSnapshot.from_observation(
+        observed_at_ms=observed,
+        captured_at_ms=captured,
+        features=features,
+        ranks=tuple(_rank(market, n) for n, market in enumerate(markets, 1)),
+    ))
+    freeze = ProspectiveShortBreakoutRankState(frozen_at_ms=1_000)
+    baseline = ProspectiveShortBreakoutPairedEntryFilter(
+        freeze=freeze, block_rank4plus=False,
+        rank_witness_provider=archive.witness_for_decision,
+    )
+    challenger = ProspectiveShortBreakoutPairedEntryFilter(
+        freeze=freeze, block_rank4plus=True,
+        rank_witness_provider=archive.witness_for_decision,
+    )
+    for moment, expected in (
+        (captured, None),
+        (captured + 1, RANK_FILTER_REASON),
+    ):
+        decision = SimpleNamespace(
+            market=target,
+            feature_snapshot_id="original-feature",
+            direction=Direction.SHORT,
+            timestamp_ms=moment,
+            lead_strategy="breakout",
+        )
+        evaluation = cast(EpochMarketEvaluation, SimpleNamespace(
+            decision=decision,
+            feature=SimpleNamespace(
+                market=target, snapshot_id="original-feature"
+            ),
+        ))
+        assert baseline.block_reason(
+            evaluation, attempt_timestamp_ms=moment + 1
+        ) is None
+        assert challenger.block_reason(
+            evaluation, attempt_timestamp_ms=moment + 1
+        ) == expected
+    assert challenger.unverifiable_by_reason == {
+        "missing_rank_witness": 1
+    }
+    assert challenger.rank4plus_blocked == 1
+    assert challenger.summary_payload()["execution_authority"] is False
