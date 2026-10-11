@@ -2,6 +2,13 @@
 
 **Profitability-first evidence anchor:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Negative signed forward economics remain the binding result; archive engineering does not authorize promotion.
 
+## October 11 — independent original rank full-input GitHub artifact verification (PR pending)
+
+Now that #1167 captures actual full original rank feature values and #1168 exports a separately SHA-sealed prospective suffix, the new `prospective_short_rank_full_feature_artifact.py` verifies **both immutable original artifacts together**. It requires independently supplied GitHub run/attempt/head and full-input artifact ZIP SHA256/size, plus a previously independently verified original first-seen rank source. It re-verifies the full-input outer ZIP, producer receipt, inner manifest, exact per-batch bytes/SHA256, entire input population digest and every feature's content-derived ID, market, source receipt/as-of and rank parent digest. It rejects any alteration, missing suffix batch, extra ZIP member, different original worker, invented old feature payload or unbounded archive. The result explicitly counts original legacy rank scans without inputs and states full market provenance, mature account profitability and promotion authority are **not proven**.
+
+Original workers before #1167 adoption have **no complete first-seen feature input batch source**. This source verifier must never interpret the 374 historical ID-only rankings as complete. Real GitHub API metadata retrieval and mainnet market source continuity remain independent necessary checks. The original negative paper account and frozen losing v5, risk/stops/orders and LIVE=false remain unchanged.
+
+
 ## October 11 — independent original-worker FULL SHORT rank feature-input source seal (PR pending)
 
 The newly prospective original full rank input batches from #1167 are now read-only exported in a **separate, post-exit, research-only GitHub artifact**. The exporter verifies the entire original first-seen rank archive plus every **actual full feature payload** batch, requiring each batch to match its associated original rank snapshot digest, captured/observed clocks and every coarse-universe market's complete `FeatureSnapshot` values, content-derived ID and source receive time. Every batch is byte-canonical and SHA-256 verified. The exporter rejects producer errors, empty/altered/missing batches, unexpected/symlinked files and any missing batch *after* the first genuine full-feature capture.
