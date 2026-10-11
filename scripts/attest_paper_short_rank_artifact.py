@@ -59,6 +59,7 @@ def attest_original_worker_rank_artifact(
     jobs_json: object,
     artifacts_json: object,
     expected_run_id: int,
+    expected_run_attempt: int,
     expected_repository: str,
     original_artifact_zip: bytes | None,
 ) -> dict[str, object]:
@@ -69,6 +70,8 @@ def attest_original_worker_rank_artifact(
     """
     if type(expected_run_id) is not int or expected_run_id <= 0:
         raise OriginalWorkerAttestationError("expected worker ID invalid")
+    if type(expected_run_attempt) is not int or expected_run_attempt <= 0:
+        raise OriginalWorkerAttestationError("expected worker attempt invalid")
     if (
         not expected_repository or expected_repository.count("/") != 1
         or expected_repository.startswith("/") or expected_repository.endswith("/")
@@ -92,7 +95,11 @@ def attest_original_worker_rank_artifact(
         return _refuse("original_worker_run_identity_unverified", run_id=expected_run_id)
     run_attempt = run.get("run_attempt")
     head = run.get("head_sha")
-    if type(run_attempt) is not int or run_attempt <= 0 or not isinstance(head, str):
+    if (
+        type(run_attempt) is not int
+        or run_attempt != expected_run_attempt
+        or not isinstance(head, str)
+    ):
         return _refuse("original_worker_attempt_or_head_invalid", run_id=expected_run_id)
     job_rows = jobs.get("jobs")
     if not isinstance(job_rows, list):
@@ -186,6 +193,7 @@ def main() -> int:
     p.add_argument("--artifacts-json", type=Path, required=True)
     p.add_argument("--artifact-zip", type=Path, required=True)
     p.add_argument("--source-run-id", type=int, required=True)
+    p.add_argument("--source-run-attempt", type=int, required=True)
     p.add_argument("--repository", required=True)
     p.add_argument("--output", type=Path, required=True)
     args = p.parse_args()
@@ -197,6 +205,7 @@ def main() -> int:
         jobs_json=json.loads(args.jobs_json.read_text(encoding="utf-8")),
         artifacts_json=json.loads(args.artifacts_json.read_text(encoding="utf-8")),
         expected_run_id=args.source_run_id,
+        expected_run_attempt=args.source_run_attempt,
         expected_repository=args.repository,
         original_artifact_zip=raw,
     )
