@@ -19,6 +19,9 @@ from cocomelon.research.prospective_short_rank_first_seen import (
     FirstSeenRankSnapshot,
     FirstSeenRankSnapshotStore,
 )
+from cocomelon.research.prospective_short_rank_full_feature_artifact import (
+    VerifiedGithubOriginalRankInputs,
+)
 from cocomelon.research.prospective_short_rank_full_features import (
     OriginalRankFeatureInputBatch,
     OriginalRankFeatureInputBatchStore,
@@ -29,6 +32,17 @@ from cocomelon.research.prospective_short_rank_market_context import (
     OriginalRankEligibilityContextError,
     OriginalRankEligibilityContextStore,
     replay_recorded_rank_eligibility,
+)
+from cocomelon.research.prospective_short_rank_market_context_artifact import (
+    ExpectedGithubRankContextArtifact,
+    OriginalRankContextArtifactError,
+    verify_github_original_rank_market_context_artifact,
+)
+from cocomelon.research.prospective_short_rank_worker_artifact import (
+    VerifiedGithubShortRankEvidence,
+)
+from scripts.audit_paper_short_rank_market_context import (
+    audit_original_worker_rank_context_sources,
 )
 from scripts.seal_paper_short_rank_market_context import (
     BUNDLE_FILE,
@@ -364,3 +378,171 @@ def test_real_worker_seals_context_after_full_inputs_before_learning() -> None:
     assert source.count("scripts/seal_paper_short_rank_market_context.py") >= 3
     assert "compression-level: 0" in source[upload:learning]
     assert "if-no-files-found: error" in source[upload:learning]
+
+
+def _github_source_context(
+    tmp_path: Path,
+) -> tuple[
+    bytes, ExpectedGithubRankContextArtifact,
+    VerifiedGithubShortRankEvidence, VerifiedGithubOriginalRankInputs,
+]:
+    import hashlib
+    import io
+    import zipfile
+
+    state, output = tmp_path / "worker", tmp_path / "sealed"
+    rank, full, context, _ = _sources()
+    _seal_setup(state)
+    receipt = _seal_context(state, output)
+    assert receipt["original_rank_market_context_status"] == (
+        "locally_sealed_prospective_suffix"
+    )
+    worker_id = 38230091014
+    head = "a" * 40
+    rank_digest = FirstSeenRankSnapshotStore(
+        state / "prospective-short-rank-first-seen"
+    ).state_digest
+    full_digest = OriginalRankFeatureInputBatchStore(
+        state / "prospective-short-rank-full-feature-inputs"
+    ).source_digest
+    rank_evidence = VerifiedGithubShortRankEvidence(
+        snapshots=(rank,), rank_state_digest=rank_digest,
+        archive_sha256="b" * 64, worker_run_id=worker_id,
+        worker_head_sha=head, worker_run_attempt=1,
+    )
+    feature_evidence = VerifiedGithubOriginalRankInputs(
+        batches=(full,), historical_rank_snapshots_without_inputs=0,
+        source_digest=full_digest, archive_sha256="c" * 64,
+        original_rank_state_digest=rank_digest,
+        worker_run_id=worker_id, worker_head_sha=head, worker_attempt=1,
+    )
+    outer = io.BytesIO()
+    with zipfile.ZipFile(outer, "w", compression=zipfile.ZIP_STORED) as zip_file:
+        zip_file.writestr(RECEIPT_FILE, (output / RECEIPT_FILE).read_bytes())
+        zip_file.writestr(BUNDLE_FILE, (output / BUNDLE_FILE).read_bytes())
+    artifact = outer.getvalue()
+    binding = ExpectedGithubRankContextArtifact(
+        run_id=worker_id,
+        run_attempt=1,
+        head_sha=head,
+        artifact_run_id=worker_id,
+        artifact_head_sha=head,
+        artifact_name=(
+            "continuous-paper-first-seen-short-rank-market-context-"
+            f"{worker_id}-1"
+        ),
+        artifact_digest="sha256:" + hashlib.sha256(artifact).hexdigest(),
+        artifact_size_bytes=len(artifact),
+    )
+    assert context.batch_sha256
+    return artifact, binding, rank_evidence, feature_evidence
+
+
+def test_github_context_zip_independently_replays_exact_rankable_population(
+    tmp_path: Path,
+) -> None:
+    artifact, bound, rank, full = _github_source_context(tmp_path)
+    verified = verify_github_original_rank_market_context_artifact(
+        artifact, expected=bound, original_rank=rank,
+        original_features=full,
+    )
+    result = verified.receipt()
+    assert result[
+        "rankable_membership_reconstructed_from_github_bound_producer_context"
+    ] is True
+    assert result["verified_rank_context_batches"] == 1
+    assert result["original_eligibility_markets_replayed"] == 4
+    assert result["market_context_source_independently_authenticated_from_exchange"] is False
+    assert result["original_full_account_after_cost_profitability_certified"] is False
+    assert result["promotion_authority"] is False
+
+
+def test_github_context_outer_bytes_and_identity_or_feature_digest_refuse(
+    tmp_path: Path,
+) -> None:
+    import hashlib
+
+    artifact, bound, rank, full = _github_source_context(tmp_path)
+    with pytest.raises(OriginalRankContextArtifactError, match="digest"):
+        verify_github_original_rank_market_context_artifact(
+            artifact + b"unexpected", expected=bound,
+            original_rank=rank, original_features=full,
+        )
+    with pytest.raises(OriginalRankContextArtifactError, match="metadata"):
+        replace(bound, artifact_head_sha="c" * 40)
+    with pytest.raises(OriginalRankContextArtifactError, match="identities"):
+        verify_github_original_rank_market_context_artifact(
+            artifact, expected=bound,
+            original_rank=replace(rank, worker_head_sha="d" * 40),
+            original_features=full,
+        )
+    with pytest.raises(OriginalRankContextArtifactError, match="receipt"):
+        verify_github_original_rank_market_context_artifact(
+            artifact, expected=bound, original_rank=rank,
+            original_features=replace(full, source_digest="f" * 64),
+        )
+    assert hashlib.sha256(artifact).hexdigest() == bound.artifact_digest[7:]
+
+
+def test_github_context_archive_recomputed_outer_sha_cannot_hide_tamper(
+    tmp_path: Path,
+) -> None:
+    import hashlib
+    import io
+    import zipfile
+
+    artifact, bound, rank, full = _github_source_context(tmp_path)
+    result = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(artifact)) as original, zipfile.ZipFile(
+        result, "w", compression=zipfile.ZIP_STORED,
+    ) as changed:
+        for item in original.namelist():
+            raw = original.read(item)
+            if item == RECEIPT_FILE:
+                payload = json.loads(raw)
+                payload["original_rank_state_digest"] = "f" * 64
+                raw = (json.dumps(
+                    payload, sort_keys=True, separators=(",", ":"),
+                ) + "\n").encode("utf-8")
+            changed.writestr(item, raw)
+    fake = result.getvalue()
+    rehashed = replace(
+        bound, artifact_size_bytes=len(fake),
+        artifact_digest="sha256:" + hashlib.sha256(fake).hexdigest(),
+    )
+    with pytest.raises(OriginalRankContextArtifactError, match="receipt"):
+        verify_github_original_rank_market_context_artifact(
+            fake, expected=rehashed, original_rank=rank,
+            original_features=full,
+        )
+
+
+def test_missing_context_artifact_is_durable_negative_api_receipt() -> None:
+    report = audit_original_worker_rank_context_sources(
+        run_id=38230091014,
+        run_attempt=1,
+        run_json=None,
+        jobs_json=None,
+        artifacts_json=None,
+        rank_artifact_zip=b"fake",
+        full_input_artifact_zip=b"fake",
+        context_artifact_zip=None,
+        expected_repository="Dtwosam/Cocomelon",
+    )
+    assert report["rank_market_context_audit_status"] == "unverified"
+    assert report["failure_reason_code"] == "original_context_artifact_unavailable"
+    assert report["all_three_original_worker_artifact_sha256s_verified"] is False
+    assert report["rankable_market_membership_reconstructed_from_recorded_context"] is False
+    assert report["execution_authority"] is False
+    assert report["promotion_authority"] is False
+
+
+def test_original_completed_run_audit_downloads_exact_third_source() -> None:
+    workflow = Path(
+        ".github/workflows/original-short-rank-source-audit.yml"
+    ).read_text(encoding="utf-8")
+    assert "continuous-paper-first-seen-short-rank-market-context-" in workflow
+    assert "market-context-artifact.zip" in workflow
+    assert "scripts.audit_paper_short_rank_market_context" in workflow
+    assert "original-first-seen-short-rank-context-audit-" in workflow
+    assert "if-no-files-found: warn" in workflow
