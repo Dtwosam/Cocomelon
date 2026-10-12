@@ -8,7 +8,10 @@ from pathlib import Path
 import pytest
 
 from cocomelon.domain.market import (
-    MarketId, PerpMarketContext, PerpMarketMeta, PerpMarketSnapshot,
+    MarketId,
+    PerpMarketContext,
+    PerpMarketMeta,
+    PerpMarketSnapshot,
 )
 from cocomelon.evidence.recording import _startup_ranks
 from cocomelon.research.prospective_short_rank_first_seen import (
