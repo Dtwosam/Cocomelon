@@ -84,7 +84,33 @@ def main(argv: Sequence[str] | None = None) -> int:
             row["week_start_ms_utc"],
         )) if original_week_rows else None
     )
+    gap = report["original_chart_gap_witness_loss_attribution"]
+    assert isinstance(gap, dict)
+    gap_classes = gap["mutually_exclusive_evidence_classes"]
+    assert isinstance(gap_classes, list)
     headline = {
+        "original_gap_evidence_loss_cohorts": [
+            {
+                "class": item["cohort"]["chart_gap_witness_class"],
+                "original_closed_trades": item["trades"],
+                "booked_gross_pnl": item["gross_realized_pnl"],
+                "booked_fees": item["fees"],
+                "booked_funding": item["funding_cash_pnl"],
+                "booked_net_pnl": item["net_pnl"],
+                "booked_net_r": item["net_r"],
+            }
+            for item in gap_classes
+        ],
+        "original_incomplete_evidence_market_loss_cohorts": [
+            {
+                "market": item["cohort"]["market"],
+                "original_closed_trades": item["trades"],
+                "booked_net_pnl": item["net_pnl"],
+                "booked_fees": item["fees"],
+            }
+            for item in gap["incomplete_by_market"][:10]
+        ],
+        "gap_causation_or_recovered_market_feed_proven": False,
         "fixed_opening_week_count_including_empty": len(original_week_rows),
         "fixed_opening_week_mature_count": sum(
             row["fully_observed_at_original_flat_handoff"]
