@@ -179,16 +179,15 @@ def _validate_artifact(
 
 
 def _member(archive: zipfile.ZipFile, filename: str) -> bytes:
-    names = [
-        item
-        for item in (filename, f"continuous-paper-state/{filename}")
-        if item in archive.namelist()
+    allowed = {filename, f"continuous-paper-state/{filename}"}
+    matching = [
+        info for info in archive.infolist() if info.filename in allowed
     ]
-    if len(names) != 1:
+    if len(matching) != 1:
         raise TrendPairHandoffAuditError(
             f"missing or ambiguous independent paired member: {filename}"
         )
-    info = archive.getinfo(names[0])
+    info = matching[0]
     if info.is_dir() or info.file_size > MAX_RECEIPT_MEMBER_BYTES:
         raise TrendPairHandoffAuditError("paired member is not a bounded file")
     return archive.read(info)
@@ -218,11 +217,13 @@ def _extract_receipts(
         for lane in ("baseline", "candidate"):
             name = f"{TREND_PAIR_STATE_ROOT}/{lane}-execution.sqlite3"
             candidates = [
-                item
-                for item in (name, f"continuous-paper-state/{name}")
-                if item in archive.namelist()
+                info
+                for info in archive.infolist()
+                if info.filename in {
+                    name, f"continuous-paper-state/{name}",
+                }
             ]
-            if len(candidates) != 1 or archive.getinfo(candidates[0]).file_size <= 0:
+            if len(candidates) != 1 or candidates[0].file_size <= 0:
                 raise TrendPairHandoffAuditError(
                     f"paired {lane} execution store absent"
                 )
