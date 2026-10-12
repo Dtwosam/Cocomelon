@@ -227,7 +227,7 @@ def test_v5_forensic_workflow_never_has_order_permissions() -> None:
     ).read_text()
     assert "permissions:\n  actions: read\n  contents: read" in source
     assert "38281228549" in source
-    assert "audit_legacy_v5_checkpoint_split.py" in source
+    assert "python -m scripts.audit_legacy_v5_checkpoint_split" in source
     assert "actions: write" not in source
     assert "issues: write" not in source
     assert "gh workflow run" not in source
