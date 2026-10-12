@@ -1,6 +1,24 @@
 name: Original First-Seen SHORT Rank Artifact Audit
 
 on:
+  # One-time read-only first replay of the already exported real three-ZIP
+  # original source. Never starts a paper worker or changes trading state.
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/original-short-rank-source-audit.yml"
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed original paper worker GitHub Actions run ID
+        required: true
+        type: string
+      source_run_attempt:
+        description: Exact original paper worker run attempt
+        required: true
+        default: "1"
+        type: string
   workflow_run:
     workflows:
       - Continuous Mainnet Paper Trader
@@ -12,18 +30,20 @@ permissions:
   contents: read
 
 concurrency:
-  group: original-short-rank-source-audit-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  group: original-short-rank-source-audit-${{ github.event_name == 'push' && '38234626351' || github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}-${{ github.event_name == 'push' && '1' || github.event_name == 'workflow_dispatch' && inputs.source_run_attempt || github.event.workflow_run.run_attempt }}
   cancel-in-progress: false
 
 jobs:
   attest:
-    if: ${{ github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
-      SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
-      SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+      # The fixed push target had all three source ZIPs. Its workflow
+      # conclusion was failure; verifier must not silently call it success.
+      SOURCE_RUN_ID: ${{ github.event_name == 'push' && '38234626351' || github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}
+      SOURCE_RUN_ATTEMPT: ${{ github.event_name == 'push' && '1' || github.event_name == 'workflow_dispatch' && inputs.source_run_attempt || github.event.workflow_run.run_attempt }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -40,12 +60,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          source scripts/gh_api_bounded_retry.sh
+          if [[ ! "$SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ || ! "$SOURCE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Source worker run and attempt must be positive decimal identifiers" >&2
+            exit 1
+          fi
+          echo "Read-only original source replay: run=$SOURCE_RUN_ID attempt=$SOURCE_RUN_ATTEMPT event=$GITHUB_EVENT_NAME" >> "$GITHUB_STEP_SUMMARY"
           mkdir -p /tmp/original-short-rank-api
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" \
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" \
             > /tmp/original-short-rank-api/run.json
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100" \
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100" \
             > /tmp/original-short-rank-api/jobs.json
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
             > /tmp/original-short-rank-api/artifacts.json
 
       - name: Download only the exact original worker artifact if published
@@ -66,6 +92,7 @@ jobs:
             exit 0
           fi
           curl --fail --silent --show-error --location \
+            --retry 3 --retry-delay 2 --retry-max-time 240 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
@@ -112,6 +139,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          source scripts/gh_api_bounded_retry.sh
           mkdir -p /tmp/original-short-rank-predecessor
           title="$(jq -r '.display_title // ""' /tmp/original-short-rank-api/run.json)"
           # GitHub's REST workflow-run response does not expose workflow
@@ -126,11 +154,11 @@ jobs:
             echo "::notice::self predecessor is not a valid original handoff"
             exit 0
           fi
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID" \
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID" \
             > /tmp/original-short-rank-predecessor/run.json
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID/jobs?per_page=100" \
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID/jobs?per_page=100" \
             > /tmp/original-short-rank-predecessor/jobs.json
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID/artifacts?per_page=100" \
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID/artifacts?per_page=100" \
             > /tmp/original-short-rank-predecessor/artifacts.json
           PREDECESSOR_RUN_ATTEMPT="$(
             jq -r '.run_attempt' /tmp/original-short-rank-predecessor/run.json
@@ -147,6 +175,7 @@ jobs:
             exit 0
           fi
           curl --fail --silent --show-error --location \
+            --retry 3 --retry-delay 2 --retry-max-time 240 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
@@ -206,6 +235,7 @@ jobs:
             exit 0
           fi
           curl --fail --silent --show-error --location \
+            --retry 3 --retry-delay 2 --retry-max-time 240 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
@@ -260,6 +290,7 @@ jobs:
             exit 0
           fi
           curl --fail --silent --show-error --location \
+            --retry 3 --retry-delay 2 --retry-max-time 240 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
@@ -303,7 +334,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: original-first-seen-short-rank-context-audit-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          name: original-first-seen-short-rank-context-audit-${{ env.SOURCE_RUN_ID }}-${{ env.SOURCE_RUN_ATTEMPT }}
           path: original-short-rank-context-audit.json
           retention-days: 90
           if-no-files-found: warn
@@ -312,7 +343,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: original-first-seen-short-rank-coarse-score-audit-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          name: original-first-seen-short-rank-coarse-score-audit-${{ env.SOURCE_RUN_ID }}-${{ env.SOURCE_RUN_ATTEMPT }}
           path: original-short-rank-score-audit.json
           retention-days: 90
           if-no-files-found: warn
@@ -321,7 +352,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: original-first-seen-short-rank-handoff-audit-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          name: original-first-seen-short-rank-handoff-audit-${{ env.SOURCE_RUN_ID }}-${{ env.SOURCE_RUN_ATTEMPT }}
           path: first-seen-short-rank-handoff-audit.json
           retention-days: 90
           if-no-files-found: warn
@@ -330,7 +361,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: original-first-seen-short-rank-audit-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          name: original-first-seen-short-rank-audit-${{ env.SOURCE_RUN_ID }}-${{ env.SOURCE_RUN_ATTEMPT }}
           path: first-seen-short-rank-audit.json
           retention-days: 90
           if-no-files-found: warn

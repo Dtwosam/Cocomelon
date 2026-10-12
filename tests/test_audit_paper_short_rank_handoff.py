@@ -270,7 +270,7 @@ def test_completed_worker_audit_workflow_publishes_separate_chain_proof() -> Non
     assert "permissions:\n  actions: read\n  contents: read" in workflow
     assert "/tmp/original-short-rank-predecessor/run.json" in workflow
     assert (
-        "gh api \"repos/$GITHUB_REPOSITORY/actions/runs/"
+        "gh_api_bounded_retry \"repos/$GITHUB_REPOSITORY/actions/runs/"
         "$PREDECESSOR_RUN_ID\""
     ) in workflow
     assert "jq -r '.display_title // \"\"'" in workflow

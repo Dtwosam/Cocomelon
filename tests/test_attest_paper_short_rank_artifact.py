@@ -206,7 +206,8 @@ def test_source_audit_workflow_fetches_real_github_api_step_and_artifact_metadat
     assert "workflow_run:" in source
     assert "types:\n      - completed" in source
     assert "actions: read" in source
-    assert "gh api \"repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID\"" in source
+    assert "source scripts/gh_api_bounded_retry.sh" in source
+    assert "gh_api_bounded_retry \"repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID\"" in source
     assert "jobs?per_page=100" in source
     assert "artifacts?per_page=100" in source
     assert "Authorization: Bearer $GH_TOKEN" in source
