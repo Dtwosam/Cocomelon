@@ -80,13 +80,15 @@ class PairedShadowTrendSidecar:
 
     def __init__(
         self,
-        primary: LossContextPairedShadowRuntime,
+        primary: LossContextPairedShadowRuntime | None,
         trend: LossContextPairedShadowRuntime,
         *,
         summary_path: Path,
         startup_timestamp_ms: int,
     ) -> None:
-        if primary is trend or primary.candidate_id == trend.candidate_id:
+        if primary is not None and (
+            primary is trend or primary.candidate_id == trend.candidate_id
+        ):
             raise ValueError("two shadow campaigns must have distinct identities")
         self.primary = primary
         self.trend = trend
@@ -95,10 +97,20 @@ class PairedShadowTrendSidecar:
 
     @property
     def candidate_id(self) -> str:
-        return self.primary.candidate_id
+        return (
+            self.primary.candidate_id
+            if self.primary is not None else "legacy_shadow_unavailable"
+        )
 
     def status_payload(self) -> dict[str, object]:
         """Keep legacy v5 status and reports exactly scoped to the v5 lane."""
+        if self.primary is None:
+            return {
+                "enabled": False, "error": "legacy paired shadow unavailable",
+                "research_only": True, "shadow_only": True,
+                "paper_only": True, "promotion_authority": False,
+                "execution_authority": False,
+            }
         return self.primary.status_payload()
 
     def trend_status_payload(self) -> dict[str, object]:
@@ -107,39 +119,60 @@ class PairedShadowTrendSidecar:
     def submit_record(
         self, record: ReplayRecord, *, now_ms: int, evaluate_decisions: bool,
     ) -> bool:
-        original_ok = self.primary.submit_record(
+        original_ok = (
+            self.primary.submit_record(
+                record, now_ms=now_ms, evaluate_decisions=evaluate_decisions,
+            ) if self.primary is not None else False
+        )
+        trend_ok = self.trend.submit_record(
             record, now_ms=now_ms, evaluate_decisions=evaluate_decisions,
         )
-        self.trend.submit_record(
-            record, now_ms=now_ms, evaluate_decisions=evaluate_decisions,
-        )
-        return original_ok
+        return original_ok or trend_ok
 
     def submit_rank_snapshot(
         self, ranks: Sequence[OpportunityRank], *, observed_at_ms: int,
     ) -> bool:
-        legacy = self.primary.submit_rank_snapshot(
+        legacy = (
+            self.primary.submit_rank_snapshot(ranks, observed_at_ms=observed_at_ms)
+            if self.primary is not None else False
+        )
+        trend = self.trend.submit_rank_snapshot(
             ranks, observed_at_ms=observed_at_ms,
         )
-        self.trend.submit_rank_snapshot(ranks, observed_at_ms=observed_at_ms)
-        return legacy
+        return legacy or trend
 
     def submit_reconcile(self, selected_markets: Sequence[MarketId]) -> bool:
-        legacy = self.primary.submit_reconcile(selected_markets)
-        self.trend.submit_reconcile(selected_markets)
-        return legacy
+        legacy = (
+            self.primary.submit_reconcile(selected_markets)
+            if self.primary is not None else False
+        )
+        trend = self.trend.submit_reconcile(selected_markets)
+        return legacy or trend
 
     def submit_restore_warmup_complete(self) -> bool:
-        legacy = self.primary.submit_restore_warmup_complete()
-        self.trend.submit_restore_warmup_complete()
-        return legacy
+        legacy = (
+            self.primary.submit_restore_warmup_complete()
+            if self.primary is not None else False
+        )
+        trend = self.trend.submit_restore_warmup_complete()
+        return legacy or trend
 
     async def protected_open_markets(
         self, *, timeout_seconds: float = 30.0,
     ) -> tuple[MarketId, ...]:
-        legacy = await self.primary.protected_open_markets(
-            timeout_seconds=timeout_seconds,
-        )
+        legacy: tuple[MarketId, ...] = ()
+        if self.primary is not None:
+            try:
+                legacy = await self.primary.protected_open_markets(
+                    timeout_seconds=timeout_seconds,
+                )
+            except Exception as exc:
+                # A failed OLD v5 restore is not grounds to contaminate the
+                # new study or force a second reset of its negative history.
+                self.primary.fail_closed(
+                    "legacy paired market census unavailable: "
+                    + f"{type(exc).__name__}: {exc}"
+                )
         try:
             trend = await self.trend.protected_open_markets(
                 timeout_seconds=timeout_seconds,
@@ -157,12 +190,16 @@ class PairedShadowTrendSidecar:
 
     def fail_closed(self, reason: str) -> None:
         """Shared market-source gaps invalidate both shadows, never paper."""
-        self.primary.fail_closed(reason)
+        if self.primary is not None:
+            self.primary.fail_closed(reason)
         self.trend.fail_closed(reason)
 
     async def checkpoint(self, *, end_ms: int) -> dict[str, object]:
         # Always attempt a separate trend receipt, even if primary fails.
         # The primary result must be unchanged; its negative v5 history stays.
+        if self.primary is None:
+            await self._checkpoint_trend(end_ms=end_ms)
+            raise RuntimeError("legacy paired shadow unavailable; no v5 checkpoint")
         try:
             legacy = await self.primary.checkpoint(end_ms=end_ms)
         except Exception:
@@ -213,11 +250,12 @@ class PairedShadowTrendSidecar:
         try:
             await self.trend.close()
         finally:
-            await self.primary.close()
+            if self.primary is not None:
+                await self.primary.close()
 
 
 def start_trend_paired_shadow_sidecar(
-    primary: LossContextPairedShadowRuntime,
+    primary: LossContextPairedShadowRuntime | None,
     *,
     paper_root: Path,
     replay_config: BaselineReplayConfig,
@@ -225,10 +263,10 @@ def start_trend_paired_shadow_sidecar(
     startup_timestamp_ms: int,
     legacy_shadow_root_name: str,
 ) -> PairedShadowTrendSidecar:
-    """Prepare write-once trial and open a second persistent actor.
+    """Open a new isolated actor with or without a healthy legacy shadow.
 
-    Only call from an active paper worker that has a *healthy* primary shadow.
-    Failure is optional-research-only and cannot mutate the original ledger.
+    The newer candidate must not inherit the old v5 durable-state failure.
+    It is still strictly paper-only and requires authentic future events.
     """
     freeze_path = prepare_trend_pair_freeze(
         paper_root, legacy_shadow_root_name=legacy_shadow_root_name,
