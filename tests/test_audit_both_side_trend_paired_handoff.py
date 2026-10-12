@@ -81,6 +81,85 @@ def _audit(tmp_path: Path) -> dict[str, object]:
     )
 
 
+
+def _terminal_mark_account(
+    *,
+    position: dict[str, object] | None = None,
+) -> tuple[dict[str, object], list[object]]:
+    if position is None:
+        position = {
+            "market": "BTC", "side": "short", "quantity": "2",
+            "average_entry_price": "10", "latest_mark": "8",
+            "venue_max_leverage": "10", "updated_at_ms": 100,
+        }
+    positions: list[object] = [position]
+    return ({
+        "equity": "1004", "unrealized_pnl": "4",
+        "gross_open_notional": "16",
+        "reserved_margin": "5.333333333333333333333333333",
+        "available_margin": "998.6666666666666666666666667",
+        "updated_at_ms": 100,
+    }, positions)
+
+
+def test_independent_mark_margin_replay_catches_signed_balance_tampering() -> None:
+    account, positions = _terminal_mark_account()
+    receipt = audit._independent_open_mark_arithmetic(account, positions)
+    assert receipt["open_position_count"] == 1
+    assert receipt["marked_unrealized_pnl_from_positions"] == "4"
+    assert receipt["gross_open_notional_from_positions"] == "16"
+    assert receipt["exchange_mark_prices_independently_authenticated"] is False
+    assert receipt["execution_authority"] is False
+    assert receipt["promotion_authority"] is False
+    for field in (
+        "unrealized_pnl", "gross_open_notional",
+        "reserved_margin", "available_margin",
+    ):
+        corrupted = dict(account)
+        corrupted[field] = str(audit._amount(account[field]) + 1)
+        with pytest.raises(
+            audit.TrendPairHandoffAuditError, match="terminal",
+        ):
+            audit._independent_open_mark_arithmetic(corrupted, positions)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("quantity", "0"),
+        ("average_entry_price", "-1"),
+        ("latest_mark", "0"),
+        ("venue_max_leverage", "0"),
+        ("updated_at_ms", 101),
+        ("side", "flipped"),
+        ("latest_mark", "NaN"),
+    ],
+)
+def test_independent_mark_replay_rejects_invalid_archived_positions(
+    field: str, value: object,
+) -> None:
+    account, positions = _terminal_mark_account()
+    original = dict(positions[0])
+    original[field] = value
+    with pytest.raises((audit.TrendPairHandoffAuditError, ValueError)):
+        audit._independent_open_mark_arithmetic(account, [original])
+
+
+def test_independent_terminal_mark_replay_handles_flat_paper_book() -> None:
+    account = {
+        "equity": "1000", "unrealized_pnl": "0",
+        "gross_open_notional": "0", "reserved_margin": "0",
+        "available_margin": "1000", "updated_at_ms": 100,
+    }
+    receipt = audit._independent_open_mark_arithmetic(account, [])
+    assert receipt["open_position_count"] == 0
+    assert receipt["reserved_margin_from_positions"] == "0"
+    assert receipt["exchange_mark_prices_independently_authenticated"] is False
+    account["available_margin"] = "1001"
+    with pytest.raises(audit.TrendPairHandoffAuditError, match="available"):
+        audit._independent_open_mark_arithmetic(account, [])
+
+
 def test_genuine_completed_worker_must_match_one_exact_attempt() -> None:
     run, jobs = _source()
     assert audit._source_class(
@@ -675,6 +754,7 @@ def test_consistent_receipts_only_verify_archive_lineage(
     assert receipt["status"] == "archive_checkpoint_lineage_verified"
     assert receipt["archived_execution_sqlite_integrity_verified"] is True
     assert receipt["archived_execution_economics_reconciled"] is True
+    assert receipt["archived_terminal_mark_arithmetic_reconciled"] is False
     assert receipt["source_scoped_open_gap_diagnostics"]["open_count"] == 0
     assert receipt["verified_checkpoint_count"] == 1
     assert receipt["reasons"] == ["economic_review_not_ready"]
@@ -740,6 +820,7 @@ def test_independent_audit_workflow_can_never_place_orders() -> None:
     assert "--artifact-zip /tmp/trend-paper-audit/source.zip" in workflow
     assert "audit_both_side_trend_paired_handoff.py" in workflow
     assert "archived_execution_economics_reconciled" in workflow
+    assert "archived_terminal_mark_arithmetic_reconciled" in workflow
     assert "source_worker_completed" in workflow
     assert "expected_upgrade_handoff_proven" in workflow
     assert "source_scoped_open_gap_diagnostics" in workflow
