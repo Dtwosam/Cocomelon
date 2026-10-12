@@ -1,6 +1,17 @@
 name: Independent Both-Side Trend Paired Handoff Audit
 
 on:
+  # Replays the first independently archived trend study ONCE upon this
+  # workflow's own main-branch merge, without dispatching a paper worker.
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/independent-both-side-trend-handoff-audit.yml"
+  # workflow_run is sometimes suppressed for deeply chained paper handoffs.
+  # Schedule has an independent GitHub event and selects actual source ZIPs.
+  schedule:
+    - cron: "17 */3 * * *"
   workflow_run:
     workflows:
       - Continuous Mainnet Paper Trader
@@ -23,18 +34,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: both-side-trend-handoff-audit-${{ github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}-${{ github.event_name == 'workflow_dispatch' && inputs.source_run_attempt || github.event.workflow_run.run_attempt }}
+  group: both-side-trend-handoff-audit-${{ github.event_name == 'push' && '38261652982' || github.event_name == 'schedule' && 'schedule' || github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}-${{ github.event_name == 'push' && '1' || github.event_name == 'schedule' && 'auto' || github.event_name == 'workflow_dispatch' && inputs.source_run_attempt || github.event.workflow_run.run_attempt }}
   cancel-in-progress: false
 
 jobs:
   verify:
-    if: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main') }}
+    if: ${{ ((github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
       GH_TOKEN: ${{ github.token }}
-      SOURCE_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}
-      SOURCE_ATTEMPT: ${{ github.event_name == 'workflow_dispatch' && inputs.source_run_attempt || github.event.workflow_run.run_attempt }}
+      SOURCE_RUN_ID: ${{ github.event_name == 'push' && '38261652982' || github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}
+      SOURCE_ATTEMPT: ${{ github.event_name == 'push' && '1' || github.event_name == 'workflow_dispatch' && inputs.source_run_attempt || github.event.workflow_run.run_attempt }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -46,6 +57,44 @@ jobs:
 
       - name: Install independent paper evidence reviewer
         run: python -m pip install -e .
+
+      - name: Resolve latest completed original worker with exact trend ZIP
+        if: ${{ github.event_name == 'schedule' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/gh_api_bounded_retry.sh
+          mkdir -p /tmp/trend-paper-audit
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?status=completed&branch=main&per_page=50" > /tmp/trend-paper-audit/completed-workers.json
+          chosen_id=""
+          chosen_attempt=""
+          while read -r run_id run_attempt; do
+            [[ "$run_id" =~ ^[1-9][0-9]*$ && "$run_attempt" =~ ^[1-9][0-9]*$ ]] || exit 1
+            gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" > /tmp/trend-paper-audit/candidate-artifacts.json
+            exact_name="continuous-paper-both-side-trend-paired-shadow-$run_id-$run_attempt"
+            if jq -e --arg name "$exact_name" '
+              [.artifacts[] | select(.name == $name and .expired == false)]
+              | length == 1
+            ' /tmp/trend-paper-audit/candidate-artifacts.json > /dev/null; then
+              chosen_id="$run_id"
+              chosen_attempt="$run_attempt"
+              break
+            fi
+          done < <(
+            jq -r '
+              .workflow_runs[]
+              | select(.status == "completed" and .head_branch == "main"
+                and .event == "workflow_dispatch"
+                and .path == ".github/workflows/continuous-paper.yml")
+              | "\\(.id) \\(.run_attempt)"
+            ' /tmp/trend-paper-audit/completed-workers.json
+          )
+          if [ -z "$chosen_id" ]; then
+            echo "::error::No completed original worker with exact trend archive found in most recent 50 workflow runs" >&2
+            exit 1
+          fi
+          printf 'SOURCE_RUN_ID=%s\\nSOURCE_ATTEMPT=%s\\n' "$chosen_id" "$chosen_attempt" >> "$GITHUB_ENV"
+          echo "Scheduled independent audit of completed original paper run $chosen_id attempt $chosen_attempt" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fetch exact original paper worker source metadata
         shell: bash
