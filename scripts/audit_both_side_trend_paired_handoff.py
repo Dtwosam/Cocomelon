@@ -254,6 +254,7 @@ def audit_trend_handoff(
         "archive_sha256": None,
         "review_report": None,
         "independent_mainnet_market_source_authenticated": False,
+        "durable_execution_sqlite_replay_verified": False,
         "full_forward_after_cost_profit_verified": False,
         "ready_for_review": False,
         "research_only": True,
@@ -279,6 +280,8 @@ def audit_trend_handoff(
             )
             if freeze["candidate_id"] != expected.candidate_id:
                 raise TrendPairHandoffAuditError("candidate ID mismatch")
+            if summary.get("trial_id") != TRIAL_ID:
+                raise TrendPairHandoffAuditError("trend paired trial identity drift")
             if summary.get("checkpoint_published") is not True:
                 raise TrendPairHandoffAuditError("paired checkpoint unpublished")
             if summary.get("checkpoint_error") is not None:
@@ -289,11 +292,25 @@ def audit_trend_handoff(
                 expected.prospective_not_before_ms
             ):
                 raise TrendPairHandoffAuditError("prospective boundary drift")
+            for field in ("research_only", "shadow_only", "paper_only"):
+                if summary.get(field) is not True or state.get(field) is not True:
+                    raise TrendPairHandoffAuditError(
+                        "paired research-only authority contract missing"
+                    )
             for field in ("promotion_authority", "execution_authority"):
                 if summary.get(field) is not False or state.get(field) is not False:
                     raise TrendPairHandoffAuditError(
                         "paired receipt granted prohibited authority"
                     )
+            if (
+                summary.get("forward_profitable_signed_account_edge_proven")
+                is not False
+                or summary.get("original_mainnet_source_and_gaps_independently_authenticated")
+                is not False
+            ):
+                raise TrendPairHandoffAuditError(
+                    "paired research-only source claims economic authority"
+                )
             if state.get("portfolio_shadow_candidate_id") != expected.candidate_id:
                 raise TrendPairHandoffAuditError("paired durable candidate mismatch")
             unsigned = dict(state)
@@ -313,7 +330,7 @@ def audit_trend_handoff(
             result["review_report"] = review
             result["record_count"] = state.get("record_count")
             result["verified_checkpoint_count"] = ledger["row_count"]
-            result["status"] = "authenticated_handoff"
+            result["status"] = "archive_checkpoint_lineage_verified"
             if source_class != "completed_successful_worker":
                 result["reasons"] = [
                     "source_worker_was_not_fully_successful",
