@@ -66,6 +66,8 @@ on:
       - "src/cocomelon/research/loss_context_portfolio_shadow_candidate.py"
       - "src/cocomelon/research/loss_context_portfolio_shadow_entry.py"
       - "src/cocomelon/research/targeted_trend_paired_freeze.py"
+      - "src/cocomelon/research/prospective_both_side_trend_paired_freeze.py"
+      - "src/cocomelon/research/trend_paired_shadow_sidecar.py"
       - "src/cocomelon/research/continuous_paper_opening_opportunity.py"
       - "src/cocomelon/research/continuous_paper_opening_opportunity_paths.py"
       - "src/cocomelon/research/continuous_paper_opening_opportunity_exit_books.py"
@@ -1663,6 +1665,20 @@ jobs:
             continuous-paper-state/targeted-trend-rank-paired-portfolio-freeze.json
             continuous-paper-state/loss-context-paired-portfolio-shadow-summary.json
             continuous-paper-state/loss-context-paired-portfolio-shadow-scoped-v5
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Upload isolated both-side trend paired-paper evidence
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/both-side-trend-paired-shadow-summary.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-both-side-trend-paired-shadow-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            continuous-paper-state/both-side-trend-paired-shadow-freeze.json
+            continuous-paper-state/both-side-trend-paired-shadow-summary.json
+            continuous-paper-state/both-side-trend-paired-shadow-v1
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
