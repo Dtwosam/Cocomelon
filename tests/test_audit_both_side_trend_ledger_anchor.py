@@ -24,9 +24,31 @@ def _record(end_ms: int, count: int, row_digest: str, prior: str | None) -> byte
     ).encode()
 
 
-def _archive(path: Path, rows: tuple[bytes, ...]) -> Path:
+def _archive(
+    path: Path,
+    rows: tuple[bytes, ...],
+    *,
+    gaps: dict[str, list[list[int | None]]] | None = None,
+    candidate_gaps: dict[str, list[list[int | None]]] | None = None,
+) -> Path:
+    baseline = {
+        "known_gap_intervals_by_stream": gaps if gaps is not None else {},
+        "known_global_gap_intervals_by_stream": {},
+        "legacy_unscoped_gap_intervals": [],
+    }
+    candidate = {
+        **baseline,
+        "known_gap_intervals_by_stream": (
+            candidate_gaps if candidate_gaps is not None
+            else json.loads(json.dumps(baseline["known_gap_intervals_by_stream"]))
+        ),
+    }
     with zipfile.ZipFile(path, "w") as zipped:
         zipped.writestr(continuity.LEDGER_MEMBER, b"".join(rows))
+        zipped.writestr(
+            continuity.STATE_MEMBER,
+            json.dumps({"baseline": baseline, "candidate": candidate}),
+        )
     return path
 
 
@@ -86,6 +108,13 @@ def test_exact_appended_ledger_prefix_preserved_across_workers(
     assert result["original_archive_independently_authenticated"] is True
     assert result["original_anchor_prefix_preserved"] is True
     assert result["forward_worker_append_verified"] is True
+    assert result["historical_named_gap_lineage_preserved"] is True
+    assert result["source_gap_lifecycle"]["anchor_open_gap_count"] == 0
+    assert (
+        result["source_gap_lifecycle"][
+            "recovered_source_event_independently_authenticated"
+        ] is False
+    )
     assert result["new_signed_checkpoint_count"] == 1
     assert result["anchored_record_count"] == 400
     assert result["successor_record_count"] == 700
@@ -122,6 +151,92 @@ def test_successor_ledger_tamper_or_stale_checkpoint_is_fail_closed(
     assert outcome["forward_worker_append_verified"] is False
     assert outcome["promotion_authority"] is False
     assert outcome["execution_authority"] is False
+
+
+
+def test_archived_source_gap_recovery_is_not_venue_authentication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    before = _archive(
+        tmp_path / "before.zip", _rows(),
+        gaps={
+            "l2Book:ALGO": [[120, None]],
+            "candle:ARB:1m": [[100, 170], [175, None]],
+        },
+    )
+    after = _archive(
+        tmp_path / "after.zip",
+        _rows() + (_record(300, 700, "c" * 64, "b" * 64),),
+        gaps={
+            "l2Book:ALGO": [[120, 240]],
+            "candle:ARB:1m": [[100, 170], [175, None]],
+            "trades:ARB": [[250, None]],
+        },
+    )
+    outcome = _check(before, after, run_id=38305180885, monkeypatch=monkeypatch)
+    assert outcome["status"] == "original_anchor_forward_append_verified"
+    result = outcome["source_gap_lifecycle"]
+    assert result["anchor_open_gap_count"] == 2
+    assert result["successor_open_gap_count"] == 2
+    assert len(result["anchor_open_closed_in_successor_state"]) == 1
+    assert len(result["anchor_open_still_unresolved"]) == 1
+    assert len(result["newly_open_gap_sources"]) == 1
+    assert result["recovered_source_event_independently_authenticated"] is False
+    assert result["original_mainnet_feed_complete"] is False
+    assert result["execution_authority"] is False
+
+
+@pytest.mark.parametrize(
+    ("original", "successor", "expected"),
+    [
+        ({"l2Book:BTC": [[120, None]]}, {}, "discarded historical gap source"),
+        ({"l2Book:BTC": [[120, 150]]},
+         {"l2Book:BTC": [[120, 160]]}, "rewrote historical gap interval"),
+        ({"l2Book:BTC": [[120, None]]},
+         {"l2Book:BTC": [[120, 190]]}, "backdated"),
+        ({"l2Book:BTC": [[120, None]]},
+         {"l2Book:BTC": [[120, 350]]}, "future-dated"),
+        ({}, {"l2Book:BTC": [[160, None]]}, "retroactive"),
+        ({}, {"l2Book:BTC": [[310, None]]}, "future"),
+        ({"l2Book:BTC": [[120, 150]]},
+         {"l2Book:BTC": []}, "discarded historical gap intervals"),
+    ],
+)
+def test_crossworker_market_gap_rewrite_cannot_gain_continuity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    original: dict[str, list[list[int | None]]],
+    successor: dict[str, list[list[int | None]]],
+    expected: str,
+) -> None:
+    before = _archive(tmp_path / "original.zip", _rows(), gaps=original)
+    after = _archive(
+        tmp_path / "later.zip",
+        _rows() + (_record(300, 700, "c" * 64, "b" * 64),),
+        gaps=successor,
+    )
+    receipt = _check(before, after, run_id=38305180885, monkeypatch=monkeypatch)
+    assert receipt["status"] == "unverified"
+    assert receipt["forward_worker_append_verified"] is False
+    assert receipt["historical_named_gap_lineage_preserved"] is False
+    assert expected in str(receipt["reasons"])
+    assert receipt["promotion_authority"] is False
+    assert receipt["execution_authority"] is False
+
+
+def test_gap_scope_mismatch_between_paired_accounts_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    before = _archive(tmp_path / "before.zip", _rows())
+    after = _archive(
+        tmp_path / "after.zip",
+        _rows() + (_record(300, 700, "c" * 64, "b" * 64),),
+        gaps={"l2Book:BTC": [[250, None]]},
+        candidate_gaps={"l2Book:BTC": [[260, None]]},
+    )
+    receipt = _check(before, after, run_id=38305180885, monkeypatch=monkeypatch)
+    assert receipt["status"] == "unverified"
+    assert "paired account lanes disagree" in str(receipt["reasons"])
+    assert receipt["forward_worker_append_verified"] is False
 
 
 def test_same_signed_prefix_without_new_checkpoint_is_not_forward_proof(
@@ -217,6 +332,8 @@ def test_review_anchor_workflow_remains_read_only() -> None:
     assert "38281228549" in workflow
     assert "forward_worker_append_verified" in workflow
     assert "original_anchor_prefix_preserved" in workflow
+    assert "historical_named_gap_lineage_preserved" in workflow
+    assert "source_gap_lifecycle" in workflow
     assert "permissions:\n  actions: read\n  contents: read" in workflow
     assert "actions: write" not in workflow
     assert "issues: write" not in workflow

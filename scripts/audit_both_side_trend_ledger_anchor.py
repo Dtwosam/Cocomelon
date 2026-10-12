@@ -27,6 +27,157 @@ from scripts.audit_both_side_trend_paired_handoff import (
 ORIGINAL_ANCHOR_RUN_ID: Final = 38281228549
 ORIGINAL_ANCHOR_ATTEMPT: Final = 1
 LEDGER_MEMBER: Final = "both-side-trend-paired-shadow-v1/review-ledger.jsonl"
+
+STATE_MEMBER: Final = "both-side-trend-paired-shadow-v1/paired-shadow-state.json"
+GAP_FIELDS: Final = (
+    "known_gap_intervals_by_stream",
+    "known_global_gap_intervals_by_stream",
+)
+
+
+def _archived_gap_scopes(
+    path: Path,
+) -> dict[str, dict[str, tuple[tuple[int, int | None], ...]]]:
+    """Parse exact signed state of both lanes, without inferring missing ticks."""
+    with zipfile.ZipFile(path) as archive:
+        state = _mapping(json.loads(_member(archive, STATE_MEMBER)), "state")
+    if state.get("legacy_unscoped_gap_intervals") not in (None, []):
+        raise TrendPairHandoffAuditError("unattributed state gaps cannot be recovered")
+    lanes: list[dict[str, dict[str, tuple[tuple[int, int | None], ...]]]] = []
+    for lane in ("baseline", "candidate"):
+        payload = _mapping(state.get(lane), f"{lane} gap history")
+        legacy = payload.get("legacy_unscoped_gap_intervals")
+        if legacy != []:
+            raise TrendPairHandoffAuditError(
+                f"{lane} legacy-unscoped gap history cannot be authenticated"
+            )
+        scopes: dict[str, dict[str, tuple[tuple[int, int | None], ...]]] = {}
+        for field in GAP_FIELDS:
+            raw = _mapping(payload.get(field), f"{lane} {field}")
+            source_intervals: dict[str, tuple[tuple[int, int | None], ...]] = {}
+            for stream_id, records in raw.items():
+                if not stream_id.strip() or not isinstance(records, list):
+                    raise TrendPairHandoffAuditError(
+                        f"invalid {lane} scoped gap stream"
+                    )
+                intervals: list[tuple[int, int | None]] = []
+                for record in records:
+                    if (
+                        not isinstance(record, list)
+                        or len(record) != 2
+                        or type(record[0]) is not int
+                        or record[0] < 0
+                        or (record[1] is not None and (
+                            type(record[1]) is not int
+                            or record[1] < record[0]
+                        ))
+                        or (intervals and (
+                            intervals[-1][1] is None
+                            or record[0] <= intervals[-1][1]
+                        ))
+                    ):
+                        raise TrendPairHandoffAuditError(
+                            f"invalid {lane} source interval chronology"
+                        )
+                    intervals.append((record[0], record[1]))
+                source_intervals[stream_id] = tuple(intervals)
+            scopes[field] = source_intervals
+        lanes.append(scopes)
+    if lanes[0] != lanes[1]:
+        raise TrendPairHandoffAuditError(
+            "paired account lanes disagree on named gap chronology"
+        )
+    return lanes[0]
+
+
+def _compare_gap_scopes(
+    original: dict[str, dict[str, tuple[tuple[int, int | None], ...]]],
+    successor: dict[str, dict[str, tuple[tuple[int, int | None], ...]]],
+    *,
+    anchor_end_ms: int,
+    successor_end_ms: int,
+) -> dict[str, object]:
+    """Preserve past gap evidence; count only witnessed state transitions.
+
+    Closure recorded in the later persisted state is not, on its own,
+    authenticated venue recovery. Preserve that distinction in the receipt.
+    """
+    if (
+        type(anchor_end_ms) is not int or type(successor_end_ms) is not int
+        or successor_end_ms <= anchor_end_ms
+    ):
+        raise TrendPairHandoffAuditError("invalid signed gap review chronology")
+    retained: list[dict[str, object]] = []
+    closed: list[dict[str, object]] = []
+    newly_open: list[dict[str, object]] = []
+    newly_closed_count = 0
+    for field in GAP_FIELDS:
+        before = original[field]
+        after = successor[field]
+        for stream, prev in before.items():
+            if stream not in after:
+                raise TrendPairHandoffAuditError(
+                    f"successor discarded historical gap source {stream}"
+                )
+            curr = after[stream]
+            if len(curr) < len(prev):
+                raise TrendPairHandoffAuditError(
+                    f"successor discarded historical gap intervals for {stream}"
+                )
+            for n, (start, end) in enumerate(prev):
+                new_start, new_end = curr[n]
+                if start != new_start or (end is not None and end != new_end):
+                    raise TrendPairHandoffAuditError(
+                        f"successor rewrote historical gap interval for {stream}"
+                    )
+                if end is None:
+                    item = {"scope": field, "stream": stream, "started_at_ms": start}
+                    if new_end is None:
+                        retained.append(item)
+                    elif anchor_end_ms <= new_end <= successor_end_ms:
+                        closed.append({**item, "closed_at_ms": new_end})
+                    else:
+                        raise TrendPairHandoffAuditError(
+                            f"successor backdated or future-dated closure {stream}"
+                        )
+        for stream, intervals in after.items():
+            n = len(before.get(stream, ()))
+            for start, end in intervals[n:]:
+                if not (anchor_end_ms <= start <= successor_end_ms):
+                    raise TrendPairHandoffAuditError(
+                        f"successor inserted retroactive/future new gap {stream}"
+                    )
+                if end is not None and end > successor_end_ms:
+                    raise TrendPairHandoffAuditError(
+                        f"successor closed new gap after signed checkpoint {stream}"
+                    )
+                if end is None:
+                    newly_open.append({
+                        "scope": field, "stream": stream, "started_at_ms": start,
+                    })
+                else:
+                    newly_closed_count += 1
+    # New intervals cannot be appended after an unresolved historical opening
+    # without first recording its closure. Shape validation above catches
+    # open-then-append before it can be counted as a new source witness.
+    previous_open = len(retained) + len(closed)
+    current_open = len(retained) + len(newly_open)
+    return {
+        "historical_named_gap_lineage_preserved": True,
+        "anchor_open_gap_count": previous_open,
+        "successor_open_gap_count": current_open,
+        "anchor_open_still_unresolved": retained,
+        "anchor_open_closed_in_successor_state": closed,
+        "newly_open_gap_sources": newly_open,
+        "newly_closed_gap_intervals": newly_closed_count,
+        "recovered_source_event_independently_authenticated": False,
+        "original_mainnet_feed_complete": False,
+        "research_only": True,
+        "promotion_authority": False,
+        "execution_authority": False,
+    }
+
+
 ACCEPTED_CURRENT_STATES: Final = frozenset({
     "archive_checkpoint_lineage_verified",
     "provisional_archive_checkpoint_lineage_verified",
@@ -128,6 +279,8 @@ def audit_original_trend_handoff_continuity(
         "original_archive_independently_authenticated": False,
         "original_anchor_prefix_preserved": False,
         "forward_worker_append_verified": False,
+        "historical_named_gap_lineage_preserved": False,
+        "source_gap_lifecycle": None,
         "source_worker_completion_not_inferred": True,
     }
     try:
@@ -196,6 +349,15 @@ def audit_original_trend_handoff_continuity(
         )
         result.update(comparison)
         result["original_anchor_prefix_preserved"] = True
+        if comparison["new_signed_checkpoint_count"] > 0:
+            source_gaps = _compare_gap_scopes(
+                _archived_gap_scopes(anchor_archive),
+                _archived_gap_scopes(current_archive),
+                anchor_end_ms=int(comparison["anchored_end_ms"]),
+                successor_end_ms=int(comparison["successor_end_ms"]),
+            )
+            result["source_gap_lifecycle"] = source_gaps
+            result["historical_named_gap_lineage_preserved"] = True
         if comparison["new_signed_checkpoint_count"] == 0:
             result["status"] = "no_new_signed_checkpoint"
             result["reasons"] = ["successor_has_not_appended_a_checkpoint"]
@@ -247,6 +409,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "execution_authority": False,
             "promotion_authority": False,
             "original_anchor_prefix_preserved": False,
+            "historical_named_gap_lineage_preserved": False,
             "forward_worker_append_verified": False,
         }
     args.output.parent.mkdir(parents=True, exist_ok=True)
