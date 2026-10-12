@@ -1,5 +1,13 @@
 # Cocomelon Project Status
 
+## October 12 — preserve completed rank/full-feature export before GitHub's runner ceiling
+
+Genuine original paper run `38177167860` began on Oct 11 at 21:38:02 UTC and GitHub marked the job **cancelled** at Oct 12 03:38:03 UTC. Its trading step continued until 03:33:15; the fast original account resume was packed/uploaded, and successor `38200298120` was dispatched successfully. The original rank snapshot archive also uploaded (GitHub artifact `11724904293`, 65,694,215 bytes, GitHub SHA256 `ddac87273390062de56f5a579ff6b9b70b2bfdc1dc5d6d3585a5bb136da58868`). But the full-input exporter started at 03:35:13 and never completed or uploaded before cancellation. Thus **NO matching independently verified rank-score pair yet**.
+
+To reserve enough time for actual rank/full-input sealing and immutable audit receipts, the continuous paper session duration is reduced from 19,800s to 14,400s. The 355-minute job limit is preserved, yielding 115 nominal minutes for startup/runtime overhead, safe exact predecessor resume, full source export and delayed research tail. A regression test bounds the runtime to four hours and requires at least a 90-minute nominal reserve, and asserts the exact-state handoff precedes rank and full-input export. This changes session rotation cadence only, not trading rules, entry/exit decisions, paper capital, stops, risk limits, negative frozen v5 evidence or live permissions.
+
+The new running successor's own completed export and exact matching SHA-verified rank-score parity must still be observed. A cancelled prior run does not become a successful research worker merely because a rank ZIP exists. Independent eligibility-market provenance, market-data gaps and profitable risk-matched after-fee account expectancy remain unproven.
+
 **Profitability-first evidence anchor:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Negative signed forward economics remain the binding result; archive engineering does not authorize promotion.
 
 ## October 11 — negative receipts survive corrupted independent rank-audit API inputs
