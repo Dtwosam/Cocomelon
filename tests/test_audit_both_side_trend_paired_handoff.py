@@ -505,6 +505,60 @@ def test_independent_replay_fails_closed_on_mismatched_economics(
         )
 
 
+def test_scoped_open_source_gaps_reconcile_with_signed_checkpoint() -> None:
+    scopes = {
+        "known_gap_intervals_by_stream": {
+            "l2Book:ARB": [[100, None]],
+            "candle:ARB:1m": [[90, 91], [110, None]],
+        },
+        "known_global_gap_intervals_by_stream": {
+            "allMids": [[50, 60]],
+        },
+    }
+    state = {"baseline": scopes, "candidate": json.loads(json.dumps(scopes))}
+    result = audit._signed_open_gap_sources(
+        state, {"data_gap_open_count": 2},
+    )
+    assert result["source_scopes_agree"] is True
+    assert result["signed_open_count_reconciles"] is True
+    assert result["open_count"] == 2
+    assert result["open_by_kind"] == {"candle": 1, "l2Book": 1}
+    assert [x["stream"] for x in result["open_streams"]] == [
+        "candle:ARB:1m", "l2Book:ARB",
+    ]
+    assert result["market_data_gap_free"] is False
+    assert result["promotion_authority"] is False
+    assert result["execution_authority"] is False
+
+
+def test_scoped_gap_source_diagnostics_fail_closed_on_tampering() -> None:
+    scopes = {
+        "known_gap_intervals_by_stream": {"l2Book:ARB": [[100, None]]},
+        "known_global_gap_intervals_by_stream": {},
+    }
+    state = {"baseline": scopes, "candidate": json.loads(json.dumps(scopes))}
+    with pytest.raises(audit.TrendPairHandoffAuditError, match="open-gap count"):
+        audit._signed_open_gap_sources(
+            state, {"data_gap_open_count": 0},
+        )
+    state["candidate"]["known_gap_intervals_by_stream"]["l2Book:ARB"] = [
+        [100, 200],
+    ]
+    with pytest.raises(audit.TrendPairHandoffAuditError, match="histories differ"):
+        audit._signed_open_gap_sources(
+            state, {"data_gap_open_count": 1},
+        )
+    state["candidate"] = json.loads(json.dumps(scopes))
+    state["baseline"]["known_gap_intervals_by_stream"]["l2Book:ARB"] = [
+        [101, 100],
+    ]
+    state["candidate"] = json.loads(json.dumps(state["baseline"]))
+    with pytest.raises(audit.TrendPairHandoffAuditError, match="interval is invalid"):
+        audit._signed_open_gap_sources(
+            state, {"data_gap_open_count": 1},
+        )
+
+
 def test_consistent_receipts_only_verify_archive_lineage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -521,11 +575,21 @@ def test_consistent_receipts_only_verify_archive_lineage(
         "paper_only": True,
         "shadow_only": True,
     }
-    state["baseline"] = {"account_state_id": "baseline-id"}
-    state["candidate"] = {"account_state_id": "candidate-id"}
+    state["baseline"] = {
+        "account_state_id": "baseline-id",
+        "known_gap_intervals_by_stream": {},
+        "known_global_gap_intervals_by_stream": {},
+    }
+    state["candidate"] = {
+        "account_state_id": "candidate-id",
+        "known_gap_intervals_by_stream": {},
+        "known_global_gap_intervals_by_stream": {},
+    }
     state["state_digest"] = audit._signed_digest(state)
     (tmp_path / "ledger.jsonl").write_text(
-        json.dumps({"baseline": {}, "candidate": {}}) + "\n",
+        json.dumps({
+            "baseline": {}, "candidate": {}, "data_gap_open_count": 0,
+        }) + "\n",
         encoding="utf-8",
     )
     summary: dict[str, object] = {
@@ -570,6 +634,7 @@ def test_consistent_receipts_only_verify_archive_lineage(
     assert receipt["status"] == "archive_checkpoint_lineage_verified"
     assert receipt["archived_execution_sqlite_integrity_verified"] is True
     assert receipt["archived_execution_economics_reconciled"] is True
+    assert receipt["source_scoped_open_gap_diagnostics"]["open_count"] == 0
     assert receipt["verified_checkpoint_count"] == 1
     assert receipt["reasons"] == ["economic_review_not_ready"]
     assert receipt["durable_execution_sqlite_replay_verified"] is False
@@ -631,6 +696,7 @@ def test_independent_audit_workflow_can_never_place_orders() -> None:
     assert "audit_both_side_trend_paired_handoff.py" in workflow
     assert "archived_execution_economics_reconciled" in workflow
     assert "source_worker_completed" in workflow
+    assert "source_scoped_open_gap_diagnostics" in workflow
     assert "original market feed gaps independently authenticated: FALSE" in workflow
     assert "live execution / promotion authority: FALSE / FALSE" in workflow
 
