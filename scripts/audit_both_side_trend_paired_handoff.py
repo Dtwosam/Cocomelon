@@ -12,7 +12,6 @@ import argparse
 import hashlib
 import json
 import os
-import sys
 import tempfile
 import zipfile
 from collections.abc import Sequence
