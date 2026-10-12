@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-from scripts import audit_both_side_trend_paired_handoff as audit
 from cocomelon.research.prospective_both_side_trend_paired_freeze import (
     TRIAL_ID,
     both_side_trend_matched_shadow_freeze,
@@ -19,6 +18,7 @@ from cocomelon.research.trend_paired_shadow_sidecar import (
     TREND_PAIR_STATE_ROOT,
     TREND_PAIR_SUMMARY_FILE,
 )
+from scripts import audit_both_side_trend_paired_handoff as audit
 
 REPO = "Dtwosam/Cocomelon"
 RUN = 456789
