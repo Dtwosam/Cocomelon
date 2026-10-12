@@ -543,7 +543,9 @@ def _economic_store_fixture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
                     "equity": "1001.98", "unrealized_pnl": "0",
                     "realized_gross_pnl": "2",
                     "cumulative_fees": "0.02", "cumulative_funding": "0",
-                    "positions": [],
+                    "positions": [], "updated_at_ms": 3000,
+                    "gross_open_notional": "0", "reserved_margin": "0",
+                    "available_margin": "1001.98",
                 }),
             ),
         )
