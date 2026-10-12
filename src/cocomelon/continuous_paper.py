@@ -10227,10 +10227,18 @@ async def run_continuous_paper_session(
         # A broken legacy v5 restore does NOT block the independent trial.
         # The old restore failure remains in its original negative receipt.
         component_started = time.perf_counter()
+        legacy_shadow_actor = (
+            loss_context_paired_shadow_runtime
+            if isinstance(
+                loss_context_paired_shadow_runtime,
+                LossContextPairedShadowRuntime,
+            )
+            else None
+        )
         try:
             loss_context_paired_shadow_runtime = (
                 start_trend_paired_shadow_sidecar(
-                    loss_context_paired_shadow_runtime,
+                    legacy_shadow_actor,
                     paper_root=root,
                     replay_config=replay_config,
                     selected_markets=selected,
