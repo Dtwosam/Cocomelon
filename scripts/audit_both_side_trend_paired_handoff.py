@@ -15,7 +15,7 @@ import os
 import sys
 import tempfile
 import zipfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Final, cast
 
@@ -120,11 +120,10 @@ def _source_class(
         if not isinstance(steps, list):
             raise TrendPairHandoffAuditError("paper worker step history absent")
         successful_steps.update(
-            str(step["name"])
-            for item_step in steps
-            if isinstance(item_step, dict)
-            for step in [item_step]
-            if step.get("conclusion") == "success"
+            step["name"]
+            for step in steps
+            if isinstance(step, dict)
+            and step.get("conclusion") == "success"
             and isinstance(step.get("name"), str)
         )
     if not {
