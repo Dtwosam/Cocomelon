@@ -262,3 +262,45 @@ def test_shadow_entry_matches_all_frozen_market_context_dimensions() -> None:
         )
         is None
     )
+
+
+
+def test_forward_both_side_trend_paired_filter_excludes_winners_and_losers() -> None:
+    """Opening filter is side-agnostic, prospective, and outcome-blind."""
+    from cocomelon.research.prospective_both_side_trend_paired_freeze import (
+        both_side_trend_matched_shadow_freeze,
+    )
+
+    freeze = both_side_trend_matched_shadow_freeze()
+    baseline = LossContextPortfolioShadowEntryFilter(
+        freeze, block_matching_context=False,
+    )
+    candidate = LossContextPortfolioShadowEntryFilter(
+        freeze, block_matching_context=True,
+    )
+    opened_at = freeze.prospective_not_before_ms
+    for filt in (baseline, candidate):
+        assert filt.block_reason(
+            _evaluation(direction=Direction.LONG, lead_strategy="trend"),
+            attempt_timestamp_ms=opened_at - 1,
+        ) == PRE_BOUNDARY_REASON
+
+    for side in (Direction.LONG, Direction.SHORT):
+        trade = _evaluation(direction=side, lead_strategy="trend")
+        # A strategy decision can be used at a later prospective time;
+        # neither lane receives post-exit PnL or knowledge of winning trades.
+        assert baseline.block_reason(
+            trade, attempt_timestamp_ms=opened_at,
+        ) is None
+        assert candidate.block_reason(
+            trade, attempt_timestamp_ms=opened_at,
+        ) == CONTEXT_BLOCK_REASON
+        breakout = _evaluation(direction=side, lead_strategy="breakout")
+        assert candidate.block_reason(
+            breakout, attempt_timestamp_ms=opened_at,
+        ) is None
+
+    assert baseline.matching_context_blocked == 0
+    assert candidate.matching_context_blocked == 2
+    assert candidate.pre_boundary_blocked == 1
+    assert candidate.admitted_after_boundary == 2
