@@ -11,7 +11,6 @@ import argparse
 import hashlib
 import json
 import os
-import tempfile
 import zipfile
 from collections.abc import Sequence
 from pathlib import Path
