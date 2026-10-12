@@ -145,7 +145,19 @@ def test_fanout_preserves_old_lane_and_reconciles_protected_markets(
     duo, old, trend = _pair(tmp_path)
     assert duo.candidate_id == "old"
     assert duo.status_payload()["candidate_id"] == "old"
-    assert duo.trend_status_payload()["candidate_id"] == "new"
+    status = duo.trend_status_payload()
+    assert status["candidate_id"] == "new"
+    assert status["trial_id"].endswith("capital-matched-shadow-v1")
+    assert status["forward_not_before_ms"] == (
+        both_side_trend_matched_shadow_freeze().prospective_not_before_ms
+    )
+    assert status["worker_startup_timestamp_ms"] == (
+        both_side_trend_matched_shadow_freeze().frozen_at_ms
+    )
+    assert status["economic_review_ready"] is False
+    assert status["source_and_gaps_independently_authenticated"] is False
+    assert status["promotion_authority"] is False
+    assert status["execution_authority"] is False
     assert duo.submit_record(
         "tick", now_ms=100, evaluate_decisions=False,
     ) is True
