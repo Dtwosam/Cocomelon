@@ -1,5 +1,11 @@
 # Cocomelon Project Status
 
+## October 12 — bounded-buffer original full rank input artifact sealing
+
+The source exporter formerly retained every complete serialized rank-feature batch in a second in-memory `members` list after already parsing and checking the full source archive. As the original 234-market ranking history grows across paper-worker handoffs, that unnecessarily increases peak export memory and prolongs the post-trader window. The sealer now retains only source paths plus canonical SHA-256 descriptors, re-reads exactly one batch at a time while emitting the unchanged ZIP format, and refuses publication if any source changes after initial verification. The source digest is computed from the already-validated full batch records instead of parsing the entire input store again. A mid-seal mutation regression asserts an explicit negative receipt, removed incomplete ZIP, and false execution/promotion authority.
+
+These changes affect only the after-exit read-only artifact exporter. Source batch identities and manifest hashing semantics remain unchanged, no missing historical features are manufactured, and the account/risk/stops/v5 freeze and paper-only/live-disable controls stay intact. A future successfully completed corrected worker must still publish both source-bound rank and full-feature ZIPs before score parity, membership reconstruction and any economic certification.
+
 ## October 12 — preserve completed rank/full-feature export before GitHub's runner ceiling
 
 Genuine original paper run `38177167860` began on Oct 11 at 21:38:02 UTC and GitHub marked the job **cancelled** at Oct 12 03:38:03 UTC. Its trading step continued until 03:33:15; the fast original account resume was packed/uploaded, and successor `38200298120` was dispatched successfully. The original rank snapshot archive also uploaded (GitHub artifact `11724904293`, 65,694,215 bytes, GitHub SHA256 `ddac87273390062de56f5a579ff6b9b70b2bfdc1dc5d6d3585a5bb136da58868`). But the full-input exporter started at 03:35:13 and never completed or uploaded before cancellation. Thus **NO matching independently verified rank-score pair yet**.
