@@ -29,6 +29,12 @@ from cocomelon.research.prospective_trend_outside_top10 import (
 )
 
 ZERO: Final = Decimal("0")
+# ISO-style Monday-start weeks fixed to a global UTC epoch, never
+# recomputed from the first/last close or rank of a growing journal.
+FIXED_OPENING_WEEK_MS: Final = 7 * 24 * 3_600_000
+FIXED_OPENING_WEEK_MONDAY_EPOCH_MS: Final = 4 * 24 * 3_600_000
+MAX_FIXED_OPENING_WEEKS: Final = 1040  # cap malformed journal time spans
+
 # The completed 176-close authenticated original audit contains 16
 # nonzero per-trade residuals, maximum abs 5E-27. Preserve those actual
 # booked sub-cent residuals, but prevent compensating material distortions
@@ -849,6 +855,113 @@ def _cohorts(
             str(item["cohort"]),
         ),
     )
+
+
+def _fixed_original_opening_week_economics(
+    trades: list[_Trade],
+    *,
+    source_handoff_ended_at_ms: int | None,
+    source_handoff_open_positions: int | None,
+) -> dict[str, object]:
+    """Stable week-by-week original *booked* PnL, never hypothetical skips.
+
+    A closed-journal row belongs to the UTC Monday-start week of its actual
+    opening, regardless of exit order. Later appended closes cannot shift
+    an earlier trade between weeks. Empty intervening weeks remain explicit.
+    No week becomes mature if the handoff end/position census is unknown.
+    """
+    buckets: dict[int, list[_Trade]] = defaultdict(list)
+    for trade in trades:
+        start = (
+            FIXED_OPENING_WEEK_MONDAY_EPOCH_MS
+            + (
+                (trade.opened_at_ms - FIXED_OPENING_WEEK_MONDAY_EPOCH_MS)
+                // FIXED_OPENING_WEEK_MS
+            ) * FIXED_OPENING_WEEK_MS
+        )
+        buckets[start].append(trade)
+    if buckets:
+        earliest, latest = min(buckets), max(buckets)
+        weeks = (latest - earliest) // FIXED_OPENING_WEEK_MS + 1
+        if weeks > MAX_FIXED_OPENING_WEEKS:
+            raise PaperProfitabilityScoreboardError(
+                "original opening-week span exceeds bounded chronology"
+            )
+        starts = range(
+            earliest, latest + FIXED_OPENING_WEEK_MS, FIXED_OPENING_WEEK_MS
+        )
+    else:
+        starts = range(0)
+    windows: list[dict[str, object]] = []
+    for start in starts:
+        cohort = buckets.get(start, [])
+        end = start + FIXED_OPENING_WEEK_MS
+        windows.append({
+            "week_start_ms_utc": start,
+            "week_end_exclusive_ms_utc": end,
+            "original_booked_week": _metrics(cohort),
+            "by_side": _cohorts(cohort, ("side",)),
+            "by_lead_strategy": _cohorts(cohort, ("lead_strategy",)),
+            # Open positions at the original handoff can ultimately change
+            # the booked cash of an earlier entry week. Do not infer a mature
+            # closed-only week even if every currently recorded trade closed.
+            "week_original_booked_outcome_mature_at_handoff": (
+                source_handoff_ended_at_ms is not None
+                and source_handoff_open_positions == 0
+                and source_handoff_ended_at_ms >= end
+            ),
+            "contains_no_original_closed_trades": not cohort,
+        })
+    # Mandatory exact booked dollars and risk-normalized R parity: this must
+    # count *every* original close, including context-free and losing trades.
+    original = _metrics(trades)
+    for key in (
+        "trades", "wins", "losses", "unverified_entry_context_trades",
+        "missing_rank_evidence_trades", "incomplete_chart_trades",
+    ):
+        if sum(
+            cast(int, cast(dict[str, object], row["original_booked_week"])[key])
+            for row in windows
+        ) != original[key]:
+            raise PaperProfitabilityScoreboardError(
+                f"original fixed-week journal count failed reconciliation: {key}"
+            )
+    for key in (
+        "gross_realized_pnl", "fees", "funding_cash_pnl", "net_pnl", "net_r",
+        "booked_net_cash_reconciliation_residual",
+    ):
+        with localcontext(prec=96):
+            total = sum((
+                _number(
+                    cast(dict[str, object], row["original_booked_week"])[key],
+                    "weekly original booked economics",
+                ) for row in windows
+            ), ZERO)
+        if total != _number(original[key], "whole original booked economics"):
+            raise PaperProfitabilityScoreboardError(
+                f"original fixed-week journal cash failed reconciliation: {key}"
+            )
+    return {
+        "schema_version": 1,
+        "definition": "entire_original_closed_journal_fixed_utc_monday_opening_weeks",
+        "week_anchor_epoch_ms_utc": FIXED_OPENING_WEEK_MONDAY_EPOCH_MS,
+        "week_duration_ms": FIXED_OPENING_WEEK_MS,
+        "week_count_including_empty": len(windows),
+        "source_handoff_ended_at_ms": source_handoff_ended_at_ms,
+        "source_handoff_open_positions": source_handoff_open_positions,
+        "all_original_closed_trade_counts_cash_and_net_r_reconciled": True,
+        "time_assignment": "actual_original_entry_timestamp_not_exit_timestamp",
+        "calendar_boundaries_never_rebalanced_by_future_closes": True,
+        "closed_only_not_capital_matched_account_pnl": True,
+        "unknown_or_open_handoff_cannot_prove_maturity": True,
+        "does_not_reconstruct_an_online_entry_filter": True,
+        "independent_market_data_gap_coverage_proven": False,
+        "forward_full_account_after_cost_expectancy_proven": False,
+        "ready_for_review": False,
+        "promotion_authority": False,
+        "execution_authority": False,
+        "weeks": windows,
+    }
 
 
 def _original_booked_exit_mechanisms(
@@ -1743,6 +1856,13 @@ def paper_profitability_scoreboard(
                 })
             ],
             "chronological_quartiles": blocks,
+            "original_fixed_utc_opening_week_economics": (
+                _fixed_original_opening_week_economics(
+                    trades,
+                    source_handoff_ended_at_ms=handoff_ended,
+                    source_handoff_open_positions=handoff_open,
+                )
+            ),
             "chronological_quartile_chart_coverage_economics": [
                 {
                     "quartile": i + 1,
