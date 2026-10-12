@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import scripts.seal_paper_short_rank_market_context as original_context_sealer
 from cocomelon.domain.market import (
     MarketId,
     PerpMarketContext,
@@ -29,7 +30,6 @@ from cocomelon.research.prospective_short_rank_market_context import (
     OriginalRankEligibilityContextStore,
     replay_recorded_rank_eligibility,
 )
-import scripts.seal_paper_short_rank_market_context as original_context_sealer
 from scripts.seal_paper_short_rank_market_context import (
     BUNDLE_FILE,
     RECEIPT_FILE,
