@@ -1,5 +1,10 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 12 — completed original post-embargo worker has a deliberate non-success gate
+
+Original paper worker [38281228549](https://github.com/Dtwosam/Cocomelon/actions/runs/38281228549) completed at ~21:35 UTC with GitHub conclusion `failure`; its one intentionally failing step was `Fail closed on upgrade handoff source` (exit 75). The original paper trading, successor dispatch, durable state upload and frozen isolated trend artifact upload all succeeded. The independent audit now issues the **separate** classification `completed_expected_upgrade_handoff_worker` ONLY if all required same-attempt successful steps match and that exact step is the sole failed/timed-out/cancelled step, with no other worker jobs. This distinguishes expected continuity safeguards from unexpected runtime faults, but the source is still **not successful**, cannot satisfy `completed_successful_worker`, and never grants clean profitability review, promotion or live execution. This preserves fail-closed source integrity.
+
+
 ## October 12 — 29 original open market-data source streams block forward certification
 The authentic first post-boundary trend archive `11772039977` was accepted as **provisional** by independent audit [38310710430](https://github.com/Dtwosam/Cocomelon/actions/runs/38310710430): 1,427,910 market records, two signed checkpoints, one eligible first-forward anchor, structurally verified paired execution stores, independently reconciled baseline five and candidate one closed fills, but no completed worker and no signed forward-period profit. The signed latest checkpoint reports 29 open source gaps (18 candle, 8 l2Book, 3 trade stream identities). The new audit exposes exact per-stream open source IDs and opening timestamps, requires baseline/candidate gap lineage equality and reconciles their combined open count against the signed review ledger. It does **not** close gaps, infer missing source events, backfill economic intervals or grant any profit/market-feed/production certification. The gap burden belongs to this archived snapshot, not necessarily the current worker.
 

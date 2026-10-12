@@ -155,6 +155,8 @@ jobs:
           print("## Independent both-side trend paired paper handoff")
           print("- source class:", receipt["source_class"])
           print("- original source worker fully completed:", receipt.get("source_worker_completed", False))
+          print("- original source worker succeeded:", receipt.get("source_worker_completed_successfully", False))
+          print("- exact expected upgrade handoff separately verified:", receipt.get("expected_upgrade_handoff_proven", False))
           print("- audit state:", receipt["status"])
           print("- evidence failures:", receipt["reasons"])
           print("- outer ZIP SHA256:", receipt["archive_sha256"])
