@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 import zipfile
 from pathlib import Path
 
@@ -159,6 +160,7 @@ def test_exact_outer_zip_sha256_is_mandatory(tmp_path: Path) -> None:
 def test_missing_trend_zip_is_explicitly_unverified(tmp_path: Path) -> None:
     receipt = _audit(tmp_path)
     assert receipt["status"] == "unverified"
+    assert receipt["archived_execution_sqlite_integrity_verified"] is False
     assert "paired" in str(receipt["reasons"])
     assert receipt["source_class"] == "completed_successful_worker"
     assert receipt["archive_sha256"] is not None
@@ -172,6 +174,8 @@ def test_archive_reader_requires_explicit_exact_paths_and_both_stores(
     tmp_path: Path,
 ) -> None:
     freeze = both_side_trend_matched_shadow_freeze()
+    baseline_path = tmp_path / "valid-baseline.sqlite3"
+    _make_paper_sqlite(baseline_path)
     zip_path = tmp_path / "trend.zip"
     with zipfile.ZipFile(zip_path, "w") as zipped:
         zipped.writestr(
@@ -190,15 +194,104 @@ def test_archive_reader_requires_explicit_exact_paths_and_both_stores(
             f"continuous-paper-state/{TREND_PAIR_STATE_ROOT}/review-ledger.jsonl",
             "{}\n",
         )
-        zipped.writestr(
+        zipped.write(
+            baseline_path,
             f"continuous-paper-state/{TREND_PAIR_STATE_ROOT}/baseline-execution.sqlite3",
-            b"sqlite",
         )
     with pytest.raises(
         audit.TrendPairHandoffAuditError, match="candidate execution store",
     ):
         audit._extract_receipts(zip_path, tmp_path)
 
+
+
+def _make_paper_sqlite(path: Path, *, version: str = "1") -> None:
+    conn = sqlite3.connect(path)
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE paper_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            CREATE TABLE paper_order_plans (plan_id TEXT PRIMARY KEY, payload_json TEXT);
+            CREATE TABLE paper_execution_attempts (attempt_id TEXT PRIMARY KEY, payload_json TEXT);
+            CREATE TABLE paper_fills (fill_id TEXT PRIMARY KEY, payload_json TEXT);
+            CREATE TABLE paper_positions (market TEXT PRIMARY KEY, payload_json TEXT);
+            CREATE TABLE paper_position_events (event_id TEXT PRIMARY KEY, payload_json TEXT);
+            CREATE TABLE paper_funding_events (accrual_id TEXT PRIMARY KEY, payload_json TEXT);
+            CREATE TABLE paper_account_state (singleton_id INTEGER PRIMARY KEY, payload_json TEXT);
+            CREATE TABLE paper_rolling_peak_candidates (ordinal INTEGER PRIMARY KEY, equity TEXT);
+            """
+        )
+        conn.execute(
+            "INSERT INTO paper_meta (key, value) VALUES ('schema_version', ?)",
+            (version,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("lane", ["baseline", "candidate"])
+def test_archived_execution_store_sqlite_integrity_is_read_only(
+    tmp_path: Path, lane: str,
+) -> None:
+    source = tmp_path / "paper.sqlite3"
+    _make_paper_sqlite(source)
+    zip_path = tmp_path / "store.zip"
+    with zipfile.ZipFile(zip_path, "w") as zipped:
+        zipped.write(
+            source,
+            f"continuous-paper-state/{TREND_PAIR_STATE_ROOT}/{lane}-execution.sqlite3",
+        )
+    with zipfile.ZipFile(zip_path) as zipped:
+        audit._verify_archived_execution_store(zipped, tmp_path, lane=lane)
+    extracted = tmp_path / f"{lane}-execution.sqlite3"
+    assert extracted.read_bytes() == source.read_bytes()
+    assert not (tmp_path / f"{lane}-execution.sqlite3-wal").exists()
+
+
+@pytest.mark.parametrize(
+    ("store_bytes", "version", "error"),
+    [
+        (b"not an SQLite database", None, "unreadable"),
+        (None, "9", "schema version mismatch"),
+    ],
+)
+def test_archived_execution_store_rejects_corruption_or_schema_drift(
+    tmp_path: Path, store_bytes: bytes | None, version: str | None, error: str,
+) -> None:
+    source = tmp_path / "paper.sqlite3"
+    if store_bytes is not None:
+        source.write_bytes(store_bytes)
+    else:
+        _make_paper_sqlite(source, version=version or "1")
+    zip_path = tmp_path / "store.zip"
+    with zipfile.ZipFile(zip_path, "w") as zipped:
+        zipped.write(
+            source,
+            f"{TREND_PAIR_STATE_ROOT}/baseline-execution.sqlite3",
+        )
+    with zipfile.ZipFile(zip_path) as zipped:
+        with pytest.raises(audit.TrendPairHandoffAuditError, match=error):
+            audit._verify_archived_execution_store(zipped, tmp_path, lane="baseline")
+
+
+def test_archived_execution_store_rejects_duplicate_members(
+    tmp_path: Path,
+) -> None:
+    import warnings
+
+    source = tmp_path / "paper.sqlite3"
+    _make_paper_sqlite(source)
+    member = f"{TREND_PAIR_STATE_ROOT}/candidate-execution.sqlite3"
+    zip_path = tmp_path / "duplicate-stores.zip"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with zipfile.ZipFile(zip_path, "w") as zipped:
+            zipped.write(source, member)
+            zipped.write(source, member)
+    with zipfile.ZipFile(zip_path) as zipped:
+        with pytest.raises(audit.TrendPairHandoffAuditError, match="ambiguous"):
+            audit._verify_archived_execution_store(zipped, tmp_path, lane="candidate")
 
 
 def test_duplicate_zip_member_cannot_override_signed_freeze(tmp_path: Path) -> None:
@@ -270,6 +363,7 @@ def test_consistent_receipts_only_verify_archive_lineage(
         source_run_id=RUN, source_attempt=ATTEMPT,
     )
     assert receipt["status"] == "archive_checkpoint_lineage_verified"
+    assert receipt["archived_execution_sqlite_integrity_verified"] is True
     assert receipt["verified_checkpoint_count"] == 1
     assert receipt["reasons"] == ["economic_review_not_ready"]
     assert receipt["durable_execution_sqlite_replay_verified"] is False
