@@ -110,7 +110,7 @@ def test_exact_appended_ledger_prefix_preserved_across_workers(
     assert result["forward_worker_append_verified"] is True
     assert result["historical_named_gap_lineage_preserved"] is True
     assert result["source_gap_lifecycle"]["anchor_open_gap_count"] == 0
-    assert result["source_gap_lifecycle"]["recovered_source_event_independently_authenticated"] is False
+    assert (\n        result["source_gap_lifecycle"][\n            "recovered_source_event_independently_authenticated"\n        ] is False\n    )
     assert result["new_signed_checkpoint_count"] == 1
     assert result["anchored_record_count"] == 400
     assert result["successor_record_count"] == 700
