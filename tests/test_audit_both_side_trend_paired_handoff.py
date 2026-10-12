@@ -306,3 +306,49 @@ def test_independent_audit_workflow_can_never_place_orders() -> None:
     assert "audit_both_side_trend_paired_handoff.py" in workflow
     assert "original market feed gaps independently authenticated: FALSE" in workflow
     assert "live execution / promotion authority: FALSE / FALSE" in workflow
+
+
+def test_trend_audit_bootstraps_first_real_zip_without_workflow_chain() -> None:
+    """A push of the audit itself rechecks real worker 38261652982."""
+    workflow = Path(
+        ".github/workflows/independent-both-side-trend-handoff-audit.yml"
+    ).read_text(encoding="utf-8")
+    assert "  push:\n    branches:\n      - main\n    paths:" in workflow
+    assert (
+        '      - ".github/workflows/independent-both-side-trend-handoff-audit.yml"'
+        in workflow
+    )
+    assert "github.event_name == 'push' && '38261652982'" in workflow
+    assert "github.event_name == 'push' && '1'" in workflow
+    assert "source-run-id" not in workflow  # runner passes exact --source-run-id
+    assert '--source-run-id "$SOURCE_RUN_ID"' in workflow
+    assert '--source-attempt "$SOURCE_ATTEMPT"' in workflow
+    assert "permissions:\n  actions: read\n  contents: read" in workflow
+    assert "gh workflow run" not in workflow
+
+
+def test_trend_audit_scheduled_fallback_targets_real_archived_source() -> None:
+    """Scheduled runner must ignore bootstrap runs and absent artifact ZIPs."""
+    workflow = Path(
+        ".github/workflows/independent-both-side-trend-handoff-audit.yml"
+    ).read_text(encoding="utf-8")
+    assert "  schedule:" in workflow
+    assert 'cron: "17 */3 * * *"' in workflow
+    assert "github.event_name == 'schedule'" in workflow
+    assert "runs?status=completed&branch=main&per_page=50" in workflow
+    assert '.event == "workflow_dispatch"' in workflow
+    assert '.head_branch == "main"' in workflow
+    assert '.path == ".github/workflows/continuous-paper.yml"' in workflow
+    assert "continuous-paper-both-side-trend-paired-shadow-$run_id-$run_attempt" in workflow
+    assert '.name == $name and .expired == false' in workflow
+    assert '| length == 1' in workflow
+    # Must interpolate an actual jq source run ID, not literal syntax.
+    assert r'| "\(.id) \(.run_attempt)"' in workflow
+    assert r'| "\\(.id) \\(.run_attempt)"' not in workflow
+    # Must write two real environment lines for separate audit steps.
+    assert r"printf 'SOURCE_RUN_ID=%s\nSOURCE_ATTEMPT=%s\n'" in workflow
+    assert ">> \"$GITHUB_ENV\"" in workflow
+    assert "No completed original worker with exact trend archive" in workflow
+    assert "source scripts/gh_api_bounded_retry.sh" in workflow
+    assert "actions: write" not in workflow
+    assert "issues: write" not in workflow
