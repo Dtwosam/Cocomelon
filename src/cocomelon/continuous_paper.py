@@ -10224,33 +10224,32 @@ async def run_continuous_paper_session(
         # An independent second paper-account pair uses the exact same
         # prospective event stream but NEVER reuses or changes v5 state.
         # Its own actor/checkpoint can fail without resetting older losses.
-        # A missing/broken v5 runtime currently blocks auto-launch of this
-        # secondary observer; do not invent a retrospective trial start.
-        if loss_context_paired_shadow_runtime is not None:
-            component_started = time.perf_counter()
-            try:
-                loss_context_paired_shadow_runtime = (
-                    start_trend_paired_shadow_sidecar(
+        # A broken legacy v5 restore does NOT block the independent trial.
+        # The old restore failure remains in its original negative receipt.
+        component_started = time.perf_counter()
+        try:
+            loss_context_paired_shadow_runtime = (
+                start_trend_paired_shadow_sidecar(
                         loss_context_paired_shadow_runtime,
                         paper_root=root,
                         replay_config=replay_config,
                         selected_markets=selected,
                         startup_timestamp_ms=started_at_ms,
                         legacy_shadow_root_name=LOSS_CONTEXT_PAIRED_SHADOW_ROOT,
-                    )
                 )
-                loss_context_paired_shadow_runtime.submit_rank_snapshot(
-                    initial_ranks,
-                    observed_at_ms=initial_rank_observed_at_ms,
-                )
-            except Exception as trend_shadow_exc:
-                trend_paired_shadow_restore_error = (
-                    f"{type(trend_shadow_exc).__name__}: {trend_shadow_exc}"
-                )
-            record_startup_component(
-                "both_side_trend_paired_shadow_restore",
-                component_started,
             )
+            loss_context_paired_shadow_runtime.submit_rank_snapshot(
+                initial_ranks,
+                observed_at_ms=initial_rank_observed_at_ms,
+            )
+        except Exception as trend_shadow_exc:
+            trend_paired_shadow_restore_error = (
+                f"{type(trend_shadow_exc).__name__}: {trend_shadow_exc}"
+            )
+        record_startup_component(
+            "both_side_trend_paired_shadow_restore",
+            component_started,
+        )
 
         pipeline_restore_started = time.perf_counter()
         opening_lineage_sink = (
