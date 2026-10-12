@@ -6,6 +6,10 @@ The downloaded and SHA-verified original 210-close worker scoreboard revealed ap
 
 **Profitability-first source:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Keep original-account losses and unresolved data gaps visible; no promotion from research diagnostics.
 
+## October 12 — make cadence research source download resilient but fail closed
+
+Actual cadence prediction-ledger GitHub Actions run `38247194097` failed while retrieving a previous successful artifact when GitHub returned **HTTP 502**; aggregate trade-quality readiness run `38247652674` then correctly blocked rather than accepting stale evidence. The prospective trend-abstention experiment was not implicated, and the original paper worker remained running. The prediction ledger current/previous artifact read paths now use a bounded four-attempt retry for transient HTTP 429/500/502/503/504 responses, isolating every attempt's bytes so a failed partial ZIP cannot contaminate the successful download. Permanent 4xx, exhausted 5xx, missing ZIP/ledger, and append-only evidence conflicts remain failures; no archival backfill, source replacement, paper trade, risk, strategy, promotion or live toggle. Adversarial tests simulate partial HTTP 502 responses, permanent HTTP 403, exhausted HTTP 503 and both workflow call sites. Exact-head `test` and `research` CI must pass before merging.
+
 ## October 12 — prioritize real paper losses by separately witnessed market-data gaps
 
 Original completed paper worker `38233233477` reported 210 closed trades, 32 complete recorded mark paths, 10 missing charts, and 168 incomplete or gapped charts; 137 affected trade paths had unresolved original source gaps (including 136 with pre-entry unresolved gap origins and 103 with during-position unresolved origins, overlapping and therefore **not additive**). Original realized net result was negative, about **−$362.04**. Do not silently declare any of these histories complete from later marks.
