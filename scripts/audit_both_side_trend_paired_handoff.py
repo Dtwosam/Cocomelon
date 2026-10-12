@@ -15,6 +15,7 @@ import os
 import sqlite3
 import tempfile
 import zipfile
+from decimal import Decimal
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Final, cast
@@ -278,6 +279,271 @@ def _verify_archived_execution_store(
             conn.close()
 
 
+_PNL_TOLERANCE: Final = Decimal("0.00000001")
+
+
+def _amount(value: object) -> Decimal:
+    result = Decimal(str(value))
+    if not result.is_finite():
+        raise ValueError("paired execution monetary value is not finite")
+    return result
+
+
+def _same_amount(actual: object, expected: object, field: str) -> None:
+    if abs(_amount(actual) - _amount(expected)) > _PNL_TOLERANCE:
+        raise TrendPairHandoffAuditError(
+            f"paired execution economics mismatch: {field}"
+        )
+
+
+def _reconcile_archived_lane_economics(
+    path: Path, *, account_state_id: str, ledger_lane: dict[str, object],
+) -> dict[str, object]:
+    """Independently reconstruct paired paper cashflows from archived fills.
+
+    Read-only, with no market-feed authentication. Intentionally fail closed
+    for unsupported overlapping opening positions rather than invent a trade.
+    """
+    with sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True) as conn:
+        conn.execute("PRAGMA query_only=ON")
+        row = conn.execute(
+            "SELECT state_id, payload_json FROM paper_account_state "
+            "WHERE singleton_id=1"
+        ).fetchone()
+        if row is None or row[0] != account_state_id:
+            raise TrendPairHandoffAuditError("paired account state identity mismatch")
+        account = _mapping(json.loads(row[1]), "paired execution account")
+
+        plans = {
+            plan_id: _mapping(json.loads(raw), "execution plan")
+            for plan_id, raw in conn.execute(
+                "SELECT plan_id, payload_json FROM paper_order_plans"
+            )
+        }
+        attempts: list[tuple[str, str, dict[str, object]]] = []
+        for attempt_id, plan_id, raw in conn.execute(
+            "SELECT attempt_id, plan_id, payload_json "
+            "FROM paper_execution_attempts"
+        ):
+            attempt = _mapping(json.loads(raw), "execution attempt")
+            if attempt.get("plan_id") != plan_id or plan_id not in plans:
+                raise TrendPairHandoffAuditError("paired attempt plan lineage mismatch")
+            attempts.append((attempt_id, plan_id, attempt))
+
+        by_attempt: dict[str, list[dict[str, object]]] = {
+            attempt_id: [] for attempt_id, _, _ in attempts
+        }
+        opening_fills = 0
+        for _, attempt_id, plan_id, raw in conn.execute(
+            "SELECT fill_id, attempt_id, plan_id, payload_json FROM paper_fills"
+        ):
+            fill = _mapping(json.loads(raw), "execution fill")
+            if (
+                attempt_id not in by_attempt
+                or fill.get("attempt_id") != attempt_id
+                or fill.get("plan_id") != plan_id
+                or plan_id not in plans
+            ):
+                raise TrendPairHandoffAuditError("paired fill lineage mismatch")
+            qty, price = _amount(fill.get("quantity")), _amount(fill.get("price"))
+            if qty <= 0 or price <= 0 or _amount(fill.get("taker_fee")) < 0:
+                raise TrendPairHandoffAuditError("paired execution fill invalid")
+            _same_amount(fill.get("notional"), qty * price, "fill notional")
+            by_attempt[attempt_id].append(fill)
+            if plans[plan_id].get("reduce_only") is False:
+                opening_fills += 1
+
+        for attempt_id, _, attempt in attempts:
+            fills = by_attempt[attempt_id]
+            qty = sum((_amount(f["quantity"]) for f in fills), Decimal(0))
+            notional = sum((_amount(f["notional"]) for f in fills), Decimal(0))
+            fees = sum((_amount(f["taker_fee"]) for f in fills), Decimal(0))
+            _same_amount(attempt.get("filled_quantity"), qty, "filled quantity")
+            _same_amount(attempt.get("gross_fill_notional"), notional, "fill notional sum")
+            _same_amount(attempt.get("fee"), fees, "fill fee sum")
+            _same_amount(
+                attempt.get("requested_quantity"),
+                _amount(attempt.get("unfilled_quantity")) + qty,
+                "requested versus filled quantity",
+            )
+            if qty > 0:
+                _same_amount(
+                    attempt.get("average_fill_price"),
+                    notional / qty,
+                    "weighted average fill price",
+                )
+            elif attempt.get("average_fill_price") is not None:
+                raise TrendPairHandoffAuditError("unfilled attempt has a price")
+
+        funding: list[dict[str, object]] = []
+        for accrual_id, market, boundary_ms, position_id, raw in conn.execute(
+            "SELECT accrual_id, market, boundary_ms, position_id, payload_json "
+            "FROM paper_funding_events"
+        ):
+            event = _mapping(json.loads(raw), "funding event")
+            if (
+                event.get("market") != market
+                or event.get("boundary_ms") != boundary_ms
+                or event.get("position_id") != position_id
+            ):
+                raise TrendPairHandoffAuditError("paired funding lineage mismatch")
+            funding.append(event)
+
+        realized_gross = Decimal(0)
+        fee_total = Decimal(0)
+        funding_total = sum(
+            (_amount(event["cash_delta"]) for event in funding), Decimal(0)
+        )
+        closed_count = 0
+        side_counts = {"long": 0, "short": 0}
+        side_net = {"long": Decimal(0), "short": Decimal(0)}
+        active: dict[str, dict[str, object]] = {}
+        for _, plan_id, attempt in sorted(
+            attempts,
+            key=lambda row: (
+                row[2]["attempt_timestamp_ms"], row[0],
+            ),
+        ):
+            fee_total += _amount(attempt["fee"])
+            qty = _amount(attempt["filled_quantity"])
+            if qty == 0:
+                continue
+            plan = plans[plan_id]
+            market = str(plan["market"])
+            price = _amount(attempt["average_fill_price"])
+            fee = _amount(attempt["fee"])
+            if plan.get("reduce_only") is False:
+                if market in active:
+                    raise TrendPairHandoffAuditError(
+                        "overlapping opening positions not independently replayable"
+                    )
+                active[market] = {
+                    "side": plan["side"], "remaining": qty, "price": price,
+                    "entry_fee": fee, "exit_fee": Decimal(0),
+                    "gross": Decimal(0),
+                    "started": attempt["attempt_timestamp_ms"],
+                }
+            elif plan.get("reduce_only") is True:
+                position = active.get(market)
+                if (
+                    position is None
+                    or plan["side"] == position["side"]
+                    or qty > position["remaining"]
+                ):
+                    raise TrendPairHandoffAuditError(
+                        "paired reduce-only fill does not match an open position"
+                    )
+                direction = (
+                    Decimal(1) if position["side"] == "buy" else Decimal(-1)
+                )
+                gross = qty * (price - position["price"]) * direction
+                realized_gross += gross
+                position["gross"] += gross
+                position["exit_fee"] += fee
+                position["remaining"] -= qty
+                if position["remaining"] == 0:
+                    matched_funding = sum(
+                        (
+                            _amount(event["cash_delta"]) for event in funding
+                            if event["market"] == market
+                            and position["started"] <= event["boundary_ms"]
+                            <= attempt["attempt_timestamp_ms"]
+                        ),
+                        Decimal(0),
+                    )
+                    side = "long" if position["side"] == "buy" else "short"
+                    side_net[side] += (
+                        position["gross"] - position["entry_fee"]
+                        - position["exit_fee"] + matched_funding
+                    )
+                    side_counts[side] += 1
+                    closed_count += 1
+                    del active[market]
+            else:
+                raise TrendPairHandoffAuditError("invalid reduce_only flag")
+
+        stored_positions = account.get("positions")
+        if not isinstance(stored_positions, list) or len(stored_positions) != len(active):
+            raise TrendPairHandoffAuditError("paired open position count mismatch")
+        for raw in stored_positions:
+            position = _mapping(raw, "paired open position")
+            tracked = active.get(str(position.get("market")))
+            if tracked is None:
+                raise TrendPairHandoffAuditError("paired open market mismatch")
+            _same_amount(position["quantity"], tracked["remaining"], "open quantity")
+            _same_amount(
+                position["average_entry_price"], tracked["price"], "entry price"
+            )
+            expected_side = "long" if tracked["side"] == "buy" else "short"
+            if position.get("side") != expected_side:
+                raise TrendPairHandoffAuditError("paired open direction mismatch")
+        materialized = {
+            market: json.loads(raw)
+            for market, raw in conn.execute(
+                "SELECT market, payload_json FROM paper_positions"
+            )
+        }
+        if materialized != {p["market"]: p for p in stored_positions}:
+            raise TrendPairHandoffAuditError(
+                "paired materialized open position mismatch"
+            )
+        _same_amount(account["realized_gross_pnl"], realized_gross, "gross PnL")
+        _same_amount(account["cumulative_fees"], fee_total, "fee conservation")
+        _same_amount(account["cumulative_funding"], funding_total, "funding conservation")
+        _same_amount(
+            account["cash"],
+            _amount(account["starting_cash"]) + realized_gross
+            - fee_total + funding_total,
+            "cash conservation",
+        )
+        _same_amount(
+            account["equity"],
+            _amount(account["cash"]) + _amount(account["unrealized_pnl"]),
+            "equity conservation",
+        )
+        _same_amount(ledger_lane["equity"], account["equity"], "signed ledger equity")
+        _same_amount(
+            ledger_lane["realized_net_pnl"],
+            realized_gross - fee_total + funding_total,
+            "signed realized net PnL",
+        )
+        _same_amount(
+            ledger_lane["total_account_pnl"],
+            _amount(account["equity"]) - _amount(account["starting_cash"]),
+            "signed total account PnL",
+        )
+        for side in ("long", "short"):
+            _same_amount(
+                ledger_lane[f"{side}_closed_net_pnl"],
+                side_net[side],
+                f"signed {side} closed net PnL",
+            )
+            if ledger_lane[f"{side}_closed_trade_count"] != side_counts[side]:
+                raise TrendPairHandoffAuditError("directional close count mismatch")
+        if (
+            ledger_lane.get("closed_trade_count") != closed_count
+            or ledger_lane.get("open_position_count") != len(active)
+            or ledger_lane.get("opening_fills") != opening_fills
+            or ledger_lane.get("opening_execution_attempts") != sum(
+                plans[plan_id].get("reduce_only") is False
+                for _, plan_id, _ in attempts
+            )
+        ):
+            raise TrendPairHandoffAuditError(
+                "paired execution activity counts do not match signed ledger"
+            )
+        return {
+            "closed_trades_from_fills": closed_count,
+            "realized_gross_from_fills": str(realized_gross),
+            "fees_from_fills": str(fee_total),
+            "funding_from_events": str(funding_total),
+            "realized_net_from_fills": str(
+                realized_gross - fee_total + funding_total
+            ),
+            "equity_from_signed_account": account["equity"],
+        }
+
+
 def _extract_receipts(
     archive_path: Path,
     work: Path,
@@ -331,6 +597,8 @@ def audit_trend_handoff(
         "independent_mainnet_market_source_authenticated": False,
         "durable_execution_sqlite_replay_verified": False,
         "archived_execution_sqlite_integrity_verified": False,
+        "archived_execution_economics_reconciled": False,
+        "reconciled_lanes": None,
         "full_forward_after_cost_profit_verified": False,
         "ready_for_review": False,
         "research_only": True,
@@ -403,6 +671,27 @@ def audit_trend_handoff(
                 != ledger["latest_row_digest"]
             ):
                 raise TrendPairHandoffAuditError("paired ledger receipt mismatch")
+            # Replay the *stored* executions independently of the review
+            # builder, and bind their accounts to the last signed ledger row.
+            lines = ledger_path.read_text(encoding="utf-8").splitlines()
+            if not lines:
+                raise TrendPairHandoffAuditError("paired review ledger is empty")
+            latest = _mapping(json.loads(lines[-1]), "latest signed paired row")
+            reconciled: dict[str, object] = {}
+            for lane in ("baseline", "candidate"):
+                lane_state = _mapping(state.get(lane), f"{lane} state")
+                lane_ledger = _mapping(latest.get(lane), f"{lane} ledger")
+                state_id = lane_state.get("account_state_id")
+                if not isinstance(state_id, str) or not state_id:
+                    raise TrendPairHandoffAuditError(
+                        f"{lane} durable account state ID absent"
+                    )
+                reconciled[lane] = _reconcile_archived_lane_economics(
+                    Path(directory) / f"{lane}-execution.sqlite3",
+                    account_state_id=state_id, ledger_lane=lane_ledger,
+                )
+            result["reconciled_lanes"] = reconciled
+            result["archived_execution_economics_reconciled"] = True
             review = build_paired_shadow_review(expected, ledger_path)
             result["review_report"] = review
             result["record_count"] = state.get("record_count")
