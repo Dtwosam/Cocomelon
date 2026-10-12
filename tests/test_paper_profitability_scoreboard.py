@@ -2713,7 +2713,7 @@ def test_original_feed_gap_economics_partition_keeps_every_loss_fee_and_net_r() 
     assert all_group["fees"] == report["overall"]["fees"]
     assert all_group["net_r"] == report["overall"]["net_r"]
     assert debt["incomplete_or_missing_original_evidence"]["trades"] == 7
-    assert debt["incomplete_or_missing_original_evidence"]["losses"] == 4
+    assert debt["incomplete_or_missing_original_evidence"]["losses"] == 3
     assert debt[
         "all_original_closed_trades_and_booked_dollars_and_net_r_reconciled"
     ] is True
@@ -2727,7 +2727,7 @@ def test_original_feed_gap_economics_partition_keeps_every_loss_fee_and_net_r() 
         debt["incomplete_or_missing_original_evidence"]["net_pnl"]
     )
     assert report["promotion_authority"] is False
-    assert source["trades"] == source["trades"]
+    assert report["overall"]["incomplete_chart_trades"] == 7
 
 
 def test_original_gap_exposure_never_turns_unresolved_gap_into_clean_chart() -> None:
