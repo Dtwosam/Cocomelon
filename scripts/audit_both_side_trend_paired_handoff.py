@@ -340,6 +340,84 @@ def _same_amount(actual: object, expected: object, field: str) -> None:
         )
 
 
+
+def _independent_open_mark_arithmetic(
+    account: dict[str, object], positions: list[object],
+) -> dict[str, object]:
+    """Replay *account arithmetic*, never assert archived marks are venue truth.
+
+    The frozen paired-paper code caps mark-margin leverage at three, or the
+    instrument maximum if lower. Recompute separately from the signed
+    account's self-reported unrealized, gross and available-margin figures.
+    """
+    marked_unrealized = Decimal(0)
+    marked_gross = Decimal(0)
+    reserved_margin = Decimal(0)
+    latest_account_ms = account.get("updated_at_ms")
+    if type(latest_account_ms) is not int or latest_account_ms < 0:
+        raise TrendPairHandoffAuditError(
+            "signed paired account observation timestamp invalid"
+        )
+    for raw in positions:
+        pos = _mapping(raw, "independently marked position")
+        quantity = _amount(pos.get("quantity"))
+        entry = _amount(pos.get("average_entry_price"))
+        mark = _amount(pos.get("latest_mark"))
+        venue_leverage = _amount(pos.get("venue_max_leverage"))
+        if (
+            quantity <= 0 or entry <= 0 or mark <= 0
+            or venue_leverage <= 0
+            or (
+                type(pos.get("updated_at_ms")) is not int
+                or not (0 <= pos["updated_at_ms"] <= latest_account_ms)
+            )
+        ):
+            raise TrendPairHandoffAuditError(
+                "invalid archived open quantity/entry/mark/leverage/chronology"
+            )
+        side = pos.get("side")
+        if side not in ("long", "short"):
+            raise TrendPairHandoffAuditError(
+                "invalid archived open position direction"
+            )
+        direction = Decimal(1) if side == "long" else Decimal(-1)
+        marked_unrealized += direction * quantity * (mark - entry)
+        notional = quantity * mark
+        marked_gross += notional
+        reserved_margin += notional / min(Decimal(3), venue_leverage)
+    equity = _amount(account.get("equity"))
+    _same_amount(
+        account.get("unrealized_pnl"), marked_unrealized,
+        "independent terminal unrealized mark PnL",
+    )
+    _same_amount(
+        account.get("gross_open_notional"), marked_gross,
+        "independent terminal gross notional",
+    )
+    _same_amount(
+        account.get("reserved_margin"), reserved_margin,
+        "independent terminal reserved mark margin",
+    )
+    _same_amount(
+        account.get("available_margin"),
+        max(Decimal(0), equity - reserved_margin),
+        "independent terminal available margin",
+    )
+    return {
+        "open_position_count": len(positions),
+        "marked_unrealized_pnl_from_positions": str(marked_unrealized),
+        "gross_open_notional_from_positions": str(marked_gross),
+        "reserved_margin_from_positions": str(reserved_margin),
+        "available_margin_from_positions": str(
+            max(Decimal(0), equity - reserved_margin)
+        ),
+        "exchange_mark_prices_independently_authenticated": False,
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+    }
+
+
 def _reconcile_archived_lane_economics(
     path: Path, *, account_state_id: str, ledger_lane: dict[str, object],
 ) -> dict[str, object]:
@@ -535,6 +613,9 @@ def _reconcile_archived_lane_economics(
             raise TrendPairHandoffAuditError(
                 "paired materialized open position mismatch"
             )
+        mark_math = _independent_open_mark_arithmetic(
+            account, stored_positions,
+        )
         _same_amount(account["realized_gross_pnl"], realized_gross, "gross PnL")
         _same_amount(account["cumulative_fees"], fee_total, "fee conservation")
         _same_amount(account["cumulative_funding"], funding_total, "funding conservation")
@@ -589,6 +670,7 @@ def _reconcile_archived_lane_economics(
                 realized_gross - fee_total + funding_total
             ),
             "equity_from_signed_account": account["equity"],
+            "independent_terminal_mark_arithmetic": mark_math,
         }
 
 
@@ -728,6 +810,7 @@ def audit_trend_handoff(
         "durable_execution_sqlite_replay_verified": False,
         "archived_execution_sqlite_integrity_verified": False,
         "archived_execution_economics_reconciled": False,
+        "archived_terminal_mark_arithmetic_reconciled": False,
         "reconciled_lanes": None,
         "source_scoped_open_gap_diagnostics": None,
         "full_forward_after_cost_profit_verified": False,
@@ -835,6 +918,12 @@ def audit_trend_handoff(
                 )
             result["reconciled_lanes"] = reconciled
             result["archived_execution_economics_reconciled"] = True
+            result["archived_terminal_mark_arithmetic_reconciled"] = all(
+                reconciled[lane]
+                .get("independent_terminal_mark_arithmetic", {})
+                .get("exchange_mark_prices_independently_authenticated") is False
+                for lane in ("baseline", "candidate")
+            )
             review = build_paired_shadow_review(expected, ledger_path)
             result["review_report"] = review
             result["record_count"] = state.get("record_count")
