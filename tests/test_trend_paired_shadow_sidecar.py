@@ -226,3 +226,51 @@ def test_worker_wiring_is_read_only_and_does_not_replace_v5() -> None:
     assert "both-side-trend-paired-shadow-summary.json" in workflow
     assert "continuous-paper-both-side-trend-paired-shadow-" in workflow
     assert "loss-context-paired-portfolio-shadow-scoped-v5" in workflow
+
+
+def test_new_trend_shadow_runs_without_any_legacy_v5_actor(
+    tmp_path: Path,
+) -> None:
+    _, _, trend = _pair(tmp_path)
+    from typing import cast
+
+    from cocomelon.research.loss_context_paired_shadow_runtime import (
+        LossContextPairedShadowRuntime,
+    )
+
+    duo = PairedShadowTrendSidecar(
+        None,
+        cast(LossContextPairedShadowRuntime, trend),
+        summary_path=tmp_path / TREND_PAIR_SUMMARY_FILE,
+        startup_timestamp_ms=both_side_trend_matched_shadow_freeze().frozen_at_ms,
+    )
+    assert duo.status_payload()["enabled"] is False
+    assert duo.submit_record(
+        "independent-future-tick", now_ms=201, evaluate_decisions=True,
+    ) is True
+    assert asyncio.run(duo.protected_open_markets()) == (BTC, ETH)
+    with pytest.raises(RuntimeError, match="legacy paired shadow unavailable"):
+        asyncio.run(duo.checkpoint(end_ms=300))
+    receipt = json.loads((tmp_path / TREND_PAIR_SUMMARY_FILE).read_text())
+    assert receipt["checkpoint_published"] is True
+    assert receipt["checkpoint"]["candidate_id"] == "new"
+    assert receipt["promotion_authority"] is False
+    assert receipt["ready_for_review"] is False
+    asyncio.run(duo.close())
+    assert ("close",) in trend.events
+
+
+def test_broken_legacy_v5_market_census_does_not_disable_fresh_trial(
+    tmp_path: Path,
+) -> None:
+    duo, old, trend = _pair(tmp_path)
+    old.bad_census = True
+    assert asyncio.run(duo.protected_open_markets()) == (BTC, ETH)
+    assert len(old.failures) == 1
+    assert trend.failures == []
+    assert asyncio.run(duo.checkpoint(end_ms=305)) == {
+        "candidate_id": "old", "end_ms": 305,
+    }
+    receipt = json.loads((tmp_path / TREND_PAIR_SUMMARY_FILE).read_text())
+    assert receipt["checkpoint_published"] is True
+    assert receipt["ready_for_review"] is False
