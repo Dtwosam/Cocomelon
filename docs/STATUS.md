@@ -1,5 +1,15 @@
 # Cocomelon Project Status
 
+**Profitability-first source:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Keep original-account losses and unresolved data gaps visible; no promotion from research diagnostics.
+
+## October 12 — prioritize real paper losses by separately witnessed market-data gaps
+
+Original completed paper worker `38233233477` reported 210 closed trades, 32 complete recorded mark paths, 10 missing charts, and 168 incomplete or gapped charts; 137 affected trade paths had unresolved original source gaps (including 136 with pre-entry unresolved gap origins and 103 with during-position unresolved origins, overlapping and therefore **not additive**). Original realized net result was negative, about **−$362.04**. Do not silently declare any of these histories complete from later marks.
+
+The original all-trade after-cost profitability scoreboard now assigns **every original close to exactly one exclusive evidence class**, distinguishing missing path, unresolved source-gap starts *before entry*, *during the position*, both, known closed gaps, silent unobserved mark intervals, complete contemporaneous paths and other incomplete observations. It reconciles **all** gross trading PnL, fees, funding, realized net PnL, original net-R, missing entry/rank contexts and winners/losers back to the untouched whole-journal source; includes all original losing and unverified trades. It also breaks **incomplete-evidence actual booked losses** down by market and side/strategy, and highlights the worst gap-exposed markets in the CLI. Counterfactual exits, fabricated data-gap recoveries, and post-hoc strategy deletions remain prohibited.
+
+All gap classes are **evidence-quality labels, not causal attributions for trading losses**. The report does not imply that fixing an outage would restore PnL, and its closed-trade cohorts are not full-account after-cost challenger equity or a proven trading edge. Original account, positions, stops, risk limits, negative frozen v5 and LIVE=false are unchanged.
+
 ## October 12 — fixed UTC entry-week economics for the entire real original paper journal
 
 The original signed-account paper journal is still losing: a live operational heartbeat at 11:12 UTC reports 210 cumulative closes, original equity approximately **$9,642.35** from $10,000 and roughly **−$357.65 marked-account PnL** (including $169.37 recorded execution fees and original negative gross realized trading result). **Do not confuse this heartbeat with a completed, GitHub-artifact-authenticated final profitability certificate.** Frozen scoped-v5 challenger remained after-cost inferior.
