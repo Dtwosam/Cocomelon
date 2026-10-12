@@ -18,6 +18,7 @@ from typing import Mapping, cast
 from cocomelon.domain.market import (
     MarketId, PerpMarketContext, PerpMarketMeta, PerpMarketSnapshot,
 )
+from cocomelon.features.broad import calculate_broad_features
 from cocomelon.research.prospective_short_rank_first_seen import (
     FirstSeenRankSnapshot,
 )
@@ -393,6 +394,29 @@ def replay_recorded_rank_eligibility(
         )
     features = feature_inputs.features
     observations = context.snapshots
+    # The witnessed market context must also explain the broad source
+    # features used by the rank, not merely the final rankable membership.
+    for feature, snapshot in zip(features, observations, strict=True):
+        original_broad = calculate_broad_features(
+            snapshot, None, as_of_ms=rank.observed_at_ms,
+        )
+        if (
+            feature.market != snapshot.meta.market
+            or feature.as_of_ms != rank.observed_at_ms
+            or feature.source_received_at_ms != snapshot.received_at_ms
+            or feature.provenance != (snapshot.source,)
+            or feature.day_return != original_broad.day_return
+            or feature.funding != original_broad.funding
+            or feature.open_interest != original_broad.open_interest
+            or feature.day_notional_volume != original_broad.day_notional_volume
+            or feature.oi_change_fraction != original_broad.oi_change_fraction
+            or feature.funding_change != original_broad.funding_change
+            or feature.mark_oracle_dislocation_bps
+            != original_broad.mark_oracle_dislocation_bps
+        ):
+            raise OriginalRankEligibilityContextError(
+                "recorded original market context cannot reproduce rank features"
+            )
     config = EligibilityConfig()
     thresholds = derive_eligibility_thresholds(features, config)
     decisions = tuple(
