@@ -114,6 +114,47 @@ def test_genuine_completed_worker_must_match_one_exact_attempt() -> None:
         )
 
 
+
+def test_completed_expected_upgrade_handoff_is_not_full_success() -> None:
+    run, jobs = _source()
+    run["conclusion"] = "failure"
+    job = jobs["jobs"][0]
+    job["status"] = "completed"
+    job["conclusion"] = "failure"
+    job["steps"] += [
+        {"name": "Upload durable continuous paper state", "conclusion": "success"},
+        {"name": "Queue exact successor from fast resume", "conclusion": "success"},
+        {"name": "Fail closed on upgrade handoff source", "conclusion": "failure"},
+    ]
+    def classify() -> str:
+        return audit._source_class(
+            run=run, jobs=jobs, repository=REPO,
+            run_id=RUN, attempt=ATTEMPT,
+        )
+
+    assert classify() == "completed_expected_upgrade_handoff_worker"
+    job["steps"] += [{"name": "Research unexpectedly failed", "conclusion": "failure"}]
+    assert classify() == "completed_non_success_worker"
+    job["steps"].pop()
+    job["steps"][2]["conclusion"] = "skipped"
+    assert classify() == "completed_non_success_worker"
+    job["steps"][2]["conclusion"] = "success"
+    job["steps"][3]["conclusion"] = "failure"
+    assert classify() == "completed_non_success_worker"
+    job["steps"][3]["conclusion"] = "success"
+    job["steps"][4]["name"] = "Wrong intentional failure step"
+    assert classify() == "completed_non_success_worker"
+    job["steps"][4]["name"] = "Fail closed on upgrade handoff source"
+    job["status"] = "in_progress"
+    assert classify() == "completed_non_success_worker"
+    job["status"] = "completed"
+    jobs["jobs"].append({
+        "run_id": RUN, "run_attempt": ATTEMPT, "name": "surprise-job",
+        "conclusion": "failure",
+    })
+    assert classify() == "completed_non_success_worker"
+
+
 def test_active_uploaded_trend_archive_is_preliminary_only() -> None:
     run, jobs = _source()
     run["status"] = "in_progress"
@@ -643,6 +684,8 @@ def test_consistent_receipts_only_verify_archive_lineage(
     assert receipt["promotion_authority"] is False
     assert receipt["execution_authority"] is False
     assert receipt["source_worker_completed"] is True
+    assert receipt["source_worker_completed_successfully"] is True
+    assert receipt["expected_upgrade_handoff_proven"] is False
 
     # Identical immutable source bytes from a still-running source worker
     # are authentic preliminary evidence, never final worker certification.
@@ -656,6 +699,8 @@ def test_consistent_receipts_only_verify_archive_lineage(
     assert preview["status"] == "provisional_archive_checkpoint_lineage_verified"
     assert preview["source_class"] == "in_progress_source_archive_preliminary"
     assert preview["source_worker_completed"] is False
+    assert preview["source_worker_completed_successfully"] is False
+    assert preview["expected_upgrade_handoff_proven"] is False
     assert preview["archived_execution_economics_reconciled"] is True
     assert preview["ready_for_review"] is False
     assert preview["full_forward_after_cost_profit_verified"] is False
@@ -696,6 +741,7 @@ def test_independent_audit_workflow_can_never_place_orders() -> None:
     assert "audit_both_side_trend_paired_handoff.py" in workflow
     assert "archived_execution_economics_reconciled" in workflow
     assert "source_worker_completed" in workflow
+    assert "expected_upgrade_handoff_proven" in workflow
     assert "source_scoped_open_gap_diagnostics" in workflow
     assert "original market feed gaps independently authenticated: FALSE" in workflow
     assert "live execution / promotion authority: FALSE / FALSE" in workflow
