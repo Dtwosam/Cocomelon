@@ -1,5 +1,7 @@
 # Cocomelon Project Status
 
+**Profitability-first source:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Keep original-account losses and unresolved data gaps visible; no promotion from research diagnostics.
+
 ## October 12 — prioritize real paper losses by separately witnessed market-data gaps
 
 Original completed paper worker `38233233477` reported 210 closed trades, 32 complete recorded mark paths, 10 missing charts, and 168 incomplete or gapped charts; 137 affected trade paths had unresolved original source gaps (including 136 with pre-entry unresolved gap origins and 103 with during-position unresolved origins, overlapping and therefore **not additive**). Original realized net result was negative, about **−$362.04**. Do not silently declare any of these histories complete from later marks.
