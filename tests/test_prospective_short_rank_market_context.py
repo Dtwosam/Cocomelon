@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import scripts.seal_paper_short_rank_market_context as original_context_sealer
 from cocomelon.domain.market import (
     MarketId,
     PerpMarketContext,
@@ -16,9 +17,11 @@ from cocomelon.domain.market import (
 from cocomelon.evidence.recording import _startup_ranks
 from cocomelon.research.prospective_short_rank_first_seen import (
     FirstSeenRankSnapshot,
+    FirstSeenRankSnapshotStore,
 )
 from cocomelon.research.prospective_short_rank_full_features import (
     OriginalRankFeatureInputBatch,
+    OriginalRankFeatureInputBatchStore,
     OriginalRankInputBatchError,
 )
 from cocomelon.research.prospective_short_rank_market_context import (
@@ -26,6 +29,11 @@ from cocomelon.research.prospective_short_rank_market_context import (
     OriginalRankEligibilityContextError,
     OriginalRankEligibilityContextStore,
     replay_recorded_rank_eligibility,
+)
+from scripts.seal_paper_short_rank_market_context import (
+    BUNDLE_FILE,
+    RECEIPT_FILE,
+    seal_original_rank_market_context,
 )
 
 OBSERVED = 1_790_080_000_000
@@ -221,3 +229,138 @@ def test_live_capture_path_keeps_eligibility_sidecar_separate_from_orders() -> N
     assert source.count("capture_rank_first_seen(") == 4
     assert source.count("            markets=") >= 2
     assert '"execution_authority": False' in source
+
+
+def _seal_setup(
+    root: Path, *,
+    include_context: bool = True,
+) -> OriginalRankEligibilityContextBatch:
+    rank, full, context, _ = _sources()
+    rank_store = FirstSeenRankSnapshotStore(
+        root / "prospective-short-rank-first-seen"
+    )
+    assert rank_store.append(rank)
+    full_store = OriginalRankFeatureInputBatchStore(
+        root / "prospective-short-rank-full-feature-inputs"
+    )
+    assert full_store.append(full)
+    if include_context:
+        context_store = OriginalRankEligibilityContextStore(
+            root / "prospective-short-rank-market-context"
+        )
+        assert context_store.append(context)
+    return context
+
+
+def _seal_context(root: Path, out: Path) -> dict[str, object]:
+    return seal_original_rank_market_context(
+        root, out, worker_run_id=38230091014,
+        worker_run_attempt=1, worker_head_sha="a" * 40,
+        sealed_at_ms=OBSERVED + 1000,
+    )
+
+
+def test_local_full_context_seal_checks_all_original_market_memberships(
+    tmp_path: Path,
+) -> None:
+    import hashlib
+    import zipfile
+
+    root, out = tmp_path / "worker", tmp_path / "seal"
+    context = _seal_setup(root)
+    unchanged = {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*.json")
+    }
+    proof = _seal_context(root, out)
+    assert proof["original_rank_market_context_status"] == (
+        "locally_sealed_prospective_suffix"
+    )
+    assert proof["local_original_eligibility_membership_replayed"] is True
+    assert proof["verified_market_context_batches"] == 1
+    assert proof["rank_snapshots_without_context"] == 0
+    assert proof["independent_mainnet_market_stream_authenticated"] is False
+    assert proof["execution_authority"] is False
+    assert proof["promotion_authority"] is False
+    assert hashlib.sha256((out / BUNDLE_FILE).read_bytes()).hexdigest() == (
+        proof["zip_sha256"]
+    )
+    with zipfile.ZipFile(out / BUNDLE_FILE) as z:
+        assert z.namelist() == [
+            "manifest.json", f"batches/{OBSERVED:016d}.json",
+        ]
+        manifest = json.loads(z.read("manifest.json"))
+        assert manifest["source_context_markets_replayed"] == 4
+        assert manifest["verified_market_context_batches"] == 1
+        assert manifest["original_context_source_digest"] == proof[
+            "original_context_source_digest"
+        ]
+        assert json.loads(z.read(f"batches/{OBSERVED:016d}.json")) == (
+            context.to_dict()
+        )
+    assert unchanged == {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*.json")
+    }
+
+
+def test_missing_original_market_context_never_backfilled(
+    tmp_path: Path,
+) -> None:
+    root, out = tmp_path / "worker", tmp_path / "seal"
+    _seal_setup(root, include_context=False)
+    receipt = _seal_context(root, out)
+    assert receipt["original_rank_market_context_status"] == "rejected"
+    assert receipt["local_original_eligibility_membership_replayed"] is False
+    assert receipt["failure_reason"]
+    assert receipt["execution_authority"] is False
+    assert not (out / BUNDLE_FILE).exists()
+    assert (out / RECEIPT_FILE).is_file()
+
+
+def test_context_mutation_during_seal_cannot_publish_false_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import zipfile
+
+    root, out = tmp_path / "worker", tmp_path / "seal"
+    _seal_setup(root)
+    context_path = next((
+        root / "prospective-short-rank-market-context" / "batches"
+    ).glob("*.json"))
+    real_add = original_context_sealer._add_zip_file
+
+    def tamper_after_manifest(
+        archive: zipfile.ZipFile, name: str, data: bytes,
+    ) -> None:
+        real_add(archive, name, data)
+        if name == "manifest.json":
+            context_path.write_bytes(context_path.read_bytes() + b" ")
+
+    monkeypatch.setattr(
+        original_context_sealer, "_add_zip_file", tamper_after_manifest,
+    )
+    receipt = _seal_context(root, out)
+    assert receipt["original_rank_market_context_status"] == "rejected"
+    assert receipt["failure_reason"] == (
+        "original rank market context changed during sealing"
+    )
+    assert receipt["zip_sha256"] is None
+    assert receipt["promotion_authority"] is False
+    assert not (out / BUNDLE_FILE).exists()
+    assert (out / RECEIPT_FILE).is_file()
+
+
+def test_real_worker_seals_context_after_full_inputs_before_learning() -> None:
+    source = Path(".github/workflows/continuous-paper.yml").read_text(
+        encoding="utf-8",
+    )
+    before = source.index("- name: Upload original SHORT rank full-input seal or rejection")
+    seal = source.index("- name: Seal original SHORT rank market context after paper exit")
+    upload = source.index("- name: Upload original SHORT rank market context seal or rejection")
+    learning = source.index("- name: Export compact continuous decision facts")
+    assert before < seal < upload < learning
+    assert "scripts/seal_paper_short_rank_market_context.py" in source
+    assert source.count("scripts/seal_paper_short_rank_market_context.py") >= 3
+    assert "compression-level: 0" in source[upload:learning]
+    assert "if-no-files-found: error" in source[upload:learning]
