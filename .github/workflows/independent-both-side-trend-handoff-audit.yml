@@ -1,8 +1,9 @@
 name: Independent Both-Side Trend Paired Handoff Audit
 
 on:
-  # Replays the first independently archived trend study ONCE upon this
-  # workflow's own main-branch merge, without dispatching a paper worker.
+  # Bootstrap the exact first post-embargo trend source archive read-only,
+  # even if its noncritical deferred research tail has not yet finished.
+  # Never imply the source worker completed from a preliminary receipt.
   push:
     branches:
       - main
@@ -20,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       source_run_id:
-        description: Completed original continuous-paper worker run ID
+        description: Original continuous-paper source run ID (active permitted as preliminary only)
         required: true
         type: string
       source_run_attempt:
@@ -34,7 +35,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: both-side-trend-handoff-audit-${{ github.event_name == 'push' && '38261652982' || github.event_name == 'schedule' && 'schedule' || github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}-${{ github.event_name == 'push' && '1' || github.event_name == 'schedule' && 'auto' || github.event_name == 'workflow_dispatch' && inputs.source_run_attempt || github.event.workflow_run.run_attempt }}
+  group: both-side-trend-handoff-audit-${{ github.event_name == 'push' && '38281228549' || github.event_name == 'schedule' && 'schedule' || github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}-${{ github.event_name == 'push' && '1' || github.event_name == 'schedule' && 'auto' || github.event_name == 'workflow_dispatch' && inputs.source_run_attempt || github.event.workflow_run.run_attempt }}
   cancel-in-progress: false
 
 jobs:
@@ -44,7 +45,7 @@ jobs:
     timeout-minutes: 25
     env:
       GH_TOKEN: ${{ github.token }}
-      SOURCE_RUN_ID: ${{ github.event_name == 'push' && '38261652982' || github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}
+      SOURCE_RUN_ID: ${{ github.event_name == 'push' && '38281228549' || github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}
       SOURCE_ATTEMPT: ${{ github.event_name == 'push' && '1' || github.event_name == 'workflow_dispatch' && inputs.source_run_attempt || github.event.workflow_run.run_attempt }}
     steps:
       - uses: actions/checkout@v7
@@ -153,6 +154,7 @@ jobs:
           receipt = json.loads(Path("trend-paired-handoff-audit.json").read_text())
           print("## Independent both-side trend paired paper handoff")
           print("- source class:", receipt["source_class"])
+          print("- original source worker fully completed:", receipt.get("source_worker_completed", False))
           print("- audit state:", receipt["status"])
           print("- evidence failures:", receipt["reasons"])
           print("- outer ZIP SHA256:", receipt["archive_sha256"])

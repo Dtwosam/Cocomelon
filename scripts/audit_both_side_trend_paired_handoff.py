@@ -1,7 +1,7 @@
 """Read-only independent receipt for an archived both-side-trend paired paper handoff.
 
 An outer ZIP matching GitHub artifact metadata is *not* a signed profitable
-strategy. This audit independently binds original completed GitHub job steps,
+strategy. This audit independently binds original GitHub job steps,
 the frozen candidate, both persistent execution stores, account-state digest,
 and the append-only checkpoint ledger. No execution or promotion authority.
 """
@@ -103,9 +103,14 @@ def _source_class(
         or run.get("run_attempt") != attempt
         or run.get("path") != SOURCE_WORKFLOW_PATH
         or run.get("head_branch") != "main"
-        or run.get("status") != "completed"
+        or run.get("status") not in ("completed", "in_progress")
     ):
         raise TrendPairHandoffAuditError("source worker identity is not exact")
+    # The already uploaded source ZIP may precede noncritical research-tail
+    # completion. Only permit a strictly preliminary, non-promotable class.
+    preliminary = run["status"] == "in_progress"
+    if preliminary and run.get("conclusion") is not None:
+        raise TrendPairHandoffAuditError("active worker has a final conclusion")
     source_repository = _mapping(run.get("repository"), "repository")
     if source_repository.get("full_name") != repository:
         raise TrendPairHandoffAuditError("source repository identity mismatch")
@@ -151,6 +156,8 @@ def _source_class(
         raise TrendPairHandoffAuditError(
             "exact attempt original trading and trend artifact upload not both proven"
         )
+    if preliminary:
+        return "in_progress_source_archive_preliminary"
     if run.get("conclusion") == "success":
         return "completed_successful_worker"
     return "completed_non_success_worker"
@@ -599,6 +606,7 @@ def audit_trend_handoff(
         "source_run_attempt": source_attempt,
         "expected_candidate_id": expected.candidate_id,
         "source_class": "unverified",
+        "source_worker_completed": False,
         "status": "unverified",
         "reasons": [],
         "archive_sha256": None,
@@ -622,6 +630,9 @@ def audit_trend_handoff(
             run_id=source_run_id, attempt=source_attempt,
         )
         result["source_class"] = source_class
+        result["source_worker_completed"] = (
+            source_class != "in_progress_source_archive_preliminary"
+        )
         digest = _validate_artifact(
             artifacts, archive,
             run_id=source_run_id, attempt=source_attempt,
@@ -705,8 +716,17 @@ def audit_trend_handoff(
             result["review_report"] = review
             result["record_count"] = state.get("record_count")
             result["verified_checkpoint_count"] = ledger["row_count"]
-            result["status"] = "archive_checkpoint_lineage_verified"
-            if source_class != "completed_successful_worker":
+            result["status"] = (
+                "provisional_archive_checkpoint_lineage_verified"
+                if source_class == "in_progress_source_archive_preliminary"
+                else "archive_checkpoint_lineage_verified"
+            )
+            if source_class == "in_progress_source_archive_preliminary":
+                result["reasons"] = [
+                    "source_worker_not_completed",
+                    "economic_review_not_certified",
+                ]
+            elif source_class != "completed_successful_worker":
                 result["reasons"] = [
                     "source_worker_was_not_fully_successful",
                 ]

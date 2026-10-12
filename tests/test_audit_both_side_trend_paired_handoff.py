@@ -114,6 +114,34 @@ def test_genuine_completed_worker_must_match_one_exact_attempt() -> None:
         )
 
 
+def test_active_uploaded_trend_archive_is_preliminary_only() -> None:
+    run, jobs = _source()
+    run["status"] = "in_progress"
+    run["conclusion"] = None
+    jobs["jobs"][0]["status"] = "in_progress"
+    assert audit._source_class(
+        run=run, jobs=jobs, repository=REPO,
+        run_id=RUN, attempt=ATTEMPT,
+    ) == "in_progress_source_archive_preliminary"
+    run["conclusion"] = "success"
+    with pytest.raises(
+        audit.TrendPairHandoffAuditError, match="active worker",
+    ):
+        audit._source_class(
+            run=run, jobs=jobs, repository=REPO,
+            run_id=RUN, attempt=ATTEMPT,
+        )
+    run["conclusion"] = None
+    jobs["jobs"][0]["steps"][1]["conclusion"] = None
+    with pytest.raises(
+        audit.TrendPairHandoffAuditError, match="not both proven",
+    ):
+        audit._source_class(
+            run=run, jobs=jobs, repository=REPO,
+            run_id=RUN, attempt=ATTEMPT,
+        )
+
+
 def test_custom_github_run_name_allowed_but_workflow_path_fixed() -> None:
     run, jobs = _source()
     assert audit._source_class(
@@ -549,6 +577,31 @@ def test_consistent_receipts_only_verify_archive_lineage(
     assert receipt["independent_mainnet_market_source_authenticated"] is False
     assert receipt["promotion_authority"] is False
     assert receipt["execution_authority"] is False
+    assert receipt["source_worker_completed"] is True
+
+    # Identical immutable source bytes from a still-running source worker
+    # are authentic preliminary evidence, never final worker certification.
+    run["status"] = "in_progress"
+    run["conclusion"] = None
+    preview = audit.audit_trend_handoff(
+        run=run, jobs=jobs, artifacts=artifacts,
+        archive=archive, repository=REPO,
+        source_run_id=RUN, source_attempt=ATTEMPT,
+    )
+    assert preview["status"] == "provisional_archive_checkpoint_lineage_verified"
+    assert preview["source_class"] == "in_progress_source_archive_preliminary"
+    assert preview["source_worker_completed"] is False
+    assert preview["archived_execution_economics_reconciled"] is True
+    assert preview["ready_for_review"] is False
+    assert preview["full_forward_after_cost_profit_verified"] is False
+    assert preview["durable_execution_sqlite_replay_verified"] is False
+    assert preview["reasons"] == [
+        "source_worker_not_completed", "economic_review_not_certified",
+    ]
+    assert preview["promotion_authority"] is False
+    assert preview["execution_authority"] is False
+    run["status"] = "completed"
+    run["conclusion"] = "success"
 
     state["state_digest"] = "0" * 64
     corrupted = audit.audit_trend_handoff(
@@ -577,12 +630,13 @@ def test_independent_audit_workflow_can_never_place_orders() -> None:
     assert "--artifact-zip /tmp/trend-paper-audit/source.zip" in workflow
     assert "audit_both_side_trend_paired_handoff.py" in workflow
     assert "archived_execution_economics_reconciled" in workflow
+    assert "source_worker_completed" in workflow
     assert "original market feed gaps independently authenticated: FALSE" in workflow
     assert "live execution / promotion authority: FALSE / FALSE" in workflow
 
 
-def test_trend_audit_bootstraps_first_real_zip_without_workflow_chain() -> None:
-    """A push of the audit itself rechecks real worker 38261652982."""
+def test_trend_audit_bootstraps_postboundary_source_without_workflow_chain() -> None:
+    """Read-only bootstrap checks exact post-19:00 source 38281228549."""
     workflow = Path(
         ".github/workflows/independent-both-side-trend-handoff-audit.yml"
     ).read_text(encoding="utf-8")
@@ -591,7 +645,7 @@ def test_trend_audit_bootstraps_first_real_zip_without_workflow_chain() -> None:
         '      - ".github/workflows/independent-both-side-trend-handoff-audit.yml"'
         in workflow
     )
-    assert "github.event_name == 'push' && '38261652982'" in workflow
+    assert "github.event_name == 'push' && '38281228549'" in workflow
     assert "github.event_name == 'push' && '1'" in workflow
     assert '--source-run-id "$SOURCE_RUN_ID"' in workflow
     assert '--source-attempt "$SOURCE_ATTEMPT"' in workflow
