@@ -141,13 +141,13 @@ def _snapshot_from_payload(raw: object) -> PerpMarketSnapshot:
     snapshot = PerpMarketSnapshot(
         meta=PerpMarketMeta(
             market=market,
-            wire_name=cast(str, meta["wire_name"]),
+            wire_name=meta["wire_name"],
             sz_decimals=cast(int, meta["sz_decimals"]),
             max_leverage=cast(int, meta["max_leverage"]),
-            margin_table_id=cast(int | None, meta["margin_table_id"]),
-            only_isolated=cast(bool, meta["only_isolated"]),
-            is_delisted=cast(bool, meta["is_delisted"]),
-            margin_mode=cast(str | None, meta["margin_mode"]),
+            margin_table_id=meta["margin_table_id"],
+            only_isolated=meta["only_isolated"],
+            is_delisted=meta["is_delisted"],
+            margin_mode=meta["margin_mode"],
         ),
         context=PerpMarketContext(
             market=market,
@@ -160,9 +160,9 @@ def _snapshot_from_payload(raw: object) -> PerpMarketSnapshot:
             premium=_decimal(ctx["premium"], nullable=True),
             prev_day_px=cast(Decimal, _decimal(ctx["prev_day_px"])),
         ),
-        source=cast(str, row["source"]),
-        received_at_ms=cast(int, row["received_at_ms"]),
-        schema_version=cast(int, row["schema_version"]),
+        source=row["source"],
+        received_at_ms=row["received_at_ms"],
+        schema_version=row["schema_version"],
     )
     if _snapshot_payload(snapshot) != row:
         raise OriginalRankEligibilityContextError("rank context payload not canonical")
