@@ -60,17 +60,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          source scripts/gh_api_bounded_retry.sh
           if [[ ! "$SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ || ! "$SOURCE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::Source worker run and attempt must be positive decimal identifiers" >&2
             exit 1
           fi
           echo "Read-only original source replay: run=$SOURCE_RUN_ID attempt=$SOURCE_RUN_ATTEMPT event=$GITHUB_EVENT_NAME" >> "$GITHUB_STEP_SUMMARY"
           mkdir -p /tmp/original-short-rank-api
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" \
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" \
             > /tmp/original-short-rank-api/run.json
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100" \
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100" \
             > /tmp/original-short-rank-api/jobs.json
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
             > /tmp/original-short-rank-api/artifacts.json
 
       - name: Download only the exact original worker artifact if published
@@ -91,6 +92,7 @@ jobs:
             exit 0
           fi
           curl --fail --silent --show-error --location \
+            --retry 3 --retry-delay 2 --retry-max-time 240 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
@@ -137,6 +139,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          source scripts/gh_api_bounded_retry.sh
           mkdir -p /tmp/original-short-rank-predecessor
           title="$(jq -r '.display_title // ""' /tmp/original-short-rank-api/run.json)"
           # GitHub's REST workflow-run response does not expose workflow
@@ -151,11 +154,11 @@ jobs:
             echo "::notice::self predecessor is not a valid original handoff"
             exit 0
           fi
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID" \
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID" \
             > /tmp/original-short-rank-predecessor/run.json
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID/jobs?per_page=100" \
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID/jobs?per_page=100" \
             > /tmp/original-short-rank-predecessor/jobs.json
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID/artifacts?per_page=100" \
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$PREDECESSOR_RUN_ID/artifacts?per_page=100" \
             > /tmp/original-short-rank-predecessor/artifacts.json
           PREDECESSOR_RUN_ATTEMPT="$(
             jq -r '.run_attempt' /tmp/original-short-rank-predecessor/run.json
@@ -172,6 +175,7 @@ jobs:
             exit 0
           fi
           curl --fail --silent --show-error --location \
+            --retry 3 --retry-delay 2 --retry-max-time 240 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
@@ -231,6 +235,7 @@ jobs:
             exit 0
           fi
           curl --fail --silent --show-error --location \
+            --retry 3 --retry-delay 2 --retry-max-time 240 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
@@ -285,6 +290,7 @@ jobs:
             exit 0
           fi
           curl --fail --silent --show-error --location \
+            --retry 3 --retry-delay 2 --retry-max-time 240 \
             --header "Authorization: Bearer $GH_TOKEN" \
             --header "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
