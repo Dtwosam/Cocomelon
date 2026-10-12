@@ -212,7 +212,7 @@ def test_review_anchor_workflow_remains_read_only() -> None:
     workflow = Path(
         ".github/workflows/independent-both-side-trend-handoff-audit.yml"
     ).read_text(encoding="utf-8")
-    assert "scripts/audit_both_side_trend_ledger_anchor.py" in workflow
+    assert "python -m scripts.audit_both_side_trend_ledger_anchor" in workflow
     assert "SOURCE_RUN_ID" in workflow
     assert "38281228549" in workflow
     assert "forward_worker_append_verified" in workflow
