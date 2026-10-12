@@ -10230,12 +10230,12 @@ async def run_continuous_paper_session(
         try:
             loss_context_paired_shadow_runtime = (
                 start_trend_paired_shadow_sidecar(
-                        loss_context_paired_shadow_runtime,
-                        paper_root=root,
-                        replay_config=replay_config,
-                        selected_markets=selected,
-                        startup_timestamp_ms=started_at_ms,
-                        legacy_shadow_root_name=LOSS_CONTEXT_PAIRED_SHADOW_ROOT,
+                    loss_context_paired_shadow_runtime,
+                    paper_root=root,
+                    replay_config=replay_config,
+                    selected_markets=selected,
+                    startup_timestamp_ms=started_at_ms,
+                    legacy_shadow_root_name=LOSS_CONTEXT_PAIRED_SHADOW_ROOT,
                 )
             )
             loss_context_paired_shadow_runtime.submit_rank_snapshot(
