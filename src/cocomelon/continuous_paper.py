@@ -4863,6 +4863,7 @@ class _RecordPump:
             loss_context_paired_shadow_runtime
         )
         self.loss_context_paired_shadow_restore_error: str | None = None
+        self.trend_paired_shadow_restore_error: str | None = None
         self.cadence_shadow = cadence_shadow
         self.cadence_shadow_error: str | None = None
         self.entry_mid_markout_shadow = (
@@ -5207,6 +5208,39 @@ class _RecordPump:
                 self.loss_context_paired_shadow_restore_error
             )
         return payload
+
+    def trend_paired_shadow_payload(self) -> dict[str, object]:
+        """Independent, non-promotional health of the new forward trial.
+
+        A failed legacy v5 receipt remains in the original field and must
+        never overwrite or masquerade as this separate shadow campaign.
+        """
+        runtime = self.loss_context_paired_shadow_runtime
+        if isinstance(runtime, PairedShadowTrendSidecar):
+            payload = runtime.trend_status_payload()
+            if self.trend_paired_shadow_restore_error is not None:
+                return {
+                    **payload,
+                    "restore_error": self.trend_paired_shadow_restore_error,
+                    "enabled": False,
+                }
+            return payload
+        return {
+            "enabled": False,
+            "initialized": False,
+            "failed": self.trend_paired_shadow_restore_error is not None,
+            "error": self.trend_paired_shadow_restore_error,
+            "trial_id": (
+                "prospective-both-sides-trend-lead-capital-matched-shadow-v1"
+            ),
+            "research_only": True,
+            "shadow_only": True,
+            "paper_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "source_and_gaps_independently_authenticated": False,
+            "economic_review_ready": False,
+        }
 
     def cadence_shadow_payload(self) -> dict[str, object]:
         if self.cadence_shadow_error is not None:
@@ -8555,6 +8589,9 @@ def _operational_live_status_payload(
         "loss_context_paired_portfolio_shadow": (
             pump.loss_context_paired_shadow_payload()
         ),
+        "trend_paired_portfolio_shadow": (
+            pump.trend_paired_shadow_payload()
+        ),
         "prospective_breakeven_preview": (
             None
             if (
@@ -10398,6 +10435,9 @@ async def run_continuous_paper_session(
         )
         pump.loss_context_paired_shadow_restore_error = (
             loss_context_paired_shadow_restore_error
+        )
+        pump.trend_paired_shadow_restore_error = (
+            trend_paired_shadow_restore_error
         )
         record_startup_component("record_pump_init", component_started)
         startup_component_ms["pre_monitor_total"] = max(
