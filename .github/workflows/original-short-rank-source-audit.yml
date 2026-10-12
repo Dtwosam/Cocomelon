@@ -242,6 +242,72 @@ jobs:
           print("- live execution authority: FALSE")
           PY
 
+      - name: Download independently identified original rank market-context artifact
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          attempt="$(jq -r '.run_attempt' /tmp/original-short-rank-api/run.json)"
+          name="continuous-paper-first-seen-short-rank-market-context-$SOURCE_RUN_ID-$attempt"
+          artifact_id="$(
+            jq -r --arg name "$name" '
+              [.artifacts[] | select(.name == $name)]
+              | if length == 1 then .[0].id else empty end
+            ' /tmp/original-short-rank-api/artifacts.json
+          )"
+          if [[ -z "$artifact_id" ]]; then
+            echo "::notice::original rank market context absent; eligibility audit will refuse"
+            exit 0
+          fi
+          curl --fail --silent --show-error --location \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+            --output /tmp/original-short-rank-api/market-context-artifact.zip
+
+      - name: Independently replay all original SHORT rank market eligibility inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.audit_paper_short_rank_market_context \
+            --source-dir /tmp/original-short-rank-api \
+            --source-run-id "$SOURCE_RUN_ID" \
+            --source-run-attempt "$SOURCE_RUN_ATTEMPT" \
+            --repository "$GITHUB_REPOSITORY" \
+            --output original-short-rank-context-audit.json
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          proof = json.loads(
+              Path("original-short-rank-context-audit.json")
+              .read_text(encoding="utf-8")
+          )
+          print("\n## Original SHORT rank market eligibility proof")
+          print(f"- status: {proof['rank_market_context_audit_status']}")
+          print(f"- failure: {proof['failure_reason_code']}")
+          print(
+              "- all three original ZIP bytes authenticated: "
+              f"{proof['all_three_original_worker_artifact_sha256s_verified']}"
+          )
+          print(
+              "- original rankable set reconstructed from recorded contexts: "
+              f"{proof['rankable_market_membership_reconstructed_from_recorded_context']}"
+          )
+          print("- independent Hyperliquid exchange feed/gaps: NOT PROVEN")
+          print("- full account risk-matched after-cost edge: NOT PROVEN")
+          print("- live order authority: FALSE")
+          PY
+
+      - name: Publish immutable three-source original SHORT market eligibility audit
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: original-first-seen-short-rank-context-audit-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: original-short-rank-context-audit.json
+          retention-days: 90
+          if-no-files-found: warn
+
       - name: Publish immutable original SHORT coarse-score source audit
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
