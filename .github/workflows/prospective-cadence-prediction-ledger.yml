@@ -177,9 +177,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          source scripts/gh_api_bounded_retry.sh
           mkdir -p /tmp/current-report
           artifacts_json="$(
-            gh api               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/runs/$AUDIT_RUN_ID/artifacts?per_page=100"
+            gh_api_bounded_retry               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/runs/$AUDIT_RUN_ID/artifacts?per_page=100"
           )"
           artifact_line="$(
             jq -r '
@@ -201,7 +202,7 @@ jobs:
             exit 1
           fi
           IFS=$'	' read -r artifact_id artifact_name <<<"$artifact_line"
-          gh api             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"             > /tmp/current-report.zip
+          gh_api_bounded_retry             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"             > /tmp/current-report.zip
           unzip -q /tmp/current-report.zip -d /tmp/current-report
           report_path="$(
             find /tmp/current-report -type f               -name 'cadence-microstructure-prospective.json'               -print -quit
@@ -221,10 +222,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          source scripts/gh_api_bounded_retry.sh
           previous_path=""
           previous_workflow_run_id=""
           runs_json="$(
-            gh api               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-cadence-prediction-ledger.yml/runs?status=success&per_page=100"
+            gh_api_bounded_retry               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-cadence-prediction-ledger.yml/runs?status=success&per_page=100"
           )"
           mapfile -t prior_runs < <(
             jq -r               --arg current "$CURRENT_RUN_ID"               '.workflow_runs
@@ -235,7 +237,7 @@ jobs:
           )
           for run_id in "${prior_runs[@]}"; do
             artifacts_json="$(
-              gh api                 -H "Accept: application/vnd.github+json"                 "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+              gh_api_bounded_retry                 -H "Accept: application/vnd.github+json"                 "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
             )"
             artifact_id="$(
               jq -r '
@@ -259,7 +261,7 @@ jobs:
             fi
             rm -rf /tmp/previous-ledger /tmp/previous-ledger.zip
             mkdir -p /tmp/previous-ledger
-            gh api               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > /tmp/previous-ledger.zip
+            gh_api_bounded_retry               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > /tmp/previous-ledger.zip
             unzip -q /tmp/previous-ledger.zip -d /tmp/previous-ledger
             candidate="$(
               find /tmp/previous-ledger -type f                 -name 'cadence-microstructure-prediction-ledger.json'                 -print -quit
