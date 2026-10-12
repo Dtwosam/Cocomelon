@@ -1,5 +1,11 @@
 # Cocomelon Project Status
 
+## October 12 — correct pre-embargo gap-lineage false positive in signed paired review
+
+The independent audit [run 38304057139](https://github.com/Dtwosam/Cocomelon/actions/runs/38304057139) verified actual trend-source ZIP SHA256 `cedd52f436bc1f3a134beef423a1cde2dd98a0fc7ee085b6501b74f79a2d501b`, frozen candidate `4fb49e13478b0e86faa5179ed7da6bf2cc6453a02995550defd48c265903eac0`, 757,488 replay records, and one sealed pre-embargo paired checkpoint. Source worker `38261652982` remains honestly classified as `completed_non_success_worker`. **No eligible post-19:00 UTC checkpoint, no completed paired trades and no after-cost advantage** existed in that artifact; readiness correctly fails.
+
+The existing review reported `unverifiable_legacy_gap_scope_lineage` even when there were **zero eligible** checkpoint rows, because it had `if not (bool(eligible) and all(clean_rows))`. This was a false diagnosis of contaminated history, not independent evidence of missing original market contexts. The review now explicitly labels `gap_scope_lineage_evidence_status=no_forward_checkpoint` and omits the legacy contamination failure *only when the eligible cohort is empty*. It still fails readiness for insufficient forward duration and no eligible checkpoints. If **any** eligible prospective row has missing, false, or old-v1 gap scope, it continues to fail with `unverifiable_legacy_gap_scope_lineage`; adversarial tests preserve that behavior. No original paper stop, PnL, risk, v5 negative evidence, paired-account fills, or LIVE permission changed.
+
 ## October 12 20:15 UTC — 19:00 forward experiment has started, but booked economic proof is pending
 
 The authenticated original paper successor `38281228549` was still PAPER ONLY and execution-healthy as of 20:14 UTC: 216 total closed trades, 0 open, equity `$9,615.49`, cumulative marked PnL `-$384.51`. The isolated prospective both-side trend paired actor has submitted and processed 618,027 matching records with zero backlog or queue failures, but its current worker had **0 completed paired-account checkpoints** as of that heartbeat. This is not profitable signed-account evidence; 72-hour review, missing market-data coverage and paired account delta remain unproven.
