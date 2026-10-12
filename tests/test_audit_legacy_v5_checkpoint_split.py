@@ -12,7 +12,6 @@ import pytest
 
 from scripts import audit_legacy_v5_checkpoint_split as diagnostic
 
-
 REPO = "Dtwosam/Cocomelon"
 
 
