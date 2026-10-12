@@ -1,5 +1,9 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 12 — independent replay path for the first complete three-ZIP source
+
+The original worker `38234626351` has all three published rank, complete feature and market-context GitHub artifacts but the **overall worker failed**. A first source-integrity audit run did not follow this archived worker after subsequent verifier upgrades. A separate research-only audit workflow now supports exact completed-worker manual replay and a one-time main-branch push replay pinned to this known original source. The auditor must reauthenticate all three outer SHA256 values and replay all recorded rankability decisions, but can identify a failed upgrade-only handoff as **upgrade-only**, never as an authenticated successful full research worker. Historical context-free ranks and exchange-feed gaps stay unresolved. This restores an evidence verification route; it neither claims a positive eligibility result before the new audit receipt, nor changes any paper trade, frozen trend-abstention window, portfolio return, or execution authority.
+
 ## October 12 — freeze next all-trend abstention hypothesis from signed 210-trade losses
 
 The authentic GitHub original-worker 38233233477 scoreboard artifact **11739794720** was downloaded and its outer ZIP SHA256 independently verified: `ba4e81f6743f0b2e6392fe180807902f77e184ec1e9eecc3f4b0f0f933dfea4a`. This is **discovery only**: 210 original closes booked **−$362.04 net**, of which 165 trend-led entries booked approximately **−$323.44 net** (79 SHORT trend ~−$178.59, 86 LONG trend ~−$144.85), while the 16 SHORT breakout originals booked approximately **+$82.38** (but their summed booked net-R is still negative). The original full account remains negative and historical market-data gap coverage is incomplete. Do **not** treat dropping past losing trends as proven profitability.
