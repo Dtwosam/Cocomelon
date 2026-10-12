@@ -174,6 +174,42 @@ def _paired_paper_trial_lines(raw: object) -> list[str]:
     return lines
 
 
+def _trend_paired_trial_lines(raw: object) -> list[str]:
+    """Surface actor activity, never imply verified account profitability."""
+    lines = _paired_paper_trial_lines(raw)
+    lines[0] = "### Independent both-side trend paired-paper trial"
+    if not isinstance(raw, dict):
+        return lines
+    boundary = raw.get("forward_not_before_ms")
+    start = raw.get("worker_startup_timestamp_ms")
+    if type(boundary) is int and boundary > 0:
+        date = datetime.fromtimestamp(
+            boundary / 1000, tz=UTC,
+        ).strftime("%Y-%m-%d %H:%M UTC")
+    else:
+        date = "not reported"
+    if type(start) is int and start >= 0 and type(boundary) is int:
+        start_scope = (
+            "before or at boundary" if start <= boundary
+            else "late worker start; complete window unverified"
+        )
+    else:
+        start_scope = "unverified"
+    verified = raw.get("source_and_gaps_independently_authenticated") is True
+    ready = raw.get("economic_review_ready") is True
+    # These flags may not promote research, even if a malformed heartbeat
+    # accidentally claims readiness. Only independent durable review decides.
+    lines[-1:-1] = [
+        f"- frozen forward boundary: `{date}`",
+        f"- this worker started: `{start_scope}`",
+        f"- source and gap audit flag: `{str(verified).lower()}`",
+        f"- economic review flag (not promotion): `{str(ready).lower()}`",
+        "- after-cost candidate advantage: `NOT PROVEN`",
+        "- live orders / promotion: `DISABLED / DISABLED`",
+    ]
+    return lines
+
+
 def _cadence_shadow_lines(raw: object) -> list[str]:
     if not isinstance(raw, dict):
         return [
@@ -9976,6 +10012,9 @@ def _render_operational_live_status(
             *_paired_paper_trial_lines(
                 payload.get("loss_context_paired_portfolio_shadow")
             ),
+            *_trend_paired_trial_lines(
+                payload.get("trend_paired_portfolio_shadow")
+            ),
             "### Runtime",
             "",
             f"- selected markets: {payload['selected_market_count']}",
@@ -10929,6 +10968,11 @@ def render_live_status(
     lines.extend(
         _paired_paper_trial_lines(
             payload.get("loss_context_paired_portfolio_shadow")
+        )
+    )
+    lines.extend(
+        _trend_paired_trial_lines(
+            payload.get("trend_paired_portfolio_shadow")
         )
     )
     lines.extend(_cadence_shadow_lines(payload.get("cadence_shadow")))
