@@ -1,5 +1,9 @@
 # Cocomelon Project Status
 
+## October 12 — new future-only both-side trend entry abstention probe
+
+The downloaded and SHA-verified original 210-close worker scoreboard revealed approximately **−$323.44 net** from 165 trend-led trades on both sides, within **−$362.04** full original realized net (worker 38233233477 artifact 11739794720). This is **not** a paired-account improvement estimate: prior markets/gaps, risk and execution costs differ. A separate fixed in-code discovery freeze at **October 12 13:00 UTC** and six-hour embargo starts the new forward-only original-booked experiment at **19:00 UTC**. It analyzes skipped LONG/SHORT `trend` entries only when a strictly earlier, identity-matched and originally approved first-seen decision exists, including eligible winners and losers, with unknown entries retained, exact cash/net-R parity, two fixed first-week windows and handoff censoring. This **does not run the challenger portfolio**, replace positions, change original paper execution, reset frozen v5, repair missing source gaps, prove edge or authorize live orders. It only registers a falsifiable hypothesis for clean future evidence.
+
 **Profitability-first source:** [`docs/PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md). Keep original-account losses and unresolved data gaps visible; no promotion from research diagnostics.
 
 ## October 12 — prioritize real paper losses by separately witnessed market-data gaps
