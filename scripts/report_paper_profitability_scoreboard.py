@@ -136,6 +136,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         "frozen_hypotheses": report[
             "frozen_hypotheses_original_forward_economics"
         ],
+        "predeclared_both_side_trend_forward": {
+            "hypothesis_id": report[
+                "prospective_both_side_trend_abstention_contributions"
+            ]["hypothesis_id"],
+            "forward_opened_not_before_ms": report[
+                "prospective_both_side_trend_abstention_contributions"
+            ]["forward_opened_not_before_ms"],
+            "original_forward_closed_trades": report[
+                "prospective_both_side_trend_abstention_contributions"
+            ]["all_forward_original_closes_included"],
+            "provably_prior_original_trend_closes": report[
+                "prospective_both_side_trend_abstention_contributions"
+            ]["forward_first_seen_strict_prior_approved_trend_closes"],
+            "naive_delta_net_cash": report[
+                "prospective_both_side_trend_abstention_contributions"
+            ]["hypothetical_zero_replacement_delta_net_cash"],
+            "descriptive_sample_floor_met_not_promotion": report[
+                "prospective_both_side_trend_abstention_contributions"
+            ]["descriptive_sample_floor_met_not_promotion"],
+            "full_account_trial": False,
+            "execution_authority": False,
+            "promotion_authority": False,
+        },
         "execution_authority": False,
         "promotion_authority": False,
     }

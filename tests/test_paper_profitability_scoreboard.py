@@ -2788,3 +2788,161 @@ def test_profitability_cli_surfaces_original_gap_loss_evidence_without_execution
         "cohort"
     ]["chart_gap_witness_class"] == "unresolved_before_entry"
     assert debt["promotion_authority"] is False
+
+
+def test_predeclared_both_side_trend_rule_requires_strictly_prior_first_seen(
+) -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        BOTH_SIDE_TREND_FORWARD_MS,
+    )
+
+    b = BOTH_SIDE_TREND_FORWARD_MS
+    discovery_win = _move_trade_to_original_open_time(
+        _trade(1, side="long", market="BTC", strategy="trend", gross="200"),
+        b - 1, closed_at_ms=b + 2,
+    )
+    long_loss = _move_trade_to_original_open_time(
+        _trade(2, side="long", market="MEGA", strategy="trend", gross="-22"),
+        b, closed_at_ms=b + 3,
+    )
+    short_win = _move_trade_to_original_open_time(
+        _trade(3, side="short", market="ENA", strategy="trend", gross="17"),
+        b + 1, closed_at_ms=b + 4,
+    )
+    unproven_loss = _move_trade_to_original_open_time(
+        _trade(4, side="short", market="ALGO", strategy="trend", gross="-7"),
+        b + 2, closed_at_ms=b + 5,
+    )
+    same_clock_win = _move_trade_to_original_open_time(
+        _trade(5, side="long", market="NEAR", strategy="trend", gross="40"),
+        b + 3, closed_at_ms=b + 6,
+    )
+    breakout_win = _move_trade_to_original_open_time(
+        _trade(6, side="short", market="SOL", strategy="breakout", gross="3"),
+        b + 4, closed_at_ms=b + 7,
+    )
+    for row, lead in (
+        (discovery_win, "trend"),
+        (long_loss, "trend"), (short_win, "trend"),
+        (same_clock_win, "trend"),
+        (breakout_win, "breakout"),
+    ):
+        _add_original_opportunity_to_scoreboard_trade(row, lead=lead)
+    same_clock_win["original_first_seen_opportunity"][
+        "opportunity_timestamp_ms"
+    ] = same_clock_win["opened_at_ms"]
+    source = _reconciled_audit_from_rows([
+        discovery_win, long_loss, short_win, unproven_loss,
+        same_clock_win, breakout_win,
+    ])
+    result = paper_profitability_scoreboard(source)
+    forward = result["prospective_both_side_trend_abstention_contributions"]
+    assert forward["frozen_at_ms"] == 1_791_810_000_000
+    assert forward["forward_opened_not_before_ms"] == 1_791_831_600_000
+    assert forward["all_forward_original_closes_included"] == 5
+    assert forward["forward_first_seen_strict_prior_approved_trend_closes"] == 2
+    assert forward["forward_unproven_trend_closes_retained"]["trades"] == 2
+    avoided = forward["forward_provably_prior_decision_trend_economics"]
+    retained = forward["forward_retained_original_economics"]
+    assert avoided["trades"] == 2
+    assert avoided["wins"] == 1 and avoided["losses"] == 1
+    assert retained["trades"] == 3
+    assert Decimal(avoided["gross_realized_pnl"]) == -5
+    assert Decimal(avoided["net_pnl"]) == -7
+    assert Decimal(forward["hypothetical_zero_replacement_delta_net_cash"]) == 7
+    assert Decimal(forward["hypothetical_zero_replacement_delta_net_r"]) == Decimal(
+        "0.35"
+    )
+    assert Decimal(forward["forward_original_all_closed_economics"]["net_pnl"]) == (
+        Decimal(avoided["net_pnl"]) + Decimal(retained["net_pnl"])
+    )
+    assert sum(x["trades"] for x in result["side_cohorts"]) == 6
+    assert forward["forward_positive_signed_account_edge_proven"] is False
+    assert forward["capital_reallocation_modeled"] is False
+    assert forward["execution_authority"] is False
+    assert forward["promotion_authority"] is False
+
+
+def test_predeclared_trend_no_forward_trades_preserves_discovery_losses() -> None:
+    report = paper_profitability_scoreboard(_audit())
+    forward = report["prospective_both_side_trend_abstention_contributions"]
+    assert forward["forward_original_all_closed_economics"]["trades"] == 0
+    assert forward["forward_provably_prior_decision_trend_economics"]["trades"] == 0
+    assert forward["descriptive_sample_floor_met_not_promotion"] is False
+    assert all(
+        window["source_window_mature_only_if_flat_handoff"] is False
+        for window in forward["first_two_fixed_forward_opening_weeks"]
+    )
+    assert report["overall"]["net_pnl"] == "-13.9"
+    assert report["execution_authority"] is False
+
+
+def test_predeclared_trend_fixed_weeks_never_roll_to_later_profitable_cohort(
+) -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        BOTH_SIDE_TREND_FORWARD_MS,
+    )
+
+    b = BOTH_SIDE_TREND_FORWARD_MS
+    week = 7 * 24 * 3_600_000
+    first_loss = _move_trade_to_original_open_time(
+        _trade(1, side="short", market="ENA", strategy="trend", gross="-12"),
+        b, closed_at_ms=b + 10,
+    )
+    later_win = _move_trade_to_original_open_time(
+        _trade(2, side="long", market="BTC", strategy="trend", gross="30"),
+        b + 2 * week, closed_at_ms=b + 2 * week + 10,
+    )
+    _add_original_opportunity_to_scoreboard_trade(first_loss, lead="trend")
+    _add_original_opportunity_to_scoreboard_trade(later_win, lead="trend")
+    before = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows([first_loss])
+    )["prospective_both_side_trend_abstention_contributions"]
+    after = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows([first_loss, later_win])
+    )["prospective_both_side_trend_abstention_contributions"]
+    assert before["first_two_fixed_forward_opening_weeks"] == (
+        after["first_two_fixed_forward_opening_weeks"]
+    )
+    assert len(after["first_two_fixed_forward_opening_weeks"]) == 2
+    assert after["first_two_fixed_forward_opening_weeks"][0][
+        "provably_prior_decision_trend_closed"
+    ]["net_pnl"] == "-13.0"
+    assert after["first_two_fixed_forward_opening_weeks"][1][
+        "provably_prior_decision_trend_closed"
+    ]["trades"] == 0
+    assert after["forward_provably_prior_decision_trend_economics"]["trades"] == 2
+    assert after["descriptive_sample_floor_met_not_promotion"] is False
+
+
+def test_predeclared_trend_cannot_mature_with_open_original_handoff() -> None:
+    from cocomelon.research.paper_profitability_scoreboard import (
+        BOTH_SIDE_TREND_FORWARD_MS,
+    )
+
+    b = BOTH_SIDE_TREND_FORWARD_MS
+    row = _move_trade_to_original_open_time(
+        _trade(1, side="short", market="ENA", strategy="trend", gross="-10"),
+        b, closed_at_ms=b + 100,
+    )
+    _add_original_opportunity_to_scoreboard_trade(row, lead="trend")
+    root = _reconciled_audit_from_rows([row])
+    root["source_handoff_ended_at_ms"] = b + 3 * 7 * 24 * 3_600_000
+    root["source_handoff_open_positions"] = 1
+    trial = paper_profitability_scoreboard(root)[
+        "prospective_both_side_trend_abstention_contributions"
+    ]
+    assert all(
+        w["source_window_mature_only_if_flat_handoff"] is False
+        for w in trial["first_two_fixed_forward_opening_weeks"]
+    )
+    root["source_handoff_open_positions"] = 0
+    trial = paper_profitability_scoreboard(root)[
+        "prospective_both_side_trend_abstention_contributions"
+    ]
+    assert all(
+        w["source_window_mature_only_if_flat_handoff"] is True
+        for w in trial["first_two_fixed_forward_opening_weeks"]
+    )
+    assert trial["descriptive_sample_floor_met_not_promotion"] is False
+    assert trial["forward_positive_signed_account_edge_proven"] is False

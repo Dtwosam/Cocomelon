@@ -59,6 +59,22 @@ MEAN_REVERSION_FORWARD_START_MS: Final = (
     MEAN_REVERSION_DISCOVERY_FREEZE_MS + MEAN_REVERSION_EMBARGO_MS
 )
 
+# Fixed before the next live trade opens: October 12 13:00 UTC freeze,
+# forward begins October 12 19:00 UTC after a six-hour embargo.
+# Discovery-only GitHub SHA-bound whole-journal scoreboard:
+# worker 38233233477, artifact 11739794720, 210 original closes.
+BOTH_SIDE_TREND_FREEZE_MS: Final = 1_791_810_000_000
+BOTH_SIDE_TREND_EMBARGO_MS: Final = 6 * 3_600_000
+BOTH_SIDE_TREND_FORWARD_MS: Final = (
+    BOTH_SIDE_TREND_FREEZE_MS + BOTH_SIDE_TREND_EMBARGO_MS
+)
+BOTH_SIDE_TREND_DISCOVERY_GITHUB_ARTIFACT_SHA256: Final = (
+    "ba4e81f6743f0b2e6392fe180807902f77e184ec1e9eecc3f4b0f0f933dfea4a"
+)
+BOTH_SIDE_TREND_DISCOVERY_RUN_ID: Final = 38233233477
+BOTH_SIDE_TREND_DISCOVERY_ARTIFACT_ID: Final = 11739794720
+BOTH_SIDE_TREND_FIXED_WEEK_MS: Final = 7 * 24 * 3_600_000
+
 
 class PaperProfitabilityScoreboardError(ValueError):
     pass
@@ -1058,6 +1074,170 @@ def _fixed_original_opening_week_economics(
     }
 
 
+def _predeclared_both_side_trend_abstention(
+    trades: list[_Trade],
+    *,
+    source_handoff_ended_at_ms: int | None,
+    source_handoff_open_positions: int | None,
+) -> dict[str, object]:
+    """Falsifiable post-embargo original-booked trend hypothesis.
+
+    Only genuine original first-seen approved entry decisions STRICTLY before
+    opening receive hypothetical skip credit. Exclude no trade from the actual
+    journal. Never infer newly filled replacement trades, margin reflow or
+    better matched account returns from retrospective trade removal.
+    """
+    future = [t for t in trades if t.opened_at_ms >= BOTH_SIDE_TREND_FORWARD_MS]
+    eligible = [
+        t for t in future
+        if t.verified_context
+        and t.original_decision_source_match
+        and t.lead_strategy == "trend"
+    ]
+    eligible_ids = {t.trade_id for t in eligible}
+    retained = [t for t in future if t.trade_id not in eligible_ids]
+    unproven_trend = [
+        t for t in future
+        if t.lead_strategy == "trend"
+        and t.trade_id not in eligible_ids
+    ]
+    for key in (
+        "trades", "wins", "losses", "unverified_entry_context_trades",
+        "missing_rank_evidence_trades", "incomplete_chart_trades",
+    ):
+        left = _metrics(eligible)[key]
+        right = _metrics(retained)[key]
+        total = _metrics(future)[key]
+        if cast(int, left) + cast(int, right) != total:
+            raise PaperProfitabilityScoreboardError(
+                f"predeclared trend closed journal {key} count not conserved"
+            )
+    for key in (
+        "gross_realized_pnl", "fees", "funding_cash_pnl", "net_pnl", "net_r",
+        "booked_net_cash_reconciliation_residual",
+    ):
+        with localcontext(prec=96):
+            left = _number(_metrics(eligible)[key], key)
+            right = _number(_metrics(retained)[key], key)
+            total = _number(_metrics(future)[key], key)
+            if left + right != total:
+                raise PaperProfitabilityScoreboardError(
+                    f"predeclared trend closed journal {key} cash not conserved"
+                )
+    original = _metrics(future)
+    saved = _metrics(eligible)
+    naive = _metrics(retained)
+    # These are FIXED first two seven-day windows, including empty buckets;
+    # no rolling to a later profitable week. Positions still open in a
+    # source handoff may later close, changing earlier entry-week results.
+    first_windows: list[dict[str, object]] = []
+    for week in range(2):
+        start = BOTH_SIDE_TREND_FORWARD_MS + week * BOTH_SIDE_TREND_FIXED_WEEK_MS
+        end = start + BOTH_SIDE_TREND_FIXED_WEEK_MS
+        whole = [t for t in future if start <= t.opened_at_ms < end]
+        to_skip = [t for t in eligible if start <= t.opened_at_ms < end]
+        keep = [t for t in retained if start <= t.opened_at_ms < end]
+        for key in ("net_pnl", "net_r", "fees", "funding_cash_pnl"):
+            if (
+                _number(_metrics(to_skip)[key], key)
+                + _number(_metrics(keep)[key], key)
+                != _number(_metrics(whole)[key], key)
+            ):
+                raise PaperProfitabilityScoreboardError(
+                    f"fixed trend forward opening week {key} not conserved"
+                )
+        matured = (
+            source_handoff_ended_at_ms is not None
+            and source_handoff_open_positions == 0
+            and source_handoff_ended_at_ms >= end
+        )
+        first_windows.append({
+            "week_index": week,
+            "entry_start_inclusive_ms": start,
+            "entry_end_exclusive_ms": end,
+            "all_original_closed": _metrics(whole),
+            "provably_prior_decision_trend_closed": _metrics(to_skip),
+            "retained_original_closed": _metrics(keep),
+            "naive_skip_delta_net_cash": str(-sum(
+                (t.net for t in to_skip), ZERO
+            )),
+            "naive_skip_delta_net_r": str(-sum(
+                (t.net_r for t in to_skip), ZERO
+            )),
+            "source_window_mature_only_if_flat_handoff": matured,
+            "cash_and_r_from_actual_original_fills_only": True,
+        })
+    eligible_markets = {t.market for t in eligible}
+    sample_floor = (
+        len(future) >= 40
+        and len(eligible) >= 20
+        and len(eligible_markets) >= 6
+        and all(
+            row["source_window_mature_only_if_flat_handoff"] is True
+            and cast(int, cast(
+                dict[str, object], row["provably_prior_decision_trend_closed"]
+            )["trades"]) >= 8
+            for row in first_windows
+        )
+        and all(t.verified_context and t.original_decision_source_match
+                for t in future)
+    )
+    return {
+        "schema_version": 1,
+        "hypothesis_id": "prospective-both-sides-trend-lead-abstain-v1",
+        "source_kind": "entire_original_closed_booked_journal",
+        "discovery_source_worker_run_id": BOTH_SIDE_TREND_DISCOVERY_RUN_ID,
+        "discovery_source_github_artifact_id": BOTH_SIDE_TREND_DISCOVERY_ARTIFACT_ID,
+        "discovery_source_github_outer_zip_sha256": (
+            BOTH_SIDE_TREND_DISCOVERY_GITHUB_ARTIFACT_SHA256
+        ),
+        "discovery_trades_excluded_from_forward_economics": True,
+        "frozen_at_ms": BOTH_SIDE_TREND_FREEZE_MS,
+        "embargo_ms": BOTH_SIDE_TREND_EMBARGO_MS,
+        "forward_opened_not_before_ms": BOTH_SIDE_TREND_FORWARD_MS,
+        "fixed_stability_window_ms": BOTH_SIDE_TREND_FIXED_WEEK_MS,
+        "entry_rule": (
+            "abstain_both_long_and_short_original_trend_lead_only_if_first_seen_"
+            "original_risk_approved_decision_strictly_precedes_open"
+        ),
+        "both_winning_and_losing_eligible_trend_trades_omitted_in_naive_math": True,
+        "unknown_or_equal_clock_original_trend_decisions_retained": True,
+        "entire_original_closed_journal_retained_for_benchmark": True,
+        "all_forward_original_closes_included": len(future),
+        "forward_first_seen_strict_prior_approved_trend_closes": len(eligible),
+        "forward_unproven_trend_closes_retained": _metrics(unproven_trend),
+        "forward_original_all_closed_economics": original,
+        "forward_provably_prior_decision_trend_economics": saved,
+        "forward_retained_original_economics": naive,
+        "hypothetical_zero_replacement_delta_net_cash": str(
+            -sum((t.net for t in eligible), ZERO)
+        ),
+        "hypothetical_zero_replacement_delta_net_r": str(
+            -sum((t.net_r for t in eligible), ZERO)
+        ),
+        "hypothetical_zero_replacement_original_net_cash": naive["net_pnl"],
+        "hypothetical_zero_replacement_original_net_r": naive["net_r"],
+        "first_two_fixed_forward_opening_weeks": first_windows,
+        "source_handoff_ended_at_ms": source_handoff_ended_at_ms,
+        "source_handoff_open_positions": source_handoff_open_positions,
+        "descriptive_sample_floor_met_not_promotion": sample_floor,
+        "original_entry_contexts_and_approval_not_independently_online_attested": True,
+        "original_full_market_feed_gaps_authenticated": False,
+        "source_zip_github_authentication_is_external_to_this_report": True,
+        "trading_replacements_modeled": False,
+        "capital_reallocation_modeled": False,
+        "full_account_trial": False,
+        "forward_positive_signed_account_edge_proven": False,
+        "research_only": True,
+        "changes_strategy": False,
+        "changes_positions": False,
+        "changes_risk_limits": False,
+        "ready_for_review": False,
+        "execution_authority": False,
+        "promotion_authority": False,
+    }
+
+
 def _original_booked_exit_mechanisms(
     cohort: list[_Trade],
 ) -> dict[str, object]:
@@ -1997,6 +2177,13 @@ def paper_profitability_scoreboard(
             ),
             "prospective_mean_reversion_abstention_contributions": (
                 _predeclared_mean_reversion_abstention(
+                    trades,
+                    source_handoff_ended_at_ms=handoff_ended,
+                    source_handoff_open_positions=handoff_open,
+                )
+            ),
+            "prospective_both_side_trend_abstention_contributions": (
+                _predeclared_both_side_trend_abstention(
                     trades,
                     source_handoff_ended_at_ms=handoff_ended,
                     source_handoff_open_positions=handoff_open,
