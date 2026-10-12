@@ -10,13 +10,17 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Mapping, cast
+from typing import cast
 
 from cocomelon.domain.market import (
-    MarketId, PerpMarketContext, PerpMarketMeta, PerpMarketSnapshot,
+    MarketId,
+    PerpMarketContext,
+    PerpMarketMeta,
+    PerpMarketSnapshot,
 )
 from cocomelon.features.broad import calculate_broad_features
 from cocomelon.research.prospective_short_rank_first_seen import (
@@ -26,7 +30,9 @@ from cocomelon.research.prospective_short_rank_full_features import (
     OriginalRankFeatureInputBatch,
 )
 from cocomelon.scanner.eligibility import (
-    EligibilityConfig, derive_eligibility_thresholds, evaluate_eligibility,
+    EligibilityConfig,
+    derive_eligibility_thresholds,
+    evaluate_eligibility,
 )
 
 
