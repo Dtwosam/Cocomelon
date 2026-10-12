@@ -1,5 +1,9 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 12 — isolated both-side trend shadow execution plumbing
+
+The older scoped-v5 paired shadow currently fails restoration with a durable account-state mismatch. **Do not repair it by resetting the original failed v5 account.** A separate write-once study root now starts an independent paired-paper actor for the already frozen October 12 both-side trend abstention rule. Both baseline and candidate receive the same original worker's market, rank and position-mark evidence through bounded research-only queues, with protected-market subscription coverage across actors and unique checkpoint receipts. The original paper account, its protected stops, risk limits, and previous v5 negative result are untouched. The new trial's readiness and promotion authority remain FALSE regardless of checkpoint success. The earliest admissible trial is 19:00 UTC, and any delayed launch or missing market data has to remain visible rather than manufacturing complete prospective account coverage. Forward signed after-cost candidate-minus-baseline returns have **not** yet been observed or audited.
+
 ## October 12 — distinguish frozen trend cohort arithmetic from capital-matched challenger
 
 The complete three-archive original source audit of worker `38234626351` at [run 38254509876](https://github.com/Dtwosam/Cocomelon/actions/runs/38254509876) authenticated all three ZIP digests and recomputed recorded rankability in 138 context batches, representing 32,292 market observations. **Original worker class: upgrade_handoff_only**. Historical 2,017 snapshots without prospective market contexts remain excluded from eligibility certification; no authenticated exchange-feed integrity or profitability proof.
