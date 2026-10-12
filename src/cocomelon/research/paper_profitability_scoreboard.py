@@ -80,6 +80,7 @@ class _Trade:
     original_decision_same_millisecond_uncertain: bool
     rank_missing: bool
     chart_complete: bool
+    chart_gap_witness_class: str
     gross: Decimal
     fees: Decimal
     funding: Decimal
@@ -266,6 +267,37 @@ def _trade(raw: object) -> _Trade:
             "chart completeness must be recorded"
         )
     _verified_chart_complete_claim(row, chart)
+    path_present = row["chart_path_present"]
+    assert isinstance(path_present, bool)
+    pre_gap = _integer(
+        row["chart_unresolved_gap_starts_before_entry"],
+        "original unresolved pre-entry source-gap count",
+    )
+    during_gap = _integer(
+        row["chart_unresolved_gap_starts_during_position"],
+        "original unresolved in-position source-gap count",
+    )
+    known_gap = row["chart_known_gap_duration_ms"]
+    if known_gap is not None:
+        known_gap = _integer(known_gap, "original known mark gap duration")
+    silent_gaps = row["chart_silent_gap_intervals_ms"]
+    assert isinstance(silent_gaps, list)
+    if not path_present:
+        gap_class = "missing_original_mark_path"
+    elif pre_gap and during_gap:
+        gap_class = "unresolved_before_entry_and_during_position"
+    elif pre_gap:
+        gap_class = "unresolved_before_entry"
+    elif during_gap:
+        gap_class = "unresolved_during_position"
+    elif known_gap is not None and known_gap > 0:
+        gap_class = "recorded_closed_market_data_gap"
+    elif silent_gaps:
+        gap_class = "silent_unobserved_mark_interval"
+    elif chart:
+        gap_class = "complete_observed_original_mark_path"
+    else:
+        gap_class = "other_incomplete_original_mark_path"
     context_raw = row.get("entry_context")
     lead, rank, volatility = UNVERIFIED, UNVERIFIED, UNVERIFIED
     if context_raw is not None:
@@ -379,6 +411,7 @@ def _trade(raw: object) -> _Trade:
         original_decision_same_millisecond_uncertain=original_source_same_ms,
         rank_missing=rank in {"missing", UNVERIFIED},
         chart_complete=chart,
+        chart_gap_witness_class=gap_class,
         gross=gross,
         fees=entry_fee + exit_fee,
         funding=funding,
@@ -499,6 +532,67 @@ def _original_chart_coverage_economics(
         "ready_for_strategy_promotion": False,
         "promotion_authority": False,
         "execution_authority": False,
+    }
+
+
+def _original_gap_witness_loss_attribution(
+    trades: list[_Trade],
+) -> dict[str, object]:
+    """Original cash actually booked under mutually exclusive gap witnesses.
+
+    A known gap before opening, a gap starting while holding, a silent mark
+    interval and a missing chart are DIFFERENT evidence limitations. Never
+    equate observed cash lost near a gap with causation or simulated recovery.
+    Every original winning and losing close, including unknown entry context,
+    belongs to exactly one category and is retained in the original journal.
+    """
+    categories = _cohorts(trades, ("chart_gap_witness_class",))
+    overall = _metrics(trades)
+    for key in (
+        "trades", "wins", "losses", "unverified_entry_context_trades",
+        "missing_rank_evidence_trades", "incomplete_chart_trades",
+    ):
+        if sum(cast(int, x[key]) for x in categories) != overall[key]:
+            raise PaperProfitabilityScoreboardError(
+                f"original gap exposure {key} count fails whole journal parity"
+            )
+    for key in (
+        "gross_realized_pnl", "fees", "funding_cash_pnl", "net_pnl", "net_r",
+        "booked_net_cash_reconciliation_residual",
+    ):
+        with localcontext(prec=96):
+            amount = sum(
+                (_number(x[key], f"original chart-gap cohort {key}")
+                 for x in categories),
+                ZERO,
+            )
+        if amount != _number(overall[key], f"original journal {key}"):
+            raise PaperProfitabilityScoreboardError(
+                f"original gap exposure {key} cash fails whole journal parity"
+            )
+    exposed = [
+        t for t in trades
+        if t.chart_gap_witness_class != "complete_observed_original_mark_path"
+    ]
+    return {
+        "schema_version": 1,
+        "source": "complete_original_closed_journal_chart_gap_witnesses",
+        "whole_original_booked_journal": overall,
+        "mutually_exclusive_evidence_classes": categories,
+        "incomplete_or_missing_original_evidence": _metrics(exposed),
+        "incomplete_by_market": _cohorts(exposed, ("market",)),
+        "incomplete_by_side_and_strategy": _cohorts(
+            exposed, ("side", "lead_strategy")
+        ),
+        "all_original_closed_trades_and_booked_dollars_and_net_r_reconciled": True,
+        "historically_losing_or_incomplete_trade_not_excluded": True,
+        "observed_gap_causation_of_booked_losses_proven": False,
+        "feed_event_gap_history_independently_recovered": False,
+        "original_closed_trades_not_signed_full_account_equity": True,
+        "no_counterfactual_exit_or_abstention_executed": True,
+        "ready_for_strategy_promotion": False,
+        "execution_authority": False,
+        "promotion_authority": False,
     }
 
 
@@ -1832,6 +1926,9 @@ def paper_profitability_scoreboard(
             ),
             "original_chart_coverage_economics": (
                 _original_chart_coverage_economics(trades)
+            ),
+            "original_chart_gap_witness_loss_attribution": (
+                _original_gap_witness_loss_attribution(trades)
             ),
             "strategy_chart_coverage_economics": [
                 {
