@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import os
+import sqlite3
 import tempfile
 import zipfile
 from collections.abc import Sequence
@@ -38,6 +39,15 @@ from cocomelon.research.trend_paired_shadow_sidecar import (
 SOURCE_WORKFLOW_PATH: Final = ".github/workflows/continuous-paper.yml"
 ARTIFACT_PREFIX: Final = "continuous-paper-both-side-trend-paired-shadow-"
 MAX_RECEIPT_MEMBER_BYTES: Final = 128 * 1024 * 1024
+# Locked to the actual frozen paper execution schema. Schema migrations need
+# their own independent verifier; never silently accept unexpected formats.
+EXPECTED_PAPER_SCHEMA_VERSION: Final = "1"
+REQUIRED_PAPER_TABLES: Final = frozenset({
+    "paper_meta", "paper_order_plans", "paper_execution_attempts",
+    "paper_fills", "paper_positions", "paper_position_events",
+    "paper_funding_events", "paper_account_state",
+    "paper_rolling_peak_candidates",
+})
 
 
 class TrendPairHandoffAuditError(RuntimeError):
@@ -196,6 +206,78 @@ def _member(archive: zipfile.ZipFile, filename: str) -> bytes:
     return archive.read(info)
 
 
+def _verify_archived_execution_store(
+    archive: zipfile.ZipFile, work: Path, *, lane: str,
+) -> None:
+    """Check structural integrity; do not mutate stores or infer signed PnL.
+
+    A SQLite header alone cannot prove the store is valid: reject corrupt
+    pages, missing execution schema, and unexpected schema versions.
+    This is not a fill/account replay or independent market authentication.
+    """
+    if lane not in ("baseline", "candidate"):
+        raise TrendPairHandoffAuditError("invalid paired execution lane")
+    name = f"{TREND_PAIR_STATE_ROOT}/{lane}-execution.sqlite3"
+    matching = [
+        info for info in archive.infolist()
+        if info.filename in {name, f"continuous-paper-state/{name}"}
+    ]
+    if len(matching) != 1 or matching[0].is_dir():
+        raise TrendPairHandoffAuditError(
+            f"paired {lane} execution store absent or ambiguous"
+        )
+    info = matching[0]
+    if info.file_size <= 0 or info.file_size > MAX_RECEIPT_MEMBER_BYTES:
+        raise TrendPairHandoffAuditError(
+            f"paired {lane} execution store size invalid"
+        )
+    path = work / f"{lane}-execution.sqlite3"
+    extracted = 0
+    with archive.open(info) as source, path.open("xb") as destination:
+        while chunk := source.read(1024 * 1024):
+            extracted += len(chunk)
+            if extracted > MAX_RECEIPT_MEMBER_BYTES:
+                raise TrendPairHandoffAuditError(
+                    f"paired {lane} execution store exceeds size bound"
+                )
+            destination.write(chunk)
+    if extracted != info.file_size:
+        raise TrendPairHandoffAuditError(
+            f"paired {lane} execution store length mismatch"
+        )
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
+        conn.execute("PRAGMA query_only=ON")
+        if conn.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
+            raise TrendPairHandoffAuditError(
+                f"paired {lane} SQLite quick_check failed"
+            )
+        tables = {
+            str(row[0]) for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        if not REQUIRED_PAPER_TABLES.issubset(tables):
+            raise TrendPairHandoffAuditError(
+                f"paired {lane} execution store missing paper schema tables"
+            )
+        version = conn.execute(
+            "SELECT value FROM paper_meta WHERE key='schema_version'"
+        ).fetchone()
+        if version is None or str(version[0]) != EXPECTED_PAPER_SCHEMA_VERSION:
+            raise TrendPairHandoffAuditError(
+                f"paired {lane} execution store schema version mismatch"
+            )
+    except sqlite3.DatabaseError as exc:
+        raise TrendPairHandoffAuditError(
+            f"paired {lane} execution store unreadable: {exc}"
+        ) from exc
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def _extract_receipts(
     archive_path: Path,
     work: Path,
@@ -218,18 +300,7 @@ def _extract_receipts(
             archive, f"{TREND_PAIR_STATE_ROOT}/review-ledger.jsonl",
         ))
         for lane in ("baseline", "candidate"):
-            name = f"{TREND_PAIR_STATE_ROOT}/{lane}-execution.sqlite3"
-            candidates = [
-                info
-                for info in archive.infolist()
-                if info.filename in {
-                    name, f"continuous-paper-state/{name}",
-                }
-            ]
-            if len(candidates) != 1 or candidates[0].file_size <= 0:
-                raise TrendPairHandoffAuditError(
-                    f"paired {lane} execution store absent"
-                )
+            _verify_archived_execution_store(archive, work, lane=lane)
     freeze = verify_loss_context_portfolio_shadow_freeze(freeze_path)
     if freeze != both_side_trend_matched_shadow_freeze():
         raise TrendPairHandoffAuditError("signed freeze != predeclared trend hypothesis")
@@ -259,6 +330,7 @@ def audit_trend_handoff(
         "review_report": None,
         "independent_mainnet_market_source_authenticated": False,
         "durable_execution_sqlite_replay_verified": False,
+        "archived_execution_sqlite_integrity_verified": False,
         "full_forward_after_cost_profit_verified": False,
         "ready_for_review": False,
         "research_only": True,
@@ -282,6 +354,7 @@ def audit_trend_handoff(
             freeze, summary, state, ledger_path = _extract_receipts(
                 archive, Path(directory),
             )
+            result["archived_execution_sqlite_integrity_verified"] = True
             if freeze["candidate_id"] != expected.candidate_id:
                 raise TrendPairHandoffAuditError("candidate ID mismatch")
             if summary.get("trial_id") != TRIAL_ID:
