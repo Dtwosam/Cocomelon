@@ -174,6 +174,8 @@ def test_archive_reader_requires_explicit_exact_paths_and_both_stores(
     tmp_path: Path,
 ) -> None:
     freeze = both_side_trend_matched_shadow_freeze()
+    baseline_path = tmp_path / "valid-baseline.sqlite3"
+    _make_paper_sqlite(baseline_path)
     zip_path = tmp_path / "trend.zip"
     with zipfile.ZipFile(zip_path, "w") as zipped:
         zipped.writestr(
@@ -192,9 +194,9 @@ def test_archive_reader_requires_explicit_exact_paths_and_both_stores(
             f"continuous-paper-state/{TREND_PAIR_STATE_ROOT}/review-ledger.jsonl",
             "{}\n",
         )
-        zipped.writestr(
+        zipped.write(
+            baseline_path,
             f"continuous-paper-state/{TREND_PAIR_STATE_ROOT}/baseline-execution.sqlite3",
-            b"sqlite",
         )
     with pytest.raises(
         audit.TrendPairHandoffAuditError, match="candidate execution store",
