@@ -16,6 +16,7 @@ from cocomelon.research.prospective_short_rank_first_seen import (
 )
 from cocomelon.research.prospective_short_rank_full_features import (
     OriginalRankFeatureInputBatch,
+    OriginalRankInputBatchError,
 )
 from cocomelon.research.prospective_short_rank_market_context import (
     OriginalRankEligibilityContextBatch,
@@ -135,7 +136,7 @@ def test_modified_context_or_feature_source_cannot_recreate_claimed_rank_set(
             forged[idx], day_notional_volume=D("1000010"),
         )
         edited = replace(features, features=tuple(forged))
-        with pytest.raises(OriginalRankEligibilityContextError):
+        with pytest.raises(OriginalRankInputBatchError):
             replay_recorded_rank_eligibility(
                 rank=rank, feature_inputs=edited, context=context,
             )
@@ -184,17 +185,16 @@ def test_immutable_market_context_store_preserves_original_bytes(
 
 def test_old_rank_context_never_backfilled_or_reordered(tmp_path: Path) -> None:
     rank, full, context, markets = _sources()
-    earlier = replace(rank, observed_at_ms=OBSERVED - 30_000,
-                      captured_at_ms=OBSERVED - 29_980)
     store = OriginalRankEligibilityContextStore(tmp_path / "contexts")
-    assert store.append(context)
+    future = replace(
+        context, observed_at_ms=OBSERVED + 50_000,
+        captured_at_ms=OBSERVED + 50_020,
+    )
+    assert store.append(future)
     with pytest.raises(
         OriginalRankEligibilityContextError, match="backdated",
     ):
-        store.append(replace(
-            context, observed_at_ms=OBSERVED - 30_000,
-            captured_at_ms=OBSERVED - 29_980,
-        ))
+        store.append(context)
     no_context = {key: value for key, value in markets.items() if key != "AAVE"}
     with pytest.raises(
         OriginalRankEligibilityContextError, match="missing original",
@@ -203,7 +203,7 @@ def test_old_rank_context_never_backfilled_or_reordered(tmp_path: Path) -> None:
     with pytest.raises(
         OriginalRankEligibilityContextError, match="disagrees",
     ):
-        context.bind_to(earlier)
+        replace(context, rank_snapshot_digest="a" * 64).bind_to(rank)
 
 
 def test_live_capture_path_keeps_eligibility_sidecar_separate_from_orders() -> None:
