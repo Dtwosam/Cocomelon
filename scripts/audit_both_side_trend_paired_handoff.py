@@ -283,7 +283,12 @@ _PNL_TOLERANCE: Final = Decimal("0.00000001")
 
 
 def _amount(value: object) -> Decimal:
-    result = Decimal(str(value))
+    try:
+        result = Decimal(str(value))
+    except ArithmeticError as exc:
+        raise TrendPairHandoffAuditError(
+            "paired execution monetary value is invalid"
+        ) from exc
     if not result.is_finite():
         raise ValueError("paired execution monetary value is not finite")
     return result
@@ -406,6 +411,10 @@ def _reconcile_archived_lane_economics(
         ):
             fee_total += _amount(attempt["fee"])
             qty = _amount(attempt["filled_quantity"])
+            if qty < 0 or _amount(attempt["fee"]) < 0:
+                raise TrendPairHandoffAuditError(
+                    "paired execution negative attempt quantity or fee"
+                )
             if qty == 0:
                 continue
             plan = plans[plan_id]
@@ -708,8 +717,8 @@ def audit_trend_handoff(
                     "independent_mainnet_market_source_not_authenticated",
                 ]
     except (
-        OSError, ValueError, RuntimeError, TypeError,
-        zipfile.BadZipFile, UnicodeDecodeError,
+        OSError, ValueError, RuntimeError, TypeError, ArithmeticError,
+        sqlite3.DatabaseError, zipfile.BadZipFile, UnicodeDecodeError,
     ) as exc:
         result["reasons"] = [f"{type(exc).__name__}: {exc}"]
     return result
