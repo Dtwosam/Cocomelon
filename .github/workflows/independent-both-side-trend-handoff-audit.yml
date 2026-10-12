@@ -163,6 +163,8 @@ jobs:
           print("- exact candidate ID:", receipt["expected_candidate_id"])
           print("- execution SQLite integrity verified:", receipt.get("archived_execution_sqlite_integrity_verified", False))
           print("- fill/fee/funding account reconciliation:", receipt.get("archived_execution_economics_reconciled", False))
+          print("- independently recomputed terminal unrealized, notional and margin:", receipt.get("archived_terminal_mark_arithmetic_reconciled", False))
+          print("- exchange mark price source independently authenticated: FALSE")
           print("- reconciled lane accounting:", receipt.get("reconciled_lanes"))
           print("- frozen scoped market-data gap sources:", receipt.get("source_scoped_open_gap_diagnostics"))
           print("- original market feed gaps independently authenticated: FALSE")
