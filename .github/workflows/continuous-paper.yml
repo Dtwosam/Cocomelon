@@ -917,9 +917,13 @@ jobs:
           }
           trap cleanup_runtime_processes EXIT
 
+          # Preserve a dedicated post-session window for exact-state handoff,
+          # original rank + full-input archives, and deferred audit receipts.
+          # The previous 19800s runtime consumed the near-6h Actions ceiling:
+          # run 38177167860 was cancelled during the full-input sealer.
           cocomelon-continuous-paper \
             --state-root "$STATE_ROOT" \
-            --duration-seconds 19800 \
+            --duration-seconds 14400 \
             --deep-limit 20 \
             --context-poll-seconds 30 \
             --websocket-server-silence-timeout-ms 4000 \
