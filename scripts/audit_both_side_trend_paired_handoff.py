@@ -15,8 +15,8 @@ import os
 import sqlite3
 import tempfile
 import zipfile
-from decimal import Decimal
 from collections.abc import Sequence
+from decimal import Decimal
 from pathlib import Path
 from typing import Final, cast
 
@@ -381,7 +381,7 @@ def _reconcile_archived_lane_economics(
                 raise TrendPairHandoffAuditError("unfilled attempt has a price")
 
         funding: list[dict[str, object]] = []
-        for accrual_id, market, boundary_ms, position_id, raw in conn.execute(
+        for _accrual_id, market, boundary_ms, position_id, raw in conn.execute(
             "SELECT accrual_id, market, boundary_ms, position_id, payload_json "
             "FROM paper_funding_events"
         ):
