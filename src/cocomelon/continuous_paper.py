@@ -449,6 +449,11 @@ from cocomelon.research.prospective_weekly_drawdown_5m_exit_source import (
 from cocomelon.research.targeted_trend_paired_freeze import (
     activate_targeted_trend_paired_freeze,
 )
+from cocomelon.research.trend_paired_shadow_sidecar import (
+    TREND_PAIR_SUMMARY_FILE,
+    PairedShadowTrendSidecar,
+    start_trend_paired_shadow_sidecar,
+)
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
@@ -4849,7 +4854,7 @@ class _RecordPump:
         ) = None,
         decision_epoch_wakeup: asyncio.Event | None = None,
         loss_context_paired_shadow_runtime: (
-            LossContextPairedShadowRuntime | None
+            LossContextPairedShadowRuntime | PairedShadowTrendSidecar | None
         ) = None,
     ) -> None:
         self.pipeline = pipeline
@@ -10090,8 +10095,9 @@ async def run_continuous_paper_session(
 
     event_loop_lag_task: asyncio.Task[None] | None = None
     loss_context_paired_shadow_runtime: (
-        LossContextPairedShadowRuntime | None
+        LossContextPairedShadowRuntime | PairedShadowTrendSidecar | None
     ) = None
+    trend_paired_shadow_restore_error: str | None = None
     loss_context_paired_shadow_restore_error: str | None = None
     loss_context_paired_shadow_checkpoint_error: str | None = None
     try:
@@ -10214,6 +10220,44 @@ async def run_continuous_paper_session(
                 "loss_context_paired_shadow_restore",
                 component_started,
             )
+
+        # An independent second paper-account pair uses the exact same
+        # prospective event stream but NEVER reuses or changes v5 state.
+        # Its own actor/checkpoint can fail without resetting older losses.
+        # A broken legacy v5 restore does NOT block the independent trial.
+        # The old restore failure remains in its original negative receipt.
+        component_started = time.perf_counter()
+        legacy_shadow_actor = (
+            loss_context_paired_shadow_runtime
+            if isinstance(
+                loss_context_paired_shadow_runtime,
+                LossContextPairedShadowRuntime,
+            )
+            else None
+        )
+        try:
+            loss_context_paired_shadow_runtime = (
+                start_trend_paired_shadow_sidecar(
+                    legacy_shadow_actor,
+                    paper_root=root,
+                    replay_config=replay_config,
+                    selected_markets=selected,
+                    startup_timestamp_ms=started_at_ms,
+                    legacy_shadow_root_name=LOSS_CONTEXT_PAIRED_SHADOW_ROOT,
+                )
+            )
+            loss_context_paired_shadow_runtime.submit_rank_snapshot(
+                initial_ranks,
+                observed_at_ms=initial_rank_observed_at_ms,
+            )
+        except Exception as trend_shadow_exc:
+            trend_paired_shadow_restore_error = (
+                f"{type(trend_shadow_exc).__name__}: {trend_shadow_exc}"
+            )
+        record_startup_component(
+            "both_side_trend_paired_shadow_restore",
+            component_started,
+        )
 
         pipeline_restore_started = time.perf_counter()
         opening_lineage_sink = (
@@ -11847,6 +11891,28 @@ async def run_continuous_paper_session(
                         "execution_authority": False,
                     },
                 )
+        if trend_paired_shadow_restore_error is not None:
+            # A failed optional new research launch must emit a negative
+            # receipt, never silently imply a successful paired account.
+            _write_json_atomic(
+                root / TREND_PAIR_SUMMARY_FILE,
+                {
+                    "schema_version": 1,
+                    "trial_id": (
+                        "prospective-both-sides-trend-lead-capital-matched-shadow-v1"
+                    ),
+                    "runtime": None,
+                    "checkpoint": None,
+                    "checkpoint_published": False,
+                    "checkpoint_error": trend_paired_shadow_restore_error,
+                    "ready_for_review": False,
+                    "research_only": True,
+                    "shadow_only": True,
+                    "paper_only": True,
+                    "execution_authority": False,
+                    "promotion_authority": False,
+                },
+            )
         if exit_reason == "upgrade_requested":
             _clear_upgrade_deferred_research(root)
         else:
