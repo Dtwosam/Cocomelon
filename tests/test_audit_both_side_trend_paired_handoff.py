@@ -161,6 +161,7 @@ def test_missing_trend_zip_is_explicitly_unverified(tmp_path: Path) -> None:
     receipt = _audit(tmp_path)
     assert receipt["status"] == "unverified"
     assert receipt["archived_execution_sqlite_integrity_verified"] is False
+    assert receipt["archived_execution_economics_reconciled"] is False
     assert "paired" in str(receipt["reasons"])
     assert receipt["source_class"] == "completed_successful_worker"
     assert receipt["archive_sha256"] is not None
@@ -310,6 +311,172 @@ def test_duplicate_zip_member_cannot_override_signed_freeze(tmp_path: Path) -> N
             audit._member(zipped, TREND_PAIR_FREEZE_FILE)
 
 
+def _economic_store_fixture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
+    """A one-trade LONG account with independently recomputable cashflow."""
+    path = tmp_path / "paired-economic.sqlite3"
+    conn = sqlite3.connect(path)
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE paper_order_plans (
+                plan_id TEXT PRIMARY KEY, payload_json TEXT NOT NULL
+            );
+            CREATE TABLE paper_execution_attempts (
+                attempt_id TEXT PRIMARY KEY, plan_id TEXT NOT NULL,
+                payload_json TEXT NOT NULL
+            );
+            CREATE TABLE paper_fills (
+                fill_id TEXT PRIMARY KEY, attempt_id TEXT NOT NULL,
+                plan_id TEXT NOT NULL, payload_json TEXT NOT NULL
+            );
+            CREATE TABLE paper_funding_events (
+                accrual_id TEXT PRIMARY KEY, market TEXT NOT NULL,
+                boundary_ms INTEGER NOT NULL, position_id TEXT NOT NULL,
+                payload_json TEXT NOT NULL
+            );
+            CREATE TABLE paper_account_state (
+                singleton_id INTEGER PRIMARY KEY,
+                state_id TEXT, payload_json TEXT NOT NULL
+            );
+            CREATE TABLE paper_positions (
+                market TEXT PRIMARY KEY, payload_json TEXT NOT NULL
+            );
+            """
+        )
+        for plan_id, reduce_only, side in (
+            ("open", False, "buy"), ("close", True, "sell")
+        ):
+            conn.execute(
+                "INSERT INTO paper_order_plans VALUES (?, ?)",
+                (
+                    plan_id,
+                    json.dumps({
+                        "market": "TEST", "side": side,
+                        "reduce_only": reduce_only,
+                    }),
+                ),
+            )
+        for index, (plan_id, price) in enumerate(
+            (("open", "10"), ("close", "11"))
+        ):
+            attempt_id = f"attempt-{index}"
+            conn.execute(
+                "INSERT INTO paper_execution_attempts VALUES (?,?,?)",
+                (
+                    attempt_id, plan_id,
+                    json.dumps({
+                        "plan_id": plan_id, "filled_quantity": "2",
+                        "requested_quantity": "2", "unfilled_quantity": "0",
+                        "gross_fill_notional": str(2 * int(price)),
+                        "average_fill_price": price,
+                        "fee": "0.01",
+                        "attempt_timestamp_ms": 1000 + 2000 * index,
+                    }),
+                ),
+            )
+            conn.execute(
+                "INSERT INTO paper_fills VALUES (?,?,?,?)",
+                (
+                    f"fill-{index}", attempt_id, plan_id,
+                    json.dumps({
+                        "attempt_id": attempt_id, "plan_id": plan_id,
+                        "price": price, "quantity": "2",
+                        "notional": str(2 * int(price)),
+                        "taker_fee": "0.01",
+                    }),
+                ),
+            )
+        conn.execute(
+            "INSERT INTO paper_account_state VALUES (1,?,?)",
+            (
+                "signed-account-1",
+                json.dumps({
+                    "starting_cash": "1000", "cash": "1001.98",
+                    "equity": "1001.98", "unrealized_pnl": "0",
+                    "realized_gross_pnl": "2",
+                    "cumulative_fees": "0.02", "cumulative_funding": "0",
+                    "positions": [],
+                }),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    ledger: dict[str, object] = {
+        "equity": "1001.98", "realized_net_pnl": "1.98",
+        "total_account_pnl": "1.98",
+        "closed_trade_count": 1, "open_position_count": 0,
+        "opening_fills": 1, "opening_execution_attempts": 1,
+        "long_closed_trade_count": 1, "short_closed_trade_count": 0,
+        "long_closed_net_pnl": "1.98", "short_closed_net_pnl": "0",
+    }
+    return path, ledger
+
+
+def test_independent_replay_reconciles_realized_fill_cashflows(
+    tmp_path: Path,
+) -> None:
+    path, ledger = _economic_store_fixture(tmp_path)
+    replay = audit._reconcile_archived_lane_economics(
+        path, account_state_id="signed-account-1", ledger_lane=ledger,
+    )
+    assert replay["closed_trades_from_fills"] == 1
+    assert replay["realized_gross_from_fills"] == "2"
+    assert replay["fees_from_fills"] == "0.02"
+    assert replay["realized_net_from_fills"] == "1.98"
+
+
+@pytest.mark.parametrize(
+    ("tamper", "expected"),
+    [
+        ("fill_fee", "fill fee sum"),
+        ("ledger_equity", "signed ledger equity"),
+        ("ledger_closed_profit", "signed long closed net PnL"),
+        ("account_id", "account state identity"),
+        ("opening_price", "weighted average fill price"),
+    ],
+)
+def test_independent_replay_fails_closed_on_mismatched_economics(
+    tmp_path: Path, tamper: str, expected: str,
+) -> None:
+    path, ledger = _economic_store_fixture(tmp_path)
+    account_id = "signed-account-1"
+    if tamper == "fill_fee":
+        with sqlite3.connect(path) as conn:
+            row = conn.execute(
+                "SELECT payload_json FROM paper_fills WHERE fill_id='fill-0'"
+            ).fetchone()
+            payload = json.loads(row[0])
+            payload["taker_fee"] = "0.11"
+            conn.execute(
+                "UPDATE paper_fills SET payload_json=? WHERE fill_id='fill-0'",
+                (json.dumps(payload),),
+            )
+    elif tamper == "ledger_equity":
+        ledger["equity"] = "1011.98"
+    elif tamper == "ledger_closed_profit":
+        ledger["long_closed_net_pnl"] = "10.98"
+    elif tamper == "account_id":
+        account_id = "forged-account"
+    elif tamper == "opening_price":
+        with sqlite3.connect(path) as conn:
+            row = conn.execute(
+                "SELECT payload_json FROM paper_execution_attempts "
+                "WHERE attempt_id='attempt-0'"
+            ).fetchone()
+            payload = json.loads(row[0])
+            payload["average_fill_price"] = "11"
+            conn.execute(
+                "UPDATE paper_execution_attempts SET payload_json=? "
+                "WHERE attempt_id='attempt-0'",
+                (json.dumps(payload),),
+            )
+    with pytest.raises(audit.TrendPairHandoffAuditError, match=expected):
+        audit._reconcile_archived_lane_economics(
+            path, account_state_id=account_id, ledger_lane=ledger,
+        )
+
+
 def test_consistent_receipts_only_verify_archive_lineage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -326,7 +493,13 @@ def test_consistent_receipts_only_verify_archive_lineage(
         "paper_only": True,
         "shadow_only": True,
     }
+    state["baseline"] = {"account_state_id": "baseline-id"}
+    state["candidate"] = {"account_state_id": "candidate-id"}
     state["state_digest"] = audit._signed_digest(state)
+    (tmp_path / "ledger.jsonl").write_text(
+        json.dumps({"baseline": {}, "candidate": {}}) + "\n",
+        encoding="utf-8",
+    )
     summary: dict[str, object] = {
         "trial_id": TRIAL_ID,
         "frozen_forward_not_before_ms": freeze.prospective_not_before_ms,
@@ -354,6 +527,10 @@ def test_consistent_receipts_only_verify_archive_lineage(
         },
     )
     monkeypatch.setattr(
+        audit, "_reconcile_archived_lane_economics",
+        lambda *_args, **_kwargs: {"closed_trades_from_fills": 0},
+    )
+    monkeypatch.setattr(
         audit, "build_paired_shadow_review",
         lambda *_args: {"ready_for_review": False},
     )
@@ -364,6 +541,7 @@ def test_consistent_receipts_only_verify_archive_lineage(
     )
     assert receipt["status"] == "archive_checkpoint_lineage_verified"
     assert receipt["archived_execution_sqlite_integrity_verified"] is True
+    assert receipt["archived_execution_economics_reconciled"] is True
     assert receipt["verified_checkpoint_count"] == 1
     assert receipt["reasons"] == ["economic_review_not_ready"]
     assert receipt["durable_execution_sqlite_replay_verified"] is False
@@ -398,6 +576,7 @@ def test_independent_audit_workflow_can_never_place_orders() -> None:
     assert "gh_api_bounded_retry" in workflow
     assert "--artifact-zip /tmp/trend-paper-audit/source.zip" in workflow
     assert "audit_both_side_trend_paired_handoff.py" in workflow
+    assert "archived_execution_economics_reconciled" in workflow
     assert "original market feed gaps independently authenticated: FALSE" in workflow
     assert "live execution / promotion authority: FALSE / FALSE" in workflow
 
