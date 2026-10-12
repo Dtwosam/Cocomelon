@@ -162,6 +162,7 @@ jobs:
           print("- execution SQLite integrity verified:", receipt.get("archived_execution_sqlite_integrity_verified", False))
           print("- fill/fee/funding account reconciliation:", receipt.get("archived_execution_economics_reconciled", False))
           print("- reconciled lane accounting:", receipt.get("reconciled_lanes"))
+          print("- frozen scoped market-data gap sources:", receipt.get("source_scoped_open_gap_diagnostics"))
           print("- original market feed gaps independently authenticated: FALSE")
           print("- positive after-cost account edge verified: FALSE")
           print("- live execution / promotion authority: FALSE / FALSE")
