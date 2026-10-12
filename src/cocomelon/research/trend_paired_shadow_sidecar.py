@@ -114,7 +114,26 @@ class PairedShadowTrendSidecar:
         return self.primary.status_payload()
 
     def trend_status_payload(self) -> dict[str, object]:
-        return self.trend.status_payload()
+        # Operational counters only. These are not a signed economic result,
+        # even when the actor is initialized and processing future records.
+        return {
+            **self.trend.status_payload(),
+            "trial_id": (
+                "prospective-both-sides-trend-lead-capital-matched-shadow-v1"
+            ),
+            "forward_not_before_ms": (
+                both_side_trend_matched_shadow_freeze().prospective_not_before_ms
+            ),
+            "worker_startup_timestamp_ms": self.startup_timestamp_ms,
+            "forward_only_after_embargo": True,
+            "research_only": True,
+            "shadow_only": True,
+            "paper_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "source_and_gaps_independently_authenticated": False,
+            "economic_review_ready": False,
+        }
 
     def submit_record(
         self, record: ReplayRecord, *, now_ms: int, evaluate_decisions: bool,
