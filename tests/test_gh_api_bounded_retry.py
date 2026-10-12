@@ -10,7 +10,9 @@ HELPER = Path("scripts/gh_api_bounded_retry.sh")
 WORKFLOW = Path(".github/workflows/prospective-cadence-prediction-ledger.yml")
 
 
-def _fake_api(tmp_path: Path, *, failures: int, status: int) -> subprocess.CompletedProcess[str]:
+def _fake_api(
+    tmp_path: Path, *, failures: int, status: int
+) -> tuple[subprocess.CompletedProcess[bytes], int]:
     binary = tmp_path / "bin"
     binary.mkdir()
     gh = binary / "gh"
@@ -77,6 +79,7 @@ def test_exhausted_503_fails_closed_without_partial_payload(tmp_path: Path) -> N
 
 
 def test_previous_ledger_restore_and_current_artifact_use_retry() -> None:
+    assert HELPER.is_file()
     source = WORKFLOW.read_text(encoding="utf-8")
     assert source.count("source scripts/gh_api_bounded_retry.sh") == 2
     start = source.index("- name: Download current prospective report")
