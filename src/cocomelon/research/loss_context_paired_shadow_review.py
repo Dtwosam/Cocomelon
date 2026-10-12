@@ -874,7 +874,11 @@ def build_paired_shadow_review(
     gap_scope_lineage_clean = bool(eligible) and all(
         row.get("gap_scope_lineage_clean") is True for row in eligible
     )
-    if not gap_scope_lineage_clean:
+    # The first archived trend checkpoint may be pre-embargo. In that
+    # case there are *no* eligible forward rows, which is missing evidence,
+    # not proof the live actor restored a legacy flattened-gap account.
+    # Keep the review closed; distinguish the two failure diagnoses.
+    if eligible and not gap_scope_lineage_clean:
         reasons.append("unverifiable_legacy_gap_scope_lineage")
     if duration_ms < MIN_REVIEW_DURATION_MS:
         reasons.append("insufficient_future_duration")
@@ -1170,6 +1174,14 @@ def build_paired_shadow_review(
         ),
         "latest_open_market_data_gaps": latest_open_gaps,
         "gap_scope_lineage_clean": gap_scope_lineage_clean,
+        "gap_scope_lineage_evidence_status": (
+            "no_forward_checkpoint"
+            if not eligible
+            else (
+                "unverifiable_legacy_or_missing_scope"
+                if not gap_scope_lineage_clean else "forward_scope_clean"
+            )
+        ),
         "forward_closed_trade_economics_by_direction": side_performance,
         "forward_signed_account_realized_cashflow_decomposition": (
             realized_cashflow_decomposition

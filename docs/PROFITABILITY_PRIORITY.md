@@ -1,5 +1,9 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 12 — authenticated pre-embargo paired account receipt and honest gap failure
+
+The independent trend audit [38304057139](https://github.com/Dtwosam/Cocomelon/actions/runs/38304057139) successfully verified one durable pre-embargo trend paired-account checkpoint and its append-only ledger from completed source `38261652982`. No future checkpoint or positive after-cost account PnL was observed. The review's previous `unverifiable_legacy_gap_scope_lineage` failure was a reporting false positive caused by an empty prospective cohort; that verdict was **not** evidence the isolated new account was actually v1-tainted. It now reports `no_forward_checkpoint` in that case, while keeping no-evidence readiness denied and preserving the legacy-lineage failure for actual eligible tainted rows. Exact 19:00 UTC October 12 market membership and profitable-account gate remain unchanged. No authority promotion.
+
 ## October 12 20:15 UTC — independent trend handoff verifier repair
 
 After the 19:00 UTC prospective start, the original PAPER account has 216 closes and remains materially negative (equity ~$9,615.49, marked PnL ~-$384.51). The new both-side trend paired-paper actor is processing 618,027 original feed events with zero backlog but still lacks a completed current-worker matched-account checkpoint/verified after-cost returns. Pre-embargo predecessor source `38261652982` uploaded its actual independent paired ZIP (artifact `11762880050`); its completed GitHub conclusion is **failure** as expected for an upgrade-only handoff, not a successful full research job. Source ZIP availability and signed paired checkpoint remain different verification gates.

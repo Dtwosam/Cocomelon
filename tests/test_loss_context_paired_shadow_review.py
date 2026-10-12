@@ -162,6 +162,7 @@ def test_paired_shadow_review_requires_real_profit_and_three_clean_blocks(
     report = build_paired_shadow_review(freeze, ledger)
 
     assert report["ready_for_review"] is True
+    assert report["gap_scope_lineage_evidence_status"] == "forward_scope_clean"
     assert report["readiness_failures"] == ()
     assert report["eligible_checkpoint_count"] == 9
     assert report["evidence_checkpoint_count"] == 8
@@ -601,6 +602,31 @@ def test_paired_review_rejects_side_count_greater_than_total(
         append_review_checkpoint(tmp_path / "review.jsonl", row)
 
 
+def test_pre_embargo_archive_is_not_falsely_called_legacy_gap_tainted(
+    tmp_path: Path,
+) -> None:
+    """One real pre-window checkpoint is no forward evidence, not v1 debt."""
+    freeze = _freeze()
+    ledger = tmp_path / "preboundary-review.jsonl"
+    row = _checkpoint(freeze, index=1)
+    row["end_ms"] = freeze.prospective_not_before_ms - 1000
+    row["last_record_available_at_ms"] = row["end_ms"]
+    append_review_checkpoint(ledger, row)
+
+    review = build_paired_shadow_review(freeze, ledger)
+    failures = review["readiness_failures"]
+    assert review["eligible_checkpoint_count"] == 0
+    assert review["evidence_checkpoint_count"] == 0
+    assert review["gap_scope_lineage_clean"] is False
+    assert review["gap_scope_lineage_evidence_status"] == "no_forward_checkpoint"
+    assert "no_eligible_checkpoints" in failures
+    assert "insufficient_future_duration" in failures
+    assert "unverifiable_legacy_gap_scope_lineage" not in failures
+    assert review["ready_for_review"] is False
+    assert review["promotion_authority"] is False
+    assert review["execution_authority"] is False
+
+
 def test_paired_review_legacy_flattened_gap_lineage_is_never_promotable(
     tmp_path: Path,
 ) -> None:
@@ -615,6 +641,9 @@ def test_paired_review_legacy_flattened_gap_lineage_is_never_promotable(
         append_review_checkpoint(ledger, row)
     report = build_paired_shadow_review(freeze, ledger)
     assert report["gap_scope_lineage_clean"] is False
+    assert report["gap_scope_lineage_evidence_status"] == (
+        "unverifiable_legacy_or_missing_scope"
+    )
     assert report["ready_for_review"] is False
     assert "unverifiable_legacy_gap_scope_lineage" in (
         report["readiness_failures"]
@@ -633,6 +662,9 @@ def test_paired_review_mixed_clean_and_legacy_gap_scope_stays_blocked(
         append_review_checkpoint(ledger, row)
     report = build_paired_shadow_review(freeze, ledger)
     assert report["gap_scope_lineage_clean"] is False
+    assert report["gap_scope_lineage_evidence_status"] == (
+        "unverifiable_legacy_or_missing_scope"
+    )
     assert report["ready_for_review"] is False
     assert "unverifiable_legacy_gap_scope_lineage" in (
         report["readiness_failures"]
