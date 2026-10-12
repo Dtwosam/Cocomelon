@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -2506,3 +2507,132 @@ def test_future_dated_original_opening_source_still_rejected() -> None:
         match="approval or decision clock mismatch",
     ):
         paper_profitability_scoreboard(_reconciled_audit_from_rows([row]))
+
+
+def _week_time(day: int, hour: int = 0) -> int:
+    return int(datetime(2026, 10, day, hour, tzinfo=UTC).timestamp() * 1000)
+
+
+def test_fixed_original_opening_weeks_preserve_loss_and_costs_when_closed_out_of_order(
+) -> None:
+    first = _move_trade_to_original_open_time(
+        _trade(
+            1, side="short", market="MEGA", strategy="trend",
+            gross="-10", entry_fee="1", exit_fee="1",
+        ),
+        _week_time(12, 1), closed_at_ms=_week_time(20, 1),
+    )
+    second = _move_trade_to_original_open_time(
+        _trade(
+            2, side="long", market="ALGO", strategy="breakout",
+            gross="6", entry_fee="1", exit_fee="2",
+        ),
+        _week_time(19, 9), closed_at_ms=_week_time(19, 10),
+    )
+    # Original journal is ordered by CLOSING, not by opening.
+    rows = [second, first]
+    audit = _reconciled_audit_from_rows(rows)
+    audit["source_handoff_ended_at_ms"] = _week_time(27, 1)
+    audit["source_handoff_open_positions"] = 0
+    result = paper_profitability_scoreboard(audit)
+    weekly = result["original_fixed_utc_opening_week_economics"]
+    periods = weekly["weeks"]
+    assert weekly["week_anchor_epoch_ms_utc"] == 345_600_000
+    assert weekly["week_duration_ms"] == 604_800_000
+    assert weekly["time_assignment"] == (
+        "actual_original_entry_timestamp_not_exit_timestamp"
+    )
+    assert weekly["all_original_closed_trade_counts_cash_and_net_r_reconciled"] is True
+    assert [w["week_start_ms_utc"] for w in periods] == [
+        _week_time(12), _week_time(19),
+    ]
+    assert [w["original_booked_week"]["net_pnl"] for w in periods] == [
+        "-12", "3",
+    ]
+    assert [w["original_booked_week"]["fees"] for w in periods] == [
+        "2", "3",
+    ]
+    assert [w["original_booked_week"]["trades"] for w in periods] == [1, 1]
+    assert periods[0]["by_side"][0]["cohort"] == {"side": "short"}
+    assert periods[1]["by_lead_strategy"][0]["cohort"] == {
+        "lead_strategy": "breakout",
+    }
+    assert all(
+        w["week_original_booked_outcome_mature_at_handoff"] for w in periods
+    )
+    assert weekly["closed_only_not_capital_matched_account_pnl"] is True
+    assert weekly["forward_full_account_after_cost_expectancy_proven"] is False
+    assert weekly["promotion_authority"] is False
+    assert weekly["execution_authority"] is False
+
+
+def test_fixed_original_opening_weeks_cannot_rebalance_earlier_losing_periods(
+) -> None:
+    first = _move_trade_to_original_open_time(
+        _trade(
+            1, side="short", market="A", strategy="trend",
+            gross="-8", entry_fee="2", exit_fee="1",
+        ),
+        _week_time(12), closed_at_ms=_week_time(12, 1),
+    )
+    later = _move_trade_to_original_open_time(
+        _trade(
+            2, side="long", market="B", strategy="breakout",
+            gross="50", entry_fee="1", exit_fee="1",
+        ),
+        _week_time(26), closed_at_ms=_week_time(26, 1),
+    )
+    initial = _reconciled_audit_from_rows([first])
+    amended = _reconciled_audit_from_rows([first, later])
+    a = paper_profitability_scoreboard(initial)[
+        "original_fixed_utc_opening_week_economics"
+    ]
+    b = paper_profitability_scoreboard(amended)[
+        "original_fixed_utc_opening_week_economics"
+    ]
+    assert a["weeks"][0] == b["weeks"][0]
+    assert len(b["weeks"]) == 3
+    assert b["weeks"][1]["contains_no_original_closed_trades"] is True
+    assert b["weeks"][1]["original_booked_week"]["trades"] == 0
+    assert b["weeks"][0]["original_booked_week"]["net_pnl"] == "-11"
+    assert b["weeks"][2]["original_booked_week"]["net_pnl"] == "48"
+    assert b["weeks"][0]["week_original_booked_outcome_mature_at_handoff"] is False
+    assert b["weeks"][2]["week_original_booked_outcome_mature_at_handoff"] is False
+    assert b["calendar_boundaries_never_rebalanced_by_future_closes"] is True
+
+
+def test_fixed_original_opening_week_maturity_requires_flat_original_handoff() -> None:
+    source = _reconciled_audit_from_rows([
+        _move_trade_to_original_open_time(
+            _trade(1, side="long", market="BTC", strategy=None, gross="-20"),
+            _week_time(12), closed_at_ms=_week_time(12, 1),
+        )
+    ])
+    source["source_handoff_ended_at_ms"] = _week_time(26)
+    source["source_handoff_open_positions"] = 1
+    result = paper_profitability_scoreboard(source)
+    week = result["original_fixed_utc_opening_week_economics"]["weeks"][0]
+    assert week["original_booked_week"]["net_pnl"] == "-21.0"
+    assert week["original_booked_week"]["unverified_entry_context_trades"] == 1
+    assert week["week_original_booked_outcome_mature_at_handoff"] is False
+    source["source_handoff_open_positions"] = 0
+    result = paper_profitability_scoreboard(source)
+    assert result["original_fixed_utc_opening_week_economics"]["weeks"][0][
+        "week_original_booked_outcome_mature_at_handoff"
+    ] is True
+    source["source_handoff_ended_at_ms"] = _week_time(13)
+    result = paper_profitability_scoreboard(source)
+    assert result["original_fixed_utc_opening_week_economics"]["weeks"][0][
+        "week_original_booked_outcome_mature_at_handoff"
+    ] is False
+
+
+def test_fixed_original_opening_weeks_do_not_erase_exact_net_r_when_empty() -> None:
+    original = _reconciled_audit_from_rows([])
+    result = paper_profitability_scoreboard(original)
+    weekly = result["original_fixed_utc_opening_week_economics"]
+    assert weekly["weeks"] == []
+    assert weekly["all_original_closed_trade_counts_cash_and_net_r_reconciled"] is True
+    assert result["overall"]["trades"] == 0
+    assert result["overall"]["net_pnl"] == "0"
+    assert result["promotion_authority"] is False
