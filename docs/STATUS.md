@@ -1,5 +1,11 @@
 # Cocomelon Project Status
 
+## October 12 — original market-context eligibility archive export (read-only)
+
+The source recording from #1177 now has a separate **post-exit original paper-worker context exporter**. It verifies all preserved rank, full feature and context source batches against the same chronological suffix, recomputes original broad features and actual `evaluate_eligibility` rankable membership for each recorded market, and emits a new SHA-sealed manifest + exact canonical batch ZIP. Existing original ranks predating context capture remain explicitly listed as lacking context; malformed, incomplete, altered or late-mutated source creates a durable rejection receipt and no plausible positive artifact. The continuous-paper workflow uploads either the exact context seal or rejection as its own 90-day research artifact, after the original rank and full-input artifact steps. The safe upgrade watcher tracks the new exporter.
+
+This is still only a **producer-local seal** until a separate read-only completed-worker GitHub verifier authenticates the external artifact ID/SHA and recomputes parity across **all three** original sources. No positive rank parity or profitable account performance is inferred from the upload alone. The original paper account, risk limits, stops, negative frozen v5 and LIVE=false remain unchanged.
+
 ## October 12 — prospective original coarse-rank market eligibility context source
 
 A new **research-only, immutable rank-to-market-context capture suffix** records the exact original `PerpMarketSnapshot` metadata/context observed for every broad-market feature used by each new coarse SHORT rank. Each canonical hashed batch binds original rank observation/capture clocks, source receive times and parent rank digest. No older ID-only or full-feature-only snapshots acquire invented context. Restore enforces contiguous coverage from the new suffix's first batch and preserves explicit permanent failure receipts. The standalone pure replay cross-checks the same original broad-feature calculations and default rank eligibility thresholds against ALL recorded markets: delisting, leverage, positive mark/mid/oracle/previous-day prices, context age, volume and OI floors. A conflicting independently supplied original feature population or claimed ranked set is refused.
