@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import scripts.seal_paper_short_rank_full_features as full_rank_sealer
 from cocomelon.domain.features import (
     FeatureSnapshot,
     TrendRegime,
@@ -266,3 +267,38 @@ def test_worker_full_rank_input_export_is_after_original_rank_seal_and_handoff(
     assert "if-no-files-found: error" in workflow[full_upload:learning]
     assert "scripts/seal_paper_short_rank_full_features.py" in workflow
     assert "src/cocomelon/research/prospective_short_rank_full_features.py" in workflow
+
+
+def test_full_rank_source_change_between_verification_and_zip_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No stale source digest can survive a rewrite during archive emission."""
+    root = tmp_path / "original"
+    out = tmp_path / "sealed"
+    _sources(root, old_count=0, new_count=2)
+    source = sorted(
+        (root / "prospective-short-rank-full-feature-inputs" / "batches")
+        .glob("*.json")
+    )[0]
+    write_member = full_rank_sealer._zip_member
+
+    def rewrite_after_manifest(
+        archive: zipfile.ZipFile, name: str, data: bytes,
+    ) -> None:
+        write_member(archive, name, data)
+        if name == "manifest.json":
+            # The original input batch was already authenticated on the
+            # first pass. Simulate a concurrent silent producer rewrite.
+            source.write_bytes(source.read_bytes() + b" ")
+
+    monkeypatch.setattr(full_rank_sealer, "_zip_member", rewrite_after_manifest)
+    result = _seal(root, out)
+    assert result["full_rank_feature_status"] == "rejected"
+    assert result["failure_reason"] == (
+        "original full rank input changed during source sealing"
+    )
+    assert result["zip_sha256"] is None
+    assert result["execution_authority"] is False
+    assert result["promotion_authority"] is False
+    assert not (out / BUNDLE_FILE).exists()
+    assert (out / RECEIPT_FILE).is_file()
