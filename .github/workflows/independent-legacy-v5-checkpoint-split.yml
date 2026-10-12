@@ -1,0 +1,101 @@
+name: Independent Legacy V5 Checkpoint Split Diagnosis
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/independent-legacy-v5-checkpoint-split.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: independent-legacy-v5-split-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN_ID: "38281228549"
+      SOURCE_ATTEMPT: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install research-only source verifier
+        run: python -m pip install -e .
+      - name: Fetch original completed worker and v5 source metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/legacy-v5-audit
+          source scripts/gh_api_bounded_retry.sh
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" > /tmp/legacy-v5-audit/run.json
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100" > /tmp/legacy-v5-audit/jobs.json
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" > /tmp/legacy-v5-audit/artifacts.json
+      - name: Download exact legacy v5 archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="continuous-paper-loss-context-paired-shadow-$SOURCE_RUN_ID-$SOURCE_ATTEMPT"
+          artifact_id="$(jq -r --arg name "$name" '
+            [.artifacts[] | select(.name == $name and .expired == false)]
+            | if length == 1 then .[0].id else empty end
+          ' /tmp/legacy-v5-audit/artifacts.json)"
+          test -n "$artifact_id"
+          curl --fail --silent --show-error --location \
+            --retry 3 --retry-delay 2 --retry-max-time 300 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+            --output /tmp/legacy-v5-audit/archive.zip
+      - name: Verify signed review versus immutable later SQLite state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.audit_legacy_v5_checkpoint_split \
+            --run /tmp/legacy-v5-audit/run.json \
+            --jobs /tmp/legacy-v5-audit/jobs.json \
+            --artifacts /tmp/legacy-v5-audit/artifacts.json \
+            --archive /tmp/legacy-v5-audit/archive.zip \
+            --repository "$GITHUB_REPOSITORY" \
+            --run-id "$SOURCE_RUN_ID" \
+            --attempt "$SOURCE_ATTEMPT" \
+            --output legacy-v5-checkpoint-split.json
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          r = json.loads(Path("legacy-v5-checkpoint-split.json").read_text())
+          print("## Legacy V5 original-source forensic diagnosis")
+          print("- finding:", r["status"])
+          print("- source authentication:", r.get("source_class"))
+          print("- outer artifact SHA256:", r.get("archive_sha256"))
+          print("- signed checkpoints:", r.get("signed_checkpoint_count"))
+          print("- original gaps at signed checkpoint:", r.get("signed_data_gap_open_count"))
+          for name, lane in (r.get("lanes") or {}).items():
+              print("-", name, "signed/SQL state IDs match:", lane["durable_state_id_matches"])
+              print("  - archived SQL after signed timestamp ms:", lane["execution_database_minus_signed_record_ms"])
+              print("  - signed total PnL:", lane["signed_total_account_pnl"])
+              print("  - postcheckpoint SQL PnL (NOT SIGNED):", lane["sqlite_account_pnl_not_signed"])
+          print("- original mainnet feed authentication: FALSE")
+          print("- after-cost promotion-worthy edge: FALSE")
+          print("- promotion / live execution: FALSE / FALSE")
+          PY
+      - name: Upload immutable forensic denial receipt
+        if: ${{ always() && hashFiles('legacy-v5-checkpoint-split.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: independent-legacy-v5-checkpoint-split-38281228549-1
+          path: legacy-v5-checkpoint-split.json
+          retention-days: 90
+          if-no-files-found: error
