@@ -14,8 +14,9 @@ import os
 import sqlite3
 import tempfile
 import zipfile
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Final, Sequence
+from typing import Final
 
 from cocomelon.research.loss_context_paired_shadow_review import (
     review_ledger_receipt,
