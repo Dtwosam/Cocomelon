@@ -48,8 +48,7 @@ def _fake_api(
             "FAKE_GH_FAILURES": str(failures),
             "FAKE_GH_STATUS": str(status),
         },
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
     ), int(attempts.read_text())
 
