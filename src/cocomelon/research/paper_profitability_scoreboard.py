@@ -1174,8 +1174,9 @@ def _predeclared_both_side_trend_abstention(
         and len(eligible_markets) >= 6
         and all(
             row["source_window_mature_only_if_flat_handoff"] is True
-            and cast(dict[str, object],
-                row["provably_prior_decision_trend_closed"])["trades"] >= 8
+            and cast(int, cast(
+                dict[str, object], row["provably_prior_decision_trend_closed"]
+            )["trades"]) >= 8
             for row in first_windows
         )
         and all(t.verified_context and t.original_decision_source_match
