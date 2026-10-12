@@ -129,6 +129,7 @@ def _source_class(
     if not isinstance(raw_jobs, list):
         raise TrendPairHandoffAuditError("source jobs missing")
     confirmed_paper_jobs = 0
+    expected_upgrade_handoff = False
     for item in raw_jobs:
         job = _mapping(item, "worker job")
         if job.get("run_id") != run_id:
@@ -152,6 +153,31 @@ def _source_class(
             "Upload isolated both-side trend paired-paper evidence",
         } <= successful_steps:
             confirmed_paper_jobs += 1
+            # This source intentionally exits 75 AFTER durable successor
+            # dispatch, immutable state upload and isolated ZIP publication.
+            # Distinguish that expected non-success from arbitrary failures.
+            failed_steps = [
+                step for step in steps
+                if isinstance(step, dict)
+                and step.get("conclusion") in (
+                    "failure", "timed_out", "cancelled",
+                )
+            ]
+            expected_upgrade_handoff = (
+                job.get("status") == "completed"
+                and job.get("conclusion") == "failure"
+                and len(failed_steps) == 1
+                and failed_steps[0].get("name")
+                == "Fail closed on upgrade handoff source"
+                and "Upload durable continuous paper state" in successful_steps
+                and (
+                    "Queue exact successor from fast resume" in successful_steps
+                    or (
+                        "Queue fallback exact successor continuous paper worker"
+                        in successful_steps
+                    )
+                )
+            )
     if confirmed_paper_jobs != 1:
         raise TrendPairHandoffAuditError(
             "exact attempt original trading and trend artifact upload not both proven"
@@ -160,6 +186,12 @@ def _source_class(
         return "in_progress_source_archive_preliminary"
     if run.get("conclusion") == "success":
         return "completed_successful_worker"
+    if (
+        run.get("conclusion") == "failure"
+        and expected_upgrade_handoff
+        and len(raw_jobs) == 1
+    ):
+        return "completed_expected_upgrade_handoff_worker"
     return "completed_non_success_worker"
 
 
@@ -686,6 +718,8 @@ def audit_trend_handoff(
         "expected_candidate_id": expected.candidate_id,
         "source_class": "unverified",
         "source_worker_completed": False,
+        "source_worker_completed_successfully": False,
+        "expected_upgrade_handoff_proven": False,
         "status": "unverified",
         "reasons": [],
         "archive_sha256": None,
@@ -712,6 +746,12 @@ def audit_trend_handoff(
         result["source_class"] = source_class
         result["source_worker_completed"] = (
             source_class != "in_progress_source_archive_preliminary"
+        )
+        result["source_worker_completed_successfully"] = (
+            source_class == "completed_successful_worker"
+        )
+        result["expected_upgrade_handoff_proven"] = (
+            source_class == "completed_expected_upgrade_handoff_worker"
         )
         digest = _validate_artifact(
             artifacts, archive,
@@ -808,6 +848,10 @@ def audit_trend_handoff(
                 result["reasons"] = [
                     "source_worker_not_completed",
                     "economic_review_not_certified",
+                ]
+            elif source_class == "completed_expected_upgrade_handoff_worker":
+                result["reasons"] = [
+                    "expected_upgrade_handoff_is_not_successful_worker",
                 ]
             elif source_class != "completed_successful_worker":
                 result["reasons"] = [
