@@ -576,6 +576,7 @@ def test_independent_audit_workflow_can_never_place_orders() -> None:
     assert "gh_api_bounded_retry" in workflow
     assert "--artifact-zip /tmp/trend-paper-audit/source.zip" in workflow
     assert "audit_both_side_trend_paired_handoff.py" in workflow
+    assert "archived_execution_economics_reconciled" in workflow
     assert "original market feed gaps independently authenticated: FALSE" in workflow
     assert "live execution / promotion authority: FALSE / FALSE" in workflow
 
