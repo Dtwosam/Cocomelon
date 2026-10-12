@@ -22,6 +22,7 @@ from cocomelon.research.prospective_short_rank_first_seen import (
     FirstSeenRankSnapshot,
     FirstSeenRankSnapshotStore,
 )
+import cocomelon.research.prospective_short_rank_worker_artifact as rank_verifier
 from cocomelon.research.prospective_short_rank_worker_artifact import (
     ExpectedGithubRankArtifact,
     GithubShortRankArtifactError,
@@ -349,3 +350,48 @@ def test_successor_restored_predecessor_is_checked_in_both_signed_zip_layers(
         verify_github_original_short_rank_artifact(
             tampered, expected=_rebind(tampered, api),
         )
+
+
+def test_growing_real_original_rank_artifact_metadata_is_within_safe_cap(
+    tmp_path: Path,
+) -> None:
+    _, api = _artifact(tmp_path)
+    # A verified real 2026-10-12 rank artifact had 98,191,775 bytes,
+    # above the old 64-MiB rejection limit; do not construct a huge fixture.
+    assert 98_191_775 > 64 * 1024 * 1024
+    larger = replace(api, artifact_size_bytes=98_191_775)
+    assert larger.artifact_size_bytes == 98_191_775
+    with pytest.raises(GithubShortRankArtifactError, match="identity"):
+        replace(api, artifact_size_bytes=257 * 1024 * 1024)
+
+
+def test_oversized_individual_inner_rank_record_still_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data, api = _artifact(tmp_path)
+    # Scale down the limit rather than creating a 5-MiB hostile test record.
+    monkeypatch.setattr(rank_verifier, "MAX_RANK_ROW_BYTES", 1)
+    with pytest.raises(GithubShortRankArtifactError, match="invalid members"):
+        verify_github_original_short_rank_artifact(data, expected=api)
+
+
+def test_oversized_inner_manifest_and_total_uncompressed_rank_refuse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data, api = _artifact(tmp_path)
+    monkeypatch.setattr(rank_verifier, "MAX_RANK_MANIFEST_BYTES", 1)
+    with pytest.raises(GithubShortRankArtifactError, match="invalid members"):
+        verify_github_original_short_rank_artifact(data, expected=api)
+    monkeypatch.setattr(rank_verifier, "MAX_RANK_MANIFEST_BYTES", 16 * 1024 * 1024)
+    monkeypatch.setattr(rank_verifier, "MAX_RANK_UNCOMPRESSED_BYTES", 1)
+    with pytest.raises(GithubShortRankArtifactError, match="invalid members"):
+        verify_github_original_short_rank_artifact(data, expected=api)
+
+
+def test_outer_rank_receipt_uncompressed_limit_still_enforced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data, api = _artifact(tmp_path)
+    monkeypatch.setattr(rank_verifier, "MAX_OUTER_RECEIPT_BYTES", 1)
+    with pytest.raises(GithubShortRankArtifactError, match="unexpected members"):
+        verify_github_original_short_rank_artifact(data, expected=api)
