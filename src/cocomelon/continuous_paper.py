@@ -450,8 +450,8 @@ from cocomelon.research.targeted_trend_paired_freeze import (
     activate_targeted_trend_paired_freeze,
 )
 from cocomelon.research.trend_paired_shadow_sidecar import (
-    PairedShadowTrendSidecar,
     TREND_PAIR_SUMMARY_FILE,
+    PairedShadowTrendSidecar,
     start_trend_paired_shadow_sidecar,
 )
 from cocomelon.util.time import utc_now_ms
