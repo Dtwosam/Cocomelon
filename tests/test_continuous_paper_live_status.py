@@ -34,6 +34,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_residual_profit_lock_lines,
     _prospective_two_strike_stop_filter_lines,
     _replacement_funding_evidence_lines,
+    _trend_paired_trial_lines,
     render_live_status,
 )
 
@@ -7438,3 +7439,66 @@ def test_post_freshness_cohort_renderer_exposes_failure() -> None:
 
     assert "research error" in output
     assert "RuntimeError: cohort boom" in output
+
+
+def test_independent_trend_trial_operational_receipt_is_distinct_from_v5() -> None:
+    from datetime import UTC, datetime
+
+    boundary = int(
+        datetime(2026, 10, 12, 19, 0, tzinfo=UTC).timestamp() * 1000
+    )
+    raw = {
+        "trial_id": "prospective-both-sides-trend-lead-capital-matched-shadow-v1",
+        "enabled": True,
+        "initialized": True,
+        "failed": False,
+        "portfolio_shadow_candidate_id": "d" * 64,
+        "submitted_records": 1360,
+        "processed_records": 1359,
+        "queue_depth": 1,
+        "queue_capacity": 16384,
+        "queue_overflows": 0,
+        "checkpoint_count": 0,
+        "forward_not_before_ms": boundary,
+        "worker_startup_timestamp_ms": boundary - 3_600_000,
+        "source_and_gaps_independently_authenticated": False,
+        "economic_review_ready": False,
+        "promotion_authority": False,
+        "execution_authority": False,
+    }
+    output = "\n".join(_trend_paired_trial_lines(raw))
+    assert "Independent both-side trend paired-paper trial" in output
+    assert "state: `active`" in output
+    assert "1360 / 1359 / 1" in output
+    assert "2026-10-12 19:00 UTC" in output
+    assert "before or at boundary" in output
+    assert "after-cost candidate advantage: `NOT PROVEN`" in output
+    assert "live orders / promotion: `DISABLED / DISABLED`" in output
+    assert "source and gap audit flag: `false`" in output
+
+    failed = {
+        **raw, "enabled": False, "failed": True,
+        "error": "paired shadow queue overflow",
+        "worker_startup_timestamp_ms": boundary + 15_000,
+    }
+    failed_output = "\n".join(_trend_paired_trial_lines(failed))
+    assert "state: `failed`" in failed_output
+    assert "paired shadow queue overflow" in failed_output
+    assert "late worker start; complete window unverified" in failed_output
+    assert "NOT PROVEN" in failed_output
+
+
+def test_missing_independent_trend_status_is_not_mistaken_for_v5() -> None:
+    output = "\n".join(_trend_paired_trial_lines(None))
+    assert "Independent both-side trend paired-paper trial" in output
+    assert "not reported" in output
+    assert "paired-account returns: `not available in heartbeat`" in output
+    worker = __import__("pathlib").Path(
+        "src/cocomelon/continuous_paper.py"
+    ).read_text(encoding="utf-8")
+    script = __import__("pathlib").Path(
+        "scripts/render_continuous_paper_live_status.py"
+    ).read_text(encoding="utf-8")
+    assert '"trend_paired_portfolio_shadow"' in worker
+    assert "pump.trend_paired_shadow_payload()" in worker
+    assert script.count('payload.get("trend_paired_portfolio_shadow")') == 2
