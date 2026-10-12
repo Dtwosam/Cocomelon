@@ -191,7 +191,8 @@ def seal_original_short_rank_full_feature_inputs(
             raise OriginalFullRankFeatureSealError(
                 "feature source claims later capture than seal time"
             )
-        members: list[tuple[str, bytes]] = []
+        # Avoid retaining a second full in-memory copy of every input batch.
+        members: list[tuple[str, Path]] = []
         descriptors: list[dict[str, object]] = []
         for batch, rank in zip(batches, ranks[index:], strict=True):
             batch.bind_to(rank)
@@ -211,7 +212,7 @@ def seal_original_short_rank_full_feature_inputs(
                 raise OriginalFullRankFeatureSealError(
                     "original feature bytes are not canonical"
                 )
-            members.append((name, data))
+            members.append((name, path))
             descriptors.append({
                 "path": name,
                 "byte_size": len(data),
@@ -222,6 +223,17 @@ def seal_original_short_rank_full_feature_inputs(
                 "batch_sha256": batch.batch_sha256,
                 "feature_market_count": len(batch.features),
             })
+        # Reuse already-verified batches, rather than parsing the complete
+        # source again solely to compute its deterministic source digest.
+        feature_input_digest = _sha256(_canonical([
+            {
+                "observed_at_ms": batch.observed_at_ms,
+                "rank_snapshot_digest": batch.rank_snapshot_digest,
+                "batch_sha256": batch.batch_sha256,
+            }
+            for batch in batches
+        ]))
+        rank_state_digest = ranks_store.state_digest
         manifest: dict[str, object] = {
             "schema_version": 1,
             **identity,
@@ -231,8 +243,8 @@ def seal_original_short_rank_full_feature_inputs(
             "historical_rank_snapshots_without_full_inputs": index,
             "first_complete_rank_input_observed_ms": batches[0].observed_at_ms,
             "last_complete_rank_input_observed_ms": batches[-1].observed_at_ms,
-            "rank_state_digest": ranks_store.state_digest,
-            "feature_input_source_digest": inputs_store.source_digest,
+            "rank_state_digest": rank_state_digest,
+            "feature_input_source_digest": feature_input_digest,
             "files": descriptors,
             "entire_rank_history_full_feature_inputs_complete": index == 0,
             "source_github_api_authenticated": False,
@@ -243,7 +255,19 @@ def seal_original_short_rank_full_feature_inputs(
         }
         with zipfile.ZipFile(pending, "w", allowZip64=True) as bundle:
             _zip_member(bundle, "manifest.json", _canonical(manifest))
-            for name, data in members:
+            for (name, path), descriptor in zip(
+                members, descriptors, strict=True,
+            ):
+                # A producer overwrite between verification and ZIP writing
+                # must be rejected, never published with stale manifest hashes.
+                data = path.read_bytes()
+                if (
+                    len(data) != descriptor["byte_size"]
+                    or _sha256(data) != descriptor["sha256"]
+                ):
+                    raise OriginalFullRankFeatureSealError(
+                        "original full rank input changed during source sealing"
+                    )
                 _zip_member(bundle, name, data)
         os.replace(pending, bundle_path)
         receipt.update({
@@ -253,8 +277,8 @@ def seal_original_short_rank_full_feature_inputs(
             "rank_snapshot_count": len(ranks),
             "verified_full_input_batch_count": len(batches),
             "historical_rank_snapshots_without_full_inputs": index,
-            "rank_state_digest": ranks_store.state_digest,
-            "feature_input_source_digest": inputs_store.source_digest,
+            "rank_state_digest": rank_state_digest,
+            "feature_input_source_digest": feature_input_digest,
             "entire_rank_history_full_feature_inputs_complete": index == 0,
         })
     except (
