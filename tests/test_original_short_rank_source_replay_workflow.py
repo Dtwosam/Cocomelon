@@ -48,7 +48,10 @@ def test_source_audit_publishes_correct_source_identity_not_trigger_identity() -
         assert (
             name + "${{ env.SOURCE_RUN_ID }}-${{ env.SOURCE_RUN_ATTEMPT }}"
         ) in source
-    assert "name: original-first-seen-short-rank-context-audit-${{ github.event.workflow_run.id }}" not in source
+    assert (
+        "name: original-first-seen-short-rank-context-audit-"
+        "${{ github.event.workflow_run.id }}"
+    ) not in source
 
 
 def test_source_audit_remains_read_only_and_not_promotion() -> None:
