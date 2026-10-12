@@ -170,6 +170,99 @@ jobs:
           print("- live execution / promotion authority: FALSE / FALSE")
           PY
 
+      # Historical anchor: independently authenticated first post-19:00 UTC
+      # handoff artifact. This is source evidence, not an execution signal.
+      - name: Download immutable original paired-ledger anchor
+        if: ${{ always() && env.SOURCE_RUN_ID != '38281228549' && hashFiles('trend-paired-handoff-audit.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/gh_api_bounded_retry.sh
+          mkdir -p /tmp/trend-paper-audit
+          anchor_run="38281228549"
+          anchor_attempt="1"
+          if ! gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$anchor_run" > /tmp/trend-paper-audit/anchor-run.json; then
+            echo "::warning::Original paired-ledger anchor run unavailable; continuity unverified"
+            exit 0
+          fi
+          if ! gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$anchor_run/jobs?per_page=100" > /tmp/trend-paper-audit/anchor-jobs.json; then
+            echo "::warning::Original paired-ledger anchor jobs unavailable; continuity unverified"
+            exit 0
+          fi
+          if ! gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$anchor_run/artifacts?per_page=100" > /tmp/trend-paper-audit/anchor-artifacts.json; then
+            echo "::warning::Original paired-ledger anchor artifacts unavailable; continuity unverified"
+            exit 0
+          fi
+          name="continuous-paper-both-side-trend-paired-shadow-$anchor_run-$anchor_attempt"
+          anchor_artifact="$(jq -r --arg name "$name" '
+            [.artifacts[] | select(.name == $name and .expired == false)]
+            | if length == 1 then .[0].id else empty end
+          ' /tmp/trend-paper-audit/anchor-artifacts.json)"
+          if [ -z "$anchor_artifact" ]; then
+            echo "::warning::Exact original paired-ledger anchor ZIP absent; continuity unverified"
+            exit 0
+          fi
+          if ! curl --fail --silent --show-error --location \
+              --retry 3 --retry-delay 2 --retry-max-time 240 \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$anchor_artifact/zip" \
+              --output /tmp/trend-paper-audit/anchor.zip; then
+            echo "::warning::Original paired-ledger anchor ZIP unavailable; continuity unverified"
+            rm -f /tmp/trend-paper-audit/anchor.zip
+          fi
+
+      - name: Verify exact original-to-successor signed ledger prefix
+        if: ${{ always() && hashFiles('trend-paired-handoff-audit.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(
+            --repository "$GITHUB_REPOSITORY"
+            --source-run-id "$SOURCE_RUN_ID"
+            --source-attempt "$SOURCE_ATTEMPT"
+            --current-receipt trend-paired-handoff-audit.json
+            --current-archive /tmp/trend-paper-audit/source.zip
+            --output trend-paired-ledger-continuity.json
+          )
+          if [ "$SOURCE_RUN_ID" != "38281228549" ]; then
+            # Absence of required files produces a durable unverified receipt,
+            # never a silently successful cross-worker continuity claim.
+            args+=(
+              --anchor-run /tmp/trend-paper-audit/anchor-run.json
+              --anchor-jobs /tmp/trend-paper-audit/anchor-jobs.json
+              --anchor-artifacts /tmp/trend-paper-audit/anchor-artifacts.json
+              --anchor-archive /tmp/trend-paper-audit/anchor.zip
+            )
+          fi
+          python -m scripts.audit_both_side_trend_ledger_anchor "${args[@]}"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          receipt = json.loads(
+              Path("trend-paired-ledger-continuity.json").read_text(encoding="utf-8")
+          )
+          print("## Independent cross-worker trend campaign continuity")
+          print("- result:", receipt["status"])
+          print("- reasons:", receipt["reasons"])
+          print("- original source ZIP independently authenticated:", receipt.get("original_archive_independently_authenticated", False))
+          print("- immutable original ledger prefix preserved:", receipt.get("original_anchor_prefix_preserved", False))
+          print("- new signed forward checkpoint appended:", receipt.get("forward_worker_append_verified", False))
+          print("- newly appended checkpoint count:", receipt.get("new_signed_checkpoint_count", 0))
+          print("- after-cost profitable edge / market-feed completeness: UNPROVEN / UNPROVEN")
+          print("- execution / promotion authority: FALSE / FALSE")
+          PY
+
+      - name: Upload read-only anchored paper campaign continuity receipt
+        if: ${{ always() && hashFiles('trend-paired-ledger-continuity.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: independent-trend-ledger-continuity-${{ env.SOURCE_RUN_ID }}-${{ env.SOURCE_ATTEMPT }}
+          path: trend-paired-ledger-continuity.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Upload immutable independent trend handoff receipt
         if: ${{ always() && hashFiles('trend-paired-handoff-audit.json') != '' }}
         uses: actions/upload-artifact@v7
