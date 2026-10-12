@@ -11,7 +11,7 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
         in source
     )
     assert "cancel-in-progress: false" in source
-    assert 'duration-seconds 19800' in source
+    assert 'duration-seconds 14400' in source
     assert 'selection-refresh-seconds 300' in source
     assert 'continuous-paper-state-${{ github.run_id }}-${{ github.run_attempt }}' in source
     assert (
@@ -2238,3 +2238,36 @@ def test_original_profitability_research_sources_trigger_genuine_paper_handoff()
         / "scripts/report_paper_profitability_scoreboard.py"
     ).read_text(encoding="utf-8")
     assert "from cocomelon.research.paper_profitability_scoreboard import" in cli
+
+
+def test_original_full_rank_archive_has_reserved_post_trader_budget() -> None:
+    """Real worker 38177167860 hit the six-hour ceiling while sealing full inputs.
+
+    This regression prevents a longer session from silently consuming the
+    research export window, even though the actual execution remains paper.
+    """
+    import re
+
+    source = WORKFLOW.read_text(encoding="utf-8")
+    worker = source.split("  paper:", 1)[1]
+    runtime_match = re.search(r"--duration-seconds ([0-9]+) \\", worker)
+    job_match = re.search(r"    timeout-minutes: ([0-9]+)", worker)
+    assert runtime_match is not None
+    assert job_match is not None
+    duration_seconds = int(runtime_match.group(1))
+    job_minutes = int(job_match.group(1))
+
+    # Retain at least 90 nominal minutes for runtime overhead, rank and full
+    # source verification, exact-state handoff and immutable publication.
+    assert 0 < duration_seconds <= 4 * 60 * 60
+    assert job_minutes * 60 - duration_seconds >= 90 * 60
+    assert source.index("- name: Queue exact successor from fast resume") < (
+        source.index("- name: Seal original first-seen SHORT rank source after worker exit")
+    )
+    assert source.index(
+        "- name: Upload original first-seen SHORT rank seal and failure receipt"
+    ) < source.index(
+        "- name: Seal entire original SHORT rank input features after paper exit"
+    ) < source.index(
+        "- name: Upload original SHORT rank full-input seal or rejection"
+    )
