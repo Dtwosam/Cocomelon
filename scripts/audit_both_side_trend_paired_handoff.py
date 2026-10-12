@@ -35,7 +35,7 @@ from cocomelon.research.trend_paired_shadow_sidecar import (
     TREND_PAIR_SUMMARY_FILE,
 )
 
-RUN_NAME: Final = "Continuous Mainnet Paper Trader"
+SOURCE_WORKFLOW_PATH: Final = ".github/workflows/continuous-paper.yml"
 ARTIFACT_PREFIX: Final = "continuous-paper-both-side-trend-paired-shadow-"
 MAX_RECEIPT_MEMBER_BYTES: Final = 128 * 1024 * 1024
 
@@ -90,7 +90,7 @@ def _source_class(
     if (
         run.get("id") != run_id
         or run.get("run_attempt") != attempt
-        or run.get("name") != RUN_NAME
+        or run.get("path") != SOURCE_WORKFLOW_PATH
         or run.get("head_branch") != "main"
         or run.get("status") != "completed"
     ):
@@ -98,6 +98,10 @@ def _source_class(
     source_repository = _mapping(run.get("repository"), "repository")
     if source_repository.get("full_name") != repository:
         raise TrendPairHandoffAuditError("source repository identity mismatch")
+    if run.get("event") not in ("push", "workflow_dispatch"):
+        raise TrendPairHandoffAuditError(
+            "source worker event is not a recognized original paper trigger"
+        )
     source_head = run.get("head_sha")
     if (
         not isinstance(source_head, str) or len(source_head) != 40
