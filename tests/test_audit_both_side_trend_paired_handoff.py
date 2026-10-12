@@ -493,7 +493,13 @@ def test_consistent_receipts_only_verify_archive_lineage(
         "paper_only": True,
         "shadow_only": True,
     }
+    state["baseline"] = {"account_state_id": "baseline-id"}
+    state["candidate"] = {"account_state_id": "candidate-id"}
     state["state_digest"] = audit._signed_digest(state)
+    (tmp_path / "ledger.jsonl").write_text(
+        json.dumps({"baseline": {}, "candidate": {}}) + "\n",
+        encoding="utf-8",
+    )
     summary: dict[str, object] = {
         "trial_id": TRIAL_ID,
         "frozen_forward_not_before_ms": freeze.prospective_not_before_ms,
