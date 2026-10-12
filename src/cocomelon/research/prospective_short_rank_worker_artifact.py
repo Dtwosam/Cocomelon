@@ -41,7 +41,14 @@ from cocomelon.research.prospective_short_rank_first_seen import (
 )
 
 HEX: Final = frozenset("0123456789abcdef")
-MAX_ARTIFACT_SIZE: Final = 64 * 1024 * 1024
+# Actual original paper rank artifacts exceeded the previous 64 MiB cap in
+# October 2026 (worker 38229470166 produced a ~98 MB outer ZIP).
+# Preserve strict per-record and aggregate uncompressed limits below.
+MAX_ARTIFACT_SIZE: Final = 256 * 1024 * 1024
+MAX_RANK_ROW_BYTES: Final = 5 * 1024 * 1024
+MAX_RANK_MANIFEST_BYTES: Final = 16 * 1024 * 1024
+MAX_RANK_UNCOMPRESSED_BYTES: Final = 512 * 1024 * 1024
+MAX_OUTER_RECEIPT_BYTES: Final = 1024 * 1024
 MAX_SNAPSHOTS: Final = 40_000
 RECEIPT_FILE: Final = "first-seen-short-rank-seal.json"
 SOURCE_ZIP_FILE: Final = "first-seen-short-rank-source.zip"
@@ -172,7 +179,12 @@ def verify_github_original_short_rank_artifact(
                 != {RECEIPT_FILE, SOURCE_ZIP_FILE}
                 or any(
                     entry.is_dir()
-                    or entry.file_size > MAX_ARTIFACT_SIZE
+                    or entry.file_size > (
+                        MAX_OUTER_RECEIPT_BYTES
+                        if entry.filename == RECEIPT_FILE
+                        else MAX_ARTIFACT_SIZE
+                    )
+                    or (entry.external_attr >> 16) & 0o170000 == 0o120000
                     for entry in entries
                 )
             ):
@@ -229,9 +241,16 @@ def verify_github_original_short_rank_artifact(
             if (
                 not entries or entries[0].filename != "manifest.json"
                 or len(entries) > MAX_SNAPSHOTS + 1
+                or sum(entry.file_size for entry in entries)
+                > MAX_RANK_UNCOMPRESSED_BYTES
                 or any(
                     entry.is_dir()
-                    or entry.file_size > MAX_ARTIFACT_SIZE
+                    or (entry.external_attr >> 16) & 0o170000 == 0o120000
+                    or entry.file_size > (
+                        MAX_RANK_MANIFEST_BYTES
+                        if entry.filename == "manifest.json"
+                        else MAX_RANK_ROW_BYTES
+                    )
                     for entry in entries
                 )
             ):
@@ -281,7 +300,7 @@ def verify_github_original_short_rank_artifact(
                     or not name[10:26].isascii()
                     or not name[10:26].isdigit()
                     or member.filename != name
-                    or member.file_size > MAX_ARTIFACT_SIZE
+                    or member.file_size > MAX_RANK_ROW_BYTES
                 ):
                     raise GithubShortRankArtifactError(
                         "original rank archive has noncanonical record path"

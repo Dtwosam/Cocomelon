@@ -1,5 +1,11 @@
 # Cocomelon Project Status
 
+## October 12 — unblocking authentic 98 MB original rank artifacts without relaxing SHA checks
+
+Independent original rank audit had a hard **64 MiB entire GitHub ZIP limit** but an actual original paper source run (`38229470166`) published an approximately 98.2 MB first-seen rank ZIP. A valid source can therefore fail before SHA/source-content validation. This change raises the **outer, exact-GitHub-digest-verified** rank artifact maximum to 256 MiB while preserving immutable worker/head/attempt bindings, requiring only the two exact canonical outer members, and bounding every ZIP layer: a 1 MiB outer receipt, 5 MiB inner rank record, 16 MiB canonical rank manifest, and 512 MiB total uncompressed inner archive. Symbolic-sized fixture tests confirm observed 98 MB metadata is in range and the ZIP bomb, oversized individual record, unexpected member and oversized outer receipt paths still refuse.
+
+This is a read-only independent verifier repair, **not** an exception for invalid original rank files, missing feature or market context history, bad feed coverage, unprofitable account performance, or live trading. Audit must still verify actual GitHub artifact bytes, manifest, individual record identities and full-account after-cost economics.
+
 ## October 12 — original market-context eligibility archive export (read-only)
 
 The source recording from #1177 now has a separate **post-exit original paper-worker context exporter**. It verifies all preserved rank, full feature and context source batches against the same chronological suffix, recomputes original broad features and actual `evaluate_eligibility` rankable membership for each recorded market, and emits a new SHA-sealed manifest + exact canonical batch ZIP. Existing original ranks predating context capture remain explicitly listed as lacking context; malformed, incomplete, altered or late-mutated source creates a durable rejection receipt and no plausible positive artifact. The continuous-paper workflow uploads either the exact context seal or rejection as its own 90-day research artifact, after the original rank and full-input artifact steps. The safe upgrade watcher tracks the new exporter.
