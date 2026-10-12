@@ -29,7 +29,9 @@ def _source() -> tuple[dict[str, object], dict[str, object]]:
     run: dict[str, object] = {
         "id": RUN,
         "run_attempt": ATTEMPT,
-        "name": "Continuous Mainnet Paper Trader",
+        "name": "Continuous Paper · 38247356164",
+        "path": ".github/workflows/continuous-paper.yml",
+        "event": "workflow_dispatch",
         "head_branch": "main",
         "head_sha": "a" * 40,
         "status": "completed",
@@ -107,6 +109,36 @@ def test_genuine_completed_worker_must_match_one_exact_attempt() -> None:
     ):
         audit._source_class(
             run=run, jobs=altered_jobs, repository=REPO,
+            run_id=RUN, attempt=ATTEMPT,
+        )
+
+
+def test_custom_github_run_name_allowed_but_workflow_path_fixed() -> None:
+    run, jobs = _source()
+    assert audit._source_class(
+        run=run, jobs=jobs, repository=REPO,
+        run_id=RUN, attempt=ATTEMPT,
+    ) == "completed_successful_worker"
+    run["name"] = "A harmless different run name"
+    assert audit._source_class(
+        run=run, jobs=jobs, repository=REPO,
+        run_id=RUN, attempt=ATTEMPT,
+    ) == "completed_successful_worker"
+    run["path"] = ".github/workflows/other.yml"
+    with pytest.raises(
+        audit.TrendPairHandoffAuditError, match="source worker identity",
+    ):
+        audit._source_class(
+            run=run, jobs=jobs, repository=REPO,
+            run_id=RUN, attempt=ATTEMPT,
+        )
+    run["path"] = ".github/workflows/continuous-paper.yml"
+    run["event"] = "pull_request"
+    with pytest.raises(
+        audit.TrendPairHandoffAuditError, match="not a recognized",
+    ):
+        audit._source_class(
+            run=run, jobs=jobs, repository=REPO,
             run_id=RUN, attempt=ATTEMPT,
         )
 
