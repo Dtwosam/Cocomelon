@@ -717,7 +717,7 @@ def audit_trend_handoff(
                     "independent_mainnet_market_source_not_authenticated",
                 ]
     except (
-        OSError, ValueError, RuntimeError, TypeError, ArithmeticError,
+        OSError, ValueError, RuntimeError, TypeError, KeyError, ArithmeticError,
         sqlite3.DatabaseError, zipfile.BadZipFile, UnicodeDecodeError,
     ) as exc:
         result["reasons"] = [f"{type(exc).__name__}: {exc}"]
