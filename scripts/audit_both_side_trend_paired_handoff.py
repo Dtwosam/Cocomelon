@@ -109,29 +109,33 @@ def _source_class(
     raw_jobs = jobs.get("jobs")
     if not isinstance(raw_jobs, list):
         raise TrendPairHandoffAuditError("source jobs missing")
-    successful_steps: set[str] = set()
+    confirmed_paper_jobs = 0
     for item in raw_jobs:
         job = _mapping(item, "worker job")
         if job.get("run_id") != run_id:
             raise TrendPairHandoffAuditError("foreign source job in job list")
-        if job.get("name") != "paper":
+        # Do not combine a successful upload on one attempt with a trading
+        # step from an older run attempt after a rerun.
+        if job.get("run_attempt") != attempt or job.get("name") != "paper":
             continue
         steps = job.get("steps")
         if not isinstance(steps, list):
             raise TrendPairHandoffAuditError("paper worker step history absent")
-        successful_steps.update(
+        successful_steps = {
             step["name"]
             for step in steps
             if isinstance(step, dict)
             and step.get("conclusion") == "success"
             and isinstance(step.get("name"), str)
-        )
-    if not {
-        "Run continuous paper trader",
-        "Upload isolated both-side trend paired-paper evidence",
-    } <= successful_steps:
+        }
+        if {
+            "Run continuous paper trader",
+            "Upload isolated both-side trend paired-paper evidence",
+        } <= successful_steps:
+            confirmed_paper_jobs += 1
+    if confirmed_paper_jobs != 1:
         raise TrendPairHandoffAuditError(
-            "original paper and trend archive publication steps not both successful"
+            "exact attempt original trading and trend artifact upload not both proven"
         )
     if run.get("conclusion") == "success":
         return "completed_successful_worker"
