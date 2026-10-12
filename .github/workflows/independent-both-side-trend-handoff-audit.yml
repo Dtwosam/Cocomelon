@@ -86,14 +86,14 @@ jobs:
               | select(.status == "completed" and .head_branch == "main"
                 and .event == "workflow_dispatch"
                 and .path == ".github/workflows/continuous-paper.yml")
-              | "\\(.id) \\(.run_attempt)"
+              | "\(.id) \(.run_attempt)"
             ' /tmp/trend-paper-audit/completed-workers.json
           )
           if [ -z "$chosen_id" ]; then
             echo "::error::No completed original worker with exact trend archive found in most recent 50 workflow runs" >&2
             exit 1
           fi
-          printf 'SOURCE_RUN_ID=%s\\nSOURCE_ATTEMPT=%s\\n' "$chosen_id" "$chosen_attempt" >> "$GITHUB_ENV"
+          printf 'SOURCE_RUN_ID=%s\nSOURCE_ATTEMPT=%s\n' "$chosen_id" "$chosen_attempt" >> "$GITHUB_ENV"
           echo "Scheduled independent audit of completed original paper run $chosen_id attempt $chosen_attempt" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fetch exact original paper worker source metadata
