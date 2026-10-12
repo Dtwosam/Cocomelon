@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 from collections.abc import Sequence
+from decimal import Decimal
 from pathlib import Path
 
 from cocomelon.research.paper_profitability_scoreboard import (
@@ -59,7 +60,43 @@ def main(argv: Sequence[str] | None = None) -> int:
     assert isinstance(overall, dict)
     side = report["side_cohorts"]
     assert isinstance(side, list)
+    weekly = report["original_fixed_utc_opening_week_economics"]
+    assert isinstance(weekly, dict)
+    periods = weekly["weeks"]
+    assert isinstance(periods, list)
+    original_week_rows = [
+        {
+            "week_start_ms_utc": period["week_start_ms_utc"],
+            "booked_net_pnl": period["original_booked_week"]["net_pnl"],
+            "booked_gross_pnl": period["original_booked_week"]["gross_realized_pnl"],
+            "booked_fees": period["original_booked_week"]["fees"],
+            "booked_funding_pnl": period["original_booked_week"]["funding_cash_pnl"],
+            "closed_trade_count": period["original_booked_week"]["trades"],
+            "fully_observed_at_original_flat_handoff": (
+                period["week_original_booked_outcome_mature_at_handoff"]
+            ),
+        }
+        for period in periods
+    ]
+    worst_booked_week = (
+        min(original_week_rows, key=lambda row: (
+            Decimal(str(row["booked_net_pnl"])),
+            row["week_start_ms_utc"],
+        )) if original_week_rows else None
+    )
     headline = {
+        "fixed_opening_week_count_including_empty": len(original_week_rows),
+        "fixed_opening_week_mature_count": sum(
+            row["fully_observed_at_original_flat_handoff"]
+            for row in original_week_rows
+        ),
+        "original_worst_booked_opening_week": worst_booked_week,
+        "original_recent_booked_opening_week": (
+            original_week_rows[-1] if original_week_rows else None
+        ),
+        "fixed_opening_week_source": (
+            "historical_original_closed_trades_not_full_account_expectancy"
+        ),
         "report": str(target),
         "trades": overall["trades"],
         "closed_net_pnl": overall["net_pnl"],
