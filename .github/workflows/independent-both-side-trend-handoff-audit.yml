@@ -1,0 +1,123 @@
+name: Independent Both-Side Trend Paired Handoff Audit
+
+on:
+  workflow_run:
+    workflows:
+      - Continuous Mainnet Paper Trader
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed original continuous-paper worker run ID
+        required: true
+        type: string
+      source_run_attempt:
+        description: Exact source attempt
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: both-side-trend-handoff-audit-${{ github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}-${{ github.event_name == 'workflow_dispatch' && inputs.source_run_attempt || github.event.workflow_run.run_attempt }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}
+      SOURCE_ATTEMPT: ${{ github.event_name == 'workflow_dispatch' && inputs.source_run_attempt || github.event.workflow_run.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install independent paper evidence reviewer
+        run: python -m pip install -e .
+
+      - name: Fetch exact original paper worker source metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/gh_api_bounded_retry.sh
+          if [[ ! "$SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ || ! "$SOURCE_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Exact source run and attempt must be positive" >&2
+            exit 1
+          fi
+          mkdir -p /tmp/trend-paper-audit
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" > /tmp/trend-paper-audit/run.json
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100" > /tmp/trend-paper-audit/jobs.json
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" > /tmp/trend-paper-audit/artifacts.json
+
+      - name: Download exact independently published trend ZIP if present
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="continuous-paper-both-side-trend-paired-shadow-$SOURCE_RUN_ID-$SOURCE_ATTEMPT"
+          artifact_id="$(jq -r --arg name "$name" '
+            [.artifacts[] | select(.name == $name)]
+            | if length == 1 then .[0].id else empty end
+          ' /tmp/trend-paper-audit/artifacts.json)"
+          if [ -z "$artifact_id" ]; then
+            echo "::notice::Exact trend paired artifact missing; audit receipt will remain unverified"
+            exit 0
+          fi
+          if ! curl --fail --silent --show-error --location \
+              --retry 3 --retry-delay 2 --retry-max-time 240 \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+              --output /tmp/trend-paper-audit/source.zip; then
+            echo "::warning::Unable to download exact trend paired ZIP; leaving audit unverified"
+            rm -f /tmp/trend-paper-audit/source.zip
+          fi
+
+      - name: Verify outer SHA, exact source identity and internal paired receipts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/audit_both_side_trend_paired_handoff.py \
+            --run-json /tmp/trend-paper-audit/run.json \
+            --jobs-json /tmp/trend-paper-audit/jobs.json \
+            --artifacts-json /tmp/trend-paper-audit/artifacts.json \
+            --artifact-zip /tmp/trend-paper-audit/source.zip \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-run-id "$SOURCE_RUN_ID" \
+            --source-attempt "$SOURCE_ATTEMPT" \
+            --output trend-paired-handoff-audit.json
+          test -s trend-paired-handoff-audit.json
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          receipt = json.loads(Path("trend-paired-handoff-audit.json").read_text())
+          print("## Independent both-side trend paired paper handoff")
+          print("- source class:", receipt["source_class"])
+          print("- audit state:", receipt["status"])
+          print("- evidence failures:", receipt["reasons"])
+          print("- outer ZIP SHA256:", receipt["archive_sha256"])
+          print("- exact candidate ID:", receipt["expected_candidate_id"])
+          print("- original market feed gaps independently authenticated: FALSE")
+          print("- positive after-cost account edge verified: FALSE")
+          print("- live execution / promotion authority: FALSE / FALSE")
+          PY
+
+      - name: Upload immutable independent trend handoff receipt
+        if: ${{ always() && hashFiles('trend-paired-handoff-audit.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: independently-audited-both-side-trend-${{ env.SOURCE_RUN_ID }}-${{ env.SOURCE_ATTEMPT }}
+          path: trend-paired-handoff-audit.json
+          if-no-files-found: error
+          retention-days: 90

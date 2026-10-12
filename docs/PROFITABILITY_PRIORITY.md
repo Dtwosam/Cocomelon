@@ -1,5 +1,9 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 12 — automatic fail-closed trend paired handoff audit
+
+The isolated trend actor is now operationally observed on worker `38281228549` (8,547/8,547 forwarded records, no queue errors as of 17:07 UTC), before the 19:00 UTC October 12 forward freeze. An independent read-only workflow now runs at each completed paper worker, verifies its exact run/attempt, uploaded trend-source ZIP digest, frozen identity, checkpoint state hash, and append-only review-ledger chronology, then calculates the predeclared strict economic review. **ZIP/checkpoint lineage is not independent SQLite replay, exchange-feed gap completeness, or after-cost profitable-account proof.** A missing artifact must yield a durable unverified receipt and cannot enable promotion or live trading. No previous v5 losing data is overwritten or made green by the new actor's status.
+
 ## October 12 — isolate the new trial's evidence receipt from the old v5 failure
 
 Original paper successor `38261652982` continues with PAPER ONLY and 211 closed original trades, while the historical v5 paired shadow's account-state restore failure remains. A new operational heartbeat field and a separately titled GitHub issue section report the **independent** both-side-trend paired actor's candidate identity, worker start relative to the frozen 19:00 UTC embargo, actual queued/processed new-market observations, checkpoint health and research-only authority. This must never borrow the v5 error or rewrite its negative economics. If the new sidecar fails, missing actor evidence must be reported as failed/absent; no signed positive profit has been produced or certified. The next hard check is the sidecar's durable baseline+candidate execution stores and append-only review ledger at an exact predecessor handoff; after the embargo, evaluate real after-cost prospective full-account PnL, capacity reuse and missing feeds.
