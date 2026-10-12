@@ -320,7 +320,6 @@ def test_trend_audit_bootstraps_first_real_zip_without_workflow_chain() -> None:
     )
     assert "github.event_name == 'push' && '38261652982'" in workflow
     assert "github.event_name == 'push' && '1'" in workflow
-    assert "source-run-id" not in workflow  # runner passes exact --source-run-id
     assert '--source-run-id "$SOURCE_RUN_ID"' in workflow
     assert '--source-attempt "$SOURCE_ATTEMPT"' in workflow
     assert "permissions:\n  actions: read\n  contents: read" in workflow
