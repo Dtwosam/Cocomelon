@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+import cocomelon.research.prospective_short_rank_worker_artifact as rank_verifier
 from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayManifest
@@ -22,7 +23,6 @@ from cocomelon.research.prospective_short_rank_first_seen import (
     FirstSeenRankSnapshot,
     FirstSeenRankSnapshotStore,
 )
-import cocomelon.research.prospective_short_rank_worker_artifact as rank_verifier
 from cocomelon.research.prospective_short_rank_worker_artifact import (
     ExpectedGithubRankArtifact,
     GithubShortRankArtifactError,
