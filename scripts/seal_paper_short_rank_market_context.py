@@ -194,10 +194,10 @@ def seal_original_rank_market_context(
         for context, rank, feature in zip(
             contexts, ranks[start_rank:], features[start_full:], strict=True,
         ):
-            proof = replay_recorded_rank_eligibility(
+            replay_recorded_rank_eligibility(
                 rank=rank, feature_inputs=feature, context=context,
             )
-            total_markets += int(proof["recorded_context_markets_examined"])
+            total_markets += len(context.snapshots)
             name = f"batches/{context.observed_at_ms:016d}.json"
             path = context_dir / name
             if path.is_symlink() or not path.is_file():
