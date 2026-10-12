@@ -168,6 +168,23 @@ def test_archive_reader_requires_explicit_exact_paths_and_both_stores(
         audit._extract_receipts(zip_path, tmp_path)
 
 
+
+def test_duplicate_zip_member_cannot_override_signed_freeze(tmp_path: Path) -> None:
+    import warnings
+
+    archive_path = tmp_path / "duplicate.zip"
+    with zipfile.ZipFile(archive_path, "w") as zipped:
+        zipped.writestr(TREND_PAIR_FREEZE_FILE, b"one")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            zipped.writestr(TREND_PAIR_FREEZE_FILE, b"two")
+    with zipfile.ZipFile(archive_path) as zipped:
+        with pytest.raises(
+            audit.TrendPairHandoffAuditError, match="ambiguous",
+        ):
+            audit._member(zipped, TREND_PAIR_FREEZE_FILE)
+
+
 def test_consistent_receipts_only_verify_archive_lineage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
