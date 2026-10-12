@@ -19,13 +19,19 @@ from cocomelon.research.prospective_short_rank_first_seen import (
     FirstSeenRankSnapshot,
     FirstSeenRankSnapshotStore,
 )
+from cocomelon.research.prospective_short_rank_full_feature_artifact import (
+    VerifiedGithubOriginalRankInputs,
+)
 from cocomelon.research.prospective_short_rank_full_features import (
     OriginalRankFeatureInputBatch,
     OriginalRankFeatureInputBatchStore,
     OriginalRankInputBatchError,
 )
-from cocomelon.research.prospective_short_rank_full_feature_artifact import (
-    VerifiedGithubOriginalRankInputs,
+from cocomelon.research.prospective_short_rank_market_context import (
+    OriginalRankEligibilityContextBatch,
+    OriginalRankEligibilityContextError,
+    OriginalRankEligibilityContextStore,
+    replay_recorded_rank_eligibility,
 )
 from cocomelon.research.prospective_short_rank_market_context_artifact import (
     ExpectedGithubRankContextArtifact,
@@ -37,12 +43,6 @@ from cocomelon.research.prospective_short_rank_worker_artifact import (
 )
 from scripts.audit_paper_short_rank_market_context import (
     audit_original_worker_rank_context_sources,
-)
-from cocomelon.research.prospective_short_rank_market_context import (
-    OriginalRankEligibilityContextBatch,
-    OriginalRankEligibilityContextError,
-    OriginalRankEligibilityContextStore,
-    replay_recorded_rank_eligibility,
 )
 from scripts.seal_paper_short_rank_market_context import (
     BUNDLE_FILE,
