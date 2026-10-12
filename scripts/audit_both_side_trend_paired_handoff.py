@@ -589,6 +589,85 @@ def _extract_receipts(
     return freeze.to_dict(), summary, state, ledger_path
 
 
+def _signed_open_gap_sources(
+    state: dict[str, object], latest: dict[str, object],
+) -> dict[str, object]:
+    """Expose preserved gap stream identities without clearing any interval.
+
+    Same-market paired economics require the two lanes to have identical
+    source-scoped gap witnesses; a signed row count alone cannot establish
+    which feed was incomplete. This is a *snapshot* diagnostic only.
+    """
+    baseline = _mapping(state.get("baseline"), "baseline durable gap scope")
+    candidate = _mapping(state.get("candidate"), "candidate durable gap scope")
+    source_scopes = (
+        ("market", "known_gap_intervals_by_stream"),
+        ("global", "known_global_gap_intervals_by_stream"),
+    )
+    open_sources: list[dict[str, object]] = []
+    for scope, field in source_scopes:
+        left = _mapping(baseline.get(field), f"baseline {field}")
+        right = _mapping(candidate.get(field), f"candidate {field}")
+        if left != right:
+            raise TrendPairHandoffAuditError(
+                "paired source-scoped market-data gap histories differ"
+            )
+        for stream, intervals in sorted(left.items()):
+            if not stream or not isinstance(intervals, list):
+                raise TrendPairHandoffAuditError(
+                    "paired source-scoped gap stream is invalid"
+                )
+            for interval in intervals:
+                if (
+                    not isinstance(interval, list)
+                    or len(interval) != 2
+                    or type(interval[0]) is not int
+                    or interval[0] < 0
+                    or (
+                        interval[1] is not None
+                        and (
+                            type(interval[1]) is not int
+                            or interval[1] < interval[0]
+                        )
+                    )
+                ):
+                    raise TrendPairHandoffAuditError(
+                        "paired source-scoped gap interval is invalid"
+                    )
+                if interval[1] is None:
+                    open_sources.append({
+                        "scope": scope,
+                        "stream": stream,
+                        "opened_at_ms": interval[0],
+                    })
+    ledger_count = latest.get("data_gap_open_count")
+    if type(ledger_count) is not int or ledger_count != len(open_sources):
+        raise TrendPairHandoffAuditError(
+            "signed open-gap count does not match scoped source evidence"
+        )
+    by_kind: dict[str, int] = {}
+    for item in open_sources:
+        kind = str(item["stream"]).split(":", 1)[0]
+        by_kind[kind] = by_kind.get(kind, 0) + 1
+    return {
+        "source_scopes_agree": True,
+        "signed_open_count_reconciles": True,
+        "open_count": len(open_sources),
+        "open_by_kind": dict(sorted(by_kind.items())),
+        "open_streams": sorted(
+            open_sources,
+            key=lambda item: (
+                str(item["scope"]), str(item["stream"]),
+                int(item["opened_at_ms"]),
+            ),
+        ),
+        "market_data_gap_free": len(open_sources) == 0,
+        "research_only": True,
+        "promotion_authority": False,
+        "execution_authority": False,
+    }
+
+
 def audit_trend_handoff(
     *,
     run: dict[str, object],
@@ -616,6 +695,7 @@ def audit_trend_handoff(
         "archived_execution_sqlite_integrity_verified": False,
         "archived_execution_economics_reconciled": False,
         "reconciled_lanes": None,
+        "source_scoped_open_gap_diagnostics": None,
         "full_forward_after_cost_profit_verified": False,
         "ready_for_review": False,
         "research_only": True,
@@ -697,6 +777,9 @@ def audit_trend_handoff(
             if not lines:
                 raise TrendPairHandoffAuditError("paired review ledger is empty")
             latest = _mapping(json.loads(lines[-1]), "latest signed paired row")
+            result["source_scoped_open_gap_diagnostics"] = (
+                _signed_open_gap_sources(state, latest)
+            )
             reconciled: dict[str, object] = {}
             for lane in ("baseline", "candidate"):
                 lane_state = _mapping(state.get(lane), f"{lane} state")
