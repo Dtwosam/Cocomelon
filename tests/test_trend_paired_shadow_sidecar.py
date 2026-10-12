@@ -71,7 +71,7 @@ class FakeActor:
 
     async def checkpoint(self, *, end_ms: int) -> dict[str, object]:
         self.events.append(("checkpoint", end_ms))
-        if self.bad_checkpoint:
+        if self.bad_checkpoint or self.failures:
             raise RuntimeError("unsafe handoff")
         return {"candidate_id": self.candidate_id, "end_ms": end_ms}
 
@@ -268,9 +268,8 @@ def test_broken_legacy_v5_market_census_does_not_disable_fresh_trial(
     assert asyncio.run(duo.protected_open_markets()) == (BTC, ETH)
     assert len(old.failures) == 1
     assert trend.failures == []
-    assert asyncio.run(duo.checkpoint(end_ms=305)) == {
-        "candidate_id": "old", "end_ms": 305,
-    }
+    with pytest.raises(RuntimeError, match="unsafe handoff"):
+        asyncio.run(duo.checkpoint(end_ms=305))
     receipt = json.loads((tmp_path / TREND_PAIR_SUMMARY_FILE).read_text())
     assert receipt["checkpoint_published"] is True
     assert receipt["ready_for_review"] is False
