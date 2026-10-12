@@ -418,6 +418,11 @@ from cocomelon.research.prospective_short_rank_full_features import (
     OriginalRankFeatureInputBatchStore,
     OriginalRankInputBatchError,
 )
+from cocomelon.research.prospective_short_rank_market_context import (
+    OriginalRankEligibilityContextBatch,
+    OriginalRankEligibilityContextError,
+    OriginalRankEligibilityContextStore,
+)
 from cocomelon.research.prospective_side_conditioned_delay import (
     ProspectiveSideConditionedDelayState,
 )
@@ -9348,13 +9353,83 @@ async def run_continuous_paper_session(
             except OSError:
                 pass
 
+    # The original market meta/context source begins prospectively here.
+    # Older rank and full-input batches MUST never acquire invented contexts.
+    rank_context_error_path = (
+        root / "prospective-short-rank-market-context-error.json"
+    )
+    rank_context_capture_error: str | None = None
+    rank_context_store: OriginalRankEligibilityContextStore | None = None
+    if rank_context_error_path.exists():
+        try:
+            prior_context_error = json.loads(
+                rank_context_error_path.read_text(encoding="utf-8")
+            )
+            if (
+                not isinstance(prior_context_error, dict)
+                or not isinstance(prior_context_error.get("error"), str)
+            ):
+                raise ValueError("rank market context failure receipt invalid")
+            rank_context_capture_error = prior_context_error["error"]
+        except (OSError, ValueError):
+            rank_context_capture_error = "unreadable_rank_market_context_failure"
+    elif rank_snapshot_store is not None and rank_snapshot_capture_error is None:
+        try:
+            rank_context_store = OriginalRankEligibilityContextStore(
+                root / "prospective-short-rank-market-context"
+            )
+            recorded_contexts = rank_context_store.iter_verified()
+            if recorded_contexts:
+                original_ranks = rank_snapshot_store.iter_records()
+                first_context = next(
+                    (
+                        i for i, item in enumerate(original_ranks)
+                        if item.observed_at_ms
+                        == recorded_contexts[0].observed_at_ms
+                    ),
+                    None,
+                )
+                if (
+                    first_context is None
+                    or len(original_ranks) - first_context
+                    != len(recorded_contexts)
+                ):
+                    raise OriginalRankEligibilityContextError(
+                        "prospective original rank context suffix has a missing batch"
+                    )
+                for rank_row, ctx_row in zip(
+                    original_ranks[first_context:],
+                    recorded_contexts,
+                    strict=True,
+                ):
+                    ctx_row.bind_to(rank_row)
+        except Exception as context_restore_error:
+            rank_context_capture_error = (
+                f"{type(context_restore_error).__name__}: "
+                f"{context_restore_error}"
+            )
+            try:
+                _write_json_atomic(
+                    rank_context_error_path,
+                    {
+                        "error": rank_context_capture_error,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                    },
+                )
+            except OSError:
+                pass
+
     def capture_rank_first_seen(
         *,
         features: dict[str, FeatureSnapshot],
         ranks: tuple[OpportunityRank, ...],
         observed_at_ms: int,
+        markets: dict[str, PerpMarketSnapshot],
     ) -> None:
         nonlocal rank_snapshot_capture_error, rank_input_capture_error
+        nonlocal rank_context_capture_error
         if rank_snapshot_capture_error is not None:
             return
         try:
@@ -9414,6 +9489,38 @@ async def run_continuous_paper_session(
                     rank_input_error_path,
                     {
                         "error": rank_input_capture_error,
+                        "research_only": True,
+                        "execution_authority": False,
+                        "promotion_authority": False,
+                    },
+                )
+            except OSError:
+                pass
+            return
+
+        if rank_context_capture_error is not None:
+            return
+        try:
+            if rank_context_store is None:
+                raise OriginalRankEligibilityContextError(
+                    "original rank context store missing"
+                )
+            rank_context_store.append(
+                OriginalRankEligibilityContextBatch.from_original_rank(
+                    rank_row, markets,
+                )
+            )
+        except Exception as context_capture_error:
+            # NEVER interrupt paper orders/exits or reset source evidence.
+            rank_context_capture_error = (
+                f"{type(context_capture_error).__name__}: "
+                f"{context_capture_error}"
+            )
+            try:
+                _write_json_atomic(
+                    rank_context_error_path,
+                    {
+                        "error": rank_context_capture_error,
                         "research_only": True,
                         "execution_authority": False,
                         "promotion_authority": False,
@@ -10018,6 +10125,7 @@ async def run_continuous_paper_session(
             features=_initial_features,
             ranks=initial_ranks,
             observed_at_ms=initial_rank_observed_at_ms,
+            markets=snapshots,
         )
         selected = _ranked_selection(
             snapshots,
@@ -10315,6 +10423,7 @@ async def run_continuous_paper_session(
                 features=_startup_features,
                 ranks=startup_ranks,
                 observed_at_ms=startup_rank_observed_at_ms,
+                markets=snapshots,
             )
             if loss_context_paired_shadow_runtime is not None:
                 loss_context_paired_shadow_runtime.submit_rank_snapshot(
@@ -11425,6 +11534,7 @@ async def run_continuous_paper_session(
                     features=_refreshed_features,
                     ranks=refreshed_ranks,
                     observed_at_ms=rank_observed_at_ms,
+                    markets=refreshed,
                 )
                 if loss_context_paired_shadow_runtime is not None:
                     loss_context_paired_shadow_runtime.submit_rank_snapshot(
