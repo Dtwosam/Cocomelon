@@ -2636,3 +2636,155 @@ def test_fixed_original_opening_weeks_do_not_erase_exact_net_r_when_empty() -> N
     assert result["overall"]["trades"] == 0
     assert result["overall"]["net_pnl"] == "0"
     assert result["promotion_authority"] is False
+
+
+def _original_with_gap_witness(
+    n: int, *, kind: str, gross: str, market: str,
+    strategy: str | None = "trend",
+) -> dict[str, object]:
+    """Create one booked original trade; gap evidence never changes its cash."""
+    row = _trade(
+        n, side="long" if n % 2 else "short", market=market,
+        strategy=strategy, gross=gross, chart=True,
+    )
+    if kind == "complete_observed_original_mark_path":
+        return row
+    row["chart_coverage_complete"] = False
+    row["chart_path_present"] = True
+    row["chart_known_gap_duration_ms"] = 0
+    row["chart_unresolved_gap_starts_before_entry"] = 0
+    row["chart_unresolved_gap_starts_during_position"] = 0
+    if kind == "unresolved_before_entry_and_during_position":
+        row["chart_known_gap_duration_ms"] = None
+        row["chart_unresolved_gap_starts_before_entry"] = 1
+        row["chart_unresolved_gap_starts_during_position"] = 1
+    elif kind == "unresolved_before_entry":
+        row["chart_known_gap_duration_ms"] = None
+        row["chart_unresolved_gap_starts_before_entry"] = 1
+    elif kind == "unresolved_during_position":
+        row["chart_known_gap_duration_ms"] = None
+        row["chart_unresolved_gap_starts_during_position"] = 1
+    elif kind == "recorded_closed_market_data_gap":
+        row["chart_known_gap_duration_ms"] = 15
+    elif kind == "silent_unobserved_mark_interval":
+        opened = row["opened_at_ms"]
+        assert isinstance(opened, int)
+        row["chart_silent_gap_intervals_ms"] = [[opened, opened + 20]]
+    elif kind == "missing_original_mark_path":
+        row["chart_path_present"] = False
+        row["chart_mark_count"] = 0
+        row["chart_mark_samples"] = []
+        row["chart_known_gap_duration_ms"] = None
+        row["chart_longest_unobserved_mark_ms"] = None
+    elif kind != "other_incomplete_original_mark_path":
+        raise AssertionError(f"unrecognized test witness class: {kind}")
+    return row
+
+
+def test_original_feed_gap_economics_partition_keeps_every_loss_fee_and_net_r() -> None:
+    classes = (
+        "complete_observed_original_mark_path",
+        "unresolved_before_entry",
+        "unresolved_during_position",
+        "unresolved_before_entry_and_during_position",
+        "recorded_closed_market_data_gap",
+        "silent_unobserved_mark_interval",
+        "missing_original_mark_path",
+        "other_incomplete_original_mark_path",
+    )
+    source = _reconciled_audit_from_rows([
+        _original_with_gap_witness(
+            index, kind=kind, gross=("-11" if index % 2 else "8"),
+            market="MEGA" if index % 2 else "ALGO",
+            strategy=None if index == 7 else "trend",
+        )
+        for index, kind in enumerate(classes, start=1)
+    ])
+    report = paper_profitability_scoreboard(source)
+    debt = report["original_chart_gap_witness_loss_attribution"]
+    all_group = debt["whole_original_booked_journal"]
+    buckets = debt["mutually_exclusive_evidence_classes"]
+    assert len(buckets) == len(classes)
+    assert {
+        b["cohort"]["chart_gap_witness_class"]: b["trades"] for b in buckets
+    } == dict.fromkeys(classes, 1)
+    assert all_group["trades"] == 8
+    assert all_group["net_pnl"] == report["overall"]["net_pnl"]
+    assert all_group["fees"] == report["overall"]["fees"]
+    assert all_group["net_r"] == report["overall"]["net_r"]
+    assert debt["incomplete_or_missing_original_evidence"]["trades"] == 7
+    assert debt["incomplete_or_missing_original_evidence"]["losses"] == 4
+    assert debt[
+        "all_original_closed_trades_and_booked_dollars_and_net_r_reconciled"
+    ] is True
+    assert debt["observed_gap_causation_of_booked_losses_proven"] is False
+    assert debt["feed_event_gap_history_independently_recovered"] is False
+    assert debt["execution_authority"] is False
+    assert debt["promotion_authority"] is False
+    markets = debt["incomplete_by_market"]
+    assert sum(v["trades"] for v in markets) == 7
+    assert sum(Decimal(v["net_pnl"]) for v in markets) == Decimal(
+        debt["incomplete_or_missing_original_evidence"]["net_pnl"]
+    )
+    assert report["promotion_authority"] is False
+    assert source["trades"] == source["trades"]
+
+
+def test_original_gap_exposure_never_turns_unresolved_gap_into_clean_chart() -> None:
+    unsafe = _original_with_gap_witness(
+        1, kind="unresolved_before_entry", gross="25", market="MEGA",
+    )
+    unsafe["chart_coverage_complete"] = True
+    source = _reconciled_audit_from_rows([unsafe])
+    with pytest.raises(
+        PaperProfitabilityScoreboardError, match="claimed complete original price path"
+    ):
+        paper_profitability_scoreboard(source)
+
+
+def test_original_gap_exposure_uses_booked_actual_cash_not_synthetic_skip() -> None:
+    missing = _original_with_gap_witness(
+        1, kind="missing_original_mark_path", gross="-12",
+        market="MEGA", strategy=None,
+    )
+    valid = _original_with_gap_witness(
+        2, kind="complete_observed_original_mark_path", gross="3",
+        market="ALGO",
+    )
+    report = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows([missing, valid])
+    )
+    gap = report["original_chart_gap_witness_loss_attribution"]
+    assert gap["whole_original_booked_journal"]["net_pnl"] == "-11.0"
+    assert gap["incomplete_or_missing_original_evidence"]["net_pnl"] == "-13.0"
+    assert gap["incomplete_or_missing_original_evidence"]["unverified_entry_context_trades"] == 1
+    assert gap["original_closed_trades_not_signed_full_account_equity"] is True
+    assert gap["no_counterfactual_exit_or_abstention_executed"] is True
+    assert gap["observed_gap_causation_of_booked_losses_proven"] is False
+
+
+def test_profitability_cli_surfaces_original_gap_loss_evidence_without_execution(
+    tmp_path: Path,
+) -> None:
+    source = _reconciled_audit_from_rows([
+        _original_with_gap_witness(
+            1, kind="unresolved_before_entry", gross="-12", market="MEGA",
+        ),
+    ])
+    raw = tmp_path / "source.json"
+    out = tmp_path / "research.json"
+    raw.write_text(json.dumps(source), encoding="utf-8")
+    subprocess.run(
+        [
+            sys.executable, "-m", "scripts.report_paper_profitability_scoreboard",
+            str(raw), "--json-out", str(out),
+        ],
+        check=True, capture_output=True, text=True,
+    )
+    result = json.loads(out.read_text(encoding="utf-8"))
+    debt = result["original_chart_gap_witness_loss_attribution"]
+    assert debt["whole_original_booked_journal"]["net_pnl"] == "-13.0"
+    assert debt["mutually_exclusive_evidence_classes"][0][
+        "cohort"
+    ]["chart_gap_witness_class"] == "unresolved_before_entry"
+    assert debt["promotion_authority"] is False
