@@ -41,6 +41,10 @@ from cocomelon.research.prospective_both_side_trend_paired_v2_genesis import (
     GENESIS_FILE_V2,
     verify_v2_genesis,
 )
+from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+    FILE_NAME as V2_GAP_WITNESS_FILE,
+    read_source_gap_witness,
+)
 from cocomelon.research.trend_paired_shadow_sidecar import (
     TREND_PAIR_FREEZE_FILE,
     TREND_PAIR_STATE_ROOT,
@@ -927,6 +931,8 @@ def audit_trend_handoff(
         "archived_execution_sqlite_integrity_verified": False,
         "source_v2_terminal_receipt_verified": False,
         "v2_write_once_genesis_verified": False,
+        "v2_actor_received_gap_record_chain_verified": False,
+        "v2_actor_received_gap_count": None,
         "v2_genesis_source_run_id": None,
         "v2_genesis_source_attempt": None,
         "v2_genesis_original_worker_authenticated": False,
@@ -1072,6 +1078,22 @@ def audit_trend_handoff(
                     genesis = verify_v2_genesis(json.loads(_member(
                         package, f"{TREND_V2_STATE_ROOT}/{GENESIS_FILE_V2}",
                     )))
+                    raw_gap_witness = _member(
+                        package, f"{TREND_V2_STATE_ROOT}/{V2_GAP_WITNESS_FILE}",
+                    )
+                gap_path = Path(directory) / V2_GAP_WITNESS_FILE
+                gap_path.write_bytes(raw_gap_witness)
+                source_witness = read_source_gap_witness(
+                    gap_path, total_processed_records=state["record_count"],
+                )
+                if state.get("v2_source_gap_event_witness") != source_witness:
+                    raise TrendPairHandoffAuditError(
+                        "v2 actor DATA_GAP source sequence differs from signed state"
+                    )
+                result["v2_actor_received_gap_record_chain_verified"] = True
+                result["v2_actor_received_gap_count"] = (
+                    source_witness["received_gap_record_count"]
+                )
                 if (
                     genesis["source_github_run_id"] > source_run_id
                     or genesis["genesis_startup_ms"]
