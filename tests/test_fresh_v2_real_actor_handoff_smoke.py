@@ -25,13 +25,15 @@ from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
     FROZEN_AT_MS_V2,
     both_side_trend_matched_shadow_v2_freeze,
 )
+from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+    FILE_NAME as GAP_WITNESS_FILE,
+)
+from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+    read_source_gap_witness,
+)
 from cocomelon.research.prospective_both_side_trend_paired_v2_genesis import (
     GENESIS_FILE_V2,
     verify_v2_genesis,
-)
-from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
-    FILE_NAME as GAP_WITNESS_FILE,
-    read_source_gap_witness,
 )
 from cocomelon.research.trend_paired_shadow_sidecar import (
     TREND_V2_STATE_ROOT,
