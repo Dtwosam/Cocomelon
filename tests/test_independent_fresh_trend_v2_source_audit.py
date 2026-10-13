@@ -166,7 +166,7 @@ def test_renaming_old_v1_zip_cannot_satisfy_frozen_v2_members(
     with pytest.raises(
         audit.TrendPairHandoffAuditError, match="missing or ambiguous",
     ):
-        audit._extract_receipts(z, tmp_path / "work", campaign="v2")
+        audit._extract_receipts(z, tmp_path, campaign="v2")
 
 
 def test_wrong_v2_freeze_rejected_even_if_member_names_are_fresh(
@@ -194,7 +194,7 @@ def test_wrong_v2_freeze_rejected_even_if_member_names_are_fresh(
     with pytest.raises(
         audit.TrendPairHandoffAuditError, match="predeclared",
     ):
-        audit._extract_receipts(z, tmp_path / "work", campaign="v2")
+        audit._extract_receipts(z, tmp_path, campaign="v2")
 
 
 def test_v2_missing_archive_never_gets_positive_status(tmp_path: Path) -> None:
