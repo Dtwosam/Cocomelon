@@ -22,6 +22,15 @@ on:
         default: "1"
         required: true
         type: string
+      anchor_run_id:
+        description: Optional manually pinned original v2 comparison anchor worker
+        required: false
+        type: string
+      anchor_attempt:
+        description: Optional manually pinned v2 anchor attempt
+        default: "1"
+        required: false
+        type: string
 
 permissions:
   actions: read
@@ -160,6 +169,131 @@ jobs:
           print("- cross-worker v2 anchor / 72h after-cost edge: UNVERIFIED / UNVERIFIED")
           print("- promotion / live orders: FALSE / FALSE")
           PY
+
+      # Select an observed source from bounded history; this is NEVER
+      # certified as the first v2 worker. Later pinning the actual initial
+      # source requires separately authenticated origin metadata.
+      - name: Select independently checkable v2 source anchor
+        if: ${{ env.SOURCE_AVAILABLE != 'false' }}
+        shell: bash
+        env:
+          PINNED_ANCHOR_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.anchor_run_id || '' }}
+          PINNED_ANCHOR_ATTEMPT: ${{ github.event_name == 'workflow_dispatch' && inputs.anchor_attempt || '1' }}
+        run: |
+          set -euo pipefail
+          source scripts/gh_api_bounded_retry.sh
+          mkdir -p /tmp/fresh-trend-v2-audit
+          selected="${PINNED_ANCHOR_RUN:-}"
+          selected_attempt="${PINNED_ANCHOR_ATTEMPT:-1}"
+          if [ -z "$selected" ]; then
+            gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?status=completed&branch=main&per_page=100" > /tmp/fresh-trend-v2-audit/anchor-candidates.json
+            while read -r possible attempt; do
+              [[ "$possible" =~ ^[1-9][0-9]*$ && "$attempt" =~ ^[1-9][0-9]*$ ]] || exit 1
+              gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$possible/artifacts?per_page=100" > /tmp/fresh-trend-v2-audit/prospective-anchor-artifacts.json
+              name="continuous-paper-both-side-trend-paired-shadow-v2-$possible-$attempt"
+              if jq -e --arg name "$name" '
+                [.artifacts[] | select(.name == $name and .expired == false)]
+                | length == 1
+              ' /tmp/fresh-trend-v2-audit/prospective-anchor-artifacts.json > /dev/null; then
+                selected="$possible"
+                selected_attempt="$attempt"
+                break
+              fi
+            done < <(
+              jq -r '
+                [.workflow_runs[]
+                | select(.status == "completed" and .head_branch == "main"
+                  and .event == "workflow_dispatch"
+                  and .path == ".github/workflows/continuous-paper.yml"
+                  and .run_started_at >= "2026-10-14T00:00:00Z")]
+                | sort_by(.id) | .[:32][]
+                | "\(.id) \(.run_attempt)"
+              ' /tmp/fresh-trend-v2-audit/anchor-candidates.json
+            )
+          fi
+          if [ -z "$selected" ]; then
+            echo "ANCHOR_AVAILABLE=false" >> "$GITHUB_ENV"
+            echo "No selected v2 anchor in bounded source history. Cross-worker evidence UNVERIFIED." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          [[ "$selected" =~ ^[1-9][0-9]*$ && "$selected_attempt" =~ ^[1-9][0-9]*$ ]] || exit 1
+          if [ "$selected" -gt "$SOURCE_RUN_ID" ]; then
+            echo "ANCHOR_AVAILABLE=false" >> "$GITHUB_ENV"
+            echo "Selected anchor after current worker. No lineage credit." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          printf 'ANCHOR_RUN_ID=%s\nANCHOR_ATTEMPT=%s\n' "$selected" "$selected_attempt" >> "$GITHUB_ENV"
+
+      - name: Download independently bound selected v2 anchor
+        if: ${{ env.SOURCE_AVAILABLE != 'false' && env.ANCHOR_AVAILABLE != 'false' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/gh_api_bounded_retry.sh
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$ANCHOR_RUN_ID" > /tmp/fresh-trend-v2-audit/anchor-run.json
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$ANCHOR_RUN_ID/jobs?per_page=100" > /tmp/fresh-trend-v2-audit/anchor-jobs.json
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$ANCHOR_RUN_ID/artifacts?per_page=100" > /tmp/fresh-trend-v2-audit/anchor-artifacts.json
+          name="continuous-paper-both-side-trend-paired-shadow-v2-$ANCHOR_RUN_ID-$ANCHOR_ATTEMPT"
+          artifact_id="$(jq -r --arg name "$name" '
+            [.artifacts[] | select(.name == $name and .expired == false)]
+            | if length == 1 then .[0].id else empty end
+          ' /tmp/fresh-trend-v2-audit/anchor-artifacts.json)"
+          if [ -z "$artifact_id" ]; then
+            echo "::warning::No original selected anchor ZIP; continuity must fail closed"
+            exit 0
+          fi
+          curl --fail --silent --show-error --location \
+            --retry 3 --retry-delay 2 --retry-max-time 240 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+            --output /tmp/fresh-trend-v2-audit/anchor.zip
+
+      - name: Verify independently matched v2 cross-worker ledger and gap history
+        if: ${{ env.SOURCE_AVAILABLE != 'false' && env.ANCHOR_AVAILABLE != 'false' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.audit_fresh_trend_v2_selected_anchor \
+            --repository "$GITHUB_REPOSITORY" \
+            --anchor-run-id "$ANCHOR_RUN_ID" \
+            --anchor-attempt "$ANCHOR_ATTEMPT" \
+            --anchor-run-json /tmp/fresh-trend-v2-audit/anchor-run.json \
+            --anchor-jobs-json /tmp/fresh-trend-v2-audit/anchor-jobs.json \
+            --anchor-artifacts-json /tmp/fresh-trend-v2-audit/anchor-artifacts.json \
+            --anchor-artifact-zip /tmp/fresh-trend-v2-audit/anchor.zip \
+            --current-run-id "$SOURCE_RUN_ID" \
+            --current-attempt "$SOURCE_ATTEMPT" \
+            --current-run-json /tmp/fresh-trend-v2-audit/run.json \
+            --current-jobs-json /tmp/fresh-trend-v2-audit/jobs.json \
+            --current-artifacts-json /tmp/fresh-trend-v2-audit/artifacts.json \
+            --current-artifact-zip /tmp/fresh-trend-v2-audit/source.zip \
+            --output fresh-trend-v2-ledger-lineage.json
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          r = json.loads(Path("fresh-trend-v2-ledger-lineage.json").read_text())
+          print("## Independent selected-anchor v2 signed ledger continuation")
+          print("- status:", r["status"])
+          print("- reasons:", r["reasons"])
+          print("- both source accounts authenticated:", r.get("v2_source_archive_authenticated"), r.get("v2_selected_anchor_archive_authenticated"))
+          print("- selected historic prefix preserved:", r.get("signed_selected_anchor_prefix_preserved"))
+          print("- genuinely appended signed checkpoint:", r.get("new_signed_checkpoint_append_verified"))
+          print("- observed source gap state history:", r.get("source_gap_lifecycle_state_only"))
+          print("- actual original v2 genesis proven: FALSE")
+          print("- verified full mainnet source, 72h positive expectancy: FALSE / FALSE")
+          print("- execution / promotion authority: FALSE / FALSE")
+          PY
+
+      - name: Upload independent selected-anchor v2 continuity
+        if: ${{ always() && hashFiles('fresh-trend-v2-ledger-lineage.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: independent-fresh-trend-v2-lineage-${{ env.SOURCE_RUN_ID }}-${{ env.SOURCE_ATTEMPT }}
+          path: fresh-trend-v2-ledger-lineage.json
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Upload independent v2 source receipt
         if: ${{ always() && env.SOURCE_AVAILABLE != 'false' && hashFiles('fresh-trend-v2-source-audit.json') != '' }}
