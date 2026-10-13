@@ -31,6 +31,9 @@ from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
     TRIAL_ID_V2,
     both_side_trend_matched_shadow_v2_freeze,
 )
+from cocomelon.research.prospective_both_side_trend_paired_v2_genesis import (
+    prepare_v2_genesis,
+)
 
 TREND_PAIR_STATE_ROOT: Final = "both-side-trend-paired-shadow-v1"
 TREND_PAIR_FREEZE_FILE: Final = "both-side-trend-paired-shadow-freeze.json"
@@ -325,6 +328,15 @@ def start_trend_paired_shadow_sidecar(
     freeze = verify_loss_context_portfolio_shadow_freeze(freeze_path)
     if freeze != expected:
         raise RuntimeError("trend campaign freeze identity mismatch")
+    if campaign == "v2":
+        prepare_v2_genesis(
+            paper_root / state_name,
+            freeze=freeze,
+            startup_timestamp_ms=startup_timestamp_ms,
+            selected_markets=[market.canonical for market in selected_markets],
+            replay_config_digest=replay_config.config_digest,
+            starting_cash=replay_config.starting_cash,
+        )
     trend = LossContextPairedShadowRuntime(
         freeze=freeze,
         replay_config=replay_config,
