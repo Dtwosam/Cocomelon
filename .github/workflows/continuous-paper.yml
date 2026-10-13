@@ -474,6 +474,7 @@ jobs:
         run: |
           set -euo pipefail
           RUN_JSON="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID")"
+          printf '%s' "$RUN_JSON" > /tmp/continuous-paper-predecessor-run.json
           SOURCE_HEAD_SHA="$(
             printf '%s' "$RUN_JSON" | python -c '
           import json, os, sys
@@ -490,12 +491,55 @@ jobs:
           status = run.get("status")
           if status not in {"in_progress", "completed"}:
               raise SystemExit("predecessor run status is not resumable")
-          if (
+          if status == "completed" and run.get("conclusion") == "cancelled":
+              # Only a cancelled deferred research tail with a fully
+              # completed terminal fast resume is eligible. Never resurrect
+              # a cancelled trader from an earlier account or heartbeat.
+              import subprocess
+              result = subprocess.run(
+                  [
+                      "gh", "api",
+                      f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run['id']}/jobs?per_page=100",
+                  ],
+                  check=True, capture_output=True, text=True, timeout=45,
+              )
+              jobs = json.loads(result.stdout).get("jobs")
+              paper_jobs = [
+                  job for job in jobs if isinstance(job, dict)
+                  and job.get("name") == "paper"
+              ] if isinstance(jobs, list) else []
+              if len(paper_jobs) != 1:
+                  raise SystemExit("cancelled predecessor paper job unverified")
+              steps = {
+                  step.get("name"): step
+                  for step in paper_jobs[0].get("steps", [])
+                  if isinstance(step, dict)
+                  and isinstance(step.get("name"), str)
+              }
+              trader = steps.get("Run continuous paper trader", {})
+              required = (
+                  "Measure durable continuous paper state",
+                  "Pack fast continuous paper resume state",
+                  "Upload fast continuous paper resume state",
+              )
+              if (
+                  trader.get("status") != "completed"
+                  or trader.get("conclusion") not in {"success", "failure"}
+                  or not all(
+                      steps.get(name, {}).get("status") == "completed"
+                      and steps.get(name, {}).get("conclusion") == "success"
+                      for name in required
+                  )
+              ):
+                  raise SystemExit(
+                      "cancelled predecessor lacks terminal fast-state custody"
+                  )
+          elif (
               status == "completed"
               and run.get("conclusion") not in {"success", "failure"}
           ):
               raise SystemExit(
-                  "completed predecessor run must be success or failure"
+                  "completed predecessor not eligible for exact restore"
               )
           head_sha = run.get("head_sha")
           if not isinstance(head_sha, str) or len(head_sha) != 40:
@@ -509,10 +553,34 @@ jobs:
           ARTIFACT_SELECTION="$(
             python - "$RESUME_ARTIFACT_NAME" "$STATE_ARTIFACT_NAME" <<'PY'
           import json
+          import re
           import sys
           from pathlib import Path
           resume_name, state_name = sys.argv[1:3]
+          source_run = json.loads(
+              Path("/tmp/continuous-paper-predecessor-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          cancelled = (
+              source_run.get("status") == "completed"
+              and source_run.get("conclusion") == "cancelled"
+          )
           payload = json.loads(Path("/tmp/source-artifacts.json").read_text(encoding="utf-8"))
+          if cancelled:
+              exact = [
+                  item for item in payload.get("artifacts", [])
+                  if item.get("name") == resume_name
+                  and item.get("expired") is False
+                  and type(item.get("size_in_bytes")) is int
+                  and item["size_in_bytes"] > 0
+                  and isinstance(item.get("digest"), str)
+                  and re.fullmatch(r"sha256:[0-9a-f]{64}", item["digest"])
+              ]
+              if len(exact) != 1:
+                  raise SystemExit(
+                      "cancelled predecessor lacks exact published fast digest"
+                  )
           by_name = {
               item.get("name"): item
               for item in payload.get("artifacts", [])
@@ -539,6 +607,15 @@ jobs:
               "$SOURCE_HEAD_SHA" \
               "$STATE_ROOT" \
               "$ARTIFACT_MEMBER"; then
+              if python -c '
+          import json
+          from pathlib import Path
+          r = json.loads(Path("/tmp/continuous-paper-predecessor-run.json").read_text())
+          raise SystemExit(0 if r.get("conclusion") == "cancelled" else 1)
+          '; then
+                echo "::error::cancelled predecessor fast snapshot restore failed; no durable-only fallback"
+                exit 1
+              fi
               echo "::warning::fast resume restore failed; waiting for exact durable fallback"
               DURABLE_ARTIFACT_ID=""
               for poll in $(seq 1 40); do
