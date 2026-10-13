@@ -2287,6 +2287,8 @@ def test_four_hour_paper_worker_stall_can_checkpoint_handoff_before_gh_timeout(
     assert "overrun_watch_pid=$!" in trader
     assert 'kill "$overrun_watch_pid" 2>/dev/null || true' in trader
     assert 'request_runtime_handoff "$trader_pid" "session-overrun-watchdog"' in trader
+    assert 'mkdir "/tmp/continuous-paper-handoff-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"' in trader
+    assert "skipping duplicate escalation" in trader
     assert 'touch /tmp/continuous-paper-upgrade-requested' in trader
     assert 'kill -INT "$trader_pid"' in trader
     assert 'kill -TERM "$trader_pid"' in trader
