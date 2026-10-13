@@ -1005,6 +1005,34 @@ jobs:
             exit "$tee_status"
           fi
 
+      # Diagnose a source ZIP BEFORE publishing it, not after downstream
+      # reviews have mistaken a predecessor's signed row for a new checkpoint.
+      # Never repair/rewrite signed state or block original PAPER continuation.
+      - name: Verify terminal trend paired account consistency before source ZIP
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/verify_trend_paired_terminal_snapshot.py \
+            --state-root "$STATE_ROOT" \
+            --output "$STATE_ROOT/trend-paired-terminal-consistency.json"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          p = Path("continuous-paper-state/trend-paired-terminal-consistency.json")
+          r = json.loads(p.read_text())
+          print("## Original source-side terminal paired account audit")
+          print("- terminal status:", r["status"])
+          print("- failure reasons:", r["reasons"])
+          print("- signed ledger receipt verified:", r["signed_ledger_receipt_verified"])
+          print("- terminal account IDs match:", r["terminal_account_ids_match_signed_checkpoint"])
+          print("- baseline/candidate account IDs and time offsets:", r["lanes"])
+          print("- exchange data authenticated: FALSE")
+          print("- forward profitable after-cost edge: UNPROVEN")
+          print("- promotion / live order authority: FALSE / FALSE")
+          PY
+
       - name: Upload isolated both-side trend paired-paper evidence
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/both-side-trend-paired-shadow-summary.json') != '' }}
         continue-on-error: true
@@ -1013,6 +1041,7 @@ jobs:
         with:
           name: continuous-paper-both-side-trend-paired-shadow-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
+            continuous-paper-state/trend-paired-terminal-consistency.json
             continuous-paper-state/both-side-trend-paired-shadow-freeze.json
             continuous-paper-state/both-side-trend-paired-shadow-summary.json
             continuous-paper-state/both-side-trend-paired-shadow-v1
