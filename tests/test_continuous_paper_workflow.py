@@ -317,7 +317,7 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
         in source
     )
     assert (
-        "completed predecessor run must be success or failure"
+        "completed predecessor not eligible for exact restore"
         in source
     )
     assert (
