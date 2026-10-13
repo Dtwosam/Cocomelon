@@ -21,15 +21,37 @@ from cocomelon.research.loss_context_paired_shadow_runtime import (
     LossContextPairedShadowRuntime,
 )
 from cocomelon.research.loss_context_portfolio_shadow_candidate import (
+    LossContextPortfolioShadowFreeze,
     verify_loss_context_portfolio_shadow_freeze,
 )
 from cocomelon.research.prospective_both_side_trend_paired_freeze import (
     both_side_trend_matched_shadow_freeze,
 )
+from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
+    TRIAL_ID_V2,
+    both_side_trend_matched_shadow_v2_freeze,
+)
 
 TREND_PAIR_STATE_ROOT: Final = "both-side-trend-paired-shadow-v1"
 TREND_PAIR_FREEZE_FILE: Final = "both-side-trend-paired-shadow-freeze.json"
 TREND_PAIR_SUMMARY_FILE: Final = "both-side-trend-paired-shadow-summary.json"
+TREND_V2_STATE_ROOT: Final = "both-side-trend-paired-shadow-v2"
+TREND_V2_FREEZE_FILE: Final = "both-side-trend-paired-shadow-v2-freeze.json"
+TREND_V2_SUMMARY_FILE: Final = "both-side-trend-paired-shadow-v2-summary.json"
+
+
+def _campaign(campaign: str) -> tuple[str, str, str, LossContextPortfolioShadowFreeze]:
+    if campaign == "v1":
+        return (
+            TREND_PAIR_STATE_ROOT, TREND_PAIR_FREEZE_FILE,
+            TREND_PAIR_SUMMARY_FILE, both_side_trend_matched_shadow_freeze(),
+        )
+    if campaign == "v2":
+        return (
+            TREND_V2_STATE_ROOT, TREND_V2_FREEZE_FILE,
+            TREND_V2_SUMMARY_FILE, both_side_trend_matched_shadow_v2_freeze(),
+        )
+    raise ValueError("unknown frozen trend paired campaign")
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -50,14 +72,18 @@ def prepare_trend_pair_freeze(
     paper_root: Path,
     *,
     legacy_shadow_root_name: str,
+    campaign: str = "v1",
 ) -> Path:
     """Never overwrite a mismatched or incomplete earlier study identity."""
-    root = paper_root / TREND_PAIR_STATE_ROOT
+    state_name, freeze_name, _, expected = _campaign(campaign)
+    root = paper_root / state_name
     legacy = paper_root / legacy_shadow_root_name
-    if root == legacy or root.resolve() == legacy.resolve():
-        raise ValueError("trend paired shadow must not reuse v5 state root")
-    expected = both_side_trend_matched_shadow_freeze()
-    freeze_path = paper_root / TREND_PAIR_FREEZE_FILE
+    original = paper_root / TREND_PAIR_STATE_ROOT
+    if root.resolve() == legacy.resolve() or (
+        campaign == "v2" and root.resolve() == original.resolve()
+    ):
+        raise ValueError("trend paired shadow must not reuse v5 or v1 state root")
+    freeze_path = paper_root / freeze_name
     if freeze_path.exists():
         if verify_loss_context_portfolio_shadow_freeze(freeze_path) != expected:
             raise RuntimeError("existing trend paired shadow identity mismatch")
@@ -85,6 +111,7 @@ class PairedShadowTrendSidecar:
         *,
         summary_path: Path,
         startup_timestamp_ms: int,
+        campaign: str = "v1",
     ) -> None:
         if primary is not None and (
             primary is trend or primary.candidate_id == trend.candidate_id
@@ -94,6 +121,8 @@ class PairedShadowTrendSidecar:
         self.trend = trend
         self.summary_path = summary_path
         self.startup_timestamp_ms = startup_timestamp_ms
+        self.campaign = campaign
+        self.freeze = _campaign(campaign)[3]
 
     @property
     def candidate_id(self) -> str:
@@ -118,12 +147,10 @@ class PairedShadowTrendSidecar:
         # even when the actor is initialized and processing future records.
         return {
             **self.trend.status_payload(),
-            "trial_id": (
+            "trial_id": TRIAL_ID_V2 if self.campaign == "v2" else (
                 "prospective-both-sides-trend-lead-capital-matched-shadow-v1"
             ),
-            "forward_not_before_ms": (
-                both_side_trend_matched_shadow_freeze().prospective_not_before_ms
-            ),
+            "forward_not_before_ms": self.freeze.prospective_not_before_ms,
             "worker_startup_timestamp_ms": self.startup_timestamp_ms,
             "forward_only_after_embargo": True,
             "research_only": True,
@@ -231,14 +258,14 @@ class PairedShadowTrendSidecar:
         status = self.trend.status_payload()
         payload: dict[str, object] = {
             "schema_version": 1,
-            "trial_id": "prospective-both-sides-trend-lead-capital-matched-shadow-v1",
-            "frozen_forward_not_before_ms": (
-                both_side_trend_matched_shadow_freeze().prospective_not_before_ms
+            "trial_id": TRIAL_ID_V2 if self.campaign == "v2" else (
+                "prospective-both-sides-trend-lead-capital-matched-shadow-v1"
             ),
+            "frozen_forward_not_before_ms": self.freeze.prospective_not_before_ms,
             "startup_timestamp_ms": self.startup_timestamp_ms,
             "started_after_frozen_boundary": (
                 self.startup_timestamp_ms
-                > both_side_trend_matched_shadow_freeze().prospective_not_before_ms
+                > self.freeze.prospective_not_before_ms
             ),
             "original_mainnet_source_and_gaps_independently_authenticated": False,
             "research_only": True,
@@ -281,25 +308,33 @@ def start_trend_paired_shadow_sidecar(
     selected_markets: Sequence[MarketId],
     startup_timestamp_ms: int,
     legacy_shadow_root_name: str,
+    campaign: str = "v1",
 ) -> PairedShadowTrendSidecar:
     """Open a new isolated actor with or without a healthy legacy shadow.
 
     The newer candidate must not inherit the old v5 durable-state failure.
     It is still strictly paper-only and requires authentic future events.
     """
+    state_name, _, summary_name, expected = _campaign(campaign)
+    if campaign == "v2" and startup_timestamp_ms < expected.frozen_at_ms:
+        raise RuntimeError("v2 cannot start before its immutable freeze boundary")
     freeze_path = prepare_trend_pair_freeze(
         paper_root, legacy_shadow_root_name=legacy_shadow_root_name,
+        campaign=campaign,
     )
     freeze = verify_loss_context_portfolio_shadow_freeze(freeze_path)
+    if freeze != expected:
+        raise RuntimeError("trend campaign freeze identity mismatch")
     trend = LossContextPairedShadowRuntime(
         freeze=freeze,
         replay_config=replay_config,
         selected_markets=selected_markets,
-        state_root=paper_root / TREND_PAIR_STATE_ROOT,
+        state_root=paper_root / state_name,
         startup_timestamp_ms=startup_timestamp_ms,
     )
     return PairedShadowTrendSidecar(
         primary, trend,
-        summary_path=paper_root / TREND_PAIR_SUMMARY_FILE,
+        summary_path=paper_root / summary_name,
         startup_timestamp_ms=startup_timestamp_ms,
+        campaign=campaign,
     )
