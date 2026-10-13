@@ -1,5 +1,12 @@
 # Cocomelon Project Status
 
+## October 13 — independently preserve original actor-received DATA_GAP bytes across v2 worker handoffs
+
+Independent v2 source reviewers already authenticate an individual archived paired-paper source and its self-consistent, signed `source-gap-record-witness.jsonl`, but independently valid *later* signed states do not alone prove that previously received gap records survived the worker boundary. The selected original-genesis anchor cross-worker verifier now demands **byte-identical predecessor witness prefix** in the successor (including old recovered/closed gaps), independently recomputes both per-worker hash chains and compares each receipt to its independently archived signed state/record count. Newly appended source-gap events must have a market-record ordinal strictly AFTER the anchor's signed processed count; a rewritten, deleted, inserted, backdated or truncated record causes `status=unverified`, with no forward/PnL authority. The 72-hour signed paper-account evaluator also requires this explicit cross-worker prefix verification, and workflow summaries expose anchored/successor received-gap counts.
+
+This is a **provenance-integrity guard for records actually delivered to the research actor**, not independent proof that the Hyperliquid feed emitted every event or that venue fills/marks are authentic. A complete, positive after-cost edge remains unproven; original paper strategy, v1 accounts, v2 frozen candidate and LIVE-disabled status remain unchanged.
+
+
 ## October 13 — fix actual v2 signed ranked-market selection continuity (before first genesis)
 
 The original paper scanner legitimately reranks its selected markets within and across workers. The write-once v2 genesis records the **first** worker's starting universe, but the v2 paired actor reconciles its two accounts to the **current** signed, ranked universe. An earlier restore/audit check mistakenly demanded that every later ranked universe equal the **initial** genesis list: a routine market rerank would quarantine otherwise valid forward v2 paper or cause an independent audit to reject authentic sources after a worker handoff. This is a source-continuity bug, NOT a change in the frozen challenger strategy.

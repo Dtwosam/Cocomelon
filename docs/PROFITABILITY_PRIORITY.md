@@ -1,5 +1,12 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 13 — independently preserve original actor-received DATA_GAP bytes across v2 worker handoffs
+
+Independent v2 source reviewers already authenticate an individual archived paired-paper source and its self-consistent, signed `source-gap-record-witness.jsonl`, but independently valid *later* signed states do not alone prove that previously received gap records survived the worker boundary. The selected original-genesis anchor cross-worker verifier now demands **byte-identical predecessor witness prefix** in the successor (including old recovered/closed gaps), independently recomputes both per-worker hash chains and compares each receipt to its independently archived signed state/record count. Newly appended source-gap events must have a market-record ordinal strictly AFTER the anchor's signed processed count; a rewritten, deleted, inserted, backdated or truncated record causes `status=unverified`, with no forward/PnL authority. The 72-hour signed paper-account evaluator also requires this explicit cross-worker prefix verification, and workflow summaries expose anchored/successor received-gap counts.
+
+This is a **provenance-integrity guard for records actually delivered to the research actor**, not independent proof that the Hyperliquid feed emitted every event or that venue fills/marks are authentic. A complete, positive after-cost edge remains unproven; original paper strategy, v1 accounts, v2 frozen candidate and LIVE-disabled status remain unchanged.
+
+
 ## October 13 — separate the midnight v2 freeze from the six-hour entry embargo
 
 The independent v2 source summary now reports two distinct calendar facts: `started_after_frozen_boundary` means that an original worker started **at/after 2026-10-14 00:00 UTC**; `started_after_forward_entry_embargo` means it started **at/after 2026-10-14 06:00 UTC**. A clean actor may legitimately start during the six-hour no-entry embargo and begin receiving source data; the unchanged candidate entry filter still forbids trades before 06:00. The earlier label incorrectly compared first-worker startup to the *entry* boundary while calling it the *freeze* boundary. The existing v1 receipt remains backward-compatible. Neither timestamp is exchange feed authentication nor forward profit evidence. All execution remains PAPER ONLY.

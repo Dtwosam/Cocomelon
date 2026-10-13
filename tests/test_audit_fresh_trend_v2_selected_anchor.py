@@ -8,11 +8,19 @@ from pathlib import Path
 
 import pytest
 
+from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
     FORWARD_NOT_BEFORE_MS_V2,
     FROZEN_AT_MS_V2,
     TRIAL_ID_V2,
     both_side_trend_matched_shadow_v2_freeze,
+)
+from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+    FILE_NAME as V2_GAP_WITNESS_FILE,
+)
+from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+    V2SourceGapWitness,
+    read_source_gap_witness,
 )
 from cocomelon.research.prospective_both_side_trend_paired_v2_genesis import (
     _digest,
@@ -35,8 +43,12 @@ SOURCE_ARGS = {
 }
 
 
-def _state() -> dict[str, object]:
+def _state(
+    *, record_count: int, gap_receipt: dict[str, object],
+) -> dict[str, object]:
     return {
+        "record_count": record_count,
+        "v2_source_gap_event_witness": gap_receipt,
         "baseline": {
             "known_gap_intervals_by_stream": {},
             "known_global_gap_intervals_by_stream": {},
@@ -83,8 +95,30 @@ def _archive(
     path: Path,
     *,
     rows: list[dict[str, object]],
+    gaps: tuple[int, ...] = (),
 ) -> Path:
+    root = path.parent / ("gap-witness-" + path.stem)
+    witness = V2SourceGapWitness(root, restoring=False)
+    for ordinal in gaps:
+        record = ReplayRecord(
+            record_kind=SourceRecordKind.DATA_GAP,
+            available_at_ms=FROZEN_AT_MS_V2 + 100 + ordinal,
+            source="synthetic-normalized-paper-input",
+            schema_version=1,
+            market=None,
+            exchange_time_ms=None,
+            event_key=f"source-gap-{ordinal}",
+            payload_json='{"reason":"disconnect","stream_id":"allMids"}',
+            event_kind=None,
+        )
+        witness.append(record, ordinal=ordinal)
+    source_bytes = (root / V2_GAP_WITNESS_FILE).read_bytes()
+    gap_receipt = read_source_gap_witness(
+        root / V2_GAP_WITNESS_FILE,
+        total_processed_records=rows[-1]["record_count"],
+    )
     with zipfile.ZipFile(path, "w") as zipped:
+        zipped.writestr(audit.V2_GAP_WITNESS_MEMBER, source_bytes)
         zipped.writestr(
             "both-side-trend-paired-shadow-v2/v2-genesis.json",
             json.dumps(_genesis()),
@@ -93,7 +127,9 @@ def _archive(
             audit.V2_LEDGER_MEMBER,
             "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
         )
-        zipped.writestr(audit.V2_STATE_MEMBER, json.dumps(_state()))
+        zipped.writestr(audit.V2_STATE_MEMBER, json.dumps(_state(
+            record_count=rows[-1]["record_count"], gap_receipt=gap_receipt,
+        )))
     return path
 
 
@@ -113,19 +149,26 @@ def _audit(
     *,
     successor: list[dict[str, object]],
     anchor: list[dict[str, object]] | None = None,
+    anchor_gaps: tuple[int, ...] = (),
+    successor_gaps: tuple[int, ...] = (),
 ) -> dict[str, object]:
     monkeypatch.setattr(
         audit, "_strict_source",
         lambda **kw: {
             "v2_genesis_original_worker_authenticated": True,
+            "v2_actor_received_gap_record_chain_verified": True,
             "status": "archive_checkpoint_lineage_verified",
             "source_v2_terminal_receipt_verified": True,
             "archived_execution_economics_reconciled": True,
         },
     )
     anchor_rows = anchor or [_row("anchor", None, end=100, count=10)]
-    source_zip = _archive(tmp_path / "source.zip", rows=successor)
-    anchor_zip = _archive(tmp_path / "anchor.zip", rows=anchor_rows)
+    source_zip = _archive(
+        tmp_path / "source.zip", rows=successor, gaps=successor_gaps,
+    )
+    anchor_zip = _archive(
+        tmp_path / "anchor.zip", rows=anchor_rows, gaps=anchor_gaps,
+    )
     return audit.audit_v2_selected_anchor_lineage(
         **SOURCE_ARGS, anchor_archive=anchor_zip, current_archive=source_zip,
     )
@@ -146,6 +189,10 @@ def test_valid_selected_v2_anchor_prefix_and_genuine_append(
     assert receipt["new_signed_checkpoint_count"] == 1
     assert receipt["signed_selected_anchor_prefix_preserved"] is True
     assert receipt["new_signed_checkpoint_append_verified"] is True
+    assert receipt["v2_actor_gap_witness_prefix_verified"] is True
+    assert receipt["v2_actor_gap_witness_continuity"][
+        "v2_actor_gap_witness_new_record_count"
+    ] == 0
     assert receipt["source_gap_lifecycle_state_only"] is not None
     assert receipt["v2_campaign_genesis_proven"] is False
     assert receipt["first_archived_v2_worker_proven"] is True
@@ -220,7 +267,10 @@ def test_selected_anchor_is_not_a_forward_successor(
 ) -> None:
     monkeypatch.setattr(
         audit, "_strict_source",
-        lambda **kw: {"v2_genesis_original_worker_authenticated": True},
+        lambda **kw: {
+            "v2_genesis_original_worker_authenticated": True,
+            "v2_actor_received_gap_record_chain_verified": True,
+        },
     )
     anchor = _archive(
         tmp_path / "anchor.zip",
@@ -256,3 +306,85 @@ def test_excluded_source_metadata_and_unsafe_authority_never_promote(
     assert "account mismatch" in str(result["reasons"])
     assert result["execution_authority"] is False
     assert result["promotion_authority"] is False
+
+
+def test_v2_cross_worker_received_gap_witness_preserves_original_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt = _audit(
+        tmp_path, monkeypatch,
+        anchor=[_row("anchor", None, end=100, count=10)],
+        successor=[
+            _row("anchor", None, end=100, count=10),
+            _row("new", "anchor", end=200, count=20),
+        ],
+        anchor_gaps=(5,), successor_gaps=(5, 17),
+    )
+    assert receipt["status"] == "v2_selected_anchor_worker_append_verified"
+    assert receipt["v2_actor_gap_witness_prefix_verified"] is True
+    assert receipt["v2_actor_gap_witness_continuity"][
+        "v2_actor_gap_witness_anchor_record_count"
+    ] == 1
+    assert receipt["v2_actor_gap_witness_continuity"][
+        "v2_actor_gap_witness_successor_record_count"
+    ] == 2
+    assert receipt["v2_actor_gap_witness_continuity"][
+        "v2_actor_gap_witness_new_record_count"
+    ] == 1
+    assert receipt["v2_actor_gap_witness_continuity"][
+        "original_venue_gap_completeness_authenticated"
+    ] is False
+
+
+@pytest.mark.parametrize("anchor_gaps,successor_gaps", [
+    ((5,), ()),
+    ((5,), (6,)),
+    ((5,), (5, 9)),
+    ((5,), (5, 18, 19)),
+])
+def test_v2_gap_witness_removed_rewritten_or_backdated_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    anchor_gaps: tuple[int, ...], successor_gaps: tuple[int, ...],
+) -> None:
+    # Source worker-specific signed state is internally self-consistent in
+    # BOTH ZIPs. Only a cross-worker check can catch the disappearing,
+    # rewritten, or retroactively inserted originally received gap inputs.
+    receipt = _audit(
+        tmp_path, monkeypatch,
+        successor=[
+            _row("anchor", None, end=100, count=10),
+            _row("fresh", "anchor", end=200, count=20),
+        ],
+        anchor_gaps=anchor_gaps, successor_gaps=successor_gaps,
+    )
+    if successor_gaps == (5, 18, 19):
+        assert receipt["v2_actor_gap_witness_prefix_verified"] is True
+        return
+    assert receipt["status"] == "unverified"
+    assert receipt["v2_actor_gap_witness_prefix_verified"] is False
+    assert "DATA_GAP" in str(receipt["reasons"])
+
+
+def test_v2_same_worker_original_zip_still_audits_empty_gap_witness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        audit, "_strict_source",
+        lambda **kw: {
+            "v2_genesis_original_worker_authenticated": True,
+            "v2_actor_received_gap_record_chain_verified": True,
+        },
+    )
+    anchor = _archive(
+        tmp_path / "anchor.zip",
+        rows=[_row("anchor", None, end=100, count=10)],
+    )
+    args = dict(SOURCE_ARGS)
+    args["current_run_id"] = args["anchor_run_id"]
+    result = audit.audit_v2_selected_anchor_lineage(
+        **args, anchor_archive=anchor, current_archive=anchor,
+    )
+    assert result["status"] == "v2_selected_anchor_only"
+    assert result["v2_actor_gap_witness_prefix_verified"] is True
+    assert result["new_signed_checkpoint_append_verified"] is False
