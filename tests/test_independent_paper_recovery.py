@@ -41,6 +41,8 @@ def paper_job(
     *,
     fast_uploaded: bool = True,
     skipped_checkout: bool = False,
+    measured: bool = False,
+    fast_packed: bool = False,
 ) -> list[dict[str, object]]:
     return [{
         "name": "paper",
@@ -54,6 +56,16 @@ def paper_job(
                 "name": "Run continuous paper trader",
                 "status": trader_status,
                 "conclusion": trader_conclusion,
+            },
+            {
+                "name": "Measure durable continuous paper state",
+                "status": "completed" if measured else "pending",
+                "conclusion": "success" if measured else None,
+            },
+            {
+                "name": "Pack fast continuous paper resume state",
+                "status": "completed" if fast_packed else "pending",
+                "conclusion": "success" if fast_packed else None,
             },
             {
                 "name": "Upload fast continuous paper resume state",
@@ -147,6 +159,69 @@ def test_failed_worker_cannot_be_replaced_from_old_archives() -> None:
             13: exact_artifact(13), 12: exact_artifact(12)
         },
     ) == ("blocked", None)
+
+
+def test_failed_trader_terminal_fast_snapshot_can_attempt_exact_restore() -> None:
+    # Observed October 13 run: trader step failed, but it stopped, local
+    # state was measured and packed, and the exact fast archive was uploaded.
+    assert choose(
+        [
+            run(
+                38473612016, event="workflow_dispatch",
+                status="completed", conclusion="success",
+            ),
+            run(38432977298),
+            run(38431384464, status="completed", conclusion="success"),
+        ],
+        jobs_by_run={
+            38473612016: paper_job(
+                "completed", "skipped", skipped_checkout=True,
+            ),
+            38432977298: paper_job(
+                "completed", "failure", measured=True, fast_packed=True,
+            ),
+        },
+        artifacts_by_run={38432977298: exact_artifact(38432977298)},
+    ) == ("ready", (38432977298, 1))
+
+
+@pytest.mark.parametrize(
+    ("measured", "packed", "uploaded", "expired"),
+    [
+        (False, True, True, False),
+        (True, False, True, False),
+        (True, True, False, False),
+        (True, True, True, True),
+    ],
+)
+def test_failed_trader_with_incomplete_or_expired_terminal_fast_state_blocks(
+    measured: bool, packed: bool, uploaded: bool, expired: bool,
+) -> None:
+    artifacts = exact_artifact(13)
+    artifacts[0]["expired"] = expired
+    assert choose(
+        [run(13), run(12)],
+        jobs_by_run={
+            13: paper_job(
+                "completed", "failure", measured=measured,
+                fast_packed=packed, fast_uploaded=uploaded,
+            ),
+            12: paper_job("completed", "success"),
+        },
+        artifacts_by_run={13: artifacts, 12: exact_artifact(12)},
+    ) == ("blocked", None)
+
+
+def test_failed_trader_still_running_cannot_be_rescued() -> None:
+    assert choose(
+        [run(13)],
+        jobs_by_run={
+            13: paper_job(
+                "in_progress", None, measured=True, fast_packed=True,
+            ),
+        },
+        artifacts_by_run={13: exact_artifact(13)},
+    ) == ("active", (13, 1))
 
 
 def test_skipped_guard_does_not_claim_live_trader_or_evidence() -> None:
