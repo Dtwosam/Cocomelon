@@ -483,6 +483,7 @@ def _independent_open_mark_arithmetic(
 
 def _reconcile_archived_lane_economics(
     path: Path, *, account_state_id: str, ledger_lane: dict[str, object],
+    forward_anchor_end_ms: int | None = None,
 ) -> dict[str, object]:
     """Independently reconstruct paired paper cashflows from archived fills.
 
@@ -582,6 +583,10 @@ def _reconcile_archived_lane_economics(
         closed_count = 0
         side_counts = {"long": 0, "short": 0}
         side_net = {"long": Decimal(0), "short": Decimal(0)}
+        forward_net_closed: list[Decimal] = []
+        forward_net_by_side: dict[str, list[Decimal]] = {
+            "long": [], "short": [],
+        }
         active: dict[str, dict[str, object]] = {}
         for _, plan_id, attempt in sorted(
             attempts,
@@ -641,10 +646,17 @@ def _reconcile_archived_lane_economics(
                         Decimal(0),
                     )
                     side = "long" if position["side"] == "buy" else "short"
-                    side_net[side] += (
+                    net = (
                         position["gross"] - position["entry_fee"]
                         - position["exit_fee"] + matched_funding
                     )
+                    side_net[side] += net
+                    if (
+                        forward_anchor_end_ms is not None
+                        and attempt["attempt_timestamp_ms"] > forward_anchor_end_ms
+                    ):
+                        forward_net_closed.append(net)
+                        forward_net_by_side[side].append(net)
                     side_counts[side] += 1
                     closed_count += 1
                     del active[market]
@@ -724,7 +736,43 @@ def _reconcile_archived_lane_economics(
             raise TrendPairHandoffAuditError(
                 "paired execution activity counts do not match signed ledger"
             )
+        def closed_cohort(values: list[Decimal]) -> dict[str, object]:
+            positives = sum(
+                (value for value in values if value > 0), Decimal(0),
+            )
+            losses = -sum(
+                (value for value in values if value < 0), Decimal(0),
+            )
+            return {
+                "closed_trades": len(values),
+                "wins_after_costs": sum(value > 0 for value in values),
+                "losses_after_costs": sum(value < 0 for value in values),
+                "net_pnl_after_costs": str(sum(values, Decimal(0))),
+                "gross_positive_net_pnl": str(positives),
+                "absolute_gross_negative_net_pnl": str(losses),
+                "net_expectancy_per_closed_trade": (
+                    None if not values
+                    else str(sum(values, Decimal(0)) / Decimal(len(values)))
+                ),
+                "profit_factor": (
+                    None if losses == 0 else str(positives / losses)
+                ),
+                "profit_factor_infinite_not_inferred": True,
+            }
+
         return {
+            "forward_closed_trade_cohort": (
+                None if forward_anchor_end_ms is None else {
+                    "window": "exits_strictly_after_first_eligible_signed_checkpoint",
+                    "anchor_end_ms": forward_anchor_end_ms,
+                    "all": closed_cohort(forward_net_closed),
+                    "long": closed_cohort(forward_net_by_side["long"]),
+                    "short": closed_cohort(forward_net_by_side["short"]),
+                    "includes_entry_fees_and_position_funding_from_before_anchor": True,
+                    "account_window_PnL_is_a_distinct_marked_equity_delta": True,
+                    "original_exchange_fill_prices_authenticated": False,
+                }
+            ),
             "closed_trades_from_fills": closed_count,
             "realized_gross_from_fills": str(realized_gross),
             "fees_from_fills": str(fee_total),
@@ -984,6 +1032,16 @@ def audit_trend_handoff(
             result["source_scoped_open_gap_diagnostics"] = (
                 _signed_open_gap_sources(state, latest)
             )
+            forward_anchor_end_ms: int | None = None
+            if campaign == "v2":
+                interim_review = build_paired_shadow_review(expected, ledger_path)
+                anchor_value = interim_review.get("review_anchor_end_ms")
+                if type(anchor_value) is int:
+                    forward_anchor_end_ms = anchor_value
+                elif anchor_value is not None:
+                    raise TrendPairHandoffAuditError(
+                        "v2 signed forward review anchor has invalid type"
+                    )
             reconciled: dict[str, object] = {}
             for lane in ("baseline", "candidate"):
                 lane_state = _mapping(state.get(lane), f"{lane} state")
@@ -993,10 +1051,17 @@ def audit_trend_handoff(
                     raise TrendPairHandoffAuditError(
                         f"{lane} durable account state ID absent"
                     )
-                reconciled[lane] = _reconcile_archived_lane_economics(
-                    Path(directory) / f"{lane}-execution.sqlite3",
-                    account_state_id=state_id, ledger_lane=lane_ledger,
-                )
+                if campaign == "v2":
+                    reconciled[lane] = _reconcile_archived_lane_economics(
+                        Path(directory) / f"{lane}-execution.sqlite3",
+                        account_state_id=state_id, ledger_lane=lane_ledger,
+                        forward_anchor_end_ms=forward_anchor_end_ms,
+                    )
+                else:
+                    reconciled[lane] = _reconcile_archived_lane_economics(
+                        Path(directory) / f"{lane}-execution.sqlite3",
+                        account_state_id=state_id, ledger_lane=lane_ledger,
+                    )
             result["reconciled_lanes"] = reconciled
             result["archived_execution_economics_reconciled"] = True
             if campaign == "v2":
@@ -1076,7 +1141,10 @@ def audit_trend_handoff(
                 .get("exchange_mark_prices_independently_authenticated") is False
                 for lane in ("baseline", "candidate")
             )
-            review = build_paired_shadow_review(expected, ledger_path)
+            review = (
+                interim_review if campaign == "v2"
+                else build_paired_shadow_review(expected, ledger_path)
+            )
             result["review_report"] = review
             result["record_count"] = state.get("record_count")
             result["verified_checkpoint_count"] = ledger["row_count"]
