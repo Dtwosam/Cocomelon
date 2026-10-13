@@ -831,6 +831,14 @@ jobs:
             local trader_pid="$1"
             local replacement_run="$2"
 
+            # A code-upgrade watcher and the duration-overrun watcher may
+            # request the same handoff concurrently. One atomic per-run lease
+            # prevents duplicate INT/TERM/KILL escalation against the same
+            # trader PID, with the original durable checkpoint authoritative.
+            if ! mkdir "/tmp/continuous-paper-handoff-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" 2>/dev/null; then
+              echo "::notice::continuous-paper handoff already requested; skipping duplicate escalation"
+              return 0
+            fi
             echo "::notice::continuous-paper handoff requested by $replacement_run; requesting graceful handoff independently of heartbeat"
             touch /tmp/continuous-paper-upgrade-requested
 
