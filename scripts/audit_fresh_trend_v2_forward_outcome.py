@@ -185,6 +185,22 @@ def _closed_cohort(
     )
     if profit < 0 or loss < 0:
         raise TrendPairHandoffAuditError("net trade gross components negative")
+    net_closed = _number(all_trades.get("net_pnl_after_costs"), "cohort net cash")
+    expectancy = all_trades.get("net_expectancy_per_closed_trade")
+    if net_closed != profit - loss:
+        raise TrendPairHandoffAuditError("closed cohort net versus gains/losses mismatch")
+    wins = all_trades.get("wins_after_costs")
+    losses = all_trades.get("losses_after_costs")
+    if (
+        type(wins) is not int or type(losses) is not int
+        or wins < 0 or losses < 0 or wins + losses > count
+    ):
+        raise TrendPairHandoffAuditError("closed cohort wins/loss counts invalid")
+    if count:
+        if _number(expectancy, "closed cohort expectancy") != net_closed / count:
+            raise TrendPairHandoffAuditError("closed cohort expectancy mismatch")
+    elif expectancy is not None or net_closed != 0:
+        raise TrendPairHandoffAuditError("no-trade cohort cannot report expectancy")
     if all_trades.get("profit_factor") is not None:
         reported_pf = _number(all_trades["profit_factor"], "profit factor")
         if loss <= 0 or reported_pf != profit / loss:
@@ -252,6 +268,13 @@ def _economics(
         or lineage.get("new_signed_checkpoint_append_verified") is not True
         or lineage.get("current_run_id") != source.get("source_run_id")
         or lineage.get("current_attempt") != source.get("source_run_attempt")
+        or not rows
+        or lineage.get("successor_last_row_digest")
+        != rows[-1].get("row_digest")
+        or lineage.get("successor_row_count") != len(rows)
+        or lineage.get("successor_end_ms") != rows[-1].get("end_ms")
+        or lineage.get("successor_record_count")
+        != rows[-1].get("record_count")
     ):
         reasons.append("original_worker_and_forward_source_lineage_not_authenticated")
     if forward_anchor is None or latest is None or len(window) < 2:
