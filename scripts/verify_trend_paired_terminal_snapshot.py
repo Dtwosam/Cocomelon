@@ -33,7 +33,9 @@ def _json_mapping(path: Path) -> dict[str, object]:
     return payload
 
 
-def verify_terminal_snapshot(state_root: Path) -> dict[str, object]:
+def verify_terminal_snapshot(
+    state_root: Path, *, root_name: str = ROOT, summary_name: str = SUMMARY,
+) -> dict[str, object]:
     """Validate source arithmetic provenance, never independent feed or profit."""
     result: dict[str, object] = {
         "status": "unverified",
@@ -54,9 +56,18 @@ def verify_terminal_snapshot(state_root: Path) -> dict[str, object]:
         "promotion_authority": False,
     }
     try:
-        folder = state_root / ROOT
+        if (root_name, summary_name) not in (
+            (ROOT, SUMMARY),
+            (
+                "both-side-trend-paired-shadow-v2",
+                "both-side-trend-paired-shadow-v2-summary.json",
+            ),
+        ):
+            raise TerminalResearchSnapshotError("unknown paired campaign identity")
+        folder = state_root / root_name
         state = _json_mapping(folder / "paired-shadow-state.json")
-        summary = _json_mapping(state_root / SUMMARY)
+        summary = _json_mapping(state_root / summary_name)
+        result["campaign_state_root"] = root_name
         unsigned = dict(state)
         digest = unsigned.pop("state_digest", None)
         if not isinstance(digest, str) or digest != _state_digest(unsigned):
@@ -157,8 +168,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--state-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--root-name", default=ROOT)
+    parser.add_argument("--summary-name", default=SUMMARY)
     args = parser.parse_args(argv)
-    payload = verify_terminal_snapshot(args.state_root)
+    payload = verify_terminal_snapshot(
+        args.state_root, root_name=args.root_name, summary_name=args.summary_name,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_name(
         f".{args.output.name}.{os.getpid()}.tmp"
