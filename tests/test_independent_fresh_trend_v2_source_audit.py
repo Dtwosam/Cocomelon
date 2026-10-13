@@ -228,3 +228,28 @@ def test_v2_independent_workflow_cannot_execute_or_claim_profit() -> None:
     assert "COCOMELON_EXECUTION_MODE: live" not in workflow
     assert "HYPERLIQUID_PRIVATE_KEY" not in workflow
     assert "place_order" not in workflow
+
+
+def test_matching_v2_archive_members_can_open_only_exact_freeze(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    z = tmp_path / "matched-v2.zip"
+    freeze = both_side_trend_matched_shadow_v2_freeze()
+    with zipfile.ZipFile(z, "w") as archive:
+        archive.writestr(TREND_V2_FREEZE_FILE, json.dumps(freeze.to_dict()))
+        archive.writestr(TREND_V2_SUMMARY_FILE, '{"trial_id": "v2"}')
+        archive.writestr(
+            f"{TREND_V2_STATE_ROOT}/paired-shadow-state.json",
+            '{"schema_version": 2}',
+        )
+        archive.writestr(
+            f"{TREND_V2_STATE_ROOT}/review-ledger.jsonl", "{}\n",
+        )
+    monkeypatch.setattr(audit, "_verify_archived_execution_store", lambda *a, **kw: None)
+    frozen, summary, state, ledger = audit._extract_receipts(
+        z, tmp_path, campaign="v2",
+    )
+    assert frozen["candidate_id"] == freeze.candidate_id
+    assert summary["trial_id"] == "v2"
+    assert state["schema_version"] == 2
+    assert ledger.read_text() == "{}\n"
