@@ -14,6 +14,12 @@ from typing import Final
 
 from cocomelon.research.loss_context_paired_portfolio_shadow import _state_digest
 from cocomelon.research.loss_context_paired_shadow_review import review_ledger_receipt
+from cocomelon.research.loss_context_portfolio_shadow_candidate import (
+    verify_loss_context_portfolio_shadow_freeze,
+)
+from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
+    both_side_trend_matched_shadow_v2_freeze,
+)
 
 ROOT: Final = "both-side-trend-paired-shadow-v1"
 SUMMARY: Final = "both-side-trend-paired-shadow-summary.json"
@@ -33,13 +39,16 @@ def _json_mapping(path: Path) -> dict[str, object]:
     return payload
 
 
-def verify_terminal_snapshot(state_root: Path) -> dict[str, object]:
+def verify_terminal_snapshot(
+    state_root: Path, *, root_name: str = ROOT, summary_name: str = SUMMARY,
+) -> dict[str, object]:
     """Validate source arithmetic provenance, never independent feed or profit."""
     result: dict[str, object] = {
         "status": "unverified",
         "reasons": [],
         "signed_state_digest_verified": False,
         "signed_ledger_receipt_verified": False,
+        "frozen_v2_candidate_identity_verified": False,
         "summary_checkpoint_matches_signed_state": False,
         "terminal_account_ids_match_signed_checkpoint": False,
         "signed_record_count": None,
@@ -54,9 +63,18 @@ def verify_terminal_snapshot(state_root: Path) -> dict[str, object]:
         "promotion_authority": False,
     }
     try:
-        folder = state_root / ROOT
+        if (root_name, summary_name) not in (
+            (ROOT, SUMMARY),
+            (
+                "both-side-trend-paired-shadow-v2",
+                "both-side-trend-paired-shadow-v2-summary.json",
+            ),
+        ):
+            raise TerminalResearchSnapshotError("unknown paired campaign identity")
+        folder = state_root / root_name
         state = _json_mapping(folder / "paired-shadow-state.json")
-        summary = _json_mapping(state_root / SUMMARY)
+        summary = _json_mapping(state_root / summary_name)
+        result["campaign_state_root"] = root_name
         unsigned = dict(state)
         digest = unsigned.pop("state_digest", None)
         if not isinstance(digest, str) or digest != _state_digest(unsigned):
@@ -71,6 +89,19 @@ def verify_terminal_snapshot(state_root: Path) -> dict[str, object]:
         ):
             raise TerminalResearchSnapshotError("signed paired state authority invalid")
         result["signed_state_digest_verified"] = True
+        if root_name == "both-side-trend-paired-shadow-v2":
+            expected_v2 = both_side_trend_matched_shadow_v2_freeze()
+            on_disk_v2 = verify_loss_context_portfolio_shadow_freeze(
+                state_root / "both-side-trend-paired-shadow-v2-freeze.json"
+            )
+            if (
+                on_disk_v2 != expected_v2
+                or state.get("portfolio_shadow_candidate_id") != expected_v2.candidate_id
+            ):
+                raise TerminalResearchSnapshotError(
+                    "v2 state candidate identity does not match sealed v2 freeze"
+                )
+            result["frozen_v2_candidate_identity_verified"] = True
         candidate = state.get("portfolio_shadow_candidate_id")
         if not isinstance(candidate, str) or not candidate:
             raise TerminalResearchSnapshotError("signed trial candidate ID missing")
@@ -157,8 +188,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--state-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--root-name", default=ROOT)
+    parser.add_argument("--summary-name", default=SUMMARY)
     args = parser.parse_args(argv)
-    payload = verify_terminal_snapshot(args.state_root)
+    payload = verify_terminal_snapshot(
+        args.state_root, root_name=args.root_name, summary_name=args.summary_name,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_name(
         f".{args.output.name}.{os.getpid()}.tmp"
