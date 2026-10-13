@@ -831,7 +831,15 @@ jobs:
             local trader_pid="$1"
             local replacement_run="$2"
 
-            echo "::notice::newer continuous-paper push run $replacement_run is waiting; requesting graceful handoff independently of heartbeat"
+            # A code-upgrade watcher and the duration-overrun watcher may
+            # request the same handoff concurrently. One atomic per-run lease
+            # prevents duplicate INT/TERM/KILL escalation against the same
+            # trader PID, with the original durable checkpoint authoritative.
+            if ! mkdir "/tmp/continuous-paper-handoff-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" 2>/dev/null; then
+              echo "::notice::continuous-paper handoff already requested; skipping duplicate escalation"
+              return 0
+            fi
+            echo "::notice::continuous-paper handoff requested by $replacement_run; requesting graceful handoff independently of heartbeat"
             touch /tmp/continuous-paper-upgrade-requested
 
             for _ in $(seq 1 120); do
@@ -907,15 +915,33 @@ jobs:
             done
           }
 
+          watch_for_session_overrun() {
+            local trader_pid="$1"
+            # Ordinary PAPER runtime is capped at 14400s. Its async cleanup
+            # and optional research can hang after the final heartbeat.
+            # Ask for its existing checkpoint-safe stop at 4h15m instead of
+            # consuming all 355 job minutes and losing the exact resume ZIP.
+            # The same bounded INT/TERM escalation applies if it stalls.
+            sleep 15300
+            if kill -0 "$trader_pid" 2>/dev/null; then
+              echo "::warning::continuous-paper runtime exceeded four-hour session plus 15m cleanup grace; recovering exact-state handoff"
+              request_runtime_handoff "$trader_pid" "session-overrun-watchdog"
+            fi
+          }
+
           output_fifo="/tmp/continuous-paper-output-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           rm -f "$output_fifo"
           mkfifo "$output_fifo"
           trader_pid=""
           upgrade_watch_pid=""
+          overrun_watch_pid=""
 
           cleanup_runtime_processes() {
             if [ -n "$upgrade_watch_pid" ]; then
               kill "$upgrade_watch_pid" 2>/dev/null || true
+            fi
+            if [ -n "$overrun_watch_pid" ]; then
+              kill "$overrun_watch_pid" 2>/dev/null || true
             fi
             if [ -n "$trader_pid" ] && kill -0 "$trader_pid" 2>/dev/null; then
               kill -TERM "$trader_pid" 2>/dev/null || true
@@ -950,6 +976,8 @@ jobs:
 
           watch_for_newer_runtime_run "$trader_pid" &
           upgrade_watch_pid=$!
+          watch_for_session_overrun "$trader_pid" &
+          overrun_watch_pid=$!
 
           set +e
           while IFS= read -r line; do

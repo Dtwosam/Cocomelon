@@ -2271,3 +2271,29 @@ def test_original_full_rank_archive_has_reserved_post_trader_budget() -> None:
     ) < source.index(
         "- name: Upload original SHORT rank full-input seal or rejection"
     )
+
+
+def test_four_hour_paper_worker_stall_can_checkpoint_handoff_before_gh_timeout(
+) -> None:
+    """No future v2 source may be stranded by a hung ordinary worker."""
+    source = WORKFLOW.read_text(encoding="utf-8")
+    trader = source[source.index("      - name: Run continuous paper trader"):
+                    source.index("      # Diagnose a source ZIP BEFORE")]
+    assert "watch_for_session_overrun()" in trader
+    assert 'sleep 15300' in trader
+    assert "--duration-seconds 14400" in trader
+    assert "timeout-minutes: 355" in source
+    assert "watch_for_session_overrun \"$trader_pid\" &" in trader
+    assert "overrun_watch_pid=$!" in trader
+    assert 'kill "$overrun_watch_pid" 2>/dev/null || true' in trader
+    assert 'request_runtime_handoff "$trader_pid" "session-overrun-watchdog"' in trader
+    assert 'mkdir "/tmp/continuous-paper-handoff-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"' in trader
+    assert "skipping duplicate escalation" in trader
+    assert 'touch /tmp/continuous-paper-upgrade-requested' in trader
+    assert 'kill -INT "$trader_pid"' in trader
+    assert 'kill -TERM "$trader_pid"' in trader
+    assert 'kill -KILL "$trader_pid"' in trader
+    assert "Pack fast continuous paper resume state" in source
+    assert "Queue exact successor from fast resume" in source
+    assert "COCOMELON_EXECUTION_MODE: paper" in source
+    assert "COCOMELON_EXECUTION_MODE: live" not in source
