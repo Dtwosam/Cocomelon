@@ -165,7 +165,9 @@ def prepare_v2_genesis(
             or existing.get("replay_config_digest") != replay_config_digest
             or _money(existing.get("initial_cash_each_lane")) != starting_cash
             or type(startup_timestamp_ms) is not int
-            or startup_timestamp_ms < existing["genesis_startup_ms"]
+            or startup_timestamp_ms < _positive_int(
+                existing.get("genesis_startup_ms"), "genesis_startup_ms",
+            )
         ):
             raise V2GenesisError("restored v2 origin/configuration changed")
         if not all((root / item).is_file() for item in (
