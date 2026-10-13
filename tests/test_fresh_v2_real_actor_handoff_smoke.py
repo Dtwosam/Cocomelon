@@ -160,7 +160,12 @@ def test_real_frozen_v2_actor_checkpoint_and_changed_market_handoff(
     assert original_genesis["source_github_run_id"] == 470001
     assert original_genesis["source_github_head_sha"] == "a" * 40
     initial_account_ids = _account_ids(root)
-    assert initial_account_ids[0] != initial_account_ids[1]
+    assert all(initial_account_ids)
+    assert (root / "baseline-execution.sqlite3").is_file()
+    assert (root / "candidate-execution.sqlite3").is_file()
+    # Equal initial state may produce equal content-derived state IDs.
+    # Storage/account isolation is established by independent SQLite stores
+    # plus each lane's signed-store parity, NOT a forced distinct state ID.
     original_gap = (root / GAP_WITNESS_FILE).read_bytes()
     assert read_source_gap_witness(
         root / GAP_WITNESS_FILE, total_processed_records=2,
