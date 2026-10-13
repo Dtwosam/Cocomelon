@@ -161,10 +161,8 @@ def prepare_v2_genesis(
             require_github_identity=False,
         )
         if (
-            existing.get("selected_markets") != canonical_markets
-            or existing.get("replay_config_digest") != replay_config_digest
+            existing.get("replay_config_digest") != replay_config_digest
             or _money(existing.get("initial_cash_each_lane")) != starting_cash
-            or type(startup_timestamp_ms) is not int
             or startup_timestamp_ms < _positive_int(
                 existing.get("genesis_startup_ms"), "genesis_startup_ms",
             )
@@ -176,6 +174,49 @@ def prepare_v2_genesis(
             raise V2GenesisError(
                 "restored v2 genesis lacks signed state or both SQLite stores"
             )
+        # The first worker's selection belongs to immutable genesis, not to
+        # the ongoing scanner. During normal mainnet paper operation markets
+        # are reranked/reconciled; forcing today's selection to equal the
+        # originating list would silently kill a valid forward v2 campaign
+        # at the first handoff. Instead require the *last signed* universe
+        # before the actor opens the exact restored execution stores.
+        try:
+            signed = json.loads(
+                (root / STATE_FILE).read_text(encoding="utf-8"),
+            )
+        except (OSError, ValueError) as exc:
+            raise V2GenesisError(
+                "restored v2 market universe lacks readable signed state"
+            ) from exc
+        if not isinstance(signed, dict):
+            raise V2GenesisError("restored v2 signed state is not an object")
+        unsigned = dict(signed)
+        state_digest = unsigned.pop("state_digest", None)
+        if (
+            not isinstance(state_digest, str)
+            or state_digest != _digest(unsigned)
+            or unsigned.get("portfolio_shadow_candidate_id")
+            != existing["frozen_candidate_id"]
+            or unsigned.get("replay_config_digest")
+            != existing["replay_config_digest"]
+        ):
+            raise V2GenesisError(
+                "restored v2 ranked universe not bound to signed candidate/config"
+            )
+        restored_markets = unsigned.get("selected_markets")
+        if (
+            not isinstance(restored_markets, list)
+            or not restored_markets
+            or any(
+                not isinstance(market, str) or not market
+                for market in restored_markets
+            )
+            or sorted(set(restored_markets)) != restored_markets
+        ):
+            raise V2GenesisError("restored v2 ranked universe not canonical")
+        # The actual actor will restore this signed selection and then
+        # reconcile both lanes to the new mainnet scanner selection. Neither
+        # lane may import data from v1 or reset its signed economic history.
         return existing
 
     # The freeze lives outside this root. Any nonempty new-root evidence
