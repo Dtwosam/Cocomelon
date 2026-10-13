@@ -280,6 +280,7 @@ def test_cancelled_archive_requires_exact_post_exit_custody(defect: str) -> None
         artifacts[0]["size_in_bytes"] = 0
     elif defect == "duplicate":
         artifacts.append(dict(artifacts[0]))
+        artifacts[-1]["digest"] = "sha256:" + "x" * 64
     elif defect == "wrong_attempt":
         artifacts[0]["name"] = "continuous-paper-resume-13-2"
     elif defect == "durable_only":
