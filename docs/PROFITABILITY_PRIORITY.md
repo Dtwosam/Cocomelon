@@ -1,5 +1,12 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 13 — independent v2 selected-anchor cross-worker signed account continuity
+
+A second read-only v2 research gate now **reauthenticates BOTH source archives independently** (GitHub worker metadata, exact artifact SHA, frozen v2 candidate, signed ledger and BOTH execution SQLite accounts/fees/funding, terminal parity). It then requires the later genuine paper worker ZIP to preserve each selected earlier v2 review-ledger row **byte-for-byte**, link new rows to the preceding digest, and strictly advance signed checkpoint time **and** market-record count. It separately checks both lane source-scoped gap histories for forbidden deletions, backdating or contradictory closure. An unchanged old signed checkpoint in a later ZIP is reported as **no new forward signed checkpoint**, not a positive upgrade result. A missing/corrupt source, abandoned attempt, missing signed accounts or unmatched lineage remains unverified.
+
+The historical anchor is deliberately called a **selected authenticated anchor** and may be chosen from only a bounded GitHub worker history, or given as an exact operator-selected run/attempt; the validator does **not** assert it is the very first v2 economic event or invent any unavailable earlier checkpoint. Neither a selected-anchor append nor a worker source event independently authenticates every original venue market tick, recovers market-feed gaps, establishes a genuine 72-hour after-fee/funding profitable account edge, or grants execution/promotion authority. The original v1 audit and frozen signed history remain untouched. No LIVE orders.
+
+
 ## October 13 — independent future v2 source audit, no verified economics yet
 
 A dedicated, read-only `independent-fresh-trend-v2-source-audit.yml` workflow checks the **exact** new `continuous-paper-both-side-trend-paired-shadow-v2-{run}-{attempt}` artifact. It binds GitHub completed or strictly preliminary original paper worker/attempt/head/run-start metadata, exact upload and terminal-parity steps, GitHub-published SHA256, unexpired artifact ID, the frozen v2 candidate ID, signed state and review ledger, two SQLite account stores, and the source worker's v2 terminal consistency receipt. It reuses the independently checked fills, attempt/plan lineage, fees, funding, cash-equity and marked margin arithmetic from v1, but switches to v2's distinct archive members and cannot adopt the old v1 freeze. Missing source/ZIP/SQLite/ledger/parity evidence fails closed.
