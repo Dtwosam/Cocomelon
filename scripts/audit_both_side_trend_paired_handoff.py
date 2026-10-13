@@ -47,7 +47,6 @@ from cocomelon.research.prospective_both_side_trend_paired_v2_genesis import (
     GENESIS_FILE_V2,
     verify_v2_genesis,
 )
-
 from cocomelon.research.trend_paired_shadow_sidecar import (
     TREND_PAIR_FREEZE_FILE,
     TREND_PAIR_STATE_ROOT,
