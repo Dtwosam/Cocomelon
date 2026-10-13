@@ -271,6 +271,7 @@ def _economics(
         or lineage.get("status") != "v2_selected_anchor_worker_append_verified"
         or lineage.get("first_archived_v2_worker_proven") is not True
         or lineage.get("identical_write_once_genesis_across_workers") is not True
+        or lineage.get("v2_actor_gap_witness_prefix_verified") is not True
         or lineage.get("new_signed_checkpoint_append_verified") is not True
         or lineage.get("current_run_id") != source.get("source_run_id")
         or lineage.get("current_attempt") != source.get("source_run_attempt")
