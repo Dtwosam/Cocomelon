@@ -873,3 +873,42 @@ def test_trend_audit_scheduled_fallback_targets_real_archived_source() -> None:
     assert "source scripts/gh_api_bounded_retry.sh" in workflow
     assert "actions: write" not in workflow
     assert "issues: write" not in workflow
+
+
+def test_matched_fills_provide_forward_closed_trade_after_cost_expectancy(
+    tmp_path: Path,
+) -> None:
+    """The open-entry fee is charged ONCE in close cohort, not as a mark proxy."""
+    path, ledger = _economic_store_fixture(tmp_path)
+    receipt = audit._reconcile_archived_lane_economics(
+        path, account_state_id="signed-account-1", ledger_lane=ledger,
+        forward_anchor_end_ms=2000,
+    )
+    cohort = receipt["forward_closed_trade_cohort"]
+    assert cohort is not None
+    assert cohort["anchor_end_ms"] == 2000
+    assert cohort["all"]["closed_trades"] == 1
+    assert cohort["all"]["net_pnl_after_costs"] == "1.98"
+    assert cohort["all"]["gross_positive_net_pnl"] == "1.98"
+    assert cohort["all"]["absolute_gross_negative_net_pnl"] == "0"
+    assert cohort["all"]["net_expectancy_per_closed_trade"] == "1.98"
+    assert cohort["all"]["profit_factor"] is None
+    assert cohort["long"]["closed_trades"] == 1
+    assert cohort["short"]["closed_trades"] == 0
+    assert cohort["original_exchange_fill_prices_authenticated"] is False
+
+
+def test_preexisting_trade_close_is_not_misreported_as_new_forward_sample(
+    tmp_path: Path,
+) -> None:
+    path, ledger = _economic_store_fixture(tmp_path)
+    receipt = audit._reconcile_archived_lane_economics(
+        path, account_state_id="signed-account-1", ledger_lane=ledger,
+        forward_anchor_end_ms=3000,
+    )
+    cohort = receipt["forward_closed_trade_cohort"]
+    assert cohort is not None
+    assert cohort["all"]["closed_trades"] == 0
+    assert cohort["all"]["net_pnl_after_costs"] == "0"
+    assert cohort["all"]["net_expectancy_per_closed_trade"] is None
+    assert cohort["all"]["profit_factor"] is None
