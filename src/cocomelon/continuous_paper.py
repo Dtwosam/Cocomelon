@@ -446,12 +446,12 @@ from cocomelon.research.prospective_weekly_drawdown_5m_exit_source import (
     ProspectiveWeeklyDrawdown5mExitState,
     prospective_weekly_drawdown_5m_exit_source,
 )
-from cocomelon.research.targeted_trend_paired_freeze import (
-    activate_targeted_trend_paired_freeze,
-)
 from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
     FROZEN_AT_MS_V2,
     TRIAL_ID_V2,
+)
+from cocomelon.research.targeted_trend_paired_freeze import (
+    activate_targeted_trend_paired_freeze,
 )
 from cocomelon.research.trend_paired_shadow_sidecar import (
     TREND_PAIR_SUMMARY_FILE,
