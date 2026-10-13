@@ -294,6 +294,38 @@ def _economics(
         reasons.append("insufficient_72h_forward_signed_duration")
     if len(window) < 9:
         reasons.append("insufficient_independent_signed_samples")
+    # A 72h wall-clock span with NO new market records is not an honest
+    # 72h prospective evaluation. The original venue still needs its own
+    # independent provenance; this is a conservative signed progress gate.
+    signed_progress = True
+    previous_count: int | None = None
+    previous_available_ms: int | None = None
+    for checkpoint in window:
+        count = checkpoint.get("record_count")
+        observed_ms = checkpoint.get("last_record_available_at_ms")
+        checkpoint_end = checkpoint.get("end_ms")
+        if (
+            type(count) is not int
+            or type(observed_ms) is not int
+            or type(checkpoint_end) is not int
+            or observed_ms < FORWARD_NOT_BEFORE_MS_V2
+            or observed_ms > checkpoint_end
+            or (previous_count is not None and count <= previous_count)
+            or (
+                previous_available_ms is not None
+                and observed_ms <= previous_available_ms
+            )
+        ):
+            signed_progress = False
+            break
+        previous_count, previous_available_ms = count, observed_ms
+    snapshot["signed_new_records_at_every_eligible_checkpoint"] = signed_progress
+    snapshot["signed_record_count_delta_in_window"] = (
+        int(latest["record_count"]) - int(forward_anchor["record_count"])
+        if signed_progress else None
+    )
+    if not signed_progress:
+        reasons.append("signed_market_record_progress_stalled_or_unverifiable")
     gap_status = _strict_gap_history(
         signed_state, start_ms=FORWARD_NOT_BEFORE_MS_V2, end_ms=end,
     )
