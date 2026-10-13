@@ -9,7 +9,6 @@ mainnet market feed. Even an economically positive row has no trade authority.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import tempfile
 import zipfile
@@ -20,6 +19,7 @@ from typing import cast
 
 from cocomelon.research.loss_context_paired_shadow_review import (
     build_paired_shadow_review,
+    verify_review_ledger,
 )
 from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
     FORWARD_NOT_BEFORE_MS_V2,
@@ -386,13 +386,15 @@ def audit_v2_forward_economic_diagnostic(
                 )
             freeze = both_side_trend_matched_shadow_v2_freeze()
             review = build_paired_shadow_review(freeze, ledger_path)
-            if review != source.get("review_report"):
+            if json.dumps(
+                review, sort_keys=True, separators=(",", ":"),
+            ) != json.dumps(
+                source.get("review_report"), sort_keys=True,
+                separators=(",", ":"),
+            ):
                 raise TrendPairHandoffAuditError(
                     "independently recomputed v2 review differs from source receipt"
                 )
-            from cocomelon.research.loss_context_paired_shadow_review import (
-                verify_review_ledger,
-            )
             rows = verify_review_ledger(ledger_path, candidate_id=freeze.candidate_id)
             result = _economics(
                 source=source, lineage=lineage, review=review,
