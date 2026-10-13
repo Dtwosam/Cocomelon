@@ -139,3 +139,53 @@ def test_source_workflow_audits_before_archive_upload() -> None:
     assert "verify_trend_paired_terminal_snapshot.py" in source
     assert "continuous-paper-state/trend-paired-terminal-consistency.json" in source
     assert "COCOMELON_EXECUTION_MODE: paper" in source
+
+
+def test_fresh_v2_terminal_parity_uses_only_v2_sqlite_and_signed_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _fixture(tmp_path, monkeypatch)
+    old_folder = root / audit.ROOT
+    v2_folder = root / "both-side-trend-paired-shadow-v2"
+    old_folder.rename(v2_folder)
+    (root / audit.SUMMARY).rename(
+        root / "both-side-trend-paired-shadow-v2-summary.json"
+    )
+    result = audit.verify_terminal_snapshot(
+        root,
+        root_name="both-side-trend-paired-shadow-v2",
+        summary_name="both-side-trend-paired-shadow-v2-summary.json",
+    )
+    assert result["status"] == "terminal_source_account_snapshot_coherent"
+    assert result["campaign_state_root"] == "both-side-trend-paired-shadow-v2"
+    assert result["terminal_account_ids_match_signed_checkpoint"] is True
+    assert result["forward_after_cost_edge_verified"] is False
+    assert result["promotion_authority"] is False
+
+    with sqlite3.connect(v2_folder / "candidate-execution.sqlite3") as db:
+        db.execute(
+            "UPDATE paper_account_state SET state_id=? WHERE singleton_id=1",
+            ("uncheckpointed-advance",),
+        )
+    divergence = audit.verify_terminal_snapshot(
+        root,
+        root_name="both-side-trend-paired-shadow-v2",
+        summary_name="both-side-trend-paired-shadow-v2-summary.json",
+    )
+    assert divergence["status"] == "terminal_account_checkpoint_diverged"
+    assert divergence["terminal_account_ids_match_signed_checkpoint"] is False
+    assert divergence["execution_authority"] is False
+
+
+def test_v2_verifier_rejects_mixed_v1_summary_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _fixture(tmp_path, monkeypatch)
+    result = audit.verify_terminal_snapshot(
+        root,
+        root_name="both-side-trend-paired-shadow-v2",
+        summary_name=audit.SUMMARY,
+    )
+    assert result["status"] == "unverified"
+    assert "unknown paired campaign identity" in str(result["reasons"])
+    assert result["promotion_authority"] is False
