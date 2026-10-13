@@ -3,6 +3,26 @@ from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/continuous-paper.yml")
 
+def test_cancelled_predecessor_requires_post_exit_fast_state_on_both_paths() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    restore = source.split(
+        "- name: Restore exact predecessor state", 1
+    )[1].split(
+        "- name: Restore latest trusted state for watchdog/manual recovery", 1
+    )[0]
+    # Source-bound restore must authenticate the completed terminal steps
+    # before accepting a cancelled research-tail workflow.
+    assert 'run.get("conclusion") == "cancelled"' in restore
+    assert 'trader.get("status") != "completed"' in restore
+    assert '"Measure durable continuous paper state"' in restore
+    assert '"Pack fast continuous paper resume state"' in restore
+    assert '"Upload fast continuous paper resume state"' in restore
+    assert 're.fullmatch(r"sha256:[0-9a-f]{64}"' in restore
+    assert "len(exact) != 1" in restore
+    assert "no durable-only fallback" in restore
+    assert 'status == "completed"' in restore
+
+
 def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     assert (
@@ -297,7 +317,7 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
         in source
     )
     assert (
-        "completed predecessor run must be success or failure"
+        "completed predecessor not eligible for exact restore"
         in source
     )
     assert (

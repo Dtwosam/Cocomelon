@@ -80,6 +80,8 @@ def exact_artifact(run_id: int) -> list[dict[str, object]]:
     return [{
         "name": f"continuous-paper-resume-{run_id}-1",
         "expired": False,
+        "size_in_bytes": 1_000_000,
+        "digest": "sha256:" + "a" * 64,
     }]
 
 
@@ -219,6 +221,86 @@ def test_failed_trader_still_running_cannot_be_rescued() -> None:
             13: paper_job(
                 "in_progress", None, measured=True, fast_packed=True,
             ),
+        },
+        artifacts_by_run={13: exact_artifact(13)},
+    ) == ("active", (13, 1))
+
+
+@pytest.mark.parametrize("trader_outcome", ["success", "failure"])
+def test_cancelled_after_terminal_archive_is_safe_exact_resume(
+    trader_outcome: str,
+) -> None:
+    # Real worker #38432977298 completed its paper trader and packed
+    # 11852078410 before cancellation of its deferred research tail.
+    assert choose(
+        [
+            run(38473612016, event="workflow_dispatch",
+                status="completed", conclusion="success"),
+            run(38432977298, event="workflow_dispatch",
+                status="completed", conclusion="cancelled"),
+            run(38431384464, status="completed", conclusion="failure"),
+        ],
+        jobs_by_run={
+            38473612016: paper_job(
+                "completed", "skipped", skipped_checkout=True,
+            ),
+            38432977298: paper_job(
+                "completed", trader_outcome, measured=True, fast_packed=True,
+            ),
+        },
+        artifacts_by_run={
+            38432977298: exact_artifact(38432977298),
+        },
+    ) == ("ready", (38432977298, 1))
+
+
+@pytest.mark.parametrize("defect", [
+    "missing_measurement", "missing_pack", "missing_upload", "expired",
+    "no_digest", "malformed_digest", "zero_size", "duplicate", "wrong_attempt",
+    "durable_only",
+])
+def test_cancelled_archive_requires_exact_post_exit_custody(defect: str) -> None:
+    job = paper_job(
+        "completed", "failure", measured=True, fast_packed=True,
+    )
+    artifacts = exact_artifact(13)
+    if defect == "missing_measurement":
+        job[0]["steps"][2]["conclusion"] = "failure"
+    elif defect == "missing_pack":
+        job[0]["steps"][3]["conclusion"] = "failure"
+    elif defect == "missing_upload":
+        job[0]["steps"][4]["conclusion"] = "failure"
+    elif defect == "expired":
+        artifacts[0]["expired"] = True
+    elif defect == "no_digest":
+        del artifacts[0]["digest"]
+    elif defect == "malformed_digest":
+        artifacts[0]["digest"] = "sha256:" + "x" * 64
+    elif defect == "zero_size":
+        artifacts[0]["size_in_bytes"] = 0
+    elif defect == "duplicate":
+        artifacts.append(dict(artifacts[0]))
+        artifacts[-1]["digest"] = "sha256:" + "x" * 64
+    elif defect == "wrong_attempt":
+        artifacts[0]["name"] = "continuous-paper-resume-13-2"
+    elif defect == "durable_only":
+        artifacts[0]["name"] = "continuous-paper-state-13-1"
+    assert choose(
+        [run(13, status="completed", conclusion="cancelled"), run(12)],
+        jobs_by_run={
+            13: job, 12: paper_job("completed", "success"),
+        },
+        artifacts_by_run={
+            13: artifacts, 12: exact_artifact(12),
+        },
+    ) == ("blocked", None)
+
+
+def test_cancelled_while_trader_is_active_never_dispatches_overlap() -> None:
+    assert choose(
+        [run(13, status="completed", conclusion="cancelled")],
+        jobs_by_run={
+            13: paper_job("in_progress", None, measured=True, fast_packed=True),
         },
         artifacts_by_run={13: exact_artifact(13)},
     ) == ("active", (13, 1))
