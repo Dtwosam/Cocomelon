@@ -1,5 +1,7 @@
 # Cocomelon Project Status
 
+> Read [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md) first. No profitable paper strategy has been independently certified; v2 remains an unproven precommitted research plan.
+
 ## October 13 — clean paired trend v2 is PRECOMMITTED, not a profitable result
 
 The frozen v1 both-side trend research campaign remains **inadmissible**: its archived successor retained a predecessor signed checkpoint while its SQLite accounts advanced, with 42 unclosed market-feed gaps. Its reported signed candidate-minus-baseline +$52.96 cannot be attached to newer account states and cannot be used as new return evidence. No v1 SQLite, ledger, signed state or missing market source record has been altered or recovered.
