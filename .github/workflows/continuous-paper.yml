@@ -568,16 +568,19 @@ jobs:
           )
           payload = json.loads(Path("/tmp/source-artifacts.json").read_text(encoding="utf-8"))
           if cancelled:
-              exact = [
+              matching = [
                   item for item in payload.get("artifacts", [])
                   if item.get("name") == resume_name
                   and item.get("expired") is False
-                  and type(item.get("size_in_bytes")) is int
+              ]
+              exact = [
+                  item for item in matching
+                  if type(item.get("size_in_bytes")) is int
                   and item["size_in_bytes"] > 0
                   and isinstance(item.get("digest"), str)
                   and re.fullmatch(r"sha256:[0-9a-f]{64}", item["digest"])
               ]
-              if len(exact) != 1:
+              if len(matching) != 1 or len(exact) != 1:
                   raise SystemExit(
                       "cancelled predecessor lacks exact published fast digest"
                   )
