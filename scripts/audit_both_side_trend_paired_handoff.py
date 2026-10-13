@@ -908,9 +908,15 @@ def audit_trend_handoff(
         )
         result["archive_sha256"] = digest
         with tempfile.TemporaryDirectory() as directory:
-            freeze, summary, state, ledger_path = _extract_receipts(
-                archive, Path(directory), campaign=campaign,
-            )
+            if campaign == "v1":
+                # Preserve original v1 reviewer call contract and fixtures.
+                freeze, summary, state, ledger_path = _extract_receipts(
+                    archive, Path(directory),
+                )
+            else:
+                freeze, summary, state, ledger_path = _extract_receipts(
+                    archive, Path(directory), campaign="v2",
+                )
             result["archived_execution_sqlite_integrity_verified"] = True
             if freeze["candidate_id"] != expected.candidate_id:
                 raise TrendPairHandoffAuditError("candidate ID mismatch")
