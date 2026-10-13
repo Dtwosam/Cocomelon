@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 WORKFLOW = Path(".github/workflows/continuous-paper.yml")
 
 
@@ -30,7 +29,10 @@ def test_paired_trend_signed_state_is_uploaded_before_costly_handoff_work() -> N
         source, "Upload isolated both-side trend paired-paper evidence"
     )
     assert "always()" in section
-    assert "hashFiles('continuous-paper-state/both-side-trend-paired-shadow-summary.json')" in section
+    assert (
+        "hashFiles('continuous-paper-state/"
+        "both-side-trend-paired-shadow-summary.json')" in section
+    )
     assert "steps.guard.outputs.skip != 'true'" in section
     assert "continue-on-error: true" in section
     assert "timeout-minutes: 12" in section
