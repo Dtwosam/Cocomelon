@@ -62,6 +62,7 @@ def _inputs(
         "status": "v2_selected_anchor_worker_append_verified",
         "first_archived_v2_worker_proven": True,
         "identical_write_once_genesis_across_workers": True,
+        "v2_actor_gap_witness_prefix_verified": True,
         "new_signed_checkpoint_append_verified": True,
         "current_run_id": 40002,
         "current_attempt": 1,
@@ -306,3 +307,20 @@ def test_missing_original_received_v2_gap_event_witness_vetoes_paper_edge() -> N
     )
     assert result["positive_signed_source_account_screen"] is False
     assert "original_actor_gap_event_witness_not_authenticated" in result["reasons"]
+
+
+def test_missing_cross_worker_original_gap_witness_prefix_vetoes_positive_paper_edge(
+) -> None:
+    source, lineage, review, state, rows = _inputs()
+    lineage["v2_actor_gap_witness_prefix_verified"] = False
+    receipt = outcome._economics(
+        source=source, lineage=lineage,
+        review=review, signed_state=state, rows=rows,
+    )
+    assert receipt["positive_signed_source_account_screen"] is False
+    assert (
+        "original_worker_and_forward_source_lineage_not_authenticated"
+        in receipt["reasons"]
+    )
+    assert receipt["original_exchange_event_source_authenticated"] is False
+    assert receipt["promotion_authority"] is False
