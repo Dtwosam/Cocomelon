@@ -36,11 +36,11 @@ GAP_FIELDS: Final = (
 
 
 def _archived_gap_scopes(
-    path: Path,
+    path: Path, *, state_member: str = STATE_MEMBER,
 ) -> dict[str, dict[str, tuple[tuple[int, int | None], ...]]]:
     """Parse exact signed state of both lanes, without inferring missing ticks."""
     with zipfile.ZipFile(path) as archive:
-        state = _mapping(json.loads(_member(archive, STATE_MEMBER)), "state")
+        state = _mapping(json.loads(_member(archive, state_member)), "state")
     if state.get("legacy_unscoped_gap_intervals") not in (None, []):
         raise TrendPairHandoffAuditError("unattributed state gaps cannot be recovered")
     lanes: list[dict[str, dict[str, tuple[tuple[int, int | None], ...]]]] = []
@@ -192,9 +192,11 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _ledger_rows(path: Path) -> tuple[bytes, ...]:
+def _ledger_rows(
+    path: Path, *, ledger_member: str = LEDGER_MEMBER,
+) -> tuple[bytes, ...]:
     with zipfile.ZipFile(path) as archive:
-        raw = _member(archive, LEDGER_MEMBER)
+        raw = _member(archive, ledger_member)
     if not raw or not raw.endswith(b"\n"):
         raise TrendPairHandoffAuditError(
             "archived paired ledger missing or not newline terminated"
