@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
-    FROZEN_AT_MS_V2,
     FORWARD_NOT_BEFORE_MS_V2,
+    FROZEN_AT_MS_V2,
     TRIAL_ID_V2,
     both_side_trend_matched_shadow_v2_freeze,
 )
