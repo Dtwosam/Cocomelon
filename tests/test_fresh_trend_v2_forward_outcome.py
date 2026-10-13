@@ -106,6 +106,7 @@ def _inputs(
             "end_ms": end,
             "row_digest": f"digest-{index}",
             "record_count": (index + 1) * 10,
+            "last_record_available_at_ms": end,
             "baseline": {
                 "total_account_pnl": baseline_pnl,
                 "max_drawdown_fraction": "0.02",
@@ -259,3 +260,24 @@ def test_new_workflow_only_writes_unpromotable_diagnostic() -> None:
     assert "original venue stream independently authenticated: FALSE" in w
     assert "HYPERLIQUID_PRIVATE_KEY" not in w
     assert "COCOMELON_EXECUTION_MODE: live" not in w
+
+
+def test_72_hour_checkpoint_time_without_new_source_records_never_qualifies() -> None:
+    source, lineage, review, state, rows = _inputs()
+    advanced = list(rows)
+    # The last checkpoint copied the previous event count and timestamp,
+    # even though its unsigned clock advanced to the 72h evaluation edge.
+    advanced[-1] = {
+        **advanced[-1],
+        "record_count": advanced[-2]["record_count"],
+        "last_record_available_at_ms": advanced[-2]["last_record_available_at_ms"],
+    }
+    lineage["successor_record_count"] = advanced[-1]["record_count"]
+    result = outcome._economics(
+        source=source, lineage=lineage, review=review,
+        signed_state=state, rows=tuple(advanced),
+    )
+    assert result["signed_72h_window_complete"] is True
+    assert result["signed_new_records_at_every_eligible_checkpoint"] is False
+    assert result["positive_signed_source_account_screen"] is False
+    assert "signed_market_record_progress_stalled_or_unverifiable" in result["reasons"]
