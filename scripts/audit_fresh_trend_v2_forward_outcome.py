@@ -26,6 +26,7 @@ from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
     PRECOMMITMENT_V2,
     both_side_trend_matched_shadow_v2_freeze,
 )
+from scripts.audit_both_side_trend_ledger_anchor import _sha256_file
 from scripts.audit_both_side_trend_paired_handoff import (
     TrendPairHandoffAuditError,
     _json_file,
@@ -33,7 +34,6 @@ from scripts.audit_both_side_trend_paired_handoff import (
     _member,
     _write_json_atomic,
 )
-from scripts.audit_both_side_trend_ledger_anchor import _sha256_file
 
 V2_ROOT = "both-side-trend-paired-shadow-v2"
 REVIEW_MEMBER = f"{V2_ROOT}/review-ledger.jsonl"
