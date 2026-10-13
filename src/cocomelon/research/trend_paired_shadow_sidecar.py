@@ -267,8 +267,16 @@ class PairedShadowTrendSidecar:
             "frozen_forward_not_before_ms": self.freeze.prospective_not_before_ms,
             "startup_timestamp_ms": self.startup_timestamp_ms,
             "started_after_frozen_boundary": (
-                self.startup_timestamp_ms
+                self.startup_timestamp_ms >= self.freeze.frozen_at_ms
+                if self.campaign == "v2"
+                else self.startup_timestamp_ms
                 > self.freeze.prospective_not_before_ms
+            ),
+            # The six-hour embargo controls candidate ENTRY eligibility.
+            # The legitimate originating research worker may start earlier.
+            "started_after_forward_entry_embargo": (
+                self.startup_timestamp_ms
+                >= self.freeze.prospective_not_before_ms
             ),
             "original_mainnet_source_and_gaps_independently_authenticated": False,
             "research_only": True,

@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 
+from cocomelon.research.loss_context_paired_shadow_runtime import (
+    LossContextPairedShadowRuntime,
+)
 from cocomelon.research.loss_context_portfolio_shadow_candidate import (
     verify_loss_context_portfolio_shadow_freeze,
 )
@@ -25,6 +30,7 @@ from cocomelon.research.trend_paired_shadow_sidecar import (
     TREND_V2_FREEZE_FILE,
     TREND_V2_STATE_ROOT,
     TREND_V2_SUMMARY_FILE,
+    PairedShadowTrendSidecar,
     prepare_trend_pair_freeze,
     start_trend_paired_shadow_sidecar,
 )
@@ -157,3 +163,47 @@ def test_legacy_v1_source_verification_is_still_separate() -> None:
     assert "TREND_V2_SUMMARY_FILE" in paper
     assert "TREND_PAIR_SUMMARY_FILE" in paper
     assert "TRIAL_ID_V2" in paper
+
+
+class _FrozenV2ReceiptActor:
+    candidate_id = both_side_trend_matched_shadow_v2_freeze().candidate_id
+
+    def status_payload(self) -> dict[str, object]:
+        return {"failed": False, "candidate_id": self.candidate_id}
+
+    async def checkpoint(self, *, end_ms: int) -> dict[str, object]:
+        return {"marker": "pure paper", "end_ms": end_ms}
+
+    def fail_closed(self, reason: str) -> None:
+        raise AssertionError(reason)
+
+
+@pytest.mark.parametrize(
+    "startup,after_freeze,after_embargo",
+    [
+        (FROZEN_AT_MS_V2, True, False),
+        (FROZEN_AT_MS_V2 + 60_000, True, False),
+        (FORWARD_NOT_BEFORE_MS_V2 - 1, True, False),
+        (FORWARD_NOT_BEFORE_MS_V2, True, True),
+        (FORWARD_NOT_BEFORE_MS_V2 + 1, True, True),
+    ],
+)
+def test_fresh_v2_receipt_distinguishes_freeze_from_six_hour_entry_embargo(
+    tmp_path: Path, startup: int, after_freeze: bool, after_embargo: bool,
+) -> None:
+    actor = cast(LossContextPairedShadowRuntime, _FrozenV2ReceiptActor())
+    sidecar = PairedShadowTrendSidecar(
+        None, actor,
+        summary_path=tmp_path / TREND_V2_SUMMARY_FILE,
+        startup_timestamp_ms=startup,
+        campaign="v2",
+    )
+    asyncio.run(sidecar._checkpoint_trend(end_ms=startup + 1))
+    receipt = json.loads((tmp_path / TREND_V2_SUMMARY_FILE).read_text())
+    assert receipt["started_after_frozen_boundary"] is after_freeze
+    assert receipt["started_after_forward_entry_embargo"] is after_embargo
+    assert receipt["frozen_forward_not_before_ms"] == FORWARD_NOT_BEFORE_MS_V2
+    assert receipt["checkpoint_published"] is True
+    assert receipt["execution_authority"] is False
+    assert receipt["promotion_authority"] is False
+    assert receipt["forward_profitable_signed_account_edge_proven"] is False
