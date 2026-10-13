@@ -1,5 +1,12 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 13 — independent future v2 source audit, no verified economics yet
+
+A dedicated, read-only `independent-fresh-trend-v2-source-audit.yml` workflow checks the **exact** new `continuous-paper-both-side-trend-paired-shadow-v2-{run}-{attempt}` artifact. It binds GitHub completed or strictly preliminary original paper worker/attempt/head/run-start metadata, exact upload and terminal-parity steps, GitHub-published SHA256, unexpired artifact ID, the frozen v2 candidate ID, signed state and review ledger, two SQLite account stores, and the source worker's v2 terminal consistency receipt. It reuses the independently checked fills, attempt/plan lineage, fees, funding, cash-equity and marked margin arithmetic from v1, but switches to v2's distinct archive members and cannot adopt the old v1 freeze. Missing source/ZIP/SQLite/ledger/parity evidence fails closed.
+
+Scheduled and completed-paper audit wakeups can provide **single-source** verification only. A source archive may be provisional if its worker has not finished, and even a successfully completed archive does not establish a new signed successor checkpoint, authenticated exchange price feed, resolved gaps, 72-hour after-cost advantage, positive expectancy, or promotion. V1 history and the ordinary paper trader are unchanged. The genuine v2 embargo begins 2026-10-14 06:00 UTC; before then there can be **no certified v2 forward performance**. Independent multi-worker v2 anchor and feed gap review remain outstanding under Issue #1204. All live orders OFF.
+
+
 ## October 13 — clean paired trend v2 is PRECOMMITTED, not a profitable result
 
 The frozen v1 both-side trend research campaign remains **inadmissible**: its archived successor retained a predecessor signed checkpoint while its SQLite accounts advanced, with 42 unclosed market-feed gaps. Its reported signed candidate-minus-baseline +$52.96 cannot be attached to newer account states and cannot be used as new return evidence. No v1 SQLite, ledger, signed state or missing market source record has been altered or recovered.
