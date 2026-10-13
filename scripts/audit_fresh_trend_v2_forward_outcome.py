@@ -26,6 +26,10 @@ from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
     PRECOMMITMENT_V2,
     both_side_trend_matched_shadow_v2_freeze,
 )
+from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+    FILE_NAME as V2_GAP_WITNESS_FILE,
+    read_source_gap_witness,
+)
 from scripts.audit_both_side_trend_ledger_anchor import _sha256_file
 from scripts.audit_both_side_trend_paired_handoff import (
     TrendPairHandoffAuditError,
@@ -294,6 +298,16 @@ def _economics(
         reasons.append("insufficient_72h_forward_signed_duration")
     if len(window) < 9:
         reasons.append("insufficient_independent_signed_samples")
+    gap_receipt_count = source.get("witnessed_forward_gap_event_count")
+    snapshot["witnessed_forward_gap_event_count"] = gap_receipt_count
+    if (
+        source.get("v2_actor_received_gap_record_chain_verified") is not True
+        or type(gap_receipt_count) is not int
+        or gap_receipt_count < 0
+    ):
+        reasons.append("original_actor_gap_event_witness_not_authenticated")
+    elif gap_receipt_count:
+        reasons.append("original_actor_received_forward_market_gap_event")
     # A 72h wall-clock span with NO new market records is not an honest
     # 72h prospective evaluation. The original venue still needs its own
     # independent provenance; this is a conservative signed progress gate.
@@ -439,6 +453,35 @@ def audit_v2_forward_economic_diagnostic(
                     json.loads(_member(package, STATE_MEMBER)),
                     "v2 signed source state",
                 )
+                raw_received_gap_events = _member(
+                    package, f"{V2_ROOT}/{V2_GAP_WITNESS_FILE}",
+                )
+            gap_path = Path(tmp) / V2_GAP_WITNESS_FILE
+            gap_path.write_bytes(raw_received_gap_events)
+            received = read_source_gap_witness(
+                gap_path,
+                total_processed_records=signed_state["record_count"],
+            )
+            if (
+                signed_state.get("v2_source_gap_event_witness") != received
+                or source.get("v2_actor_received_gap_record_chain_verified")
+                is not True
+                or source.get("v2_actor_received_gap_count")
+                != received["received_gap_record_count"]
+            ):
+                raise TrendPairHandoffAuditError(
+                    "v2 source-recorded gap events differ from signed state"
+                )
+            signed_forward_gaps = 0
+            for raw_line in raw_received_gap_events.splitlines():
+                item = _mapping(json.loads(raw_line), "v2 original received gap")
+                envelope = _mapping(item.get("record"), "v2 received gap")
+                if (
+                    envelope["available_at_ms"] >= FORWARD_NOT_BEFORE_MS_V2
+                    and envelope["available_at_ms"]
+                    <= signed_state.get("last_record_available_at_ms", -1)
+                ):
+                    signed_forward_gaps += 1
             freeze = both_side_trend_matched_shadow_v2_freeze()
             review = build_paired_shadow_review(freeze, ledger_path)
             if json.dumps(
@@ -451,8 +494,12 @@ def audit_v2_forward_economic_diagnostic(
                     "independently recomputed v2 review differs from source receipt"
                 )
             rows = verify_review_ledger(ledger_path, candidate_id=freeze.candidate_id)
+            witnessed_source = dict(source)
+            witnessed_source["witnessed_forward_gap_event_count"] = (
+                signed_forward_gaps
+            )
             result = _economics(
-                source=source, lineage=lineage, review=review,
+                source=witnessed_source, lineage=lineage, review=review,
                 signed_state=signed_state, rows=rows,
             )
             result["original_source_sha256"] = source["archive_sha256"]
