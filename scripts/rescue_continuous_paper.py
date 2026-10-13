@@ -120,9 +120,20 @@ def choose_exact_source(
             return "blocked", None
         if trader.get("conclusion") == "skipped":
             continue
-        if trader.get("conclusion") != "success":
-            # A crashed worker may have changed the account without having
-            # archived its final state. Never roll back to older history.
+        trader_conclusion = trader.get("conclusion")
+        if trader_conclusion not in {"success", "failure"}:
+            return "blocked", None
+        # A failed trader is NOT automatically resumable: its last good
+        # heartbeat or a predecessor archive could omit newer paper writes.
+        # Only a successfully measured, post-exit packed and uploaded exact
+        # terminal fast snapshot is eligible for an attempted restore.
+        # The successor's normal journal/account restore checks remain
+        # authoritative; returning ready never certifies its economics.
+        if trader_conclusion == "failure" and not all((
+            _step_succeeded(job, "Measure durable continuous paper state"),
+            _step_succeeded(job, "Pack fast continuous paper resume state"),
+            _step_succeeded(job, FAST_UPLOAD_STEP),
+        )):
             return "blocked", None
         if status == "completed" and run.get("conclusion") not in {
             "success", "failure"
@@ -143,13 +154,17 @@ def choose_exact_source(
         }
         fast_name = f"continuous-paper-resume-{run_id}-{attempt}"
         durable_name = f"continuous-paper-state-{run_id}-{attempt}"
-        if (
-            _step_succeeded(job, FAST_UPLOAD_STEP)
-            and fast_name in names
-        ) or (
+        fast_ready = _step_succeeded(job, FAST_UPLOAD_STEP) and fast_name in names
+        durable_ready = (
             _step_succeeded(job, DURABLE_UPLOAD_STEP)
             and durable_name in names
-        ):
+        )
+        if trader_conclusion == "failure":
+            # No durable-only failover from a failed trader: the independently
+            # observable terminal fast pack is required and must be exact.
+            if fast_ready:
+                return "ready", (run_id, attempt)
+        elif fast_ready or durable_ready:
             return "ready", (run_id, attempt)
         return "blocked", None
     return "no_source", None
