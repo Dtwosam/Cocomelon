@@ -12,16 +12,16 @@ import zipfile
 from collections.abc import Sequence
 from pathlib import Path
 
+from cocomelon.research.prospective_both_side_trend_paired_v2_genesis import (
+    GENESIS_FILE_V2,
+    verify_v2_genesis,
+)
 from scripts.audit_both_side_trend_ledger_anchor import (
     _archived_gap_scopes,
     _compare_gap_scopes,
     _compare_rows,
     _ledger_rows,
     _sha256_file,
-)
-from cocomelon.research.prospective_both_side_trend_paired_v2_genesis import (
-    GENESIS_FILE_V2,
-    verify_v2_genesis,
 )
 from scripts.audit_both_side_trend_paired_handoff import (
     TrendPairHandoffAuditError,
