@@ -1096,17 +1096,32 @@ def audit_trend_handoff(
                 result["v2_actor_received_gap_count"] = (
                     source_witness["received_gap_record_count"]
                 )
+                current_markets = state.get("selected_markets")
                 if (
-                    genesis["source_github_run_id"] > source_run_id
+                    not isinstance(current_markets, list)
+                    or not current_markets
+                    or any(
+                        not isinstance(market, str) or not market
+                        for market in current_markets
+                    )
+                    or sorted(set(current_markets)) != current_markets
+                    or genesis["source_github_run_id"] > source_run_id
                     or genesis["genesis_startup_ms"]
                     > _mapping(latest, "last signed row").get("end_ms", -1)
-                    or genesis["selected_markets"] != state.get("selected_markets")
                     or genesis["replay_config_digest"]
                     != state.get("replay_config_digest")
                 ):
                     raise TrendPairHandoffAuditError(
-                        "v2 origin cannot be reconciled to signed paper history"
+                        "v2 origin/current signed ranked universe cannot reconcile"
                     )
+                # The genesis list is the first worker's universe; the
+                # signed checkpoint list evolves with mainnet-ranked scanner
+                # reconciliations. A mismatch is NOT a new campaign and
+                # cannot justify changing original cash or account IDs.
+                result["v2_current_ranked_market_universe_signed"] = True
+                result["v2_ranked_market_selection_changed_since_genesis"] = (
+                    current_markets != genesis["selected_markets"]
+                )
                 for lane in ("baseline", "candidate"):
                     _same_amount(
                         reconciled[lane]["starting_cash_from_signed_account"],
