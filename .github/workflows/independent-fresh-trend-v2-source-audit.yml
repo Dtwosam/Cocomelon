@@ -176,12 +176,15 @@ jobs:
       - name: Select independently checkable v2 source anchor
         if: ${{ env.SOURCE_AVAILABLE != 'false' }}
         shell: bash
+        env:
+          PINNED_ANCHOR_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.anchor_run_id || '' }}
+          PINNED_ANCHOR_ATTEMPT: ${{ github.event_name == 'workflow_dispatch' && inputs.anchor_attempt || '1' }}
         run: |
           set -euo pipefail
           source scripts/gh_api_bounded_retry.sh
           mkdir -p /tmp/fresh-trend-v2-audit
-          selected="${{ github.event_name == 'workflow_dispatch' && inputs.anchor_run_id || '' }}"
-          selected_attempt="${{ github.event_name == 'workflow_dispatch' && inputs.anchor_attempt || '1' }}"
+          selected="${PINNED_ANCHOR_RUN:-}"
+          selected_attempt="${PINNED_ANCHOR_ATTEMPT:-1}"
           if [ -z "$selected" ]; then
             gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?status=completed&branch=main&per_page=100" > /tmp/fresh-trend-v2-audit/anchor-candidates.json
             while read -r possible attempt; do
