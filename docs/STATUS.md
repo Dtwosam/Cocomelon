@@ -1,5 +1,7 @@
 # Cocomelon Project Status
 
+> Read [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md) first. No profitable paper strategy has been independently certified; v2 remains an unproven precommitted research plan.
+
 ## October 13 — bounded four-hour PAPER worker cleanup and exact-state handoff
 
 A live GitHub paper worker that started October 13 at 16:44 UTC stopped publishing authenticated heartbeats after 20:45 UTC while its original `Run continuous paper trader` step remained in progress beyond the intended 14,400-second trading session. That can strand both ordinary paper account continuity and the first post-2026-10-14 v2 worker if the runner reaches its 355-minute Actions ceiling before fast resume dispatch. No missing profit is inferred and no unverified reset is acceptable.
@@ -58,7 +60,6 @@ A dedicated, read-only `independent-fresh-trend-v2-source-audit.yml` workflow ch
 Scheduled and completed-paper audit wakeups can provide **single-source** verification only. A source archive may be provisional if its worker has not finished, and even a successfully completed archive does not establish a new signed successor checkpoint, authenticated exchange price feed, resolved gaps, 72-hour after-cost advantage, positive expectancy, or promotion. V1 history and the ordinary paper trader are unchanged. The genuine v2 embargo begins 2026-10-14 06:00 UTC; before then there can be **no certified v2 forward performance**. Independent multi-worker v2 anchor and feed gap review remain outstanding under Issue #1204. All live orders OFF.
 
 
-> Read [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md) first. No profitable paper strategy has been independently certified; v2 remains an unproven precommitted research plan.
 
 ## October 13 — clean paired trend v2 is PRECOMMITTED, not a profitable result
 
