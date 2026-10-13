@@ -25,6 +25,8 @@ def _cohort(*, longs: int = 8, shorts: int = 8, factor: str = "3") -> dict[str, 
         "all": {
             "closed_trades": longs + shorts,
             "profit_factor": factor,
+            "wins_after_costs": 10,
+            "losses_after_costs": 6,
             "gross_positive_net_pnl": "60",
             "absolute_gross_negative_net_pnl": "20",
             "net_expectancy_per_closed_trade": "2.5",
@@ -61,6 +63,10 @@ def _inputs(
         "new_signed_checkpoint_append_verified": True,
         "current_run_id": 40002,
         "current_attempt": 1,
+        "successor_row_count": 9,
+        "successor_last_row_digest": "digest-8",
+        "successor_end_ms": ANCHOR + duration,
+        "successor_record_count": 90,
     }
     review: dict[str, object] = {
         "ready_for_review": True,
@@ -98,6 +104,8 @@ def _inputs(
         candidate_pnl = candidate_gain if index else "0"
         rows.append({
             "end_ms": end,
+            "row_digest": f"digest-{index}",
+            "record_count": (index + 1) * 10,
             "baseline": {
                 "total_account_pnl": baseline_pnl,
                 "max_drawdown_fraction": "0.02",
