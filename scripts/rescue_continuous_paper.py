@@ -161,18 +161,21 @@ def choose_exact_source(
             # Never interpret cancellation itself as evidence of a snapshot.
             # Require the actual trader to have finished and all terminal
             # custody steps to have succeeded for this exact run/attempt.
-            verified_fast = [
+            matching_fast = [
                 item for item in artifacts
                 if isinstance(item, dict)
                 and item.get("name") == fast_name
                 and item.get("expired") is False
-                and type(item.get("size_in_bytes")) is int
+            ]
+            verified_fast = [
+                item for item in matching_fast
+                if type(item.get("size_in_bytes")) is int
                 and item["size_in_bytes"] > 0
                 and isinstance(item.get("digest"), str)
                 and re.fullmatch(r"sha256:[0-9a-f]{64}", item["digest"])
             ]
             if (
-                fast_ready and len(verified_fast) == 1
+                fast_ready and len(matching_fast) == len(verified_fast) == 1
                 and all(_step_succeeded(job, step) for step in (
                     "Measure durable continuous paper state",
                     "Pack fast continuous paper resume state",
