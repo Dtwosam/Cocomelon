@@ -921,6 +921,9 @@ jobs:
           }
           trap cleanup_runtime_processes EXIT
 
+          # The 355-minute job must leave enough time for state and paired-
+          # account archive upload. Rank feature sealing now has a separate
+          # bounded deadline and never blocks the signed trend source archive.
           # Preserve a dedicated post-session window for exact-state handoff,
           # original rank + full-input archives, and deferred audit receipts.
           # The previous 19800s runtime consumed the near-6h Actions ceiling:
@@ -1001,6 +1004,21 @@ jobs:
             echo "::error::continuous-paper session tee exited with status $tee_status"
             exit "$tee_status"
           fi
+
+      - name: Upload isolated both-side trend paired-paper evidence
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/both-side-trend-paired-shadow-summary.json') != '' }}
+        continue-on-error: true
+        timeout-minutes: 12
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-both-side-trend-paired-shadow-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            continuous-paper-state/both-side-trend-paired-shadow-freeze.json
+            continuous-paper-state/both-side-trend-paired-shadow-summary.json
+            continuous-paper-state/both-side-trend-paired-shadow-v1
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
 
       - name: Measure durable continuous paper state
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
@@ -1153,6 +1171,7 @@ jobs:
           compression-level: 0
 
       - name: Seal entire original SHORT rank input features after paper exit
+        timeout-minutes: 18
         id: full_rank_feature_seal
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
         continue-on-error: true
@@ -1181,6 +1200,7 @@ jobs:
           compression-level: 0
 
       - name: Seal original SHORT rank market context after paper exit
+        timeout-minutes: 12
         id: rank_market_context_seal
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
         continue-on-error: true
@@ -1665,20 +1685,6 @@ jobs:
             continuous-paper-state/targeted-trend-rank-paired-portfolio-freeze.json
             continuous-paper-state/loss-context-paired-portfolio-shadow-summary.json
             continuous-paper-state/loss-context-paired-portfolio-shadow-scoped-v5
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 6
-
-      - name: Upload isolated both-side trend paired-paper evidence
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/both-side-trend-paired-shadow-summary.json') != '' }}
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-both-side-trend-paired-shadow-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            continuous-paper-state/both-side-trend-paired-shadow-freeze.json
-            continuous-paper-state/both-side-trend-paired-shadow-summary.json
-            continuous-paper-state/both-side-trend-paired-shadow-v1
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
