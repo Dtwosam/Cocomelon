@@ -12,6 +12,10 @@ import zipfile
 from collections.abc import Sequence
 from pathlib import Path
 
+from cocomelon.research.prospective_both_side_trend_paired_v2_genesis import (
+    GENESIS_FILE_V2,
+    verify_v2_genesis,
+)
 from scripts.audit_both_side_trend_ledger_anchor import (
     _archived_gap_scopes,
     _compare_gap_scopes,
@@ -22,6 +26,7 @@ from scripts.audit_both_side_trend_ledger_anchor import (
 from scripts.audit_both_side_trend_paired_handoff import (
     TrendPairHandoffAuditError,
     _json_file,
+    _member,
     _write_json_atomic,
     audit_trend_handoff,
 )
@@ -93,6 +98,8 @@ def audit_v2_selected_anchor_lineage(
         "source_gap_lifecycle_state_only": None,
         "independent_market_feed_authenticated": False,
         "v2_campaign_genesis_proven": False,
+        "first_archived_v2_worker_proven": False,
+        "identical_write_once_genesis_across_workers": False,
         "72h_positive_after_cost_edge_verified": False,
         "paper_only": True,
         "research_only": True,
@@ -126,13 +133,38 @@ def audit_v2_selected_anchor_lineage(
             raise TrendPairHandoffAuditError(
                 "independent v2 selected anchor evidence missing"
             )
-        _strict_source(
+        first_receipt = _strict_source(
             run=anchor_run, jobs=anchor_jobs,
             artifacts=anchor_artifacts, archive=anchor_archive,
             repository=repository, run_id=anchor_run_id,
             attempt=anchor_attempt,
         )
         result["v2_selected_anchor_archive_authenticated"] = True
+        with zipfile.ZipFile(anchor_archive) as original, zipfile.ZipFile(
+            current_archive,
+        ) as successor:
+            genesis_name = (
+                "both-side-trend-paired-shadow-v2/" + GENESIS_FILE_V2
+            )
+            anchor_genesis_bytes = _member(original, genesis_name)
+            successor_genesis_bytes = _member(successor, genesis_name)
+            if anchor_genesis_bytes != successor_genesis_bytes:
+                raise TrendPairHandoffAuditError(
+                    "v2 selected anchor genesis replaced between workers"
+                )
+            genesis = verify_v2_genesis(json.loads(anchor_genesis_bytes))
+        if (
+            genesis["source_github_run_id"] != anchor_run_id
+            or genesis["source_github_attempt"] != anchor_attempt
+            or genesis["source_github_head_sha"] != anchor_run.get("head_sha")
+            or first_receipt.get("v2_genesis_original_worker_authenticated")
+            is not True
+        ):
+            raise TrendPairHandoffAuditError(
+                "v2 selected source is not the sealed original genesis worker"
+            )
+        result["identical_write_once_genesis_across_workers"] = True
+        result["first_archived_v2_worker_proven"] = True
         anchor = _ledger_rows(anchor_archive, ledger_member=V2_LEDGER_MEMBER)
         current = _ledger_rows(current_archive, ledger_member=V2_LEDGER_MEMBER)
         comparison = _compare_rows(anchor, current)

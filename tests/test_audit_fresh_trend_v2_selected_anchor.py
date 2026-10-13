@@ -8,6 +8,15 @@ from pathlib import Path
 
 import pytest
 
+from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
+    FORWARD_NOT_BEFORE_MS_V2,
+    FROZEN_AT_MS_V2,
+    TRIAL_ID_V2,
+    both_side_trend_matched_shadow_v2_freeze,
+)
+from cocomelon.research.prospective_both_side_trend_paired_v2_genesis import (
+    _digest,
+)
 from scripts import audit_fresh_trend_v2_selected_anchor as audit
 
 REPO = "Dtwosam/Cocomelon"
@@ -17,7 +26,7 @@ SOURCE_ARGS = {
     "anchor_attempt": 1,
     "current_run_id": 40002,
     "current_attempt": 1,
-    "anchor_run": {},
+    "anchor_run": {"head_sha": "a" * 40},
     "anchor_jobs": {},
     "anchor_artifacts": {},
     "current_run": {},
@@ -41,12 +50,45 @@ def _state() -> dict[str, object]:
     }
 
 
+def _genesis() -> dict[str, object]:
+    freeze = both_side_trend_matched_shadow_v2_freeze()
+    value: dict[str, object] = {
+        "schema_version": 1,
+        "trial_id": TRIAL_ID_V2,
+        "frozen_candidate_id": freeze.candidate_id,
+        "source_composition_digest": freeze.source_composition_digest,
+        "frozen_at_ms": FROZEN_AT_MS_V2,
+        "forward_not_before_ms": FORWARD_NOT_BEFORE_MS_V2,
+        "genesis_startup_ms": FROZEN_AT_MS_V2 + 100,
+        "selected_markets": ["BTC"],
+        "replay_config_digest": "a" * 64,
+        "initial_cash_each_lane": "10000",
+        "initial_record_count": 0,
+        "initial_signed_review_rows": 0,
+        "source_github_run_id": SOURCE_ARGS["anchor_run_id"],
+        "source_github_attempt": SOURCE_ARGS["anchor_attempt"],
+        "source_github_head_sha": "a" * 40,
+        "original_v1_account_reuse": False,
+        "research_only": True,
+        "paper_only": True,
+        "shadow_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+    }
+    value["genesis_digest"] = _digest(value)
+    return value
+
+
 def _archive(
     path: Path,
     *,
     rows: list[dict[str, object]],
 ) -> Path:
     with zipfile.ZipFile(path, "w") as zipped:
+        zipped.writestr(
+            "both-side-trend-paired-shadow-v2/v2-genesis.json",
+            json.dumps(_genesis()),
+        )
         zipped.writestr(
             audit.V2_LEDGER_MEMBER,
             "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
@@ -75,6 +117,7 @@ def _audit(
     monkeypatch.setattr(
         audit, "_strict_source",
         lambda **kw: {
+            "v2_genesis_original_worker_authenticated": True,
             "status": "archive_checkpoint_lineage_verified",
             "source_v2_terminal_receipt_verified": True,
             "archived_execution_economics_reconciled": True,
@@ -105,6 +148,8 @@ def test_valid_selected_v2_anchor_prefix_and_genuine_append(
     assert receipt["new_signed_checkpoint_append_verified"] is True
     assert receipt["source_gap_lifecycle_state_only"] is not None
     assert receipt["v2_campaign_genesis_proven"] is False
+    assert receipt["first_archived_v2_worker_proven"] is True
+    assert receipt["identical_write_once_genesis_across_workers"] is True
     assert receipt["independent_market_feed_authenticated"] is False
     assert receipt["72h_positive_after_cost_edge_verified"] is False
     assert receipt["execution_authority"] is False
@@ -173,7 +218,10 @@ def test_unpinned_anchor_is_not_silently_replaced_with_latest(
 def test_selected_anchor_is_not_a_forward_successor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(audit, "_strict_source", lambda **kw: {})
+    monkeypatch.setattr(
+        audit, "_strict_source",
+        lambda **kw: {"v2_genesis_original_worker_authenticated": True},
+    )
     anchor = _archive(
         tmp_path / "anchor.zip",
         rows=[_row("a", None, end=100, count=10)],

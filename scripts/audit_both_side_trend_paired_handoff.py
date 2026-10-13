@@ -37,6 +37,10 @@ from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
     TRIAL_ID_V2,
     both_side_trend_matched_shadow_v2_freeze,
 )
+from cocomelon.research.prospective_both_side_trend_paired_v2_genesis import (
+    GENESIS_FILE_V2,
+    verify_v2_genesis,
+)
 from cocomelon.research.trend_paired_shadow_sidecar import (
     TREND_PAIR_FREEZE_FILE,
     TREND_PAIR_STATE_ROOT,
@@ -729,6 +733,7 @@ def _reconcile_archived_lane_economics(
                 realized_gross - fee_total + funding_total
             ),
             "equity_from_signed_account": account["equity"],
+            "starting_cash_from_signed_account": account["starting_cash"],
             "independent_terminal_mark_arithmetic": mark_math,
         }
 
@@ -873,6 +878,10 @@ def audit_trend_handoff(
         "durable_execution_sqlite_replay_verified": False,
         "archived_execution_sqlite_integrity_verified": False,
         "source_v2_terminal_receipt_verified": False,
+        "v2_write_once_genesis_verified": False,
+        "v2_genesis_source_run_id": None,
+        "v2_genesis_source_attempt": None,
+        "v2_genesis_original_worker_authenticated": False,
         "archived_execution_economics_reconciled": False,
         "archived_terminal_mark_arithmetic_reconciled": False,
         "reconciled_lanes": None,
@@ -995,6 +1004,42 @@ def audit_trend_handoff(
                     terminal = _mapping(json.loads(_member(
                         package, "trend-paired-v2-terminal-consistency.json",
                     )), "v2 source terminal receipt")
+                    genesis = verify_v2_genesis(json.loads(_member(
+                        package, f"{TREND_V2_STATE_ROOT}/{GENESIS_FILE_V2}",
+                    )))
+                if (
+                    genesis["source_github_run_id"] > source_run_id
+                    or genesis["genesis_startup_ms"]
+                    > _mapping(latest, "last signed row").get("end_ms", -1)
+                    or genesis["selected_markets"] != state.get("selected_markets")
+                    or genesis["replay_config_digest"]
+                    != state.get("replay_config_digest")
+                ):
+                    raise TrendPairHandoffAuditError(
+                        "v2 origin cannot be reconciled to signed paper history"
+                    )
+                for lane in ("baseline", "candidate"):
+                    _same_amount(
+                        reconciled[lane]["starting_cash_from_signed_account"],
+                        genesis["initial_cash_each_lane"],
+                        f"v2 {lane} write-once genesis cash",
+                    )
+                result["v2_genesis_source_run_id"] = (
+                    genesis["source_github_run_id"]
+                )
+                result["v2_genesis_source_attempt"] = (
+                    genesis["source_github_attempt"]
+                )
+                if genesis["source_github_run_id"] == source_run_id:
+                    if (
+                        genesis["source_github_attempt"] != source_attempt
+                        or genesis["source_github_head_sha"] != run.get("head_sha")
+                    ):
+                        raise TrendPairHandoffAuditError(
+                            "first v2 worker genesis GitHub attempt/head mismatch"
+                        )
+                    result["v2_genesis_original_worker_authenticated"] = True
+                result["v2_write_once_genesis_verified"] = True
                 if (
                     terminal.get("status") != "terminal_source_account_snapshot_coherent"
                     or terminal.get("campaign_state_root") != TREND_V2_STATE_ROOT
