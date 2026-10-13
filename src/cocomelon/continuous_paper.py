@@ -449,8 +449,13 @@ from cocomelon.research.prospective_weekly_drawdown_5m_exit_source import (
 from cocomelon.research.targeted_trend_paired_freeze import (
     activate_targeted_trend_paired_freeze,
 )
+from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
+    FROZEN_AT_MS_V2,
+    TRIAL_ID_V2,
+)
 from cocomelon.research.trend_paired_shadow_sidecar import (
     TREND_PAIR_SUMMARY_FILE,
+    TREND_V2_SUMMARY_FILE,
     PairedShadowTrendSidecar,
     start_trend_paired_shadow_sidecar,
 )
@@ -10272,6 +10277,11 @@ async def run_continuous_paper_session(
             )
             else None
         )
+        # Only a post-precommit worker may begin clean v2 accounts. The
+        # previous v1 DB/ledger remain on disk and are never imported.
+        trend_campaign = (
+            "v2" if started_at_ms >= FROZEN_AT_MS_V2 else "v1"
+        )
         try:
             loss_context_paired_shadow_runtime = (
                 start_trend_paired_shadow_sidecar(
@@ -10281,6 +10291,7 @@ async def run_continuous_paper_session(
                     selected_markets=selected,
                     startup_timestamp_ms=started_at_ms,
                     legacy_shadow_root_name=LOSS_CONTEXT_PAIRED_SHADOW_ROOT,
+                    campaign=trend_campaign,
                 )
             )
             loss_context_paired_shadow_runtime.submit_rank_snapshot(
@@ -11935,10 +11946,13 @@ async def run_continuous_paper_session(
             # A failed optional new research launch must emit a negative
             # receipt, never silently imply a successful paired account.
             _write_json_atomic(
-                root / TREND_PAIR_SUMMARY_FILE,
+                root / (
+                    TREND_V2_SUMMARY_FILE
+                    if trend_campaign == "v2" else TREND_PAIR_SUMMARY_FILE
+                ),
                 {
                     "schema_version": 1,
-                    "trial_id": (
+                    "trial_id": TRIAL_ID_V2 if trend_campaign == "v2" else (
                         "prospective-both-sides-trend-lead-capital-matched-shadow-v1"
                     ),
                     "runtime": None,
