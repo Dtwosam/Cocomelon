@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import cast
 from pathlib import Path
+from typing import cast
 
 import pytest
 
+from cocomelon.research.loss_context_paired_shadow_runtime import (
+    LossContextPairedShadowRuntime,
+)
 from cocomelon.research.loss_context_portfolio_shadow_candidate import (
     verify_loss_context_portfolio_shadow_freeze,
 )
@@ -22,15 +25,12 @@ from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
     TRIAL_ID_V2,
     both_side_trend_matched_shadow_v2_freeze,
 )
-from cocomelon.research.loss_context_paired_shadow_runtime import (
-    LossContextPairedShadowRuntime,
-)
 from cocomelon.research.trend_paired_shadow_sidecar import (
-    PairedShadowTrendSidecar,
     TREND_PAIR_STATE_ROOT,
     TREND_V2_FREEZE_FILE,
     TREND_V2_STATE_ROOT,
     TREND_V2_SUMMARY_FILE,
+    PairedShadowTrendSidecar,
     prepare_trend_pair_freeze,
     start_trend_paired_shadow_sidecar,
 )
