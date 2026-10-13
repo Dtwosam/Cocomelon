@@ -26,7 +26,6 @@ from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
     PRECOMMITMENT_V2,
     both_side_trend_matched_shadow_v2_freeze,
 )
-
 from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
     FILE_NAME as V2_GAP_WITNESS_FILE,
 )
