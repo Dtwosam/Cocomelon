@@ -11,7 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 
@@ -159,8 +159,10 @@ class V2SourceGapWitness:
             raise V2SourceGapWitnessError(
                 "restored source-gap witness differs from signed account checkpoint"
             )
-        self._count = int(observed["received_gap_record_count"])
-        self._last_ordinal = int(observed["last_gap_record_ordinal"] or 0)
+        self._count = cast(int, observed["received_gap_record_count"])
+        self._last_ordinal = (
+            cast(int | None, observed["last_gap_record_ordinal"]) or 0
+        )
         digest = observed["latest_gap_record_digest"]
         self._previous_digest = digest if isinstance(digest, str) else None
 
