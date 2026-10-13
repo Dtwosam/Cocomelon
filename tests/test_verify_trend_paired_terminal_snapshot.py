@@ -151,6 +151,25 @@ def test_fresh_v2_terminal_parity_uses_only_v2_sqlite_and_signed_state(
     (root / audit.SUMMARY).rename(
         root / "both-side-trend-paired-shadow-v2-summary.json"
     )
+    from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
+        both_side_trend_matched_shadow_v2_freeze,
+    )
+
+    frozen = both_side_trend_matched_shadow_v2_freeze()
+    (root / "both-side-trend-paired-shadow-v2-freeze.json").write_text(
+        json.dumps(frozen.to_dict())
+    )
+    signed_path = v2_folder / "paired-shadow-state.json"
+    state = json.loads(signed_path.read_text())
+    state["portfolio_shadow_candidate_id"] = frozen.candidate_id
+    state.pop("state_digest")
+    state["state_digest"] = audit._state_digest(state)
+    signed_path.write_text(json.dumps(state))
+    summary_path = root / "both-side-trend-paired-shadow-v2-summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary["checkpoint"] = state
+    summary_path.write_text(json.dumps(summary))
+
     result = audit.verify_terminal_snapshot(
         root,
         root_name="both-side-trend-paired-shadow-v2",
@@ -158,6 +177,7 @@ def test_fresh_v2_terminal_parity_uses_only_v2_sqlite_and_signed_state(
     )
     assert result["status"] == "terminal_source_account_snapshot_coherent"
     assert result["campaign_state_root"] == "both-side-trend-paired-shadow-v2"
+    assert result["frozen_v2_candidate_identity_verified"] is True
     assert result["terminal_account_ids_match_signed_checkpoint"] is True
     assert result["forward_after_cost_edge_verified"] is False
     assert result["promotion_authority"] is False
@@ -188,4 +208,32 @@ def test_v2_verifier_rejects_mixed_v1_summary_identity(
     )
     assert result["status"] == "unverified"
     assert "unknown paired campaign identity" in str(result["reasons"])
+    assert result["promotion_authority"] is False
+
+
+def test_v2_rejects_copied_v1_checkpoint_even_when_account_ids_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _fixture(tmp_path, monkeypatch)
+    (root / audit.ROOT).rename(root / "both-side-trend-paired-shadow-v2")
+    (root / audit.SUMMARY).rename(
+        root / "both-side-trend-paired-shadow-v2-summary.json"
+    )
+    from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
+        both_side_trend_matched_shadow_v2_freeze,
+    )
+
+    frozen = both_side_trend_matched_shadow_v2_freeze()
+    (root / "both-side-trend-paired-shadow-v2-freeze.json").write_text(
+        json.dumps(frozen.to_dict())
+    )
+    result = audit.verify_terminal_snapshot(
+        root,
+        root_name="both-side-trend-paired-shadow-v2",
+        summary_name="both-side-trend-paired-shadow-v2-summary.json",
+    )
+    assert result["status"] == "unverified"
+    assert "v2 state candidate identity" in str(result["reasons"])
+    assert result["terminal_account_ids_match_signed_checkpoint"] is False
+    assert result["frozen_v2_candidate_identity_verified"] is False
     assert result["promotion_authority"] is False
