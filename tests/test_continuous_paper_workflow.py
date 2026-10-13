@@ -1,3 +1,8 @@
+import ast
+from pathlib import Path
+
+WORKFLOW = Path(".github/workflows/continuous-paper.yml")
+
 def test_cancelled_predecessor_requires_post_exit_fast_state_on_both_paths() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     restore = source.split(
@@ -17,11 +22,6 @@ def test_cancelled_predecessor_requires_post_exit_fast_state_on_both_paths() -> 
     assert "no durable-only fallback" in restore
     assert 'status == "completed"' in restore
 
-
-import ast
-from pathlib import Path
-
-WORKFLOW = Path(".github/workflows/continuous-paper.yml")
 
 def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
