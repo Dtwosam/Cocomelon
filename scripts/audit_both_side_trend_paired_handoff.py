@@ -26,6 +26,7 @@ from cocomelon.research.loss_context_paired_shadow_review import (
     review_ledger_receipt,
 )
 from cocomelon.research.loss_context_portfolio_shadow_candidate import (
+    LossContextPortfolioShadowFreeze,
     verify_loss_context_portfolio_shadow_freeze,
 )
 from cocomelon.research.prospective_both_side_trend_paired_freeze import (
@@ -51,7 +52,9 @@ V2_ARTIFACT_PREFIX: Final = "continuous-paper-both-side-trend-paired-shadow-v2-"
 V2_SOURCE_UPLOAD_STEP: Final = "Upload isolated fresh v2 trend paired-paper evidence"
 
 
-def _campaign(campaign: str) -> tuple[str, str, str, str, str, object]:
+def _campaign(
+    campaign: str,
+) -> tuple[str, str, str, str, str, LossContextPortfolioShadowFreeze]:
     if campaign == "v1":
         return (
             TREND_PAIR_FREEZE_FILE, TREND_PAIR_STATE_ROOT, TREND_PAIR_SUMMARY_FILE,
@@ -189,11 +192,16 @@ def _source_class(
             and step.get("conclusion") == "success"
             and isinstance(step.get("name"), str)
         }
-        if {
+        required = {
             "Run continuous paper trader",
             V2_SOURCE_UPLOAD_STEP if campaign == "v2"
             else "Upload isolated both-side trend paired-paper evidence",
-        } <= successful_steps:
+        }
+        if campaign == "v2":
+            required.add(
+                "Verify fresh v2 trend paired account consistency before source ZIP"
+            )
+        if required <= successful_steps:
             confirmed_paper_jobs += 1
             # This source intentionally exits 75 AFTER durable successor
             # dispatch, immutable state upload and isolated ZIP publication.
@@ -259,6 +267,12 @@ def _validate_artifact(
             "missing or ambiguous exact original trend paired artifact"
         )
     artifact = exact[0]
+    if campaign == "v2" and (
+        artifact.get("expired") is not False
+        or type(artifact.get("id")) is not int
+        or artifact["id"] <= 0
+    ):
+        raise TrendPairHandoffAuditError("v2 artifact identity or expiry invalid")
     if artifact.get("expired") is True:
         raise TrendPairHandoffAuditError("source trend artifact expired")
     if not archive.is_file():
