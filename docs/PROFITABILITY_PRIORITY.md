@@ -1,5 +1,10 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 13 — separate the midnight v2 freeze from the six-hour entry embargo
+
+The independent v2 source summary now reports two distinct calendar facts: `started_after_frozen_boundary` means that an original worker started **at/after 2026-10-14 00:00 UTC**; `started_after_forward_entry_embargo` means it started **at/after 2026-10-14 06:00 UTC**. A clean actor may legitimately start during the six-hour no-entry embargo and begin receiving source data; the unchanged candidate entry filter still forbids trades before 06:00. The earlier label incorrectly compared first-worker startup to the *entry* boundary while calling it the *freeze* boundary. The existing v1 receipt remains backward-compatible. Neither timestamp is exchange feed authentication nor forward profit evidence. All execution remains PAPER ONLY.
+
+
 ## October 13 — fix actual v2 signed ranked-market selection continuity (before first genesis)
 
 The original paper scanner legitimately reranks its selected markets within and across workers. The write-once v2 genesis records the **first** worker's starting universe, but the v2 paired actor reconciles its two accounts to the **current** signed, ranked universe. An earlier restore/audit check mistakenly demanded that every later ranked universe equal the **initial** genesis list: a routine market rerank would quarantine otherwise valid forward v2 paper or cause an independent audit to reject authentic sources after a worker handoff. This is a source-continuity bug, NOT a change in the frozen challenger strategy.
