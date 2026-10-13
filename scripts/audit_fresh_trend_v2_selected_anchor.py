@@ -13,13 +13,15 @@ import zipfile
 from collections.abc import Sequence
 from pathlib import Path
 
+from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+    FILE_NAME as V2_GAP_WITNESS_FILE,
+)
+from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+    read_source_gap_witness,
+)
 from cocomelon.research.prospective_both_side_trend_paired_v2_genesis import (
     GENESIS_FILE_V2,
     verify_v2_genesis,
-)
-from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
-    FILE_NAME as V2_GAP_WITNESS_FILE,
-    read_source_gap_witness,
 )
 from scripts.audit_both_side_trend_ledger_anchor import (
     _archived_gap_scopes,
