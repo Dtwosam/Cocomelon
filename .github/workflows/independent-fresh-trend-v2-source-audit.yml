@@ -300,6 +300,47 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      # Screen a predeclared 72h signed forward cohort only after BOTH
+      # original worker receipts are present. The source account is NOT an
+      # independently authenticated original venue market-data stream.
+      - name: Compute independent v2 after-cost forward outcome diagnostic
+        if: ${{ always() && hashFiles('fresh-trend-v2-source-audit.json') != '' && hashFiles('fresh-trend-v2-ledger-lineage.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.audit_fresh_trend_v2_forward_outcome \
+            --source-receipt fresh-trend-v2-source-audit.json \
+            --lineage-receipt fresh-trend-v2-ledger-lineage.json \
+            --source-artifact-zip /tmp/fresh-trend-v2-audit/source.zip \
+            --output fresh-trend-v2-forward-economics.json
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          r = json.loads(Path("fresh-trend-v2-forward-economics.json").read_text())
+          print("## Frozen v2 independent AFTER-COST signed-account diagnostic")
+          print("- status:", r["status"])
+          print("- reasons:", r["reasons"])
+          print("- signed 72h forward window exists:", r.get("signed_72h_window_complete", False))
+          print("- precommitted economic review passes:", r.get("review_gate_passed", False))
+          print("- after-cost baseline/candidate marked account PnL:", r.get("baseline_after_cost_marked_pnl"), r.get("candidate_after_cost_marked_pnl"))
+          print("- primary candidate minus baseline after-cost account delta:", r.get("primary_candidate_minus_baseline_after_cost_marked_pnl"))
+          print("- candidate fill-replayed trade cohort net expectancy/PF:", r.get("candidate_fill_matched_trades"))
+          print("- strict original named market-feed gap history:", r.get("named_market_source_gap_history"))
+          print("- signed source positive screen (NOT a profitable edge certificate):", r.get("positive_signed_source_account_screen", False))
+          print("- original venue stream independently authenticated: FALSE")
+          print("- verified 72h after-cost PROFITABLE edge: FALSE")
+          print("- broker authority / promotion: FALSE / FALSE")
+          PY
+
+      - name: Upload read-only v2 forward economics diagnostic
+        if: ${{ always() && hashFiles('fresh-trend-v2-forward-economics.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: independent-fresh-trend-v2-forward-economics-${{ env.SOURCE_RUN_ID }}-${{ env.SOURCE_ATTEMPT }}
+          path: fresh-trend-v2-forward-economics.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Upload independent v2 source receipt
         if: ${{ always() && env.SOURCE_AVAILABLE != 'false' && hashFiles('fresh-trend-v2-source-audit.json') != '' }}
         uses: actions/upload-artifact@v7
