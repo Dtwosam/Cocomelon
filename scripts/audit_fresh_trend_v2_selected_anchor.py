@@ -309,7 +309,7 @@ def audit_v2_selected_anchor_lineage(
         result["new_signed_checkpoint_append_verified"] = True
         result["status"] = "v2_selected_anchor_worker_append_verified"
         result["reasons"] = [
-            "selected_anchor_is_not_proven_first_v2_genesis",
+            "first_v2_worker_proven_but_full_venue_history_not_authenticated",
             "original_market_data_and_72h_positive_edge_not_authenticated",
         ]
     except (
