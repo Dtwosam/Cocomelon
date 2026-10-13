@@ -16,6 +16,7 @@ import sqlite3
 import tempfile
 import zipfile
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Final, cast
@@ -25,20 +26,47 @@ from cocomelon.research.loss_context_paired_shadow_review import (
     review_ledger_receipt,
 )
 from cocomelon.research.loss_context_portfolio_shadow_candidate import (
+    LossContextPortfolioShadowFreeze,
     verify_loss_context_portfolio_shadow_freeze,
 )
 from cocomelon.research.prospective_both_side_trend_paired_freeze import (
     TRIAL_ID,
     both_side_trend_matched_shadow_freeze,
 )
+from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
+    TRIAL_ID_V2,
+    both_side_trend_matched_shadow_v2_freeze,
+)
 from cocomelon.research.trend_paired_shadow_sidecar import (
     TREND_PAIR_FREEZE_FILE,
     TREND_PAIR_STATE_ROOT,
     TREND_PAIR_SUMMARY_FILE,
+    TREND_V2_FREEZE_FILE,
+    TREND_V2_STATE_ROOT,
+    TREND_V2_SUMMARY_FILE,
 )
 
 SOURCE_WORKFLOW_PATH: Final = ".github/workflows/continuous-paper.yml"
 ARTIFACT_PREFIX: Final = "continuous-paper-both-side-trend-paired-shadow-"
+V2_ARTIFACT_PREFIX: Final = "continuous-paper-both-side-trend-paired-shadow-v2-"
+V2_SOURCE_UPLOAD_STEP: Final = "Upload isolated fresh v2 trend paired-paper evidence"
+
+
+def _campaign(
+    campaign: str,
+) -> tuple[str, str, str, str, str, LossContextPortfolioShadowFreeze]:
+    if campaign == "v1":
+        return (
+            TREND_PAIR_FREEZE_FILE, TREND_PAIR_STATE_ROOT, TREND_PAIR_SUMMARY_FILE,
+            ARTIFACT_PREFIX, TRIAL_ID, both_side_trend_matched_shadow_freeze(),
+        )
+    if campaign == "v2":
+        return (
+            TREND_V2_FREEZE_FILE, TREND_V2_STATE_ROOT, TREND_V2_SUMMARY_FILE,
+            V2_ARTIFACT_PREFIX, TRIAL_ID_V2,
+            both_side_trend_matched_shadow_v2_freeze(),
+        )
+    raise TrendPairHandoffAuditError("unknown paired research campaign")
 MAX_RECEIPT_MEMBER_BYTES: Final = 128 * 1024 * 1024
 # Locked to the actual frozen paper execution schema. Schema migrations need
 # their own independent verifier; never silently accept unexpected formats.
@@ -97,7 +125,9 @@ def _source_class(
     repository: str,
     run_id: int,
     attempt: int,
+    campaign: str = "v1",
 ) -> str:
+    _campaign(campaign)
     if (
         run.get("id") != run_id
         or run.get("run_attempt") != attempt
@@ -109,6 +139,20 @@ def _source_class(
     # The already uploaded source ZIP may precede noncritical research-tail
     # completion. Only permit a strictly preliminary, non-promotable class.
     preliminary = run["status"] == "in_progress"
+    if campaign == "v2":
+        timestamp = run.get("run_started_at")
+        if not isinstance(timestamp, str):
+            raise TrendPairHandoffAuditError("v2 source start timestamp missing")
+        try:
+            started_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise TrendPairHandoffAuditError("v2 source start time invalid") from exc
+        if (
+            started_at.tzinfo is None
+            or started_at.astimezone(UTC).timestamp() * 1000
+            < both_side_trend_matched_shadow_v2_freeze().frozen_at_ms
+        ):
+            raise TrendPairHandoffAuditError("v2 source starts before frozen campaign")
     if preliminary and run.get("conclusion") is not None:
         raise TrendPairHandoffAuditError("active worker has a final conclusion")
     source_repository = _mapping(run.get("repository"), "repository")
@@ -148,10 +192,16 @@ def _source_class(
             and step.get("conclusion") == "success"
             and isinstance(step.get("name"), str)
         }
-        if {
+        required = {
             "Run continuous paper trader",
-            "Upload isolated both-side trend paired-paper evidence",
-        } <= successful_steps:
+            V2_SOURCE_UPLOAD_STEP if campaign == "v2"
+            else "Upload isolated both-side trend paired-paper evidence",
+        }
+        if campaign == "v2":
+            required.add(
+                "Verify fresh v2 trend paired account consistency before source ZIP"
+            )
+        if required <= successful_steps:
             confirmed_paper_jobs += 1
             # This source intentionally exits 75 AFTER durable successor
             # dispatch, immutable state upload and isolated ZIP publication.
@@ -201,11 +251,13 @@ def _validate_artifact(
     *,
     run_id: int,
     attempt: int,
+    campaign: str = "v1",
 ) -> str:
+    _, _, _, prefix, _, _ = _campaign(campaign)
     raw = artifacts.get("artifacts")
     if not isinstance(raw, list):
         raise TrendPairHandoffAuditError("GitHub artifacts list missing")
-    name = f"{ARTIFACT_PREFIX}{run_id}-{attempt}"
+    name = f"{prefix}{run_id}-{attempt}"
     exact = [
         _mapping(item, "source artifact") for item in raw
         if isinstance(item, dict) and item.get("name") == name
@@ -215,6 +267,12 @@ def _validate_artifact(
             "missing or ambiguous exact original trend paired artifact"
         )
     artifact = exact[0]
+    if campaign == "v2" and (
+        artifact.get("expired") is not False
+        or type(artifact.get("id")) is not int
+        or artifact["id"] <= 0
+    ):
+        raise TrendPairHandoffAuditError("v2 artifact identity or expiry invalid")
     if artifact.get("expired") is True:
         raise TrendPairHandoffAuditError("source trend artifact expired")
     if not archive.is_file():
@@ -248,6 +306,7 @@ def _member(archive: zipfile.ZipFile, filename: str) -> bytes:
 
 def _verify_archived_execution_store(
     archive: zipfile.ZipFile, work: Path, *, lane: str,
+    state_root: str = TREND_PAIR_STATE_ROOT,
 ) -> None:
     """Check structural integrity; do not mutate stores or infer signed PnL.
 
@@ -257,7 +316,7 @@ def _verify_archived_execution_store(
     """
     if lane not in ("baseline", "candidate"):
         raise TrendPairHandoffAuditError("invalid paired execution lane")
-    name = f"{TREND_PAIR_STATE_ROOT}/{lane}-execution.sqlite3"
+    name = f"{state_root}/{lane}-execution.sqlite3"
     matching = [
         info for info in archive.infolist()
         if info.filename in {name, f"continuous-paper-state/{name}"}
@@ -677,28 +736,31 @@ def _reconcile_archived_lane_economics(
 def _extract_receipts(
     archive_path: Path,
     work: Path,
+    *,
+    campaign: str = "v1",
 ) -> tuple[dict[str, object], dict[str, object], dict[str, object], Path]:
-    freeze_path = work / TREND_PAIR_FREEZE_FILE
+    freeze_name, root_name, summary_name, _, _, expected = _campaign(campaign)
+    freeze_path = work / freeze_name
     ledger_path = work / "review-ledger.jsonl"
     with zipfile.ZipFile(archive_path) as archive:
-        freeze_path.write_bytes(_member(archive, TREND_PAIR_FREEZE_FILE))
+        freeze_path.write_bytes(_member(archive, freeze_name))
         summary = _mapping(
-            json.loads(_member(archive, TREND_PAIR_SUMMARY_FILE)),
+            json.loads(_member(archive, summary_name)),
             "trend paired summary",
         )
         state = _mapping(
             json.loads(_member(
-                archive, f"{TREND_PAIR_STATE_ROOT}/paired-shadow-state.json",
+                archive, f"{root_name}/paired-shadow-state.json",
             )),
             "trend paired state",
         )
         ledger_path.write_bytes(_member(
-            archive, f"{TREND_PAIR_STATE_ROOT}/review-ledger.jsonl",
+            archive, f"{root_name}/review-ledger.jsonl",
         ))
         for lane in ("baseline", "candidate"):
-            _verify_archived_execution_store(archive, work, lane=lane)
+            _verify_archived_execution_store(archive, work, lane=lane, state_root=root_name)
     freeze = verify_loss_context_portfolio_shadow_freeze(freeze_path)
-    if freeze != both_side_trend_matched_shadow_freeze():
+    if freeze != expected:
         raise TrendPairHandoffAuditError("signed freeze != predeclared trend hypothesis")
     return freeze.to_dict(), summary, state, ledger_path
 
@@ -791,10 +853,11 @@ def audit_trend_handoff(
     repository: str,
     source_run_id: int,
     source_attempt: int,
+    campaign: str = "v1",
 ) -> dict[str, object]:
-    expected = both_side_trend_matched_shadow_freeze()
+    _, _, _, _, trial_id, expected = _campaign(campaign)
     result: dict[str, object] = {
-        "trial_id": TRIAL_ID,
+        "trial_id": trial_id,
         "source_run_id": source_run_id,
         "source_run_attempt": source_attempt,
         "expected_candidate_id": expected.candidate_id,
@@ -809,6 +872,7 @@ def audit_trend_handoff(
         "independent_mainnet_market_source_authenticated": False,
         "durable_execution_sqlite_replay_verified": False,
         "archived_execution_sqlite_integrity_verified": False,
+        "source_v2_terminal_receipt_verified": False,
         "archived_execution_economics_reconciled": False,
         "archived_terminal_mark_arithmetic_reconciled": False,
         "reconciled_lanes": None,
@@ -825,6 +889,7 @@ def audit_trend_handoff(
         source_class = _source_class(
             run=run, jobs=jobs, repository=repository,
             run_id=source_run_id, attempt=source_attempt,
+            campaign=campaign,
         )
         result["source_class"] = source_class
         result["source_worker_completed"] = (
@@ -839,16 +904,23 @@ def audit_trend_handoff(
         digest = _validate_artifact(
             artifacts, archive,
             run_id=source_run_id, attempt=source_attempt,
+            campaign=campaign,
         )
         result["archive_sha256"] = digest
         with tempfile.TemporaryDirectory() as directory:
-            freeze, summary, state, ledger_path = _extract_receipts(
-                archive, Path(directory),
-            )
+            if campaign == "v1":
+                # Preserve original v1 reviewer call contract and fixtures.
+                freeze, summary, state, ledger_path = _extract_receipts(
+                    archive, Path(directory),
+                )
+            else:
+                freeze, summary, state, ledger_path = _extract_receipts(
+                    archive, Path(directory), campaign="v2",
+                )
             result["archived_execution_sqlite_integrity_verified"] = True
             if freeze["candidate_id"] != expected.candidate_id:
                 raise TrendPairHandoffAuditError("candidate ID mismatch")
-            if summary.get("trial_id") != TRIAL_ID:
+            if summary.get("trial_id") != trial_id:
                 raise TrendPairHandoffAuditError("trend paired trial identity drift")
             if summary.get("checkpoint_published") is not True:
                 raise TrendPairHandoffAuditError("paired checkpoint unpublished")
@@ -918,6 +990,41 @@ def audit_trend_handoff(
                 )
             result["reconciled_lanes"] = reconciled
             result["archived_execution_economics_reconciled"] = True
+            if campaign == "v2":
+                with zipfile.ZipFile(archive) as package:
+                    terminal = _mapping(json.loads(_member(
+                        package, "trend-paired-v2-terminal-consistency.json",
+                    )), "v2 source terminal receipt")
+                if (
+                    terminal.get("status") != "terminal_source_account_snapshot_coherent"
+                    or terminal.get("campaign_state_root") != TREND_V2_STATE_ROOT
+                    or terminal.get("frozen_v2_candidate_identity_verified") is not True
+                    or terminal.get("signed_state_digest_verified") is not True
+                    or terminal.get("signed_ledger_receipt_verified") is not True
+                    or terminal.get("summary_checkpoint_matches_signed_state") is not True
+                    or terminal.get("terminal_account_ids_match_signed_checkpoint") is not True
+                    or terminal.get("signed_checkpoint_count") != ledger["row_count"]
+                    or terminal.get("signed_record_count") != state.get("record_count")
+                    or terminal.get("paper_only") is not True
+                    or terminal.get("execution_authority") is not False
+                    or terminal.get("promotion_authority") is not False
+                ):
+                    raise TrendPairHandoffAuditError(
+                        "v2 source terminal receipt not bound to signed checkpoint"
+                    )
+                lanes = _mapping(terminal.get("lanes"), "v2 terminal lanes")
+                for lane in ("baseline", "candidate"):
+                    item = _mapping(lanes.get(lane), f"v2 terminal {lane}")
+                    signed_id = _mapping(state.get(lane), lane).get("account_state_id")
+                    if (
+                        item.get("matches") is not True
+                        or item.get("signed_account_id") != signed_id
+                        or item.get("sqlite_account_id") != signed_id
+                    ):
+                        raise TrendPairHandoffAuditError(
+                            f"v2 terminal {lane} account identity mismatch"
+                        )
+                result["source_v2_terminal_receipt_verified"] = True
             result["archived_terminal_mark_arithmetic_reconciled"] = all(
                 reconciled[lane]
                 .get("independent_terminal_mark_arithmetic", {})
@@ -970,6 +1077,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--source-run-id", type=int, required=True)
     parser.add_argument("--source-attempt", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--campaign", choices=("v1", "v2"), default="v1")
     args = parser.parse_args(argv)
     if args.source_run_id < 1 or args.source_attempt < 1:
         parser.error("source worker identity must be positive")
@@ -982,6 +1090,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             repository=args.repository,
             source_run_id=args.source_run_id,
             source_attempt=args.source_attempt,
+            campaign=args.campaign,
         )
     except (OSError, ValueError, RuntimeError) as exc:
         receipt = {
