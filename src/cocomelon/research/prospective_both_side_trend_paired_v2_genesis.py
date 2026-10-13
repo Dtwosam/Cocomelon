@@ -147,6 +147,8 @@ def prepare_v2_genesis(
     """
     if freeze != both_side_trend_matched_shadow_v2_freeze():
         raise V2GenesisError("v2 genesis frozen candidate differs")
+    if type(startup_timestamp_ms) is not int:
+        raise V2GenesisError("v2 genesis startup timestamp must be integer")
     root = Path(state_root)
     root.mkdir(parents=True, exist_ok=True)
     target = root / GENESIS_FILE_V2
@@ -162,6 +164,8 @@ def prepare_v2_genesis(
             existing.get("selected_markets") != canonical_markets
             or existing.get("replay_config_digest") != replay_config_digest
             or _money(existing.get("initial_cash_each_lane")) != starting_cash
+            or type(startup_timestamp_ms) is not int
+            or startup_timestamp_ms < existing["genesis_startup_ms"]
         ):
             raise V2GenesisError("restored v2 origin/configuration changed")
         if not all((root / item).is_file() for item in (
