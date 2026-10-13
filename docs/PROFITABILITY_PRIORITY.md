@@ -1,5 +1,9 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 13 — terminal fast-state rescue after a failed paper trader step
+
+A real paper worker (#38432977298) finished its trader step with failure but independently completed the post-exit state-size measurement, fast tar.zst pack, exact artifact upload and first successor dispatch. That successor (#38473612016) was green **guard-only**, not a resumed account, because its guard observed an active predecessor. The independent recovery selector previously vetoed every failed trader step before considering any newer terminal archive, permanently selecting neither that exact state nor a safe recovery. It now admits only the **same worker's post-exit fast archive** when measured, packed, uploaded, unexpired, and bound to its exact run/attempt; a failed trader without those proofs, an active trader, durable-only fallback or any older archive remains blocked. The new trader must independently pass the ordinary exact restore and account checks, publish its own authenticated heartbeat, and preserve original account economics before any continuity claim. This is PAPER ONLY, not a profit or source-data certification.
+
 ## October 13 — bounded four-hour PAPER worker cleanup and exact-state handoff
 
 A live GitHub paper worker that started October 13 at 16:44 UTC stopped publishing authenticated heartbeats after 20:45 UTC while its original `Run continuous paper trader` step remained in progress beyond the intended 14,400-second trading session. That can strand both ordinary paper account continuity and the first post-2026-10-14 v2 worker if the runner reaches its 355-minute Actions ceiling before fast resume dispatch. No missing profit is inferred and no unverified reset is acceptable.
