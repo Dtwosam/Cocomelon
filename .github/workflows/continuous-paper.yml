@@ -68,6 +68,7 @@ on:
       - "src/cocomelon/research/targeted_trend_paired_freeze.py"
       - "src/cocomelon/research/prospective_both_side_trend_paired_freeze.py"
       - "src/cocomelon/research/prospective_both_side_trend_paired_v2_freeze.py"
+      - "src/cocomelon/research/prospective_both_side_trend_paired_v2_genesis.py"
       - "src/cocomelon/research/trend_paired_shadow_sidecar.py"
       - "src/cocomelon/research/continuous_paper_opening_opportunity.py"
       - "src/cocomelon/research/continuous_paper_opening_opportunity_paths.py"
