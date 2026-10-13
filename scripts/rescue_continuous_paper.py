@@ -136,7 +136,7 @@ def choose_exact_source(
         )):
             return "blocked", None
         if status == "completed" and run.get("conclusion") not in {
-            "success", "failure"
+            "success", "failure", "cancelled"
         }:
             return "blocked", None
         attempt = run.get("run_attempt")
@@ -155,6 +155,32 @@ def choose_exact_source(
         fast_name = f"continuous-paper-resume-{run_id}-{attempt}"
         durable_name = f"continuous-paper-state-{run_id}-{attempt}"
         fast_ready = _step_succeeded(job, FAST_UPLOAD_STEP) and fast_name in names
+        if status == "completed" and run.get("conclusion") == "cancelled":
+            # The observed Oct 13 worker was cancelled during a deferred
+            # research tail, AFTER its exact terminal fast archive existed.
+            # Never interpret cancellation itself as evidence of a snapshot.
+            # Require the actual trader to have finished and all terminal
+            # custody steps to have succeeded for this exact run/attempt.
+            verified_fast = [
+                item for item in artifacts
+                if isinstance(item, dict)
+                and item.get("name") == fast_name
+                and item.get("expired") is False
+                and type(item.get("size_in_bytes")) is int
+                and item["size_in_bytes"] > 0
+                and isinstance(item.get("digest"), str)
+                and re.fullmatch(r"sha256:[0-9a-f]{64}", item["digest"])
+            ]
+            if (
+                fast_ready and len(verified_fast) == 1
+                and all(_step_succeeded(job, step) for step in (
+                    "Measure durable continuous paper state",
+                    "Pack fast continuous paper resume state",
+                    FAST_UPLOAD_STEP,
+                ))
+            ):
+                return "ready", (run_id, attempt)
+            return "blocked", None
         durable_ready = (
             _step_succeeded(job, DURABLE_UPLOAD_STEP)
             and durable_name in names
