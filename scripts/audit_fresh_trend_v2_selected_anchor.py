@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import zipfile
 from collections.abc import Sequence
 from pathlib import Path
@@ -23,7 +22,6 @@ from scripts.audit_both_side_trend_ledger_anchor import (
 from scripts.audit_both_side_trend_paired_handoff import (
     TrendPairHandoffAuditError,
     _json_file,
-    _mapping,
     _write_json_atomic,
     audit_trend_handoff,
 )
