@@ -49,6 +49,8 @@ def _inputs(
         "v2_write_once_genesis_verified": True,
         "source_v2_terminal_receipt_verified": True,
         "archived_execution_economics_reconciled": True,
+        "v2_actor_received_gap_record_chain_verified": True,
+        "witnessed_forward_gap_event_count": 0,
         "source_worker_completed": True,
         "source_class": "completed_expected_upgrade_handoff_worker",
         "reconciled_lanes": {
@@ -281,3 +283,26 @@ def test_72_hour_checkpoint_time_without_new_source_records_never_qualifies() ->
     assert result["signed_new_records_at_every_eligible_checkpoint"] is False
     assert result["positive_signed_source_account_screen"] is False
     assert "signed_market_record_progress_stalled_or_unverifiable" in result["reasons"]
+
+
+def test_original_received_v2_data_gap_event_vetoes_closed_gap_paper_edge() -> None:
+    source, lineage, review, state, rows = _inputs()
+    source["witnessed_forward_gap_event_count"] = 1
+    result = outcome._economics(
+        source=source, lineage=lineage, review=review,
+        signed_state=state, rows=rows,
+    )
+    assert result["positive_signed_source_account_screen"] is False
+    assert "original_actor_received_forward_market_gap_event" in result["reasons"]
+    assert result["original_exchange_event_source_authenticated"] is False
+
+
+def test_missing_original_received_v2_gap_event_witness_vetoes_paper_edge() -> None:
+    source, lineage, review, state, rows = _inputs()
+    source["v2_actor_received_gap_record_chain_verified"] = False
+    result = outcome._economics(
+        source=source, lineage=lineage, review=review,
+        signed_state=state, rows=rows,
+    )
+    assert result["positive_signed_source_account_screen"] is False
+    assert "original_actor_gap_event_witness_not_authenticated" in result["reasons"]

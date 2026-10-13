@@ -44,6 +44,12 @@ from cocomelon.research.loss_context_portfolio_shadow_entry import (
     LossContextPortfolioShadowEntryFilter,
     RankOrdinalProvider,
 )
+from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
+    both_side_trend_matched_shadow_v2_freeze,
+)
+from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+    V2SourceGapWitness,
+)
 
 ZERO: Final = Decimal("0")
 LOSS_CONTEXT_PAIRED_SHADOW_SCHEMA_VERSION: Final = 1
@@ -603,6 +609,14 @@ class LossContextPairedPortfolioShadow:
             decision_engine=candidate_engine,
             opening_candidate_filter=self._candidate_filter,
         )
+        self._v2_gap_witness: V2SourceGapWitness | None = None
+        if (
+            root.name == "both-side-trend-paired-shadow-v2"
+            and freeze == both_side_trend_matched_shadow_v2_freeze()
+        ):
+            self._v2_gap_witness = V2SourceGapWitness(
+                root, restoring=state_exists,
+            )
         self._restore_state_if_present()
 
     @staticmethod
@@ -924,6 +938,11 @@ class LossContextPairedPortfolioShadow:
             raw.get("record_count"),
             "record_count",
         )
+        if self._v2_gap_witness is not None:
+            self._v2_gap_witness.restore(
+                receipt=raw.get("v2_source_gap_event_witness"),
+                total_processed_records=self._record_count,
+            )
         last = raw.get("last_record_available_at_ms")
         if last is not None:
             self._last_record_available_at_ms = self._nonnegative_int(
@@ -1037,6 +1056,10 @@ class LossContextPairedPortfolioShadow:
             now_ms,
             evaluate_decisions=evaluate_decisions,
         )
+        if self._v2_gap_witness is not None:
+            self._v2_gap_witness.append(
+                record, ordinal=self._record_count + 1,
+            )
         self._record_count += 1
         self._last_record_available_at_ms = record.available_at_ms
         self._update_drawdowns()
@@ -1351,6 +1374,12 @@ class LossContextPairedPortfolioShadow:
                 LOSS_CONTEXT_PAIRED_SHADOW_STATE_SCHEMA_VERSION
             ),
         }
+        if self._v2_gap_witness is not None:
+            payload["v2_source_gap_event_witness"] = (
+                self._v2_gap_witness.signed_receipt(
+                    total_processed_records=self._record_count,
+                )
+            )
         payload["state_digest"] = _state_digest(payload)
         _write_json_atomic(self._state_path, payload)
         return payload
