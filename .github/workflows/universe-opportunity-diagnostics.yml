@@ -61,6 +61,7 @@ jobs:
             --body-file universe-opportunity-diagnostics.md
 
       - name: Upload diagnostic snapshot
+        if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: universe-opportunity-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
