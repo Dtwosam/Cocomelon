@@ -1049,6 +1049,51 @@ jobs:
           retention-days: 90
           compression-level: 6
 
+      # v2 is a NEW precommitted paired study, never a continuation or
+      # reclassification of the failed v1 signed and unsigned account history.
+      # Its standalone negative/positive source receipt has no promotion
+      # authority; an independent source/market review is still required.
+      - name: Verify fresh v2 trend paired account consistency before source ZIP
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/both-side-trend-paired-shadow-v2-summary.json') != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/verify_trend_paired_terminal_snapshot.py \
+            --state-root "$STATE_ROOT" \
+            --root-name both-side-trend-paired-shadow-v2 \
+            --summary-name both-side-trend-paired-shadow-v2-summary.json \
+            --output "$STATE_ROOT/trend-paired-v2-terminal-consistency.json"
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          p = Path("continuous-paper-state/trend-paired-v2-terminal-consistency.json")
+          r = json.loads(p.read_text())
+          print("## Clean v2 trend source-account parity (research only)")
+          print("- terminal source status:", r["status"])
+          print("- signed/SQLite account parity:", r["terminal_account_ids_match_signed_checkpoint"])
+          print("- failed gate reasons:", r["reasons"])
+          print("- v1 state imported: FALSE")
+          print("- original feed completeness / after-cost profitability: UNPROVEN")
+          print("- live/promotion authority: FALSE / FALSE")
+          PY
+
+      - name: Upload isolated fresh v2 trend paired-paper evidence
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/both-side-trend-paired-shadow-v2-summary.json') != '' }}
+        continue-on-error: true
+        timeout-minutes: 12
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-both-side-trend-paired-shadow-v2-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            continuous-paper-state/trend-paired-v2-terminal-consistency.json
+            continuous-paper-state/both-side-trend-paired-shadow-v2-freeze.json
+            continuous-paper-state/both-side-trend-paired-shadow-v2-summary.json
+            continuous-paper-state/both-side-trend-paired-shadow-v2
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Measure durable continuous paper state
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
         shell: bash
