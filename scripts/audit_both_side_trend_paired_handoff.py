@@ -15,6 +15,7 @@ import os
 import sqlite3
 import tempfile
 import zipfile
+from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -863,6 +864,106 @@ def _extract_receipts(
     return freeze.to_dict(), summary, state, ledger_path
 
 
+def _v2_verified_gap_event_forensics(
+    path: Path, *, received_gap_count: int,
+) -> dict[str, object]:
+    """Categorize the *already verified* original v2 received-gap rows.
+
+    This is unsigned, read-only derived analysis; it neither changes the
+    write-once witness nor closes any original source coverage interval.
+    A 'recovered' row is an observed closure, NOT evidence of complete feed.
+    """
+    if type(received_gap_count) is not int or received_gap_count < 0:
+        raise TrendPairHandoffAuditError("signed v2 gap count unavailable")
+    reasons: Counter[str] = Counter()
+    streams: Counter[str] = Counter()
+    stream_reasons: dict[str, Counter[str]] = {}
+    malformed = 0
+    starts = 0
+    recoveries = 0
+    out_of_order = 0
+    first_at_ms: int | None = None
+    last_at_ms: int | None = None
+    count = 0
+    with path.open("rb") as handle:
+        for line in handle:
+            count += 1
+            row = json.loads(line)
+            record = row.get("record") if isinstance(row, dict) else None
+            payload = (
+                json.loads(record["payload_json"])
+                if isinstance(record, dict)
+                and isinstance(record.get("payload_json"), str)
+                else None
+            )
+            timestamp = (
+                record.get("available_at_ms")
+                if isinstance(record, dict) else None
+            )
+            if type(timestamp) is int:
+                if first_at_ms is None:
+                    first_at_ms = timestamp
+                last_at_ms = timestamp
+            if not isinstance(payload, dict):
+                malformed += 1
+                continue
+            reason = payload.get("reason")
+            stream = payload.get("stream_id")
+            start = payload.get("started_ms")
+            end = payload.get("ended_ms")
+            if (
+                not isinstance(reason, str) or not reason
+                or not isinstance(stream, str) or not stream
+                or type(start) is not int or start < 0
+                or (
+                    end is not None
+                    and (type(end) is not int or end < start)
+                )
+            ):
+                malformed += 1
+                continue
+            reasons[reason] += 1
+            streams[stream] += 1
+            stream_reasons.setdefault(stream, Counter())[reason] += 1
+            if end is None:
+                starts += 1
+            elif reason == "recovered":
+                recoveries += 1
+            elif reason == "out_of_order":
+                out_of_order += 1
+    if count != received_gap_count:
+        raise TrendPairHandoffAuditError(
+            "v2 gap diagnostics do not match authenticated witness row count"
+        )
+    return {
+        "source_kind": "actor_received_normalized_gap_witness_only",
+        "signed_witness_row_count": count,
+        "by_reason": dict(sorted(reasons.items())),
+        "observed_open_events_not_current_open_scopes": starts,
+        "observed_recovery_events_not_complete_feed": recoveries,
+        "out_of_order_events": out_of_order,
+        "unclassified_payload_rows": malformed,
+        "first_gap_available_at_ms": first_at_ms,
+        "last_gap_available_at_ms": last_at_ms,
+        "top_streams": [
+            {
+                "stream_id": stream,
+                "received_gap_events": qty,
+                "by_reason": dict(sorted(stream_reasons[stream].items())),
+            }
+            for stream, qty in sorted(
+                streams.items(), key=lambda pair: (-pair[1], pair[0]),
+            )[:12]
+        ],
+        "current_unresolved_gap_scopes_inferred": False,
+        "original_venue_source_authenticated": False,
+        "clean_feed_or_profit_proven": False,
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+    }
+
+
 def _signed_open_gap_sources(
     state: dict[str, object], latest: dict[str, object],
 ) -> dict[str, object]:
@@ -974,6 +1075,7 @@ def audit_trend_handoff(
         "v2_write_once_genesis_verified": False,
         "v2_actor_received_gap_record_chain_verified": False,
         "v2_actor_received_gap_count": None,
+        "v2_actor_received_gap_forensics": None,
         "v2_genesis_source_run_id": None,
         "v2_genesis_source_attempt": None,
         "v2_genesis_original_worker_authenticated": False,
@@ -1134,6 +1236,12 @@ def audit_trend_handoff(
                 result["v2_actor_received_gap_record_chain_verified"] = True
                 result["v2_actor_received_gap_count"] = (
                     source_witness["received_gap_record_count"]
+                )
+                result["v2_actor_received_gap_forensics"] = (
+                    _v2_verified_gap_event_forensics(
+                        gap_path,
+                        received_gap_count=source_witness["received_gap_record_count"],
+                    )
                 )
                 current_markets = state.get("selected_markets")
                 if (
