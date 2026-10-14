@@ -11287,6 +11287,21 @@ async def run_continuous_paper_session(
                         )
                     ),
                     max_systemic_l2_targeted_resubscribes=1,
+                    # Keep the identical 3s stale-book/gap threshold, but
+                    # let a *replacement* subscription produce a genuine
+                    # fresh book for up to 6s before tearing the lane down.
+                    # This never marks a stale book eligible or heals a gap.
+                    targeted_l2_recovery_timeout_ms=max(
+                        5_000,
+                        2 * _l2_supervisor_stale_after_ms(
+                            max_book_age_ms=(
+                                replay_config.eligibility.max_book_age_ms
+                            ),
+                            failover_headroom_ms=(
+                                config.websocket_l2_failover_headroom_ms
+                            ),
+                        ),
+                    ),
                     activity_hook=lane_activity_hook,
                 )
                 supervisors.append(supervisor)
