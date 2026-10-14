@@ -134,7 +134,7 @@ class RestFullDepthControl:
             "source_completeness_certified": False,
             "production_trading_authorized": False,
             "five_level_books_substituted": False,
-            "live_orders_authorized": False,
+            "live_execution_authorized": False,
             "profitability_verified": False,
             "warning": (
                 "Rate-limited public REST full-depth candidate is a DIAGNOSTIC. "
@@ -267,7 +267,7 @@ def compare_rest_vs_ws(
         "production_source_switch_authorized": False,
         "gap_history_repaired": False,
         "paper_order_or_account_changed": False,
-        "live_orders_authorized": False,
+        "live_execution_authorized": False,
         "after_cost_profit_verified": False,
         "caution": (
             "Three-coin REST poll diagnostics cannot prove sustainable "
@@ -334,7 +334,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(json.dumps({
         "valid_diagnostic": result["valid_diagnostic"],
         "production_source_switch_authorized": False,
-        "live_orders_authorized": False,
+        "live_execution_authorized": False,
     }))
     return 0 if valid else 2
 
