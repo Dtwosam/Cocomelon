@@ -67,6 +67,52 @@ def _fixture(
     return root
 
 
+
+def test_relative_runtime_state_root_opens_two_sqlite_accounts_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fixture(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    receipt = audit.verify_terminal_snapshot(Path("paper"))
+    assert receipt["status"] == "terminal_source_account_snapshot_coherent"
+    assert receipt["terminal_account_ids_match_signed_checkpoint"] is True
+    assert receipt["lanes"]["baseline"]["matches"] is True
+    assert receipt["lanes"]["candidate"]["matches"] is True
+    assert receipt["original_mainnet_feed_authenticated"] is False
+    assert receipt["forward_after_cost_edge_verified"] is False
+
+
+def test_terminal_cli_failure_returns_nonzero_but_keeps_failure_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _fixture(tmp_path, monkeypatch, mismatch=True)
+    result_path = tmp_path / "terminal-result.json"
+    rc = audit.main(["--state-root", str(root), "--output", str(result_path)])
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert rc == 1
+    assert result["status"] == "terminal_account_checkpoint_diverged"
+    assert result["terminal_account_ids_match_signed_checkpoint"] is False
+    assert result["promotion_authority"] is False
+    assert result["execution_authority"] is False
+
+
+def test_terminal_cli_relative_source_succeeds_only_for_matching_accounts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fixture(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    rc = audit.main([
+        "--state-root", "paper",
+        "--output", "paper/source-audit-receipt.json",
+    ])
+    result = json.loads(
+        Path("paper/source-audit-receipt.json").read_text(encoding="utf-8")
+    )
+    assert rc == 0
+    assert result["status"] == "terminal_source_account_snapshot_coherent"
+    assert result["terminal_account_ids_match_signed_checkpoint"] is True
+
+
 def test_terminal_accounts_match_without_certifying_edge(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
