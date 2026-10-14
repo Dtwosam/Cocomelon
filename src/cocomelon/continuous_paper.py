@@ -11302,12 +11302,15 @@ async def run_continuous_paper_session(
                             ),
                         ),
                     ),
-                    # Avoid resetting all deep-book subscriptions at 3s
-                    # before a ~5s source-cadence snapshot can arrive.
-                    # Freshness/gaps still fail closed at 3s, and server
-                    # silence independently forces reconnect at 4s.
+                    # The genuine 5.5s PAPER trigger still destroyed deep-
+                    # book subscriptions many times per minute while fresh
+                    # source messages were arriving on both lanes. Wait through
+                    # two expected ~5s book periods (+1s jitter) before
+                    # trying targeted recovery. Freshness/gaps still fail
+                    # closed at 3s; server silence reconnects at 4s, and
+                    # a started targeted recovery still times out at 6s.
                     systemic_l2_recovery_trigger_floor_ms=(
-                        replay_config.eligibility.max_book_age_ms + 500
+                        2 * replay_config.eligibility.max_book_age_ms + 1_000
                     ),
                     activity_hook=lane_activity_hook,
                 )
