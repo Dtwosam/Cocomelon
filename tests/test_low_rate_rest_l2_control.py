@@ -143,7 +143,7 @@ def test_fast_enough_rest_20x20_control_is_still_not_trading_authorized() -> Non
         "production_source_switch_authorized",
         "gap_history_repaired",
         "paper_order_or_account_changed",
-        "live_orders_authorized",
+        "live_execution_authorized",
         "after_cost_profit_verified",
     ):
         assert out[flag] is False
