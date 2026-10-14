@@ -14,11 +14,11 @@ import json
 import os
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, TextIO, cast
 
 from cocomelon.research.full_depth_cadence_probe import DEFAULT_MARKETS
 
@@ -46,9 +46,10 @@ class BlockL2Snapshot:
 
 def _level(value: object) -> Level:
     try:
-        px = Decimal(str(getattr(value, "px")))
-        sz = Decimal(str(getattr(value, "sz")))
-        n = getattr(value, "n")
+        raw = cast(Any, value)
+        px = Decimal(str(raw.px))
+        sz = Decimal(str(raw.sz))
+        n = raw.n
     except (AttributeError, InvalidOperation, ValueError, TypeError) as exc:
         raise ValueError("invalid aggregated level") from exc
     if (
@@ -67,11 +68,12 @@ def _level(value: object) -> Level:
 def parse_block_l2(value: object, wire: bytes) -> BlockL2Snapshot:
     """Strict, vendor-wire-schema L2 conversion without trading-side effects."""
     try:
-        coin = getattr(value, "coin")
-        stamp = getattr(value, "time")
-        height = getattr(value, "block_number")
-        raw_bids = getattr(value, "bids")
-        raw_asks = getattr(value, "asks")
+        raw = cast(Any, value)
+        coin = raw.coin
+        stamp = raw.time
+        height = raw.block_number
+        raw_bids = raw.bids
+        raw_asks = raw.asks
     except AttributeError as exc:
         raise ValueError("missing StreamL2Book fields") from exc
     if (
@@ -92,9 +94,9 @@ def parse_block_l2(value: object, wire: bytes) -> BlockL2Snapshot:
         raise ValueError("invalid book levels") from exc
     if not bids or not asks:
         raise ValueError("book has an empty side")
-    if any(a.px <= b.px for a, b in zip(bids, bids[1:])):
+    if any(a.px <= b.px for a, b in zip(bids, bids[1:], strict=False)):
         raise ValueError("bid prices must descend")
-    if any(a.px >= b.px for a, b in zip(asks, asks[1:])):
+    if any(a.px >= b.px for a, b in zip(asks, asks[1:], strict=False)):
         raise ValueError("ask prices must ascend")
     if bids[0].px >= asks[0].px:
         raise ValueError("crossed or locked book")
@@ -346,16 +348,16 @@ def _proto_messages() -> tuple[type[Any], type[Any]]:
             obj.type_name = type_name
 
     S = descriptor_pb2.FieldDescriptorProto.TYPE_STRING
-    I = descriptor_pb2.FieldDescriptorProto.TYPE_UINT32
+    UINT32 = descriptor_pb2.FieldDescriptorProto.TYPE_UINT32
     L = descriptor_pb2.FieldDescriptorProto.TYPE_UINT64
     M = descriptor_pb2.FieldDescriptorProto.TYPE_MESSAGE
     req = message("L2BookRequest")
     field(req, "coin", 1, S)
-    field(req, "n_levels", 2, I)
+    field(req, "n_levels", 2, UINT32)
     level = message("L2Level")
     field(level, "px", 1, S)
     field(level, "sz", 2, S)
-    field(level, "n", 3, I)
+    field(level, "n", 3, UINT32)
     resp = message("L2BookUpdate")
     field(resp, "coin", 1, S)
     field(resp, "time", 2, L)
