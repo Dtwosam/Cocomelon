@@ -1641,3 +1641,71 @@ def test_l2_staleness_uses_exchange_time_not_recent_receive() -> None:
         )
 
     asyncio.run(run())
+
+
+
+def test_l2_delivery_diagnostics_distinguish_book_gap_causes() -> None:
+    async def run() -> None:
+        now = [1_000]
+        accepted: list[StreamEvent] = []
+        gaps: list[DataGap] = []
+
+        async def factory() -> FakeConnection:
+            return FakeConnection([])
+
+        async def event_sink(event: StreamEvent) -> None:
+            accepted.append(event)
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "l2Book", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime.fromtimestamp(now[0] / 1000, tz=UTC),
+            stale_after_ms=5_000,
+        )
+        assert supervisor.l2_delivery_diagnostics(now_ms=1_000) == {
+            "l2_normalized_count": 0,
+            "l2_duplicate_count": 0,
+            "l2_out_of_order_count": 0,
+            "l2_stale_on_receive_count": 0,
+            "l2_fresh_accepted_count": 0,
+            "l2_max_event_sink_await_ms": 0,
+            "l2_last_normalized_age_ms": None,
+            "l2_last_fresh_accepted_age_ms": None,
+        }
+        await supervisor._dispatch(book(1_000))
+        await supervisor._dispatch(book(1_000))  # same replay key
+        now[0] = 1_050
+        await supervisor._dispatch(book(1_050))
+        now[0] = 7_000
+        await supervisor._dispatch(book(1_001))  # out-of-order
+        await supervisor._dispatch(book(2_000))  # too old on arrival
+        now[0] = 7_010
+        await supervisor._dispatch(book(7_010))  # genuinely fresh recovery
+
+        diag = supervisor.l2_delivery_diagnostics(now_ms=7_015)
+        assert diag["l2_normalized_count"] == 6
+        assert diag["l2_duplicate_count"] == 1
+        assert diag["l2_out_of_order_count"] == 1
+        assert diag["l2_stale_on_receive_count"] == 1
+        assert diag["l2_fresh_accepted_count"] == 3
+        assert isinstance(diag["l2_max_event_sink_await_ms"], int)
+        assert diag["l2_last_normalized_age_ms"] == 5
+        assert diag["l2_last_fresh_accepted_age_ms"] == 5
+        assert len(accepted) == 4
+        assert any(gap.reason == "out_of_order" for gap in gaps)
+        assert any(gap.reason == "recovered" for gap in gaps)
+        assert set(diag) == {
+            "l2_normalized_count", "l2_duplicate_count",
+            "l2_out_of_order_count", "l2_stale_on_receive_count",
+            "l2_fresh_accepted_count", "l2_max_event_sink_await_ms",
+            "l2_last_normalized_age_ms", "l2_last_fresh_accepted_age_ms",
+        }
+        assert "BTC" not in str(diag)
+
+    asyncio.run(run())
