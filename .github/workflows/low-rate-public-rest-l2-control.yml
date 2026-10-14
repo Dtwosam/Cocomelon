@@ -1,0 +1,107 @@
+name: Low-Rate Public REST 20-Depth versus WebSocket
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/low-rate-public-rest-l2-control.yml"
+      - "src/cocomelon/research/low_rate_rest_l2_control.py"
+      - "tests/test_low_rate_rest_l2_control.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: low-rate-public-rest-depth-control
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      COCOMELON_EXECUTION_MODE: paper
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install only read-only runtime requirements
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Bounded public REST full-depth three-coin control and public WS
+        run: |
+          set -euo pipefail
+          python -m cocomelon.research.low_rate_rest_l2_control \
+            --duration-seconds 180 \
+            --out-dir public-rest-full-depth
+
+      - name: Publish conservative nontrading public REST diagnostic
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' > low-rate-rest-l2-control.md
+          import json
+          import os
+          from pathlib import Path
+          base = Path("public-rest-full-depth")
+          compare = base / "comparison.json"
+          print("## Rate-limited public 20-depth REST vs WebSocket source probe")
+          print()
+          print(f"- workflow: {os.environ['GITHUB_RUN_ID']}")
+          print(f"- code SHA: {os.environ['GITHUB_SHA']}")
+          print("- **READ-ONLY**; only BLUR, BOME and CASHCAT, 1 call/s/market, <=360 API weight/min")
+          print("- No account, orders, keys, signed market evidence, LIVE, or production source replacement")
+          if not compare.exists():
+              print("- **NO COMPARABLE OBSERVATIONS:** run failed before summary publication")
+          else:
+              report = json.loads(compare.read_text())
+              rest = json.loads((base / "rest-full-depth-summary.json").read_text())
+              ws = json.loads((base / "ws-full-depth-summary.json").read_text())
+              print(f"- valid three-coin depth/cadence DIAGNOSTIC: **{report['valid_diagnostic']}**")
+              print(f"- REST calls / HTTP errors / 429s: "
+                    f"{rest['http_requests']} / {rest['http_errors']} / {rest['http_429_count']}")
+              print(f"- REST invalid responses / mean HTTP ms: "
+                    f"{rest['invalid_responses']} / {rest['http_mean_latency_ms']}")
+              print(f"- REST distinct source snapshots / full WS distinct source snapshots: "
+                    f"{rest['unique_books']} / {ws['unique_books']}")
+              print(f"- REST original receipt SHA-256: {rest['receipts_sha256']}")
+              print(f"- WS original receipt SHA-256: {ws['receipts_sha256']}")
+              print()
+              print("| Market | REST distinct 20-depth | WS distinct 20-depth | REST under 3s elapsed | WS under 3s elapsed | REST depth valid |")
+              print("| --- | ---: | ---: | ---: | ---: | --- |")
+              for coin, row in report["markets"].items():
+                  print(f"| {coin} | {row['rest_distinct_20x20_books']} | "
+                        f"{row['ws_distinct_20x20_books']} | "
+                        f"{row['rest_3s_fresh_time']} | "
+                        f"{row['ws_3s_fresh_time']} | "
+                        f"{row['rest_full_depth_observed']} |")
+              print()
+              print("Do not extrapolate three symbols at 1Hz to 20 markets; "
+                    "REST quotas, HTTP round trips and unsigned gaps cannot be bypassed. "
+                    "A valid diagnostic is NEVER source acceptance, LIVE authority, "
+                    "gap completeness, or after-cost profitability proof.")
+          PY
+          gh issue comment 1235 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file low-rate-rest-l2-control.md
+
+      - name: Upload original REST and WebSocket receipts and summaries
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: low-rate-rest-full-depth-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            public-rest-full-depth/
+            low-rate-rest-l2-control.md
+          if-no-files-found: warn
+          retention-days: 30
