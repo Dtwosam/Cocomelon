@@ -492,30 +492,15 @@ class JournalStore:
                 ),
             )
             refs_started = perf_counter()
-            # Insert the exact same reference rows and ordinals in original
-            # ref-kind order. executemany still steps SQLite's INSERT once
-            # per row (771 observed refs took 4,037ms in the paper worker).
-            # Each bounded multi-VALUES SQL statement instead batches up to
-            # 200 rows / 800 bind variables, safely within SQLite's original
-            # 999-variable compatibility ceiling. Only one small batch exists
-            # at a time, and the encompassing transaction remains atomic.
-            ref_rows = (
-                (trade.trade_id, ref_kind, ordinal, ref_id)
-                for ref_kind, values in refs
-                for ordinal, ref_id in enumerate(values)
+            # Keep the exact same six ref-kind groups, original ordinals,
+            # row uniqueness and single transaction. The paper worker has
+            # observed 4,893 refs taking 3,335ms even after 200-row batching.
+            # SQLite JSON1 expands each kind's exact string array in ONE
+            # VM statement, instead of 25+ separate multi-VALUES INSERTs.
+            # Legacy SQLite without json_each retains the bounded method.
+            JournalStore._insert_trade_ref_rows(
+                connection, trade.trade_id, refs
             )
-            while batch := list(
-                islice(ref_rows, TRADE_REF_INSERT_ROWS_PER_STATEMENT)
-            ):
-                placeholders = ",".join(
-                    "(?, ?, ?, ?)" for _ in batch
-                )
-                connection.execute(
-                    "INSERT INTO journal_trade_refs("
-                    "trade_id, ref_kind, ordinal, ref_id) VALUES "
-                    + placeholders,
-                    tuple(value for row in batch for value in row),
-                )
             refs_done = perf_counter()
             connection.commit()
             committed = perf_counter()
@@ -544,6 +529,62 @@ class JournalStore:
         except Exception:
             connection.rollback()
             raise
+
+    @staticmethod
+    def _sqlite_json_each_available(connection: sqlite3.Connection) -> bool:
+        try:
+            connection.execute("SELECT 1 FROM json_each('[]') LIMIT 1")
+        except sqlite3.OperationalError as exc:
+            # Older SQLite builds can omit JSON1. Do not turn any unrelated
+            # SQLite error into a silent fallback or weaken the write.
+            if "no such table: json_each" in str(exc).lower():
+                return False
+            raise
+        return True
+
+    @staticmethod
+    def _insert_trade_ref_rows(
+        connection: sqlite3.Connection,
+        trade_id: str,
+        refs: tuple[tuple[str, tuple[str, ...]], ...],
+    ) -> None:
+        if JournalStore._sqlite_json_each_available(connection):
+            for ref_kind, values in refs:
+                if not values:
+                    continue
+                connection.execute(
+                    "INSERT INTO journal_trade_refs("
+                    "trade_id, ref_kind, ordinal, ref_id) "
+                    "SELECT ?, ?, CAST(j.key AS INTEGER), j.value "
+                    "FROM json_each(?) AS j ORDER BY CAST(j.key AS INTEGER)",
+                    (
+                        trade_id,
+                        ref_kind,
+                        json.dumps(
+                            values, ensure_ascii=False, separators=(",", ":")
+                        ),
+                    ),
+                )
+            return
+
+        # Four bind parameters per ref, <=200 rows/statement and <=800
+        # variables for SQLite builds limited to 999 variables. This is
+        # also the exact previous production write path.
+        rows = (
+            (trade_id, ref_kind, ordinal, ref_id)
+            for ref_kind, values in refs
+            for ordinal, ref_id in enumerate(values)
+        )
+        while batch := list(
+            islice(rows, TRADE_REF_INSERT_ROWS_PER_STATEMENT)
+        ):
+            placeholders = ",".join("(?, ?, ?, ?)" for _ in batch)
+            connection.execute(
+                "INSERT INTO journal_trade_refs("
+                "trade_id, ref_kind, ordinal, ref_id) VALUES "
+                + placeholders,
+                tuple(value for row in batch for value in row),
+            )
 
     @staticmethod
     def _log_slow_trade_transaction(
