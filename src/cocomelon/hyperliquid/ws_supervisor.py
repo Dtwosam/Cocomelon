@@ -151,6 +151,12 @@ class WebSocketSupervisor:
         self._l2_unique_interval_ge_stale_count = 0
         self._l2_unique_interval_ge_5000_count = 0
         self._l2_unique_interval_max_ms = 0
+        # A targeted resubscribe or reconnect censors an unobserved gap:
+        # preserve its elapsed age separately rather than misreporting a
+        # low venue interarrival distribution from only surviving intervals.
+        self._l2_unique_interval_censored_count = 0
+        self._l2_unique_interval_censored_ge_stale_count = 0
+        self._l2_unique_interval_censored_max_elapsed_ms = 0
         self._l2_source_age_samples = 0
         self._l2_source_age_ge_stale_count = 0
         self._l2_source_age_ge_5000_count = 0
@@ -187,6 +193,13 @@ class WebSocketSupervisor:
             None if self._last_l2_fresh_accepted_ms is None
             else max(0, now_ms - self._last_l2_fresh_accepted_ms)
         )
+        stream_ids = self._l2_stream_ids()
+        unique_last_ages = [
+            max(0, now_ms - unique_ms)
+            for stream_id in stream_ids
+            if (unique_ms := self._l2_last_unique_receive_ms.get(stream_id))
+            is not None
+        ]
         return {
             "l2_normalized_count": self._l2_normalized_count,
             "l2_duplicate_count": self._l2_duplicate_count,
@@ -204,6 +217,28 @@ class WebSocketSupervisor:
                 self._l2_unique_interval_ge_5000_count
             ),
             "l2_unique_interval_max_ms": self._l2_unique_interval_max_ms,
+            "l2_unique_interval_censored_count": (
+                self._l2_unique_interval_censored_count
+            ),
+            "l2_unique_interval_censored_ge_stale_count": (
+                self._l2_unique_interval_censored_ge_stale_count
+            ),
+            "l2_unique_interval_censored_max_elapsed_ms": (
+                self._l2_unique_interval_censored_max_elapsed_ms
+            ),
+            "l2_unique_stream_count": len(stream_ids),
+            "l2_unique_stream_unseen_count": (
+                len(stream_ids) - len(unique_last_ages)
+            ),
+            "l2_unique_stream_aged_ge_stale_count": sum(
+                age >= self._stale_after_ms for age in unique_last_ages
+            ),
+            "l2_unique_stream_aged_ge_5000_count": sum(
+                age >= 5_000 for age in unique_last_ages
+            ),
+            "l2_unique_stream_oldest_age_ms": (
+                max(unique_last_ages) if unique_last_ages else None
+            ),
             "l2_source_age_samples": self._l2_source_age_samples,
             "l2_source_age_ge_stale_count": self._l2_source_age_ge_stale_count,
             "l2_source_age_ge_5000_count": self._l2_source_age_ge_5000_count,
@@ -340,7 +375,15 @@ class WebSocketSupervisor:
         self._recent_key_sets.pop(stream_id, None)
         # Do not confuse a resubscribe/reconnect delay with the venue's
         # in-session interarrival cadence. The aggregate counters survive.
-        self._l2_last_unique_receive_ms.pop(stream_id, None)
+        last_unique_ms = self._l2_last_unique_receive_ms.pop(stream_id, None)
+        if last_unique_ms is not None:
+            elapsed_ms = max(0, self._clock_ms() - last_unique_ms)
+            self._l2_unique_interval_censored_count += 1
+            self._l2_unique_interval_censored_max_elapsed_ms = max(
+                self._l2_unique_interval_censored_max_elapsed_ms, elapsed_ms
+            )
+            if elapsed_ms >= self._stale_after_ms:
+                self._l2_unique_interval_censored_ge_stale_count += 1
 
     def _reset_targeted_l2_recovery(self) -> None:
         self._systemic_l2_targeted_resubscribe_attempts = 0

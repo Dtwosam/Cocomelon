@@ -9573,6 +9573,33 @@ def _render_operational_live_status(
                 future=raw_lane.get("l2_source_future_dated_count", 0),
             )
         )
+        l2_lane_lines.append(
+            "- L2 lane {lane} distinct-book coverage: "
+            "unseen={unseen}/{streams}, aged>={stale_ms}ms={aged_stale}, "
+            "aged>=5000ms={aged_5000}, oldest={oldest}ms; "
+            "reset-censored-intervals={censored}, "
+            "censored>={stale_ms}ms={censored_stale}, "
+            "max-censored-elapsed={censored_max}ms".format(
+                lane=raw_lane.get("lane", "?"),
+                unseen=raw_lane.get("l2_unique_stream_unseen_count", 0),
+                streams=raw_lane.get("l2_unique_stream_count", 0),
+                stale_ms=raw_lane.get("l2_arrival_stale_threshold_ms"),
+                aged_stale=raw_lane.get(
+                    "l2_unique_stream_aged_ge_stale_count", 0
+                ),
+                aged_5000=raw_lane.get(
+                    "l2_unique_stream_aged_ge_5000_count", 0
+                ),
+                oldest=raw_lane.get("l2_unique_stream_oldest_age_ms"),
+                censored=raw_lane.get("l2_unique_interval_censored_count", 0),
+                censored_stale=raw_lane.get(
+                    "l2_unique_interval_censored_ge_stale_count", 0
+                ),
+                censored_max=raw_lane.get(
+                    "l2_unique_interval_censored_max_elapsed_ms", 0
+                ),
+            )
+        )
         if stale_markets:
             l2_lane_lines.append(
                 "- L2 lane {lane} stale markets: {markets}".format(

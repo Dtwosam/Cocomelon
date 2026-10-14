@@ -6082,6 +6082,14 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "l2_unique_interval_ge_stale_count": 25,
                     "l2_unique_interval_ge_5000_count": 10,
                     "l2_unique_interval_max_ms": 6021,
+                    "l2_unique_interval_censored_count": 4,
+                    "l2_unique_interval_censored_ge_stale_count": 3,
+                    "l2_unique_interval_censored_max_elapsed_ms": 8500,
+                    "l2_unique_stream_count": 20,
+                    "l2_unique_stream_unseen_count": 5,
+                    "l2_unique_stream_aged_ge_stale_count": 7,
+                    "l2_unique_stream_aged_ge_5000_count": 4,
+                    "l2_unique_stream_oldest_age_ms": 5900,
                     "l2_source_age_samples": 81,
                     "l2_source_age_ge_stale_count": 35,
                     "l2_source_age_ge_5000_count": 7,
@@ -6421,6 +6429,12 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "L2 lane 0 distinct-book gaps: samples=80, >=3000ms=25, "
         ">=5000ms=10, max=6021ms; source-age-on-arrival: samples=81, "
         ">=3000ms=35, >=5000ms=7, max=7251ms, future=2"
+    ) in rendered
+    assert (
+        "L2 lane 0 distinct-book coverage: unseen=5/20, "
+        "aged>=3000ms=7, aged>=5000ms=4, oldest=5900ms; "
+        "reset-censored-intervals=4, censored>=3000ms=3, "
+        "max-censored-elapsed=8500ms"
     ) in rendered
     assert "slow paper journal SQL >=2s count / max: 2 / 22613ms" in rendered
     assert "last slow paper journal SQL stages (anonymous):" in rendered
