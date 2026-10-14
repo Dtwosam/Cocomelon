@@ -1694,6 +1694,10 @@ def test_l2_delivery_diagnostics_distinguish_book_gap_causes() -> None:
             "l2_source_age_ge_5000_count": 0,
             "l2_source_age_max_ms": 0,
             "l2_source_future_dated_count": 0,
+            "l2_source_fresh_observation_elapsed_ms": 0,
+            "l2_source_fresh_3000_basis_points": 0,
+            "l2_source_fresh_5000_basis_points": 0,
+            "l2_source_fresh_clock_regressions": 0,
             "l2_arrival_stale_threshold_ms": 5_000,
             "l2_targeted_recovery_timeout_ms": 5_000,
             "l2_recovery_trigger_floor_ms": None,
@@ -1751,6 +1755,10 @@ def test_l2_delivery_diagnostics_distinguish_book_gap_causes() -> None:
             "l2_source_age_samples", "l2_source_age_ge_stale_count",
             "l2_source_age_ge_5000_count", "l2_source_age_max_ms",
             "l2_source_future_dated_count", "l2_arrival_stale_threshold_ms",
+            "l2_source_fresh_observation_elapsed_ms",
+            "l2_source_fresh_3000_basis_points",
+            "l2_source_fresh_5000_basis_points",
+            "l2_source_fresh_clock_regressions",
             "l2_targeted_recovery_timeout_ms",
             "l2_recovery_trigger_floor_ms",
         }
@@ -2148,3 +2156,106 @@ def test_l2_recovery_trigger_floor_must_be_positive() -> None:
                 utcnow=lambda: datetime.now(UTC),
                 systemic_l2_recovery_trigger_floor_ms=minimum,
             )
+
+
+def test_l2_observed_source_freshness_integrates_elapsed_time_fail_closed() -> None:
+    """Observe source time only; do not infer trade/depth eligibility from it."""
+
+    async def run() -> None:
+        now = [1_000]
+        events: list[StreamEvent] = []
+
+        async def factory() -> FakeConnection:
+            return FakeConnection([])
+
+        async def event_sink(event: StreamEvent) -> None:
+            events.append(event)
+
+        async def gap_sink(gap: DataGap) -> None:
+            del gap
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "l2Book", "coin": "BTC"}, {"type": "l2Book", "coin": "ETH"}),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime.fromtimestamp(now[0] / 1_000, tz=UTC),
+            stale_after_ms=3_000,
+        )
+        empty = supervisor.l2_delivery_diagnostics(now_ms=1_000)
+        assert empty["l2_source_fresh_3000_basis_points"] == 0
+
+        await supervisor._dispatch(book(1_000))
+        now[0] = 3_000
+        initial = supervisor.l2_delivery_diagnostics(now_ms=3_000)
+        assert initial["l2_source_fresh_observation_elapsed_ms"] == 2_000
+        assert initial["l2_source_fresh_3000_basis_points"] == 5_000
+        assert initial["l2_source_fresh_5000_basis_points"] == 5_000
+
+        # Duplicates never refresh source freshness, even if seen after 3s.
+        now[0] = 4_000
+        await supervisor._dispatch(book(1_000))
+        now[0] = 6_000
+        aged = supervisor.l2_delivery_diagnostics(now_ms=6_000)
+        assert aged["l2_source_fresh_observation_elapsed_ms"] == 5_000
+        assert aged["l2_source_fresh_3000_basis_points"] == 3_000
+        assert aged["l2_source_fresh_5000_basis_points"] == 5_000
+        assert supervisor.l2_delivery_diagnostics(now_ms=6_000) == aged
+
+        # A targeted resubscribe censors the old source clock. 2nd market is
+        # still unseen; neither market contributes fictitious fresh time.
+        supervisor._clear_l2_dedup_state("l2Book:BTC")
+        now[0] = 8_000
+        censored = supervisor.l2_delivery_diagnostics(now_ms=8_000)
+        assert censored["l2_source_fresh_3000_basis_points"] == 2_142
+        assert censored["l2_source_fresh_5000_basis_points"] == 3_571
+        await supervisor._dispatch(book(8_000))
+        now[0] = 10_000
+        resumed = supervisor.l2_delivery_diagnostics(now_ms=10_000)
+        assert resumed["l2_source_fresh_3000_basis_points"] == 2_777
+        assert resumed["l2_source_fresh_5000_basis_points"] == 3_888
+
+        # An old unique book received late contributes no new fresh time.
+        now[0] = 16_000
+        await supervisor._dispatch(book(11_000))
+        now[0] = 18_000
+        late = supervisor.l2_delivery_diagnostics(now_ms=18_000)
+        assert late["l2_source_fresh_3000_basis_points"] == 1_764
+        assert late["l2_source_fresh_5000_basis_points"] == 2_941
+        assert len(events) == 3
+
+    asyncio.run(run())
+
+
+def test_l2_observed_source_freshness_disallows_future_dated_clock_replay() -> None:
+    async def run() -> None:
+        now = [2_000]
+
+        async def factory() -> FakeConnection:
+            return FakeConnection([])
+
+        async def event_sink(event: StreamEvent) -> None:
+            del event
+
+        async def gap_sink(gap: DataGap) -> None:
+            del gap
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "l2Book", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime.fromtimestamp(now[0] / 1_000, tz=UTC),
+            stale_after_ms=3_000,
+        )
+        await supervisor._dispatch(book(2_000))
+        now[0] = 5_000
+        await supervisor._dispatch(book(6_000))  # future exchange timestamp
+        now[0] = 7_000
+        diag = supervisor.l2_delivery_diagnostics(now_ms=7_000)
+        assert diag["l2_source_fresh_3000_basis_points"] == 6_000
+        assert diag["l2_source_fresh_5000_basis_points"] == 6_000
+
+    asyncio.run(run())
