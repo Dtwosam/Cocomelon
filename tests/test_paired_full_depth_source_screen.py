@@ -34,7 +34,10 @@ def write_source(
     for market in DEFAULT_MARKETS:
         observed = []
         for idx, elapsed in enumerate(range(0, 180_001, spacing_ms)):
-            exchange = 1_800_000_000_000 + elapsed
+            # The per-message UTC and monotonic elapsed clocks must point
+            # back to the same actual observation window, not a synthetic
+            # epoch unrelated to the published summary.
+            exchange = round(ended.timestamp() * 1_000) - duration + elapsed
             level_count = 5 if short_depth and market == "BLUR" else 20
             obj = {
                 "schema": schema,
@@ -130,10 +133,13 @@ def test_noncontemporaneous_sources_never_count_as_paired(
     source_pair: tuple[tuple[Path, Path], tuple[Path, Path]],
 ) -> None:
     a, b = source_pair
-    summary = json.loads(b[0].read_text())
-    new_end = datetime.fromisoformat(summary["ended_utc"]) + timedelta(minutes=6)
-    summary["ended_utc"] = new_end.isoformat()
-    b[0].write_text(json.dumps(summary))
+    # A genuinely later collection has internally consistent receipt clocks,
+    # yet MUST NOT be paired against the earlier baseline.
+    later = datetime(2026, 10, 14, 20, 56, tzinfo=UTC)
+    b = write_source(
+        b[0].parent.parent / "later_candidate",
+        schema=CANDIDATE, spacing_ms=1000, ended=later,
+    )
     report = compare_sources(*a, *b)
     assert report["paired_overlap_ms"] == 0
     assert report["paired_windows"] is False
@@ -225,3 +231,59 @@ def test_slow_full_depth_candidate_fails_per_market_95_percent_gate(tmp_path: Pa
     assert report["paired_windows"] is True
     assert report["preliminary_source_diagnostic_screen_passed"] is False
     assert report["candidate_minimum_fresh3_basis_points"] < 9500
+
+
+def test_summary_timestamp_rewrite_cannot_fake_pairing(
+    source_pair: tuple[tuple[Path, Path], tuple[Path, Path]],
+) -> None:
+    a, b = source_pair
+    summary = json.loads(b[0].read_text())
+    summary["ended_utc"] = (
+        datetime.fromisoformat(summary["ended_utc"]) + timedelta(minutes=7)
+    ).isoformat()
+    b[0].write_text(json.dumps(summary))
+    with pytest.raises(ReceiptAuditError, match="summary window end"):
+        compare_sources(*a, *b)
+
+
+def test_receipt_utc_forgery_is_detected_after_digest_recomputed(
+    source_pair: tuple[tuple[Path, Path], tuple[Path, Path]],
+) -> None:
+    a, b = source_pair
+    lines = b[1].read_text().splitlines()
+    row = json.loads(lines[3])
+    # Age remains unchanged; an unanchored report would accept this fake
+    # arrival and the attacker's recomputed receipt SHA-256.
+    row["receive_utc_ms"] += 8_000
+    row["exchange_time_ms"] += 8_000
+    lines[3] = json.dumps(row, sort_keys=True)
+    raw = ("\n".join(lines) + "\n").encode()
+    b[1].write_bytes(raw)
+    summary = json.loads(b[0].read_text())
+    summary["receipts_sha256"] = hashlib.sha256(raw).hexdigest()
+    b[0].write_text(json.dumps(summary))
+    with pytest.raises(ReceiptAuditError, match="UTC and elapsed clocks disagree"):
+        compare_sources(*a, *b)
+
+
+def test_observation_window_requires_boolean_true(
+    source_pair: tuple[tuple[Path, Path], tuple[Path, Path]],
+) -> None:
+    a, b = source_pair
+    summary = json.loads(a[0].read_text())
+    summary["observation_window_completed"] = "false"
+    a[0].write_text(json.dumps(summary))
+    with pytest.raises(ReceiptAuditError, match="incomplete"):
+        compare_sources(*a, *b)
+
+
+def test_receipt_clock_calibration_anchors_window(
+    source_pair: tuple[tuple[Path, Path], tuple[Path, Path]],
+) -> None:
+    a, b = source_pair
+    baseline = inspect_source(*a, schema=BASELINE)
+    candidate = inspect_source(*b, schema=CANDIDATE)
+    assert baseline["window_start_utc_ms"] == candidate["window_start_utc_ms"]
+    assert baseline["window_end_utc_ms"] == candidate["window_end_utc_ms"]
+    assert baseline["receipt_clock_max_drift_ms"] == 0
+    assert candidate["summary_end_disagreement_ms"] == 0

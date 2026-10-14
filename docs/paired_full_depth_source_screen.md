@@ -32,6 +32,13 @@ Fail-closed requirements:
 - Exact 20-market membership, at least 20 unique valid snapshots each market.
 - Reported counts, timestamps and per-market time-weighted freshness reproduce
   from raw receipts within five basis points.
+- Each original receipt's `receive_utc_ms - receipt_elapsed_ms` must refer to
+  the **same observation start** (<=1000ms tolerance across the entire file).
+  Its reconstructed finish must agree with the summary's declared finish
+  within <=5000ms. The paired overlap is computed from **receipt-derived
+  UTC start/end**, never from the summary timestamp alone. This prevents
+  retroactively changing an old summary's end time to pose as a contemporaneous
+  sample. Receipt checksums alone are not signatures or proof of clock truth.
 - 20 bid and 20 ask levels for public and candidate books. Candidate must
   request 20 levels, have no source/parse errors, no height regressions,
   contradictory block records, future-dated books or shallow observations.
