@@ -2317,3 +2317,19 @@ def test_four_hour_paper_worker_stall_can_checkpoint_handoff_before_gh_timeout(
     assert "Queue exact successor from fast resume" in source
     assert "COCOMELON_EXECUTION_MODE: paper" in source
     assert "COCOMELON_EXECUTION_MODE: live" not in source
+
+def test_terminal_sqlite_source_verifier_upgrade_triggers_exact_paper_handoff() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    push_paths = source.split("  push:", 1)[1].split("  workflow_dispatch:", 1)[0]
+    assert (
+        '      - "scripts/verify_trend_paired_terminal_snapshot.py"'
+        in push_paths
+    )
+    trader_step = source.split("- name: Run continuous paper trader", 1)[1].split(
+        "- name: Verify terminal trend paired account consistency before source ZIP", 1
+    )[0]
+    assert "git diff --name-only" in trader_step
+    assert "scripts/verify_trend_paired_terminal_snapshot.py" in trader_step
+    assert "watch_for_newer_runtime_run" in trader_step
+    assert "COCOMELON_EXECUTION_MODE: live" not in source
+
