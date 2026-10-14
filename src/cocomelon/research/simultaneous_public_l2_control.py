@@ -25,6 +25,8 @@ from cocomelon.hyperliquid.ws_client import JsonWsConnection
 from cocomelon.research.full_depth_cadence_probe import (
     DEFAULT_MARKETS,
     FullDepthCadenceProbe,
+)
+from cocomelon.research.full_depth_cadence_probe import (
     collect as collect_full_depth,
 )
 
