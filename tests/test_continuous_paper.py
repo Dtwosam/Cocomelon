@@ -1917,6 +1917,22 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
             del now_ms
             return self._stale
 
+        def l2_delivery_diagnostics(
+            self, *, now_ms: int,
+        ) -> dict[str, int | None]:
+            # Match the real lane's anonymous diagnostics API; these sample
+            # counters never affect effective source readiness.
+            return {
+                "l2_normalized_count": 8,
+                "l2_duplicate_count": 2,
+                "l2_out_of_order_count": 1,
+                "l2_stale_on_receive_count": 3,
+                "l2_fresh_accepted_count": 2,
+                "l2_max_event_sink_await_ms": 224,
+                "l2_last_normalized_age_ms": max(0, now_ms - 9_900),
+                "l2_last_fresh_accepted_age_ms": max(0, now_ms - 9_800),
+            }
+
     group = _SupervisorGroup(
         supervisors=(
             Lane(
@@ -1973,6 +1989,10 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
         "SOL",
     ]
     assert lanes[0]["stale_l2_market_count"] == 2
+    assert lanes[0]["l2_normalized_count"] == 8
+    assert lanes[0]["l2_max_event_sink_await_ms"] == 224
+    assert lanes[0]["l2_last_normalized_age_ms"] == 100
+    assert lanes[0]["l2_last_fresh_accepted_age_ms"] == 200
     assert lanes[0]["last_server_message_age_ms"] == 100
     assert lanes[0]["stale_deadline_buffered_message_count"] == 4
     assert lanes[0]["l2_current_age_observed_market_count"] == 3
