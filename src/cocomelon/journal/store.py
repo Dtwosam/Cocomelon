@@ -471,7 +471,7 @@ class JournalStore:
                         f"conflicting journal trade: {trade.trade_id}"
                     )
                 connection.commit()
-                return
+                return None
             connection.execute(
                 """
                 INSERT INTO journal_trades(
