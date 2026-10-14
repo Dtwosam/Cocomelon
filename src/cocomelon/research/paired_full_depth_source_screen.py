@@ -24,6 +24,12 @@ CANDIDATE = "candidate-grpc-l2-diagnostic-v1"
 MAX_RECEIPT_BYTES = 30_000_000
 MIN_WINDOW_MS = 180_000
 MIN_PAIRED_OVERLAP_MS = 120_000
+# The collector samples UTC and monotonic clocks together. On the genuine
+# 2026-10-14 public receipts their inferred UTC start differs by <2ms; allow
+# bounded runner clock/sampling drift, but never infer an overlap from a
+# summary end-time field that the receipt bytes cannot substantiate.
+MAX_RECEIPT_CLOCK_DRIFT_MS = 1_000
+MAX_SUMMARY_END_SKEW_MS = 5_000
 MIN_DISTINCT_PER_MARKET = 20
 PRELIMINARY_CANDIDATE_MIN_FRESH_BPS = 9_500
 PRELIMINARY_CANDIDATE_MIN_IMPROVEMENT_BPS = 2_000
@@ -90,7 +96,7 @@ def inspect_source(summary_path: Path, receipts_path: Path, *, schema: str) -> d
     if receipts_path.stat().st_size > MAX_RECEIPT_BYTES:
         raise ReceiptAuditError("receipt file exceeds diagnostic size cap")
     summary = _dict(json.loads(summary_path.read_text(encoding="utf-8")), "summary")
-    if summary.get("schema") != schema or not summary.get("observation_window_completed"):
+    if (summary.get("schema") != schema or summary.get("observation_window_completed") is not True):
         raise ReceiptAuditError("schema mismatch or incomplete observation window")
     public = schema == BASELINE
     cohort = summary.get("market_cohort" if public else "cohort")
@@ -121,8 +127,9 @@ def inspect_source(summary_path: Path, receipts_path: Path, *, schema: str) -> d
     observations: dict[str, list[tuple[float, int, bool]]] = defaultdict(list)
     last_arrival: dict[str, float] = {}
     last_height: dict[str, int] = {}
-    counts: dict[str, int] = defaultdict(int)
     unique_count = 0
+    observed_start_utc_ms: float | None = None
+    max_receipt_clock_drift_ms = 0.0
     for lineno, line in enumerate(raw.splitlines(), start=1):
         if lineno > 150_000:
             raise ReceiptAuditError("too many source receipts")
@@ -146,6 +153,17 @@ def inspect_source(summary_path: Path, receipts_path: Path, *, schema: str) -> d
             raise ReceiptAuditError("receipt elapsed time outside window")
         if elapsed < last_arrival.get(market, -1.0):
             raise ReceiptAuditError("per-market monotonic receipt clock regressed")
+        # The receipt contains two independently sampled clocks. Its UTC
+        # start (receive_utc - monotonic_elapsed) must be consistent across
+        # *all* source messages. A changed summary end timestamp alone can
+        # no longer masquerade as a contemporaneous experiment.
+        inferred_start_ms = receive_ms - elapsed
+        if observed_start_utc_ms is None:
+            observed_start_utc_ms = inferred_start_ms
+        drift_ms = abs(inferred_start_ms - observed_start_utc_ms)
+        max_receipt_clock_drift_ms = max(max_receipt_clock_drift_ms, drift_ms)
+        if drift_ms > MAX_RECEIPT_CLOCK_DRIFT_MS:
+            raise ReceiptAuditError("receipt UTC and elapsed clocks disagree")
         last_arrival[market] = elapsed
         d = row.get("raw_message_sha256" if public else "wire_sha256")
         if not isinstance(d, str) or DIGEST.fullmatch(d) is None:
@@ -163,7 +181,6 @@ def inspect_source(summary_path: Path, receipts_path: Path, *, schema: str) -> d
             if height <= last_height.get(market, 0):
                 raise ReceiptAuditError("candidate block height did not advance")
             last_height[market] = height
-        counts[market] += 1
         unique_count += 1
         depth_ok = bids >= 20 and asks >= 20
         if public and not depth_ok:
@@ -215,11 +232,21 @@ def inspect_source(summary_path: Path, receipts_path: Path, *, schema: str) -> d
             "fresh5_basis_points": min(fresh5, int(reported5 * 10_000)),
         }
     finished = _finish_ms(summary.get("wall_clock_ended_utc" if public else "ended_utc"))
+    if observed_start_utc_ms is None:
+        raise ReceiptAuditError("no receipt clocks observed")
+    receipt_end_ms = observed_start_utc_ms + duration
+    end_skew_ms = abs(finished - receipt_end_ms)
+    if end_skew_ms > MAX_SUMMARY_END_SKEW_MS:
+        raise ReceiptAuditError("summary window end disagrees with receipt clocks")
+    # Derive overlap from the paired receipt clocks themselves, not from
+    # user-editable/unbound per-run summary timestamps.
     return {
         "schema": schema,
         "receipt_digest": hashlib.sha256(raw).hexdigest(),
-        "window_end_utc_ms": finished,
-        "window_start_utc_ms": finished - round(duration),
+        "window_end_utc_ms": round(receipt_end_ms),
+        "window_start_utc_ms": round(observed_start_utc_ms),
+        "summary_end_disagreement_ms": round(end_skew_ms, 2),
+        "receipt_clock_max_drift_ms": round(max_receipt_clock_drift_ms, 2),
         "duration_ms": duration,
         "cohort": list(DEFAULT_MARKETS),
         "markets": detail,
