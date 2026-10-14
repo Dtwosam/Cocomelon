@@ -11302,6 +11302,13 @@ async def run_continuous_paper_session(
                             ),
                         ),
                     ),
+                    # Avoid resetting all deep-book subscriptions at 3s
+                    # before a ~5s source-cadence snapshot can arrive.
+                    # Freshness/gaps still fail closed at 3s, and server
+                    # silence independently forces reconnect at 4s.
+                    systemic_l2_recovery_trigger_floor_ms=(
+                        replay_config.eligibility.max_book_age_ms + 500
+                    ),
                     activity_hook=lane_activity_hook,
                 )
                 supervisors.append(supervisor)
