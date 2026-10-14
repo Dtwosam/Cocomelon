@@ -903,6 +903,7 @@ jobs:
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Run continuous paper trader
+        id: paper_trader
         if: ${{ steps.guard.outputs.skip != 'true' }}
         run: |
           set -euo pipefail
@@ -1166,6 +1167,7 @@ jobs:
       # Its standalone negative/positive source receipt has no promotion
       # authority; an independent source/market review is still required.
       - name: Verify fresh v2 trend paired account consistency before source ZIP
+        id: v2_terminal_verifier
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/both-side-trend-paired-shadow-v2-summary.json') != '' }}
         continue-on-error: true
         shell: bash
@@ -1191,6 +1193,7 @@ jobs:
           PY
 
       - name: Upload isolated fresh v2 trend paired-paper evidence
+        id: v2_source_archive_upload
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/both-side-trend-paired-shadow-v2-summary.json') != '' }}
         continue-on-error: true
         timeout-minutes: 12
@@ -1325,6 +1328,45 @@ jobs:
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
         shell: bash
         run: rm -f continuous-paper-resume.tar.zst
+
+      # Read-only early review happens ONLY after exact-state successor
+      # dispatch has succeeded. It is not a prerequisite for paper custody,
+      # and cannot upgrade an in-progress source to a completed worker.
+      - name: Dispatch preliminary independent v2 audit after exact handoff
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.paper_trader.outcome == 'success' && steps.v2_terminal_verifier.outcome == 'success' && steps.v2_source_archive_upload.outcome == 'success' && steps.fast_resume_dispatch.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The isolated archive was uploaded before this step. Never use a
+          # guard-only, latest run, or mutable source selection: pin the
+          # independent reviewer to THIS completed trader source/attempt.
+          echo "## Independently review exact terminal-archived v2 source" >> "$GITHUB_STEP_SUMMARY"
+          echo "- immutable source run / attempt: $GITHUB_RUN_ID / $GITHUB_RUN_ATTEMPT" >> "$GITHUB_STEP_SUMMARY"
+          echo "- worker completion: PRELIMINARY until GitHub worker completion is independently verified" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 72-hour after-cost profitability / LIVE authority: UNVERIFIED / FALSE" >> "$GITHUB_STEP_SUMMARY"
+          dispatched=false
+          for attempt in 1 2 3 4; do
+            if gh workflow run independent-fresh-trend-v2-source-audit.yml \
+              --repo "$GITHUB_REPOSITORY" \
+              --ref main \
+              -f "source_run_id=$GITHUB_RUN_ID" \
+              -f "source_attempt=$GITHUB_RUN_ATTEMPT"; then
+              dispatched=true
+              break
+            fi
+            echo "::warning::independent v2 audit dispatch unavailable ($attempt/4)"
+            if [ "$attempt" -lt 4 ]; then
+              sleep 5
+            fi
+          done
+          if [ "$dispatched" != "true" ]; then
+            echo "::warning::early v2 audit dispatch unavailable; existing scheduled and completed-run auditors remain authoritative"
+            echo "- early dispatch: unavailable; scheduled audit remains" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- early dispatch: requested, receipt remains subject to independent verification" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Seal original first-seen SHORT rank source after worker exit
         id: short_rank_seal
