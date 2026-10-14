@@ -6077,6 +6077,16 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "l2_max_event_sink_await_ms": 22613,
                     "l2_last_normalized_age_ms": 4600,
                     "l2_last_fresh_accepted_age_ms": 5000,
+                    "l2_arrival_stale_threshold_ms": 3000,
+                    "l2_unique_interval_samples": 80,
+                    "l2_unique_interval_ge_stale_count": 25,
+                    "l2_unique_interval_ge_5000_count": 10,
+                    "l2_unique_interval_max_ms": 6021,
+                    "l2_source_age_samples": 81,
+                    "l2_source_age_ge_stale_count": 35,
+                    "l2_source_age_ge_5000_count": 7,
+                    "l2_source_age_max_ms": 7251,
+                    "l2_source_future_dated_count": 2,
                     "connected": True,
                     "reconnect_count": 7,
                     "systemic_l2_stale_reconnect_count": 6,
@@ -6406,6 +6416,11 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "L2 lane 0 received/duplicate/out-of-order/stale/fresh: "
         "123/4/1/35/83; sink-await-max=22613ms; "
         "last-book-age=4600ms; last-fresh-age=5000ms"
+    ) in rendered
+    assert (
+        "L2 lane 0 distinct-book gaps: samples=80, >=3000ms=25, "
+        ">=5000ms=10, max=6021ms; source-age-on-arrival: samples=81, "
+        ">=3000ms=35, >=5000ms=7, max=7251ms, future=2"
     ) in rendered
     assert "slow paper journal SQL >=2s count / max: 2 / 22613ms" in rendered
     assert "last slow paper journal SQL stages (anonymous):" in rendered
