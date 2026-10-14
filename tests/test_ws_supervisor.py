@@ -1677,6 +1677,16 @@ def test_l2_delivery_diagnostics_distinguish_book_gap_causes() -> None:
             "l2_max_event_sink_await_ms": 0,
             "l2_last_normalized_age_ms": None,
             "l2_last_fresh_accepted_age_ms": None,
+            "l2_unique_interval_samples": 0,
+            "l2_unique_interval_ge_stale_count": 0,
+            "l2_unique_interval_ge_5000_count": 0,
+            "l2_unique_interval_max_ms": 0,
+            "l2_source_age_samples": 0,
+            "l2_source_age_ge_stale_count": 0,
+            "l2_source_age_ge_5000_count": 0,
+            "l2_source_age_max_ms": 0,
+            "l2_source_future_dated_count": 0,
+            "l2_arrival_stale_threshold_ms": 5_000,
         }
         await supervisor._dispatch(book(1_000))
         await supervisor._dispatch(book(1_000))  # same replay key
@@ -1697,6 +1707,15 @@ def test_l2_delivery_diagnostics_distinguish_book_gap_causes() -> None:
         assert isinstance(diag["l2_max_event_sink_await_ms"], int)
         assert diag["l2_last_normalized_age_ms"] == 5
         assert diag["l2_last_fresh_accepted_age_ms"] == 5
+        assert diag["l2_unique_interval_samples"] == 3
+        assert diag["l2_unique_interval_max_ms"] == 5_950
+        assert diag["l2_unique_interval_ge_stale_count"] == 1
+        assert diag["l2_unique_interval_ge_5000_count"] == 1
+        assert diag["l2_source_age_samples"] == 4
+        assert diag["l2_source_age_max_ms"] == 5_000
+        assert diag["l2_source_age_ge_stale_count"] == 1
+        assert diag["l2_source_age_ge_5000_count"] == 1
+        assert diag["l2_source_future_dated_count"] == 0
         assert len(accepted) == 4
         assert any(gap.reason == "out_of_order" for gap in gaps)
         assert any(gap.reason == "recovered" for gap in gaps)
@@ -1705,7 +1724,69 @@ def test_l2_delivery_diagnostics_distinguish_book_gap_causes() -> None:
             "l2_out_of_order_count", "l2_stale_on_receive_count",
             "l2_fresh_accepted_count", "l2_max_event_sink_await_ms",
             "l2_last_normalized_age_ms", "l2_last_fresh_accepted_age_ms",
+            "l2_unique_interval_samples", "l2_unique_interval_ge_stale_count",
+            "l2_unique_interval_ge_5000_count", "l2_unique_interval_max_ms",
+            "l2_source_age_samples", "l2_source_age_ge_stale_count",
+            "l2_source_age_ge_5000_count", "l2_source_age_max_ms",
+            "l2_source_future_dated_count", "l2_arrival_stale_threshold_ms",
         }
         assert "BTC" not in str(diag)
+
+    asyncio.run(run())
+
+
+
+def test_l2_interval_diagnostic_excludes_replays_and_resubscribe_downtime() -> None:
+    async def run() -> None:
+        now = [1_000]
+
+        async def factory() -> FakeConnection:
+            return FakeConnection([])
+
+        async def event_sink(event: StreamEvent) -> None:
+            del event
+
+        async def gap_sink(gap: DataGap) -> None:
+            del gap
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "l2Book", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime.fromtimestamp(now[0] / 1000, tz=UTC),
+            stale_after_ms=3_000,
+        )
+        await supervisor._dispatch(book(1_000))
+        now[0] = 3_500
+        await supervisor._dispatch(book(1_000))  # replay, not a distinct book
+        now[0] = 5_050
+        await supervisor._dispatch(book(5_050))
+        diag = supervisor.l2_delivery_diagnostics(now_ms=5_050)
+        assert diag["l2_unique_interval_samples"] == 1
+        assert diag["l2_unique_interval_max_ms"] == 4_050
+        assert diag["l2_unique_interval_ge_stale_count"] == 1
+        assert diag["l2_unique_interval_ge_5000_count"] == 0
+        # An old event is received now, even though its exchange timestamp
+        # is too old for current-book eligibility.
+        now[0] = 10_060
+        await supervisor._dispatch(book(7_000))
+        diag = supervisor.l2_delivery_diagnostics(now_ms=10_060)
+        assert diag["l2_unique_interval_ge_5000_count"] == 1
+        assert diag["l2_source_age_ge_stale_count"] == 1
+        assert diag["l2_source_age_max_ms"] == 3_060
+
+        supervisor._clear_l2_dedup_state("l2Book:BTC")
+        now[0] = 30_000
+        await supervisor._dispatch(book(30_000))
+        diag = supervisor.l2_delivery_diagnostics(now_ms=30_000)
+        assert diag["l2_unique_interval_samples"] == 2
+        assert diag["l2_unique_interval_max_ms"] == 5_010
+        assert diag["l2_source_age_samples"] == 4
+        assert len(supervisor._l2_last_unique_receive_ms) == 1
+        # Reconnect resets the active stream-clock, not cumulative counters.
+        supervisor._reset_l2_freshness_for_session(session_started_ms=40_000)
+        assert supervisor._l2_last_unique_receive_ms == {}
 
     asyncio.run(run())
