@@ -59,8 +59,32 @@ jobs:
       - name: Install independent paper evidence reviewer
         run: python -m pip install -e .
 
+      # GitHub marks guard-only PAPER workflow dispatches successful after
+      # skipping trader/restore steps. Those runs carry no signed v2 source.
+      # Only a proven skipped trader may switch from event identity to the
+      # latest earlier completed original worker with an exact archive.
+      - name: Detect guard-only paper workflow trigger
+        if: ${{ github.event_name == 'workflow_run' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/gh_api_bounded_retry.sh
+          mkdir -p /tmp/paper-audit-trigger
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/jobs?per_page=100" > /tmp/paper-audit-trigger/jobs.json
+          if jq -e '
+            [.jobs[] | select(.name == "paper") | .steps[]?
+             | select(.name == "Run continuous paper trader"
+               and .conclusion == "skipped")]
+            | length == 1
+          ' /tmp/paper-audit-trigger/jobs.json > /dev/null; then
+            echo "GUARD_ONLY_SOURCE_TRIGGER=true" >> "$GITHUB_ENV"
+            echo "Guard-only paper workflow $SOURCE_RUN_ID has no valid trader source; selecting only an earlier completed original with exact archive." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Exact workflow-run source $SOURCE_RUN_ID preserved; no substitution of an actual worker." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Resolve latest completed original worker with exact trend ZIP
-        if: ${{ github.event_name == 'schedule' }}
+        if: ${{ github.event_name == 'schedule' || env.GUARD_ONLY_SOURCE_TRIGGER == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -71,6 +95,9 @@ jobs:
           chosen_attempt=""
           while read -r run_id run_attempt; do
             [[ "$run_id" =~ ^[1-9][0-9]*$ && "$run_attempt" =~ ^[1-9][0-9]*$ ]] || exit 1
+            if [[ "${GUARD_ONLY_SOURCE_TRIGGER:-}" == "true" && "$run_id" -ge "$SOURCE_RUN_ID" ]]; then
+              continue  # Never substitute a later worker than the guard trigger.
+            fi
             gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" > /tmp/trend-paper-audit/candidate-artifacts.json
             exact_name="continuous-paper-both-side-trend-paired-shadow-$run_id-$run_attempt"
             if jq -e --arg name "$exact_name" '
@@ -95,7 +122,7 @@ jobs:
             exit 1
           fi
           printf 'SOURCE_RUN_ID=%s\nSOURCE_ATTEMPT=%s\n' "$chosen_id" "$chosen_attempt" >> "$GITHUB_ENV"
-          echo "Scheduled independent audit of completed original paper run $chosen_id attempt $chosen_attempt" >> "$GITHUB_STEP_SUMMARY"
+          echo "Independent audit of actual archived original PAPER run $chosen_id attempt $chosen_attempt (not a guard-only run)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fetch exact original paper worker source metadata
         shell: bash
