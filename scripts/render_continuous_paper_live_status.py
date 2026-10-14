@@ -9580,7 +9580,8 @@ def _render_operational_live_status(
             "reset-censored-intervals={censored}, "
             "censored>={stale_ms}ms={censored_stale}, "
             "max-censored-elapsed={censored_max}ms; "
-            "targeted-recovery-timeout={timeout}ms".format(
+            "targeted-recovery-timeout={timeout}ms, "
+            "recovery-trigger-floor={trigger_floor}ms".format(
                 lane=raw_lane.get("lane", "?"),
                 unseen=raw_lane.get("l2_unique_stream_unseen_count", 0),
                 streams=raw_lane.get("l2_unique_stream_count", 0),
@@ -9600,6 +9601,7 @@ def _render_operational_live_status(
                     "l2_unique_interval_censored_max_elapsed_ms", 0
                 ),
                 timeout=raw_lane.get("l2_targeted_recovery_timeout_ms"),
+                trigger_floor=raw_lane.get("l2_recovery_trigger_floor_ms"),
             )
         )
         if stale_markets:
