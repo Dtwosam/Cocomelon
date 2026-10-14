@@ -9536,6 +9536,23 @@ def _render_operational_live_status(
                 current_age_max=raw_lane.get("l2_current_age_max_ms"),
             )
         )
+        l2_lane_lines.append(
+            "- L2 lane {lane} received/duplicate/out-of-order/stale/fresh: "
+            "{received}/{duplicate}/{out_of_order}/{stale}/{fresh}; "
+            "sink-await-max={sink_max}ms; "
+            "last-book-age={book_age}ms; "
+            "last-fresh-age={fresh_age}ms".format(
+                lane=raw_lane.get("lane", "?"),
+                received=raw_lane.get("l2_normalized_count", 0),
+                duplicate=raw_lane.get("l2_duplicate_count", 0),
+                out_of_order=raw_lane.get("l2_out_of_order_count", 0),
+                stale=raw_lane.get("l2_stale_on_receive_count", 0),
+                fresh=raw_lane.get("l2_fresh_accepted_count", 0),
+                sink_max=raw_lane.get("l2_max_event_sink_await_ms", 0),
+                book_age=raw_lane.get("l2_last_normalized_age_ms"),
+                fresh_age=raw_lane.get("l2_last_fresh_accepted_age_ms"),
+            )
+        )
         if stale_markets:
             l2_lane_lines.append(
                 "- L2 lane {lane} stale markets: {markets}".format(
