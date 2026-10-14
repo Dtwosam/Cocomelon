@@ -65,6 +65,7 @@ class WebSocketSupervisor:
         systemic_l2_stale_reconnect_fraction: float | None = None,
         systemic_l2_stale_reconnect_grace_ms: int = 0,
         max_systemic_l2_targeted_resubscribes: int = 0,
+        targeted_l2_recovery_timeout_ms: int | None = None,
         activity_hook: ActivityHook | None = None,
         dedup_size: int = 2048,
     ) -> None:
@@ -94,6 +95,13 @@ class WebSocketSupervisor:
             raise ValueError(
                 "max_systemic_l2_targeted_resubscribes must be non-negative"
             )
+        if (
+            targeted_l2_recovery_timeout_ms is not None
+            and targeted_l2_recovery_timeout_ms <= 0
+        ):
+            raise ValueError(
+                "targeted_l2_recovery_timeout_ms must be positive or None"
+            )
         if dedup_size <= 0:
             raise ValueError("dedup_size must be positive")
         self._connection_factory = connection_factory
@@ -114,6 +122,13 @@ class WebSocketSupervisor:
         )
         self._max_systemic_l2_targeted_resubscribes = (
             max_systemic_l2_targeted_resubscribes
+        )
+        # A bounded source recovery wait is separate from stale-book
+        # rejection. The default preserves prior supervisor semantics.
+        self._targeted_l2_recovery_timeout_ms = (
+            stale_after_ms
+            if targeted_l2_recovery_timeout_ms is None
+            else targeted_l2_recovery_timeout_ms
         )
         self._activity_hook = activity_hook
         self._dedup_size = dedup_size
@@ -245,6 +260,9 @@ class WebSocketSupervisor:
             "l2_source_age_max_ms": self._l2_source_age_max_ms,
             "l2_source_future_dated_count": self._l2_source_future_dated_count,
             "l2_arrival_stale_threshold_ms": self._stale_after_ms,
+            "l2_targeted_recovery_timeout_ms": (
+                self._targeted_l2_recovery_timeout_ms
+            ),
         }
 
     async def _recv_buffered_at_deadline(
@@ -423,7 +441,10 @@ class WebSocketSupervisor:
                 raise RuntimeError(
                     "targeted L2 recovery is missing its start time"
                 )
-            if now_ms - started_ms < self._stale_after_ms:
+            if (
+                now_ms - started_ms
+                < self._targeted_l2_recovery_timeout_ms
+            ):
                 return
             self._systemic_l2_stale_reconnect_count += 1
             self._reset_targeted_l2_recovery()
