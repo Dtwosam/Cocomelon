@@ -1,5 +1,11 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 14 — independently classify genuine actor-received v2 gap causes
+
+The first immutable v2 ZIP independently exposed **119,555 actor-received normalized DATA_GAP events**, **13 named unresolved L2 book market scopes**, invalid original terminal parity receipt (relative SQLite URI), and no independently authenticated original exchange-feed completeness. A raw count alone does not identify whether events stem from upstream disconnect, book staleness, repaired subscriptions, or out-of-order exchange events; *none* of those historical gaps may be deleted to improve apparent results.
+
+The read-only independent v2 source verifier now **after the exact signed witness chain equals the archived state** reports bounded event counts by actual recorded reason and up to 12 top stream IDs with their own reason counts. It separates observed open-event rows (not current open scopes), recovered rows (not proof of complete feed), out-of-order rows, and malformed rows. Source bytes, signed checkpoint, account economics, original actor, all 72-hour/gap/venue/promotion gates and risk configuration remain completely unchanged. This is a diagnosis to identify real transport and replay root causes, not a profitability label or a data-gap waiver.
+
 ## October 14 — source v2 terminal SQLite relative-path URI failure
 
 The first post-freeze v2 worker's source ZIP was downloaded and independently checked after PR #1217, verifying its GitHub SHA, write-once v2 genesis, archived model-fee/funding accounting and the actor-received DATA_GAP sequence. But the source-side signed terminal receipt remains **UNVERIFIED**, as the genuine original worker log shows `ValueError: relative path can't be expressed as a file URI` in the verifier opening a relative `continuous-paper-state/` SQLite path. The original verification step returned 0 despite writing that unverified JSON; never relabel this archived source as proof. The first v2 actor received 119,555 DATA_GAP events, and 13 named L2 book gaps remained open. It is not a clean 72-hour profitability result.
