@@ -310,7 +310,7 @@ async def collect(
                             break
                         timeouts += 1
                         if timeouts >= 3:
-                            raise TimeoutError("no public socket messages")
+                            raise TimeoutError("no public socket messages") from None
                         await conn.send_json({"method": "ping"})
                         continue
                     timeouts = 0
