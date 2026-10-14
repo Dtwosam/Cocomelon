@@ -142,7 +142,7 @@ def test_parse_fails_closed_for_crossed_ordered_invalid_or_empty_book() -> None:
         parse_block_l2(wrong, b"b")
     bad = book()
     bad.bids = (FakeLevel("NaN"),)
-    with pytest.raises(ValueError, match="nonpositive"):
+    with pytest.raises(ValueError, match="invalid book levels"):
         parse_block_l2(bad, b"c")
     empty = book()
     empty.asks = ()
