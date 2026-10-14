@@ -1,0 +1,101 @@
+name: Independent Full-Depth L2 Cadence Probe
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/full-depth-l2-cadence-probe.yml"
+      - "src/cocomelon/research/full_depth_cadence_probe.py"
+      - "tests/test_full_depth_cadence_probe.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: passive-full-depth-l2-probe
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      COCOMELON_EXECUTION_MODE: paper
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install read-only runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Probe fixed 20-market public full-depth cohort independently
+        run: |
+          set -euo pipefail
+          python -m cocomelon.research.full_depth_cadence_probe \
+            --duration-seconds 180 \
+            --out-dir l2-cadence-probe
+
+      - name: Publish non-certifying diagnostic summary to issue 1235
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' > l2-cadence-summary.md
+          import json
+          import os
+          from pathlib import Path
+
+          result = Path("l2-cadence-probe/summary.json")
+          print("## Independent passive L2 cadence probe")
+          print()
+          print(f"- workflow run: {os.environ['GITHUB_RUN_ID']}")
+          print(f"- commit: {os.environ['GITHUB_SHA']}")
+          print("- PAPER/diagnostic only; zero execution authority; no source completeness certification")
+          if not result.exists():
+              print("- **NO VERIFIED PROBE SUMMARY**: collector failed before writing evidence.")
+          else:
+              data = json.loads(result.read_text())
+              print(f"- observation window completed: **{data['observation_window_completed']}**")
+              print(f"- duration ms: {data['duration_ms']}")
+              print(f"- exact cohort: {', '.join(data['market_cohort'])}")
+              print(f"- unique books / observed markets with >=2: "
+                    f"{data['unique_books']} / {data['markets_with_two_or_more_books']}")
+              print(f"- connections / errors: {data['connections']} / {data['connection_errors']}")
+              print(f"- protocol errors: {data['protocol_errors']}")
+              print(f"- receipt file SHA-256: {data['receipts_sha256']}")
+              print()
+              print("| Market | Unique | Intervals >=3s / >=5s / >=8s | Max interval ms | Fresh <3s time | Fresh <5s time |")
+              print("| --- | ---: | ---: | ---: | ---: | ---: |")
+              for market, row in data["markets"].items():
+                  print(f"| {market} | {row['unique']} | "
+                        f"{row['interval_ge_3000']} / {row['interval_ge_5000']} / {row['interval_ge_8000']} | "
+                        f"{row['interval_max_ms']} | {row['fresh_3s_time_fraction']} | "
+                        f"{row['fresh_5s_time_fraction']} |")
+              print()
+              print("All results are independent read-only observations, not trusted replacement books. "
+                    "Look up this run's source-receipts.jsonl and summary.json artifacts.")
+          PY
+          gh issue comment 1235 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file l2-cadence-summary.md
+
+      - name: Upload independent public-feed receipts and summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: independent-l2-cadence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            l2-cadence-probe/
+            l2-cadence-summary.md
+          if-no-files-found: warn
+          retention-days: 30
