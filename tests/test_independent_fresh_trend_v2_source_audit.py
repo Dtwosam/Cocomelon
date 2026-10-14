@@ -467,7 +467,10 @@ def test_audits_do_not_treat_guard_only_workflow_run_as_authentic_source() -> No
         assert 'echo "GUARD_ONLY_SOURCE_TRIGGER=true" >> "$GITHUB_ENV"' in workflow
         assert "env.GUARD_ONLY_SOURCE_TRIGGER == 'true'" in workflow
         assert '"$run_id" -ge "$SOURCE_RUN_ID"' in workflow
-        assert 'gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"' in workflow
+        assert (
+            'gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/'
+            '$run_id/artifacts?per_page=100"'
+        ) in workflow
         assert "Only a proven skipped trader" in workflow
         assert "source_run_id:" in workflow
         assert "workflow_dispatch:" in workflow
