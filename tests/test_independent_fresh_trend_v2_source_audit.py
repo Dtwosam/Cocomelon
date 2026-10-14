@@ -208,6 +208,83 @@ def test_uncontrolled_v2_trader_failure_never_inherits_terminal_custody(
             classify()
 
 
+
+def test_independent_v2_gap_forensics_counts_causes_without_clearing_history(
+    tmp_path: Path,
+) -> None:
+    from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
+    from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+        FILE_NAME,
+        V2SourceGapWitness,
+        read_source_gap_witness,
+    )
+
+    witness = V2SourceGapWitness(tmp_path, restoring=False)
+    examples = [
+        ("l2Book:CASHCAT", "disconnect", 100, None),
+        ("l2Book:CASHCAT", "recovered", 100, 180),
+        ("l2Book:AZTEC", "stale", 201, None),
+        ("l2Book:CASHCAT", "out_of_order", 80, 230),
+        ("trades:PENGU", "disconnect", 240, None),
+    ]
+    for ordinal, (stream, reason, start, end) in enumerate(examples, 1):
+        at_ms = start if end is None else end
+        record = ReplayRecord(
+            record_kind=SourceRecordKind.DATA_GAP,
+            available_at_ms=at_ms,
+            source="hyperliquid-ws",
+            schema_version=1,
+            market=None,
+            exchange_time_ms=None,
+            event_kind=None,
+            event_key=f"gap:{stream}:{start}:{end}:{reason}",
+            payload_json=json.dumps({
+                "stream_id": stream, "reason": reason,
+                "started_ms": start, "ended_ms": end,
+            }, sort_keys=True, separators=(",", ":")),
+        )
+        witness.append(record, ordinal=ordinal)
+    path = tmp_path / FILE_NAME
+    signed = read_source_gap_witness(path, total_processed_records=5)
+    original = path.read_bytes()
+    result = audit._v2_verified_gap_event_forensics(
+        path, received_gap_count=signed["received_gap_record_count"],
+    )
+    assert result["signed_witness_row_count"] == 5
+    assert result["by_reason"] == {
+        "disconnect": 2, "out_of_order": 1,
+        "recovered": 1, "stale": 1,
+    }
+    assert result["observed_open_events_not_current_open_scopes"] == 3
+    assert result["observed_recovery_events_not_complete_feed"] == 1
+    assert result["out_of_order_events"] == 1
+    assert result["top_streams"][0]["stream_id"] == "l2Book:CASHCAT"
+    assert result["top_streams"][0]["received_gap_events"] == 3
+    assert result["current_unresolved_gap_scopes_inferred"] is False
+    assert result["original_venue_source_authenticated"] is False
+    assert result["clean_feed_or_profit_proven"] is False
+    assert result["execution_authority"] is False
+    assert path.read_bytes() == original
+    assert read_source_gap_witness(
+        path, total_processed_records=5,
+    ) == signed
+    with pytest.raises(
+        audit.TrendPairHandoffAuditError, match="authenticated witness row count",
+    ):
+        audit._v2_verified_gap_event_forensics(
+            path, received_gap_count=4,
+        )
+
+
+def test_v2_gap_forensics_uses_signed_witness_only_after_exact_chain_validation() -> None:
+    source = Path("scripts/audit_both_side_trend_paired_handoff.py").read_text()
+    assert source.index("source_witness = read_source_gap_witness(") < source.index(
+        "_v2_verified_gap_event_forensics(\n                        gap_path,"
+    )
+    assert 'state.get("v2_source_gap_event_witness") != source_witness' in source
+    assert "v2_actor_received_gap_forensics" in source
+
+
 def test_v2_source_class_requires_prospective_time_and_exact_upload() -> None:
     run, jobs = _source()
     assert audit._source_class(
