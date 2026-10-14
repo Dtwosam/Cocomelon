@@ -9,7 +9,11 @@ from cocomelon.domain.journal import JournalObservation, ObservationKind, TradeJ
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayManifest, SourceSegment
 from cocomelon.domain.strategy import Direction
-from cocomelon.journal.store import JournalConsistencyError, JournalStore
+from cocomelon.journal.store import (
+    TRADE_REF_INSERT_ROWS_PER_STATEMENT,
+    JournalConsistencyError,
+    JournalStore,
+)
 
 MARKET = MarketId("", "SOL")
 
@@ -294,6 +298,82 @@ def test_batched_ref_constraint_failure_rolls_back_trade_and_all_refs(
             "SELECT count(*) FROM journal_trades WHERE trade_id=?",
             (trade.trade_id,),
         ).fetchone() == (0,)
+    finally:
+        store.close()
+
+
+def test_multirow_reference_inserts_obey_legacy_999_bind_limit(
+    tmp_path: Path,
+) -> None:
+    from dataclasses import replace
+
+    assert TRADE_REF_INSERT_ROWS_PER_STATEMENT == 200
+    assert 4 * TRADE_REF_INSERT_ROWS_PER_STATEMENT <= 999
+    trade = replace(
+        trade_entry(),
+        health_refs=tuple(f"source-gap-{i:05d}" for i in range(1_003)),
+    )
+    store = JournalStore(tmp_path / "journal.sqlite3")
+    inserts: list[str] = []
+    try:
+        previous_limit = store.connection.setlimit(
+            sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999
+        )
+        assert previous_limit >= 999
+        store.connection.set_trace_callback(
+            lambda sql: inserts.append(sql)
+            if sql.startswith("INSERT INTO journal_trade_refs(")
+            else None
+        )
+        store.record_trade(trade)
+        store.record_trade(trade)  # idempotent; no duplicate SQL inserts
+        store.connection.set_trace_callback(None)
+        assert store.load_trade(trade.trade_id) == trade
+        # 1,003 health refs and six ordinary refs require six multi-row SQL
+        # statements (five 200-row statements and a final nine-row one).
+        assert len(inserts) == 6
+        assert all("source-gap-" in row for row in inserts)
+        assert store.connection.execute(
+            "SELECT COUNT(*) FROM journal_trade_refs WHERE trade_id=?",
+            (trade.trade_id,),
+        ).fetchone() == (1009,)
+    finally:
+        store.connection.set_trace_callback(None)
+        store.close()
+
+
+def test_multirow_reference_inserts_roll_back_later_statement_failure(
+    tmp_path: Path,
+) -> None:
+    from dataclasses import replace
+
+    trade = replace(
+        trade_entry(),
+        health_refs=tuple(f"event-gap-{i:05d}" for i in range(440)),
+    )
+    store = JournalStore(tmp_path / "journal.sqlite3")
+    try:
+        # Health ordinal 208 is in a *later* multi-row INSERT; previous
+        # INSERT(s) and the journal trade must all roll back atomically.
+        store.connection.executescript(
+            "CREATE TRIGGER reject_later_ref BEFORE INSERT ON journal_trade_refs "
+            "WHEN NEW.ref_kind='health' AND NEW.ordinal=208 "
+            "BEGIN SELECT RAISE(ABORT, 'late multirow reference failure'); END;"
+        )
+        with pytest.raises(sqlite3.IntegrityError, match="late multirow"):
+            store.record_trade(trade)
+        assert store.load_trade(trade.trade_id) is None
+        assert store.connection.execute(
+            "SELECT COUNT(*) FROM journal_trade_refs WHERE trade_id=?",
+            (trade.trade_id,),
+        ).fetchone() == (0,)
+        store.connection.execute("DROP TRIGGER reject_later_ref")
+        store.record_trade(trade)
+        assert store.load_trade(trade.trade_id) == trade
+        assert store.connection.execute(
+            "SELECT COUNT(*) FROM journal_trade_refs WHERE trade_id=?",
+            (trade.trade_id,),
+        ).fetchone() == (446,)
     finally:
         store.close()
 
