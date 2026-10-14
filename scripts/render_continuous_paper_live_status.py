@@ -9553,6 +9553,26 @@ def _render_operational_live_status(
                 fresh_age=raw_lane.get("l2_last_fresh_accepted_age_ms"),
             )
         )
+        l2_lane_lines.append(
+            "- L2 lane {lane} distinct-book gaps: "
+            "samples={sample}, >={stale_ms}ms={over_stale}, "
+            ">=5000ms={over_5000}, max={max_ms}ms; "
+            "source-age-on-arrival: samples={age_sample}, "
+            ">={stale_ms}ms={age_stale}, >=5000ms={age_5000}, "
+            "max={age_max}ms, future={future}".format(
+                lane=raw_lane.get("lane", "?"),
+                sample=raw_lane.get("l2_unique_interval_samples", 0),
+                stale_ms=raw_lane.get("l2_arrival_stale_threshold_ms"),
+                over_stale=raw_lane.get("l2_unique_interval_ge_stale_count", 0),
+                over_5000=raw_lane.get("l2_unique_interval_ge_5000_count", 0),
+                max_ms=raw_lane.get("l2_unique_interval_max_ms", 0),
+                age_sample=raw_lane.get("l2_source_age_samples", 0),
+                age_stale=raw_lane.get("l2_source_age_ge_stale_count", 0),
+                age_5000=raw_lane.get("l2_source_age_ge_5000_count", 0),
+                age_max=raw_lane.get("l2_source_age_max_ms", 0),
+                future=raw_lane.get("l2_source_future_dated_count", 0),
+            )
+        )
         if stale_markets:
             l2_lane_lines.append(
                 "- L2 lane {lane} stale markets: {markets}".format(
