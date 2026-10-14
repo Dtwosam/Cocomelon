@@ -4,13 +4,13 @@ import asyncio
 import json
 import logging
 import sqlite3
-from time import perf_counter
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import asdict
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from pathlib import Path
+from time import perf_counter
 from typing import Any, cast
 
 from cocomelon.domain.journal import (
