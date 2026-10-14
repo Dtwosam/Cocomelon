@@ -452,3 +452,22 @@ def test_matching_v2_archive_members_can_open_only_exact_freeze(
     assert summary["trial_id"] == "v2"
     assert state["schema_version"] == 2
     assert ledger.read_text() == "{}\n"
+
+
+def test_audits_do_not_treat_guard_only_workflow_run_as_authentic_source() -> None:
+    paths = (
+        ".github/workflows/independent-fresh-trend-v2-source-audit.yml",
+        ".github/workflows/independent-both-side-trend-handoff-audit.yml",
+    )
+    for path in paths:
+        workflow = Path(path).read_text()
+        assert "Detect guard-only paper workflow trigger" in workflow
+        assert 'select(.name == "Run continuous paper trader"' in workflow
+        assert 'and .conclusion == "skipped"' in workflow
+        assert 'echo "GUARD_ONLY_SOURCE_TRIGGER=true" >> "$GITHUB_ENV"' in workflow
+        assert "env.GUARD_ONLY_SOURCE_TRIGGER == 'true'" in workflow
+        assert '"$run_id" -ge "$SOURCE_RUN_ID"' in workflow
+        assert 'gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"' in workflow
+        assert "Only a proven skipped trader" in workflow
+        assert "source_run_id:" in workflow
+        assert "workflow_dispatch:" in workflow
