@@ -302,7 +302,7 @@ def test_batched_ref_constraint_failure_rolls_back_trade_and_all_refs(
         store.close()
 
 
-def test_multirow_reference_inserts_obey_legacy_999_bind_limit(
+def test_json1_bulk_refs_work_with_legacy_999_bind_limit(
     tmp_path: Path,
 ) -> None:
     from dataclasses import replace
@@ -329,14 +329,100 @@ def test_multirow_reference_inserts_obey_legacy_999_bind_limit(
         store.record_trade(trade)  # idempotent; no duplicate SQL inserts
         store.connection.set_trace_callback(None)
         assert store.load_trade(trade.trade_id) == trade
-        # 1,003 health refs and six ordinary refs require six multi-row SQL
-        # statements (five 200-row statements and a final nine-row one).
+        # Exactly one VM statement per nonempty ref kind, even for 1,003
+        # health refs; no 999-variable violation or duplicate retry work.
         assert len(inserts) == 6
-        assert all("source-gap-" in row for row in inserts)
+        assert all("json_each(" in sql for sql in inserts)
+        assert sum("source-gap-" in sql for sql in inserts) == 1
         assert store.connection.execute(
             "SELECT COUNT(*) FROM journal_trade_refs WHERE trade_id=?",
             (trade.trade_id,),
         ).fetchone() == (1009,)
+    finally:
+        store.connection.set_trace_callback(None)
+        store.close()
+
+
+def test_json1_single_health_statement_preserves_4893_signed_ref_ids(
+    tmp_path: Path,
+) -> None:
+    from dataclasses import replace
+
+    trade = replace(
+        trade_entry(),
+        health_refs=tuple(
+            f"source-gap-{i:05d}-unicode-☁-\\\""
+            for i in range(4_893)
+        ),
+    )
+    store = JournalStore(tmp_path / "journal.sqlite3")
+    statements: list[str] = []
+    try:
+        store.connection.setlimit(
+            sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999
+        )
+        store.connection.set_trace_callback(
+            lambda sql: statements.append(sql)
+            if sql.startswith("INSERT INTO journal_trade_refs(")
+            else None
+        )
+        store.record_trade(trade)
+        store.connection.set_trace_callback(None)
+        assert len(statements) == 6
+        assert all("json_each(" in sql for sql in statements)
+        assert store.load_trade(trade.trade_id) == trade
+        rows = store.connection.execute(
+            "SELECT ordinal, ref_id FROM journal_trade_refs "
+            "WHERE trade_id=? AND ref_kind='health' ORDER BY ordinal",
+            (trade.trade_id,),
+        ).fetchall()
+        assert rows == list(enumerate(trade.health_refs))
+        assert store.connection.execute(
+            "SELECT COUNT(*) FROM journal_trade_refs WHERE trade_id=?",
+            (trade.trade_id,),
+        ).fetchone() == (4_899,)
+    finally:
+        store.connection.set_trace_callback(None)
+        store.close()
+
+
+def test_json1_missing_uses_previous_200_row_atomic_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dataclasses import replace
+
+    monkeypatch.setattr(
+        JournalStore,
+        "_sqlite_json_each_available",
+        staticmethod(lambda _connection: False),
+    )
+    trade = replace(
+        trade_entry(),
+        health_refs=tuple(
+            f"legacy-gap-{i:05d}" for i in range(1_003)
+        ),
+    )
+    store = JournalStore(tmp_path / "journal.sqlite3")
+    statements: list[str] = []
+    try:
+        store.connection.setlimit(
+            sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999
+        )
+        store.connection.set_trace_callback(
+            lambda sql: statements.append(sql)
+            if sql.startswith("INSERT INTO journal_trade_refs(")
+            else None
+        )
+        store.record_trade(trade)
+        store.connection.set_trace_callback(None)
+        assert len(statements) == 6
+        assert all("json_each(" not in sql for sql in statements)
+        assert store.load_trade(trade.trade_id) == trade
+        assert store.connection.execute(
+            "SELECT COUNT(*) FROM journal_trade_refs WHERE trade_id=?",
+            (trade.trade_id,),
+        ).fetchone() == (1_009,)
     finally:
         store.connection.set_trace_callback(None)
         store.close()
