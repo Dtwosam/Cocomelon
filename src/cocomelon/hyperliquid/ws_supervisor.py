@@ -190,6 +190,14 @@ class WebSocketSupervisor:
         self._l2_source_age_ge_5000_count = 0
         self._l2_source_age_max_ms = 0
         self._l2_source_future_dated_count = 0
+        # Diagnostics only: integrate observed exchange-timestamp freshness
+        # over elapsed lane time instead of sampling at heartbeat boundaries.
+        # Count unobserved/reset windows as NOT fresh, never as eligible.
+        self._l2_source_fresh_first_ms: int | None = None
+        self._l2_source_fresh_last: dict[str, tuple[int, int]] = {}
+        self._l2_source_fresh_integrated_3000_ms = 0
+        self._l2_source_fresh_integrated_5000_ms = 0
+        self._l2_source_fresh_clock_regressions = 0
 
     @property
     def health(self) -> StreamHealth:
@@ -211,8 +219,52 @@ class WebSocketSupervisor:
     def stale_deadline_buffered_message_count(self) -> int:
         return self._stale_deadline_buffered_message_count
 
+    @staticmethod
+    def _l2_source_fresh_span_ms(
+        anchor_ms: int, source_age_ms: int, now_ms: int, threshold_ms: int,
+    ) -> int:
+        # A future-dated book is never a valid freshness anchor. A stale book
+        # can still be observed, but contributes zero covered milliseconds.
+        if source_age_ms < 0 or now_ms <= anchor_ms:
+            return 0
+        return min(now_ms - anchor_ms, max(0, threshold_ms - source_age_ms))
+
+    def _l2_source_fresh_integrate(self, stream_id: str, now_ms: int) -> None:
+        previous = self._l2_source_fresh_last.get(stream_id)
+        if previous is None:
+            return
+        anchor_ms, age_ms = previous
+        self._l2_source_fresh_integrated_3000_ms += self._l2_source_fresh_span_ms(
+            anchor_ms, age_ms, now_ms, 3_000
+        )
+        self._l2_source_fresh_integrated_5000_ms += self._l2_source_fresh_span_ms(
+            anchor_ms, age_ms, now_ms, 5_000
+        )
+
+    def _l2_source_fresh_measure(self, *, now_ms: int) -> tuple[int, int, int]:
+        """Source-age coverage basis points; NOT depth/position eligibility."""
+        first = self._l2_source_fresh_first_ms
+        observed_ms = 0 if first is None else max(0, now_ms - first)
+        stream_count = len(self._l2_stream_ids())
+        total_ms = observed_ms * stream_count
+        if total_ms <= 0:
+            return observed_ms, 0, 0
+        fresh3 = self._l2_source_fresh_integrated_3000_ms
+        fresh5 = self._l2_source_fresh_integrated_5000_ms
+        for anchor_ms, age_ms in self._l2_source_fresh_last.values():
+            fresh3 += self._l2_source_fresh_span_ms(anchor_ms, age_ms, now_ms, 3_000)
+            fresh5 += self._l2_source_fresh_span_ms(anchor_ms, age_ms, now_ms, 5_000)
+        return (
+            observed_ms,
+            min(10_000, 10_000 * fresh3 // total_ms),
+            min(10_000, 10_000 * fresh5 // total_ms),
+        )
+
     def l2_delivery_diagnostics(self, *, now_ms: int) -> dict[str, int | None]:
         """Read-only lane-local observations, not venue completeness proof."""
+        (covered_ms, fresh3_bps, fresh5_bps) = self._l2_source_fresh_measure(
+            now_ms=now_ms
+        )
         received_age = (
             None if self._last_l2_normalized_ms is None
             else max(0, now_ms - self._last_l2_normalized_ms)
@@ -272,6 +324,14 @@ class WebSocketSupervisor:
             "l2_source_age_ge_5000_count": self._l2_source_age_ge_5000_count,
             "l2_source_age_max_ms": self._l2_source_age_max_ms,
             "l2_source_future_dated_count": self._l2_source_future_dated_count,
+            # Anonymous, source-timestamp-only upper bound on freshness. Not
+            # a claim that full depth, gaps, readiness or trades were valid.
+            "l2_source_fresh_observation_elapsed_ms": covered_ms,
+            "l2_source_fresh_3000_basis_points": fresh3_bps,
+            "l2_source_fresh_5000_basis_points": fresh5_bps,
+            "l2_source_fresh_clock_regressions": (
+                self._l2_source_fresh_clock_regressions
+            ),
             "l2_arrival_stale_threshold_ms": self._stale_after_ms,
             "l2_targeted_recovery_timeout_ms": (
                 self._targeted_l2_recovery_timeout_ms
@@ -410,13 +470,18 @@ class WebSocketSupervisor:
         )
 
     def _clear_l2_dedup_state(self, stream_id: str) -> None:
+        # Close diagnostic freshness time on recovery/reset, then count the
+        # ensuing source-unknown period as NOT fresh until a new unique book.
         self._recent_keys.pop(stream_id, None)
         self._recent_key_sets.pop(stream_id, None)
         # Do not confuse a resubscribe/reconnect delay with the venue's
         # in-session interarrival cadence. The aggregate counters survive.
         last_unique_ms = self._l2_last_unique_receive_ms.pop(stream_id, None)
         if last_unique_ms is not None:
-            elapsed_ms = max(0, self._clock_ms() - last_unique_ms)
+            now_ms = self._clock_ms()
+            self._l2_source_fresh_integrate(stream_id, now_ms)
+            self._l2_source_fresh_last.pop(stream_id, None)
+            elapsed_ms = max(0, now_ms - last_unique_ms)
             self._l2_unique_interval_censored_count += 1
             self._l2_unique_interval_censored_max_elapsed_ms = max(
                 self._l2_unique_interval_censored_max_elapsed_ms, elapsed_ms
@@ -659,6 +724,19 @@ class WebSocketSupervisor:
                 continue
 
             if is_l2:
+                # Pure source-only timing observation: duplicates/out-of-order
+                # never refresh the anchor; a later failed sink cannot turn
+                # these observations into account or gap-clearance evidence.
+                old_anchor = self._l2_source_fresh_last.get(stream_id)
+                if old_anchor is not None and now_ms < old_anchor[0]:
+                    self._l2_source_fresh_clock_regressions += 1
+                elif exchange_time is not None:
+                    self._l2_source_fresh_integrate(stream_id, now_ms)
+                    if self._l2_source_fresh_first_ms is None:
+                        self._l2_source_fresh_first_ms = now_ms
+                    self._l2_source_fresh_last[stream_id] = (
+                        now_ms, now_ms - exchange_time
+                    )
                 last_unique_ms = self._l2_last_unique_receive_ms.get(stream_id)
                 if last_unique_ms is not None and now_ms >= last_unique_ms:
                     interval_ms = now_ms - last_unique_ms

@@ -6097,6 +6097,10 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "l2_source_age_ge_5000_count": 7,
                     "l2_source_age_max_ms": 7251,
                     "l2_source_future_dated_count": 2,
+                    "l2_source_fresh_observation_elapsed_ms": 64000,
+                    "l2_source_fresh_3000_basis_points": 4521,
+                    "l2_source_fresh_5000_basis_points": 7832,
+                    "l2_source_fresh_clock_regressions": 1,
                     "connected": True,
                     "reconnect_count": 7,
                     "systemic_l2_stale_reconnect_count": 6,
@@ -6438,6 +6442,12 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "reset-censored-intervals=4, censored>=3000ms=3, "
         "max-censored-elapsed=8500ms; "
         "targeted-recovery-timeout=6000ms, recovery-trigger-floor=11000ms"
+    ) in rendered
+    assert (
+        "L2 lane 0 elapsed source-age freshness (NOT tradability): "
+        "observed=64000ms, under-3s=4521/10000, "
+        "under-5s=7832/10000, clock-regressions=1; "
+        "reconnect/resubscribe-unknown time counted stale"
     ) in rendered
     assert "slow paper journal SQL >=2s count / max: 2 / 22613ms" in rendered
     assert "last slow paper journal SQL stages (anonymous):" in rendered

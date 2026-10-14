@@ -9604,6 +9604,20 @@ def _render_operational_live_status(
                 trigger_floor=raw_lane.get("l2_recovery_trigger_floor_ms"),
             )
         )
+        l2_lane_lines.append(
+            "- L2 lane {lane} elapsed source-age freshness (NOT tradability): "
+            "observed={elapsed}ms, under-3s={fresh3}/10000, "
+            "under-5s={fresh5}/10000, clock-regressions={regressions}; "
+            "reconnect/resubscribe-unknown time counted stale".format(
+                lane=raw_lane.get("lane", "?"),
+                elapsed=raw_lane.get(
+                    "l2_source_fresh_observation_elapsed_ms", 0
+                ),
+                fresh3=raw_lane.get("l2_source_fresh_3000_basis_points", 0),
+                fresh5=raw_lane.get("l2_source_fresh_5000_basis_points", 0),
+                regressions=raw_lane.get("l2_source_fresh_clock_regressions", 0),
+            )
+        )
         if stale_markets:
             l2_lane_lines.append(
                 "- L2 lane {lane} stale markets: {markets}".format(
