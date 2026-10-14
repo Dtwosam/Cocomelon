@@ -184,6 +184,7 @@ def _source_class(
         raise TrendPairHandoffAuditError("source jobs missing")
     confirmed_paper_jobs = 0
     expected_upgrade_handoff = False
+    terminal_failed_trader_archived = False
     for item in raw_jobs:
         job = _mapping(item, "worker job")
         if job.get("run_id") != run_id:
@@ -211,18 +212,54 @@ def _source_class(
             required.add(
                 "Verify fresh v2 trend paired account consistency before source ZIP"
             )
-        if required <= successful_steps:
+        failed_steps = [
+            step for step in steps
+            if isinstance(step, dict)
+            and step.get("conclusion") in ("failure", "timed_out", "cancelled")
+        ]
+        trader_steps = [
+            step for step in steps
+            if isinstance(step, dict)
+            and step.get("name") == "Run continuous paper trader"
+        ]
+        # A genuine v2 worker can fail its shell trader step after writing
+        # valid signed terminal accounts. The existing terminal verifier and
+        # independent ZIP/SQLite replay must still establish actual custody.
+        # This exception is deliberately narrower than paper rescue, and
+        # cannot grant a source when the archive, successor or any non-tail
+        # step is missing. Leave legacy v1 admission completely unchanged.
+        terminal_failed = (
+            campaign == "v2"
+            and not preliminary
+            and run.get("conclusion") == "failure"
+            and job.get("status") == "completed"
+            and job.get("conclusion") == "failure"
+            and len(trader_steps) == 1
+            and trader_steps[0].get("status") == "completed"
+            and trader_steps[0].get("conclusion") == "failure"
+            and {
+                V2_SOURCE_UPLOAD_STEP,
+                "Verify fresh v2 trend paired account consistency before source ZIP",
+                "Measure durable continuous paper state",
+                "Pack fast continuous paper resume state",
+                "Upload fast continuous paper resume state",
+                "Queue exact successor from fast resume",
+                "Pack durable continuous paper state",
+                "Upload durable continuous paper state",
+            } <= successful_steps
+            and len(failed_steps) == 2
+            and {step.get("name") for step in failed_steps} == {
+                "Run continuous paper trader",
+                "Fail closed on upgrade handoff source",
+            }
+            and all(step.get("status") == "completed" for step in failed_steps)
+        )
+        if required <= successful_steps or terminal_failed:
             confirmed_paper_jobs += 1
+            terminal_failed_trader_archived = terminal_failed
             # This source intentionally exits 75 AFTER durable successor
             # dispatch, immutable state upload and isolated ZIP publication.
             # Distinguish that expected non-success from arbitrary failures.
-            failed_steps = [
-                step for step in steps
-                if isinstance(step, dict)
-                and step.get("conclusion") in (
-                    "failure", "timed_out", "cancelled",
-                )
-            ]
             expected_upgrade_handoff = (
                 job.get("status") == "completed"
                 and job.get("conclusion") == "failure"
@@ -246,6 +283,8 @@ def _source_class(
         return "in_progress_source_archive_preliminary"
     if run.get("conclusion") == "success":
         return "completed_successful_worker"
+    if terminal_failed_trader_archived and len(raw_jobs) == 1:
+        return "completed_terminal_archived_trader_failure_worker"
     if (
         run.get("conclusion") == "failure"
         and expected_upgrade_handoff
@@ -1200,6 +1239,11 @@ def audit_trend_handoff(
             elif source_class == "completed_expected_upgrade_handoff_worker":
                 result["reasons"] = [
                     "expected_upgrade_handoff_is_not_successful_worker",
+                ]
+            elif source_class == "completed_terminal_archived_trader_failure_worker":
+                result["reasons"] = [
+                    "terminal_account_reconciled_but_original_trader_step_failed",
+                    "original_mainnet_feed_completeness_not_authenticated",
                 ]
             elif source_class != "completed_successful_worker":
                 result["reasons"] = [
