@@ -474,3 +474,29 @@ def test_audits_do_not_treat_guard_only_workflow_run_as_authentic_source() -> No
         assert "Only a proven skipped trader" in workflow
         assert "source_run_id:" in workflow
         assert "workflow_dispatch:" in workflow
+
+
+def test_source_selector_audits_terminal_archived_active_paper_only_as_preliminary() -> None:
+    workflow = Path(
+        ".github/workflows/independent-fresh-trend-v2-source-audit.yml"
+    ).read_text()
+    assert "Find latest actual terminal-archived v2 paper source" in workflow
+    assert '(.status == "completed" or .status == "in_progress")' in workflow
+    assert '.event == "workflow_dispatch"' in workflow
+    assert '.path == ".github/workflows/continuous-paper.yml"' in workflow
+    assert 'sort_by(.id) | reverse' in workflow
+    assert 'and .expired == false' in workflow
+    assert '.conclusion == "success"' in workflow
+    for evidence_step in (
+        "Run continuous paper trader",
+        "Verify fresh v2 trend paired account consistency before source ZIP",
+        "Upload isolated fresh v2 trend paired-paper evidence",
+    ):
+        assert evidence_step in workflow
+    assert "unique | length == 3" in workflow
+    assert "PRELIMINARY ACTIVE SOURCE ONLY" in workflow
+    assert 'source_status="$candidate_status"' in workflow
+    # Anchor authentication remains independent and refuses unfinished anchors.
+    assert 'status=completed&branch=main&per_page=100' in workflow
+    assert "full_forward_after_cost_profit_verified" not in workflow
+    assert "COCOMELON_EXECUTION_MODE: live" not in workflow
