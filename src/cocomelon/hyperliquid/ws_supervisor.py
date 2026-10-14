@@ -143,6 +143,19 @@ class WebSocketSupervisor:
         self._l2_max_event_sink_await_ms = 0
         self._last_l2_normalized_ms: int | None = None
         self._last_l2_fresh_accepted_ms: int | None = None
+        # One receive clock per distinct L2 stream, reset when that stream
+        # is resubscribed or a session reconnects. These diagnostics measure
+        # gaps between *unique* source events, not duplicate replay floods.
+        self._l2_last_unique_receive_ms: dict[str, int] = {}
+        self._l2_unique_interval_samples = 0
+        self._l2_unique_interval_ge_stale_count = 0
+        self._l2_unique_interval_ge_5000_count = 0
+        self._l2_unique_interval_max_ms = 0
+        self._l2_source_age_samples = 0
+        self._l2_source_age_ge_stale_count = 0
+        self._l2_source_age_ge_5000_count = 0
+        self._l2_source_age_max_ms = 0
+        self._l2_source_future_dated_count = 0
 
     @property
     def health(self) -> StreamHealth:
@@ -183,6 +196,20 @@ class WebSocketSupervisor:
             "l2_max_event_sink_await_ms": self._l2_max_event_sink_await_ms,
             "l2_last_normalized_age_ms": received_age,
             "l2_last_fresh_accepted_age_ms": fresh_age,
+            "l2_unique_interval_samples": self._l2_unique_interval_samples,
+            "l2_unique_interval_ge_stale_count": (
+                self._l2_unique_interval_ge_stale_count
+            ),
+            "l2_unique_interval_ge_5000_count": (
+                self._l2_unique_interval_ge_5000_count
+            ),
+            "l2_unique_interval_max_ms": self._l2_unique_interval_max_ms,
+            "l2_source_age_samples": self._l2_source_age_samples,
+            "l2_source_age_ge_stale_count": self._l2_source_age_ge_stale_count,
+            "l2_source_age_ge_5000_count": self._l2_source_age_ge_5000_count,
+            "l2_source_age_max_ms": self._l2_source_age_max_ms,
+            "l2_source_future_dated_count": self._l2_source_future_dated_count,
+            "l2_arrival_stale_threshold_ms": self._stale_after_ms,
         }
 
     async def _recv_buffered_at_deadline(
@@ -311,6 +338,9 @@ class WebSocketSupervisor:
     def _clear_l2_dedup_state(self, stream_id: str) -> None:
         self._recent_keys.pop(stream_id, None)
         self._recent_key_sets.pop(stream_id, None)
+        # Do not confuse a resubscribe/reconnect delay with the venue's
+        # in-session interarrival cadence. The aggregate counters survive.
+        self._l2_last_unique_receive_ms.pop(stream_id, None)
 
     def _reset_targeted_l2_recovery(self) -> None:
         self._systemic_l2_targeted_resubscribe_attempts = 0
@@ -543,6 +573,33 @@ class WebSocketSupervisor:
                 )
                 continue
 
+            if is_l2:
+                last_unique_ms = self._l2_last_unique_receive_ms.get(stream_id)
+                if last_unique_ms is not None and now_ms >= last_unique_ms:
+                    interval_ms = now_ms - last_unique_ms
+                    self._l2_unique_interval_samples += 1
+                    self._l2_unique_interval_max_ms = max(
+                        self._l2_unique_interval_max_ms, interval_ms
+                    )
+                    if interval_ms >= self._stale_after_ms:
+                        self._l2_unique_interval_ge_stale_count += 1
+                    if interval_ms >= 5_000:
+                        self._l2_unique_interval_ge_5000_count += 1
+                self._l2_last_unique_receive_ms[stream_id] = now_ms
+                if exchange_time is not None:
+                    age_on_receive_ms = now_ms - exchange_time
+                    if age_on_receive_ms < 0:
+                        self._l2_source_future_dated_count += 1
+                    else:
+                        self._l2_source_age_samples += 1
+                        self._l2_source_age_max_ms = max(
+                            self._l2_source_age_max_ms,
+                            age_on_receive_ms,
+                        )
+                        if age_on_receive_ms >= self._stale_after_ms:
+                            self._l2_source_age_ge_stale_count += 1
+                        if age_on_receive_ms >= 5_000:
+                            self._l2_source_age_ge_5000_count += 1
             if exchange_time is not None:
                 self._last_exchange_time[stream_id] = exchange_time
             l2_is_stale = (
