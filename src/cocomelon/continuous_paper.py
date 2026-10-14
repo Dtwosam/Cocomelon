@@ -7872,6 +7872,15 @@ def _live_status_payload(
         ),
         "record_pump_slow_record_count": pump.record_pump_slow_record_count,
         "record_pump_last_slow_record": pump.record_pump_last_slow_record,
+        "journal_slow_sql_transaction_count": getattr(
+            pump.journal, "slow_trade_sql_count", 0
+        ),
+        "journal_slow_sql_max_total_ms": getattr(
+            pump.journal, "slow_trade_sql_max_total_ms", 0
+        ),
+        "journal_last_slow_sql_profile": getattr(
+            pump.journal, "last_slow_trade_sql", None
+        ),
         "startup_component_ms": dict(
             sorted(pump.startup_component_ms.items())
         ),
@@ -8634,6 +8643,15 @@ def _operational_live_status_payload(
         ),
         "record_pump_slow_record_count": pump.record_pump_slow_record_count,
         "record_pump_last_slow_record": pump.record_pump_last_slow_record,
+        "journal_slow_sql_transaction_count": getattr(
+            pump.journal, "slow_trade_sql_count", 0
+        ),
+        "journal_slow_sql_max_total_ms": getattr(
+            pump.journal, "slow_trade_sql_max_total_ms", 0
+        ),
+        "journal_last_slow_sql_profile": getattr(
+            pump.journal, "last_slow_trade_sql", None
+        ),
         "startup_component_ms": dict(
             sorted(pump.startup_component_ms.items())
         ),

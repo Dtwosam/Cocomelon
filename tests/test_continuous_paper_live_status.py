@@ -6198,6 +6198,16 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
             },
         },
         "journal_observations": 12,
+        "journal_slow_sql_transaction_count": 2,
+        "journal_slow_sql_max_total_ms": 22613,
+        "journal_last_slow_sql_profile": {
+            "total_ms": 22613,
+            "begin_wait_ms": 100,
+            "trade_row_ms": 12,
+            "ref_insert_ms": 22400,
+            "commit_ms": 101,
+            "ref_rows": 1200,
+        },
         "session_decision_epochs": 2,
         "last_decision_boundary_ms": 1_699_999_900_000,
         "last_decision_evaluated_at_ms": 1_700_000_000_000,
@@ -6384,6 +6394,9 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         in rendered
     )
     assert "last slow record pump:" in rendered
+    assert "slow paper journal SQL >=2s count / max: 2 / 22613ms" in rendered
+    assert "last slow paper journal SQL stages (anonymous):" in rendered
+    assert "'ref_insert_ms': 22400" in rendered
     assert "l2_book" in rendered
     assert (
         "checkpoint max snapshot / background write / starts / skips: "

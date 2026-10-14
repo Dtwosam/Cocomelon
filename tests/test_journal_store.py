@@ -323,6 +323,35 @@ def test_slow_trade_sql_warning_exposes_only_latency_stage_counts(
     assert "payload_json" not in messages[0]
 
 
+def test_async_slow_journal_stages_reach_heartbeat_without_trade_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Force the diagnostics gate; do not sleep or depend on runner I/O load.
+    monkeypatch.setattr("cocomelon.journal.store.SLOW_TRADE_TRANSACTION_MS", 0)
+    store = JournalStore(tmp_path / "journal.sqlite3")
+    trade = trade_entry()
+    try:
+        asyncio.run(store.record_trade_async(trade))
+        assert store.load_trade(trade.trade_id) == trade
+        assert store.slow_trade_sql_count == 1
+        assert store.last_slow_trade_sql is not None
+        assert set(store.last_slow_trade_sql) == {
+            "total_ms", "begin_wait_ms", "trade_row_ms",
+            "ref_insert_ms", "commit_ms", "ref_rows",
+        }
+        assert all(value >= 0 for value in store.last_slow_trade_sql.values())
+        assert store.slow_trade_sql_max_total_ms == (
+            store.last_slow_trade_sql["total_ms"]
+        )
+        assert store.last_slow_trade_sql["ref_rows"] == 7
+        assert trade.trade_id not in str(store.last_slow_trade_sql)
+        # Identical retry must keep the original transaction and metric count.
+        asyncio.run(store.record_trade_async(trade))
+        assert store.slow_trade_sql_count == 1
+    finally:
+        store.close()
+
+
 def test_closed_trade_round_trips_after_restart(tmp_path: Path) -> None:
     path = tmp_path / "journal.sqlite3"
     item = trade_entry()

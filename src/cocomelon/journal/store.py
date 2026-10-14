@@ -146,6 +146,10 @@ class JournalStore:
         self.connection = sqlite3.connect(self.path)
         self.connection.execute("PRAGMA foreign_keys = ON")
         self._initialize_schema()
+        # Per-process diagnostics only; never stored in the signed trade journal.
+        self.slow_trade_sql_count = 0
+        self.slow_trade_sql_max_total_ms = 0
+        self.last_slow_trade_sql: dict[str, int] | None = None
 
     @staticmethod
     def _canonical_json(value: object) -> str:
@@ -440,7 +444,7 @@ class JournalStore:
         connection: sqlite3.Connection,
         trade: TradeJournalEntry,
         payload: str,
-    ) -> None:
+    ) -> dict[str, int] | None:
         refs = (
             ("exit_plan", trade.exit_plan_ids),
             ("exit_attempt", trade.exit_attempt_ids),
@@ -467,7 +471,7 @@ class JournalStore:
                         f"conflicting journal trade: {trade.trade_id}"
                     )
                 connection.commit()
-                return
+                return None
             connection.execute(
                 """
                 INSERT INTO journal_trades(
@@ -509,6 +513,20 @@ class JournalStore:
                 total_ms=max(0, int((committed - started) * 1000)),
                 ref_rows=sum(len(values) for _, values in refs),
             )
+            # Return only anonymous stage timings to the awaiting coroutine.
+            # The worker heartbeat can then expose them while Actions logs
+            # for the actively running paper job are still unavailable.
+            total_ms = max(0, int((committed - started) * 1000))
+            if total_ms >= SLOW_TRADE_TRANSACTION_MS:
+                return {
+                    "total_ms": total_ms,
+                    "begin_wait_ms": max(0, int((acquired - started) * 1000)),
+                    "trade_row_ms": max(0, int((refs_started - acquired) * 1000)),
+                    "ref_insert_ms": max(0, int((refs_done - refs_started) * 1000)),
+                    "commit_ms": max(0, int((committed - refs_done) * 1000)),
+                    "ref_rows": sum(len(values) for _, values in refs),
+                }
+            return None
         except Exception:
             connection.rollback()
             raise
@@ -540,11 +558,11 @@ class JournalStore:
         path: Path,
         trade: TradeJournalEntry,
         payload: str,
-    ) -> None:
+    ) -> dict[str, int] | None:
         connection = sqlite3.connect(path)
         try:
             connection.execute("PRAGMA foreign_keys = ON")
-            JournalStore._record_trade_transaction(
+            return JournalStore._record_trade_transaction(
                 connection,
                 trade,
                 payload,
@@ -557,12 +575,18 @@ class JournalStore:
         trade: TradeJournalEntry,
     ) -> None:
         payload = self._canonical_json(trade)
-        await asyncio.to_thread(
+        stages = await asyncio.to_thread(
             self._record_trade_at_path,
             self.path,
             trade,
             payload,
         )
+        if stages is not None:
+            self.slow_trade_sql_count += 1
+            self.slow_trade_sql_max_total_ms = max(
+                self.slow_trade_sql_max_total_ms, stages["total_ms"]
+            )
+            self.last_slow_trade_sql = stages
 
     def load_trade(self, trade_id: str) -> TradeJournalEntry | None:
         row = self.connection.execute(
