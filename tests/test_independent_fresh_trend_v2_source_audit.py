@@ -224,7 +224,7 @@ def test_independent_v2_gap_forensics_counts_causes_without_clearing_history(
         ("l2Book:CASHCAT", "disconnect", 100, None),
         ("l2Book:CASHCAT", "recovered", 100, 180),
         ("l2Book:AZTEC", "stale", 201, None),
-        ("l2Book:CASHCAT", "out_of_order", 80, 190),
+        ("l2Book:CASHCAT", "out_of_order", 80, 230),
         ("trades:PENGU", "disconnect", 240, None),
     ]
     for ordinal, (stream, reason, start, end) in enumerate(examples, 1):
