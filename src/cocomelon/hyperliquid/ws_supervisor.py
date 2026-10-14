@@ -66,6 +66,7 @@ class WebSocketSupervisor:
         systemic_l2_stale_reconnect_grace_ms: int = 0,
         max_systemic_l2_targeted_resubscribes: int = 0,
         targeted_l2_recovery_timeout_ms: int | None = None,
+        systemic_l2_recovery_trigger_floor_ms: int | None = None,
         activity_hook: ActivityHook | None = None,
         dedup_size: int = 2048,
     ) -> None:
@@ -102,6 +103,13 @@ class WebSocketSupervisor:
             raise ValueError(
                 "targeted_l2_recovery_timeout_ms must be positive or None"
             )
+        if (
+            systemic_l2_recovery_trigger_floor_ms is not None
+            and systemic_l2_recovery_trigger_floor_ms <= 0
+        ):
+            raise ValueError(
+                "systemic_l2_recovery_trigger_floor_ms must be positive or None"
+            )
         if dedup_size <= 0:
             raise ValueError("dedup_size must be positive")
         self._connection_factory = connection_factory
@@ -129,6 +137,11 @@ class WebSocketSupervisor:
             stale_after_ms
             if targeted_l2_recovery_timeout_ms is None
             else targeted_l2_recovery_timeout_ms
+        )
+        # Separate stale-book/gap rejection from potentially destructive
+        # broad resubscription. None preserves the old recovery trigger.
+        self._systemic_l2_recovery_trigger_floor_ms = (
+            systemic_l2_recovery_trigger_floor_ms
         )
         self._activity_hook = activity_hook
         self._dedup_size = dedup_size
@@ -263,6 +276,9 @@ class WebSocketSupervisor:
             "l2_targeted_recovery_timeout_ms": (
                 self._targeted_l2_recovery_timeout_ms
             ),
+            "l2_recovery_trigger_floor_ms": (
+                self._systemic_l2_recovery_trigger_floor_ms
+            ),
         }
 
     async def _recv_buffered_at_deadline(
@@ -348,6 +364,11 @@ class WebSocketSupervisor:
             self._stale_after_ms
             + self._systemic_l2_stale_reconnect_grace_ms
         )
+        if self._systemic_l2_recovery_trigger_floor_ms is not None:
+            reconnect_after_ms = max(
+                reconnect_after_ms,
+                self._systemic_l2_recovery_trigger_floor_ms,
+            )
         silent_count = sum(
             (
                 (last_received_ms := self._last_stream_message.get(stream_id))
