@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sqlite3
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import asdict
@@ -9,6 +10,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from pathlib import Path
+from time import perf_counter
 from typing import Any, cast
 
 from cocomelon.domain.journal import (
@@ -22,6 +24,8 @@ from cocomelon.domain.replay import EvidenceClass, ReplayManifest, ReplayResult,
 from cocomelon.domain.strategy import Direction
 
 SCHEMA_VERSION = 1
+SLOW_TRADE_TRANSACTION_MS = 2_000
+logger = logging.getLogger(__name__)
 
 
 class JournalConsistencyError(RuntimeError):
@@ -445,8 +449,14 @@ class JournalStore:
             ("funding", trade.funding_event_ids),
             ("health", trade.health_refs),
         )
+        # This remains one BEGIN IMMEDIATE -> COMMIT transaction. A long
+        # awaited write holds the paper record-pump ordering lock even when
+        # sqlite I/O runs in a thread. Distinguish lock wait, ref insertion,
+        # and commit latency without logging account identifiers or payloads.
+        started = perf_counter()
         try:
             connection.execute("BEGIN IMMEDIATE")
+            acquired = perf_counter()
             existing = connection.execute(
                 "SELECT payload_json FROM journal_trades WHERE trade_id = ?",
                 (trade.trade_id,),
@@ -473,19 +483,50 @@ class JournalStore:
                     payload,
                 ),
             )
-            for ref_kind, values in refs:
-                for ordinal, ref_id in enumerate(values):
-                    connection.execute(
-                        """
-                        INSERT INTO journal_trade_refs(trade_id, ref_kind, ordinal, ref_id)
-                        VALUES (?, ?, ?, ?)
-                        """,
-                        (trade.trade_id, ref_kind, ordinal, ref_id),
-                    )
+            refs_started = perf_counter()
+            # Bind the identical rows/ordinals in original ref-kind order,
+            # without one Python-to-SQLite execute per reference and without
+            # allocating an unbounded second copy of a large trade's refs.
+            connection.executemany(
+                """
+                INSERT INTO journal_trade_refs(trade_id, ref_kind, ordinal, ref_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    (trade.trade_id, ref_kind, ordinal, ref_id)
+                    for ref_kind, values in refs
+                    for ordinal, ref_id in enumerate(values)
+                ),
+            )
+            refs_done = perf_counter()
             connection.commit()
+            committed = perf_counter()
+            JournalStore._log_slow_trade_transaction(
+                begin_wait_ms=max(0, int((acquired - started) * 1000)),
+                trade_row_ms=max(0, int((refs_started - acquired) * 1000)),
+                ref_insert_ms=max(0, int((refs_done - refs_started) * 1000)),
+                commit_ms=max(0, int((committed - refs_done) * 1000)),
+                total_ms=max(0, int((committed - started) * 1000)),
+                ref_rows=sum(len(values) for _, values in refs),
+            )
         except Exception:
             connection.rollback()
             raise
+
+    @staticmethod
+    def _log_slow_trade_transaction(
+        *, begin_wait_ms: int, trade_row_ms: int, ref_insert_ms: int,
+        commit_ms: int, total_ms: int, ref_rows: int,
+    ) -> None:
+        if total_ms < SLOW_TRADE_TRANSACTION_MS:
+            return
+        logger.warning(
+            "SLOW_PAPER_JOURNAL_TRADE_SQL "
+            "total_ms=%d begin_wait_ms=%d trade_row_ms=%d "
+            "ref_insert_ms=%d commit_ms=%d ref_rows=%d",
+            total_ms, begin_wait_ms, trade_row_ms,
+            ref_insert_ms, commit_ms, ref_rows,
+        )
 
     def record_trade(self, trade: TradeJournalEntry) -> None:
         self._record_trade_transaction(

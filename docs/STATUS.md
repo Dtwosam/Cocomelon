@@ -2,6 +2,11 @@
 
 > Read [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md) first. No profitable paper strategy has been independently certified; v2 remains an unproven precommitted research plan.
 
+## October 14 — observed original PAPER journal persist latency
+
+Original corrected paper worker #38543676421 recorded a 23.5s CASHCAT record pump maximum with 22.6s in the already-threaded SQLite closed-trade journal persist while the record pump held its ordering lock. An immutable signed v2 witness has 59,749 redundant-disconnect and 58,764 recovery events, but the presence of these two symptoms alone does not establish causality or a clean feed. The journal reference insertion now batches identical ordered rows in its original atomic transaction and logs *only* slow SQL stage durations and row counts. High-ref tests protect exact lineage, retries and rollback. Production stage measurements are required before claiming a definitive SQLite lock-versus-write root cause. Frozen v2 and LIVE-disabled risk gates are unchanged.
+
+
 ## October 13 — bounded four-hour PAPER worker cleanup and exact-state handoff
 
 A live GitHub paper worker that started October 13 at 16:44 UTC stopped publishing authenticated heartbeats after 20:45 UTC while its original `Run continuous paper trader` step remained in progress beyond the intended 14,400-second trading session. That can strand both ordinary paper account continuity and the first post-2026-10-14 v2 worker if the runner reaches its 355-minute Actions ceiling before fast resume dispatch. No missing profit is inferred and no unverified reset is acceptable.

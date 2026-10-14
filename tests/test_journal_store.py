@@ -234,6 +234,95 @@ def test_closed_trade_async_write_round_trips(tmp_path: Path) -> None:
     store.close()
 
 
+def test_many_closed_trade_references_are_atomic_ordered_and_idempotent(
+    tmp_path: Path,
+) -> None:
+    from dataclasses import replace
+
+    path = tmp_path / "journal.sqlite3"
+    trade = replace(
+        trade_entry(),
+        health_refs=tuple(f"replay-gap-{i:05d}" for i in range(1_200)),
+    )
+    store = JournalStore(path)
+    try:
+        asyncio.run(store.record_trade_async(trade))
+        asyncio.run(store.record_trade_async(trade))
+        assert store.load_trade(trade.trade_id) == trade
+        rows = store.connection.execute(
+            "SELECT ref_kind,ordinal,ref_id FROM journal_trade_refs "
+            "WHERE trade_id=? ORDER BY ref_kind,ordinal",
+            (trade.trade_id,),
+        ).fetchall()
+        health = [
+            (ordinal, ref_id) for kind, ordinal, ref_id in rows
+            if kind == "health"
+        ]
+        assert health == list(enumerate(trade.health_refs))
+        assert len(rows) == (
+            1 + 1 + 2 + 1 + 1 + len(trade.health_refs)
+        )
+        assert store.connection.execute(
+            "SELECT count(*) FROM journal_trades WHERE trade_id=?",
+            (trade.trade_id,),
+        ).fetchone() == (1,)
+    finally:
+        store.close()
+
+
+def test_batched_ref_constraint_failure_rolls_back_trade_and_all_refs(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "journal.sqlite3"
+    store = JournalStore(path)
+    trade = trade_entry()
+    with store.connection:
+        store.connection.executescript(
+            "CREATE TRIGGER reject_ref BEFORE INSERT ON journal_trade_refs "
+            "WHEN NEW.ref_kind='fill' AND NEW.ordinal=1 "
+            "BEGIN SELECT RAISE(ABORT, 'injected reference write failure'); END;"
+        )
+    try:
+        with pytest.raises(sqlite3.IntegrityError, match="injected"):
+            asyncio.run(store.record_trade_async(trade))
+        assert store.load_trade(trade.trade_id) is None
+        assert store.connection.execute(
+            "SELECT count(*) FROM journal_trade_refs WHERE trade_id=?",
+            (trade.trade_id,),
+        ).fetchone() == (0,)
+        assert store.connection.execute(
+            "SELECT count(*) FROM journal_trades WHERE trade_id=?",
+            (trade.trade_id,),
+        ).fetchone() == (0,)
+    finally:
+        store.close()
+
+
+def test_slow_trade_sql_warning_exposes_only_latency_stage_counts(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level("WARNING", logger="cocomelon.journal.store"):
+        JournalStore._log_slow_trade_transaction(
+            begin_wait_ms=19000, trade_row_ms=200, ref_insert_ms=100,
+            commit_ms=1700, total_ms=21000, ref_rows=1200,
+        )
+        JournalStore._log_slow_trade_transaction(
+            begin_wait_ms=100, trade_row_ms=1, ref_insert_ms=3,
+            commit_ms=20, total_ms=124, ref_rows=5,
+        )
+    messages = [
+        row.message for row in caplog.records
+        if "SLOW_PAPER_JOURNAL_TRADE_SQL" in row.message
+    ]
+    assert len(messages) == 1
+    assert "begin_wait_ms=19000" in messages[0]
+    assert "ref_insert_ms=100" in messages[0]
+    assert "commit_ms=1700" in messages[0]
+    assert "ref_rows=1200" in messages[0]
+    assert "trade_id=" not in messages[0]
+    assert "payload_json" not in messages[0]
+
+
 def test_closed_trade_round_trips_after_restart(tmp_path: Path) -> None:
     path = tmp_path / "journal.sqlite3"
     item = trade_entry()
