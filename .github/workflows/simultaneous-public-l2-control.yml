@@ -1,0 +1,106 @@
+name: Simultaneous Public 20-Level and Fast 5-Level L2 Control
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/simultaneous-public-l2-control.yml"
+      - "src/cocomelon/research/simultaneous_public_l2_control.py"
+      - "tests/test_simultaneous_public_l2_control.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: simultaneous-public-l2-depth-control
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      COCOMELON_EXECUTION_MODE: paper
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install independent public-read-only dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Observe both public sockets concurrently, no credentials or execution
+        run: |
+          set -euo pipefail
+          python -m cocomelon.research.simultaneous_public_l2_control \
+            --duration-seconds 180 \
+            --out-dir public-depth-control
+
+      - name: Report depth-safe control timing only
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' > public-depth-control.md
+          import json
+          import os
+          from pathlib import Path
+
+          folder = Path("public-depth-control")
+          file = folder / "comparison.json"
+          print("## Same-window public L2 depth/cadence control")
+          print()
+          print(f"- workflow: {os.environ['GITHUB_RUN_ID']}")
+          print(f"- commit: {os.environ['GITHUB_SHA']}")
+          print("- **NO ACCOUNT / ORDERS / PRIVATE API**; five-level snapshots are NEVER 20-depth eligible")
+          if not file.exists():
+              print("- **NO COMPARABLE EVIDENCE**: collection failed before comparison artifacts were written")
+          else:
+              report = json.loads(file.read_text())
+              deep = json.loads((folder / "full-20x20-summary.json").read_text())
+              fast = json.loads((folder / "fast-5level-control-summary.json").read_text())
+              print(f"- two-socket diagnostics valid: **{report['diagnostic_comparison_valid']}**")
+              print(f"- full 20-depth unique messages: {deep['unique_books']}; "
+                    f"5-depth fast-control messages: {fast['unique_books']}")
+              print(f"- full stream connections/errors: {deep['connections']}/{deep['connection_errors']}")
+              print(f"- fast-control connections/errors: {fast['connections']}/{fast['connection_errors']}")
+              print(f"- max observed fast-control depth anomalies: "
+                    f"{fast['unexpected_more_than_5_levels_count']}")
+              print(f"- full receipts SHA-256: {deep['receipts_sha256']}")
+              print(f"- control receipts SHA-256: {fast['receipts_sha256']}")
+              print()
+              print("| Market | Deep unique | Fast 5-level unique | Deep source <3s time | Fast-control <3s time | Deep depth valid |")
+              print("| --- | ---: | ---: | ---: | ---: | --- |")
+              for coin, row in report["markets"].items():
+                  print(f"| {coin} | {row['default_20x20_unique_books']} | "
+                        f"{row['fast_control_unique_books']} | "
+                        f"{row['default_full_depth_source_age_under_3s']} | "
+                        f"{row['fast_5_level_control_source_age_under_3s']} | "
+                        f"{row['default_20x20_depth_observed']} |")
+              print()
+              print("Fast-control source timing is NOT sufficient depth, signed venue event "
+                    "completeness, a trading input, an execution permission or profitability proof.")
+          PY
+          gh issue comment 1235 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file public-depth-control.md
+
+      - name: Upload two original source receipt streams and noncertifying reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: simultaneous-public-full-fast-l2-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            public-depth-control/
+            public-depth-control.md
+          if-no-files-found: warn
+          retention-days: 30
