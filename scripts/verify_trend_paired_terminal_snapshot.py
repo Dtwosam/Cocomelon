@@ -142,7 +142,7 @@ def verify_terminal_snapshot(
             if not database.is_file():
                 raise TerminalResearchSnapshotError(f"{name} SQLite account absent")
             with sqlite3.connect(
-                f"{database.as_uri()}?mode=ro", uri=True,
+                f"{database.resolve(strict=True).as_uri()}?mode=ro", uri=True,
             ) as conn:
                 conn.execute("PRAGMA query_only=ON")
                 row = conn.execute(
@@ -207,8 +207,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         temporary.unlink(missing_ok=True)
     print(json.dumps(payload, sort_keys=True))
-    # Optional research failure never stops paper or exact-state successor.
-    return 0
+    # The workflow marks this optional research step continue-on-error. Its
+    # failure must still be visible as a failed step, never a green receipt.
+    return 0 if payload["status"] == "terminal_source_account_snapshot_coherent" else 1
 
 
 if __name__ == "__main__":
