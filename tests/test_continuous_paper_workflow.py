@@ -2333,3 +2333,52 @@ def test_terminal_sqlite_source_verifier_upgrade_triggers_exact_paper_handoff() 
     assert "watch_for_newer_runtime_run" in trader_step
     assert "COCOMELON_EXECUTION_MODE: live" not in source
 
+
+
+
+def test_pinned_independent_v2_audit_follows_exact_successor_dispatch() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    step = workflow.index(
+        "- name: Dispatch preliminary independent v2 audit after exact handoff"
+    )
+    assert workflow.index("- name: Queue exact successor from fast resume") < step
+    assert workflow.index("- name: Upload isolated fresh v2 trend paired-paper evidence") < step
+    assert workflow.index("- name: Remove local fast resume archive") < step
+    gated = workflow[step:workflow.index("\n      - name:", step + 1)]
+    # Only the original source run and successful, terminal-archived worker
+    # can trigger its independent review, never a guard-only or push trader.
+    assert "steps.guard.outputs.skip != 'true'" in gated
+    for requirement in (
+        "steps.paper_trader.outcome == 'success'",
+        "steps.v2_terminal_verifier.outcome == 'success'",
+        "steps.v2_source_archive_upload.outcome == 'success'",
+        "steps.fast_resume_dispatch.outcome == 'success'",
+    ):
+        assert requirement in gated
+    assert "continue-on-error: true" in gated
+    assert "timeout-minutes: 2" in gated
+    assert "gh workflow run independent-fresh-trend-v2-source-audit.yml" in gated
+    assert '-f "source_run_id=$GITHUB_RUN_ID"' in gated
+    assert '-f "source_attempt=$GITHUB_RUN_ATTEMPT"' in gated
+    assert "for attempt in 1 2 3 4" in gated
+    assert "existing scheduled and completed-run auditors remain authoritative" in gated
+    assert "PRELIMINARY" in gated
+    assert "72-hour after-cost profitability / LIVE authority: UNVERIFIED / FALSE" in gated
+    assert "COCOMELON_EXECUTION_MODE: live" not in gated
+
+
+def test_terminal_audit_step_ids_preserve_named_custody_checks() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    for step, step_id in (
+        ("Run continuous paper trader", "paper_trader"),
+        (
+            "Verify fresh v2 trend paired account consistency before source ZIP",
+            "v2_terminal_verifier",
+        ),
+        ("Upload isolated fresh v2 trend paired-paper evidence",
+         "v2_source_archive_upload"),
+    ):
+        assert f"- name: {step}\n        id: {step_id}" in workflow
+    # Archive dispatch must follow successful fast-resume custody, never
+    # require an unrelated, optional research tail or accept a failed ZIP.
+    assert "steps.fast_resume_dispatch.outcome == 'success'" in workflow
