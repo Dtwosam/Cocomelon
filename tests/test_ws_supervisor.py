@@ -1810,6 +1810,7 @@ def test_l2_interval_diagnostic_excludes_replays_and_resubscribe_downtime() -> N
         assert diag["l2_source_age_samples"] == 4
         assert len(supervisor._l2_last_unique_receive_ms) == 1
         # Reconnect resets the active stream-clock, not cumulative counters.
+        now[0] = 40_000
         supervisor._reset_l2_freshness_for_session(session_started_ms=40_000)
         assert supervisor._l2_last_unique_receive_ms == {}
         after = supervisor.l2_delivery_diagnostics(now_ms=40_000)
