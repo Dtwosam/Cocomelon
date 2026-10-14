@@ -173,6 +173,7 @@ jobs:
           print("- independent paper fills/fees/funding:", r.get("archived_execution_economics_reconciled"))
           print("- matched terminal mark arithmetic:", r.get("archived_terminal_mark_arithmetic_reconciled"))
           print("- source gaps:", r.get("source_scoped_open_gap_diagnostics"))
+          print("- signed actor-received gap cause breakdown (NOT gap closure):", r.get("v2_actor_received_gap_forensics"))
           print("- independent venue feed authentication: FALSE")
           print("- cross-worker v2 anchor / 72h after-cost edge: UNVERIFIED / UNVERIFIED")
           print("- promotion / live orders: FALSE / FALSE")
