@@ -1681,6 +1681,14 @@ def test_l2_delivery_diagnostics_distinguish_book_gap_causes() -> None:
             "l2_unique_interval_ge_stale_count": 0,
             "l2_unique_interval_ge_5000_count": 0,
             "l2_unique_interval_max_ms": 0,
+            "l2_unique_interval_censored_count": 0,
+            "l2_unique_interval_censored_ge_stale_count": 0,
+            "l2_unique_interval_censored_max_elapsed_ms": 0,
+            "l2_unique_stream_count": 1,
+            "l2_unique_stream_unseen_count": 1,
+            "l2_unique_stream_aged_ge_stale_count": 0,
+            "l2_unique_stream_aged_ge_5000_count": 0,
+            "l2_unique_stream_oldest_age_ms": None,
             "l2_source_age_samples": 0,
             "l2_source_age_ge_stale_count": 0,
             "l2_source_age_ge_5000_count": 0,
@@ -1711,6 +1719,11 @@ def test_l2_delivery_diagnostics_distinguish_book_gap_causes() -> None:
         assert diag["l2_unique_interval_max_ms"] == 5_950
         assert diag["l2_unique_interval_ge_stale_count"] == 1
         assert diag["l2_unique_interval_ge_5000_count"] == 1
+        assert diag["l2_unique_interval_censored_count"] == 0
+        assert diag["l2_unique_stream_count"] == 1
+        assert diag["l2_unique_stream_unseen_count"] == 0
+        assert diag["l2_unique_stream_aged_ge_stale_count"] == 0
+        assert diag["l2_unique_stream_oldest_age_ms"] == 5
         assert diag["l2_source_age_samples"] == 4
         assert diag["l2_source_age_max_ms"] == 5_000
         assert diag["l2_source_age_ge_stale_count"] == 1
@@ -1726,6 +1739,13 @@ def test_l2_delivery_diagnostics_distinguish_book_gap_causes() -> None:
             "l2_last_normalized_age_ms", "l2_last_fresh_accepted_age_ms",
             "l2_unique_interval_samples", "l2_unique_interval_ge_stale_count",
             "l2_unique_interval_ge_5000_count", "l2_unique_interval_max_ms",
+            "l2_unique_interval_censored_count",
+            "l2_unique_interval_censored_ge_stale_count",
+            "l2_unique_interval_censored_max_elapsed_ms",
+            "l2_unique_stream_count", "l2_unique_stream_unseen_count",
+            "l2_unique_stream_aged_ge_stale_count",
+            "l2_unique_stream_aged_ge_5000_count",
+            "l2_unique_stream_oldest_age_ms",
             "l2_source_age_samples", "l2_source_age_ge_stale_count",
             "l2_source_age_ge_5000_count", "l2_source_age_max_ms",
             "l2_source_future_dated_count", "l2_arrival_stale_threshold_ms",
@@ -1778,6 +1798,10 @@ def test_l2_interval_diagnostic_excludes_replays_and_resubscribe_downtime() -> N
         assert diag["l2_source_age_max_ms"] == 3_060
 
         supervisor._clear_l2_dedup_state("l2Book:BTC")
+        censored = supervisor.l2_delivery_diagnostics(now_ms=10_060)
+        assert censored["l2_unique_interval_censored_count"] == 1
+        assert censored["l2_unique_interval_censored_ge_stale_count"] == 0
+        assert censored["l2_unique_stream_unseen_count"] == 1
         now[0] = 30_000
         await supervisor._dispatch(book(30_000))
         diag = supervisor.l2_delivery_diagnostics(now_ms=30_000)
@@ -1788,5 +1812,60 @@ def test_l2_interval_diagnostic_excludes_replays_and_resubscribe_downtime() -> N
         # Reconnect resets the active stream-clock, not cumulative counters.
         supervisor._reset_l2_freshness_for_session(session_started_ms=40_000)
         assert supervisor._l2_last_unique_receive_ms == {}
+        after = supervisor.l2_delivery_diagnostics(now_ms=40_000)
+        assert after["l2_unique_interval_censored_count"] == 2
+        assert after["l2_unique_interval_censored_ge_stale_count"] == 1
+        assert after["l2_unique_interval_censored_max_elapsed_ms"] == 10_000
+        assert after["l2_unique_stream_unseen_count"] == 1
+
+    asyncio.run(run())
+
+
+
+def test_l2_reset_censors_silent_stream_without_faking_freshness() -> None:
+    async def run() -> None:
+        now = [1_000]
+
+        async def factory() -> FakeConnection:
+            return FakeConnection([])
+
+        async def event_sink(event: StreamEvent) -> None:
+            del event
+
+        async def gap_sink(gap: DataGap) -> None:
+            del gap
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "l2Book", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime.fromtimestamp(now[0] / 1000, tz=UTC),
+            stale_after_ms=3_000,
+        )
+        await supervisor._dispatch(book(1_000))
+        now[0] = 5_500
+        diag = supervisor.l2_delivery_diagnostics(now_ms=now[0])
+        assert diag["l2_unique_stream_unseen_count"] == 0
+        assert diag["l2_unique_stream_aged_ge_stale_count"] == 1
+        assert diag["l2_unique_stream_oldest_age_ms"] == 4_500
+        assert diag["l2_unique_interval_samples"] == 0
+        supervisor._clear_l2_dedup_state("l2Book:BTC")
+        after = supervisor.l2_delivery_diagnostics(now_ms=now[0])
+        assert after["l2_unique_stream_unseen_count"] == 1
+        assert after["l2_unique_interval_censored_count"] == 1
+        assert after["l2_unique_interval_censored_ge_stale_count"] == 1
+        assert after["l2_unique_interval_censored_max_elapsed_ms"] == 4_500
+        assert after["l2_unique_interval_samples"] == 0
+        # No false event acceptance, no overwritten exchange timestamp,
+        # and no suppressed gap or fabricated book freshness.
+        assert supervisor._last_exchange_time["l2Book:BTC"] == 1_000
+        assert supervisor._l2_stream_is_stale("l2Book:BTC", now_ms=5_500)
+        await supervisor._dispatch(book(5_500))
+        observed = supervisor.l2_delivery_diagnostics(now_ms=5_500)
+        assert observed["l2_unique_stream_unseen_count"] == 0
+        assert observed["l2_unique_interval_samples"] == 0
+        assert observed["l2_unique_interval_censored_count"] == 1
 
     asyncio.run(run())
