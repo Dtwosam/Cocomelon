@@ -1105,18 +1105,70 @@ jobs:
 
           reader_status="${pipeline_status[0]}"
           tee_status="${pipeline_status[1]}"
-          if (( trader_status != 0 )); then
-            echo "::error::continuous-paper runtime exited with status $trader_status"
-            exit "$trader_status"
+          if (( trader_status != 0 || reader_status != 0 || tee_status != 0 )); then
+            # Only bounded, anonymous control-plane exit evidence. DO NOT
+            # upload raw stdout/market records/trades or replace the last
+            # authenticated Issue #469 heartbeat with a guessed account.
+            failure_class="trader"
+            exit_code="$trader_status"
+            if (( trader_status == 0 && reader_status != 0 )); then
+              failure_class="heartbeat-reader"
+              exit_code="$reader_status"
+            elif (( trader_status == 0 && reader_status == 0 )); then
+              failure_class="session-tee"
+              exit_code="$tee_status"
+            fi
+            upgrade_stop_requested="false"
+            if test -e /tmp/continuous-paper-upgrade-requested; then
+              upgrade_stop_requested="true"
+            fi
+            heartbeat_line_count=0
+            if test -f continuous-paper-session.json; then
+              heartbeat_line_count="$(
+                grep -c '^COCOMELON_PAPER_HEARTBEAT ' \
+                  continuous-paper-session.json || true
+              )"
+            fi
+            {
+              printf 'kind=paper_trader_nonzero_exit\\n'
+              printf 'run_id=%s\\n' "$GITHUB_RUN_ID"
+              printf 'run_attempt=%s\\n' "$GITHUB_RUN_ATTEMPT"
+              printf 'head_sha=%s\\n' "$GITHUB_SHA"
+              printf 'failure_class=%s\\n' "$failure_class"
+              printf 'trader_exit_code=%s\\n' "$trader_status"
+              printf 'heartbeat_reader_exit_code=%s\\n' "$reader_status"
+              printf 'session_tee_exit_code=%s\\n' "$tee_status"
+              printf 'upgrade_stop_requested=%s\\n' "$upgrade_stop_requested"
+              printf 'captured_heartbeat_line_count=%s\\n' "$heartbeat_line_count"
+              printf 'original_account_verified=not_inferred\\n'
+              printf 'v2_source_complete=not_inferred\\n'
+              printf 'after_cost_profit_verified=false\\n'
+              printf 'live_authority=false\\n'
+            } > continuous-paper-trader-failure.txt
+            {
+              echo "## PAPER worker exit (non-authoritative diagnostic)"
+              echo "- run: $GITHUB_RUN_ID / attempt $GITHUB_RUN_ATTEMPT"
+              echo "- exit classification: $failure_class"
+              echo "- trader / heartbeat reader / tee: $trader_status / $reader_status / $tee_status"
+              echo "- upgrade stop file requested: $upgrade_stop_requested"
+              echo "- received heartbeat lines: $heartbeat_line_count"
+              echo "- exact account parity / venue completeness / after-cost profit: NOT INFERRED"
+              echo "- LIVE authority: FALSE"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::continuous PAPER $failure_class process returned nonzero status $exit_code; see anonymous failure receipt artifact"
+            exit "$exit_code"
           fi
-          if (( reader_status != 0 )); then
-            echo "::error::continuous-paper heartbeat reader exited with status $reader_status"
-            exit "$reader_status"
-          fi
-          if (( tee_status != 0 )); then
-            echo "::error::continuous-paper session tee exited with status $tee_status"
-            exit "$tee_status"
-          fi
+
+      - name: Upload anonymous PAPER trader failure receipt
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.paper_trader.outcome == 'failure' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-trader-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-trader-failure.txt
+          if-no-files-found: warn
+          retention-days: 30
 
       # Diagnose a source ZIP BEFORE publishing it, not after downstream
       # reviews have mistaken a predecessor's signed row for a new checkpoint.
