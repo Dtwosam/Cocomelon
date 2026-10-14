@@ -1696,6 +1696,7 @@ def test_l2_delivery_diagnostics_distinguish_book_gap_causes() -> None:
             "l2_source_future_dated_count": 0,
             "l2_arrival_stale_threshold_ms": 5_000,
             "l2_targeted_recovery_timeout_ms": 5_000,
+            "l2_recovery_trigger_floor_ms": None,
         }
         await supervisor._dispatch(book(1_000))
         await supervisor._dispatch(book(1_000))  # same replay key
@@ -1751,6 +1752,7 @@ def test_l2_delivery_diagnostics_distinguish_book_gap_causes() -> None:
             "l2_source_age_ge_5000_count", "l2_source_age_max_ms",
             "l2_source_future_dated_count", "l2_arrival_stale_threshold_ms",
             "l2_targeted_recovery_timeout_ms",
+            "l2_recovery_trigger_floor_ms",
         }
         assert "BTC" not in str(diag)
 
@@ -2000,4 +2002,129 @@ def test_targeted_l2_recovery_timeout_must_be_positive() -> None:
                 clock_ms=lambda: 0,
                 utcnow=lambda: datetime.now(UTC),
                 targeted_l2_recovery_timeout_ms=timeout,
+            )
+
+
+
+def test_l2_recovery_trigger_waits_beyond_stale_gap_without_accepting_books() -> None:
+    async def run() -> None:
+        now = [1_000]
+        gaps: list[DataGap] = []
+        connection = FakeConnection([])
+
+        async def factory() -> FakeConnection:
+            return connection
+
+        async def event_sink(event: StreamEvent) -> None:
+            del event
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "l2Book", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime.fromtimestamp(now[0] / 1000, tz=UTC),
+            stale_after_ms=3_000,
+            systemic_l2_stale_reconnect_fraction=0.5,
+            max_systemic_l2_targeted_resubscribes=1,
+            targeted_l2_recovery_timeout_ms=6_000,
+            systemic_l2_recovery_trigger_floor_ms=5_500,
+        )
+        await supervisor._dispatch(book(1_000))
+        now[0] = 4_500
+        supervisor._last_server_message_ms = now[0]
+        await supervisor._open_l2_stale_gaps_if_needed(now[0])
+        assert supervisor.stale_l2_streams(now_ms=now[0]) == ("l2Book:BTC",)
+        assert any(gap.reason == "stale" for gap in gaps)
+        assert supervisor._open_gaps
+        await supervisor._recover_systemic_l2_stale(
+            connection, now_ms=now[0]
+        )
+        assert not connection.sent
+        assert supervisor.health.systemic_l2_targeted_resubscribe_count == 0
+        assert supervisor.l2_delivery_diagnostics(
+            now_ms=now[0]
+        )["l2_recovery_trigger_floor_ms"] == 5_500
+
+        # A genuine next-period book can heal the gap without resubscribe.
+        now[0] = 6_000
+        await supervisor._dispatch(book(6_000))
+        assert supervisor.stale_l2_streams(now_ms=now[0]) == ()
+        assert supervisor._open_gaps == {}
+        assert any(gap.reason == "recovered" for gap in gaps)
+        assert not connection.sent
+
+    asyncio.run(run())
+
+
+def test_l2_silent_source_still_tries_targeted_and_reconnects_bounded() -> None:
+    async def run() -> None:
+        now = [1_000]
+        connection = FakeConnection([])
+
+        async def factory() -> FakeConnection:
+            return connection
+
+        async def event_sink(event: StreamEvent) -> None:
+            del event
+
+        async def gap_sink(gap: DataGap) -> None:
+            del gap
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "l2Book", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime.fromtimestamp(now[0] / 1000, tz=UTC),
+            stale_after_ms=3_000,
+            systemic_l2_stale_reconnect_fraction=0.5,
+            max_systemic_l2_targeted_resubscribes=1,
+            targeted_l2_recovery_timeout_ms=6_000,
+            systemic_l2_recovery_trigger_floor_ms=5_500,
+        )
+        await supervisor._dispatch(book(1_000))
+        now[0] = 6_500
+        supervisor._last_server_message_ms = now[0]
+        await supervisor._open_l2_stale_gaps_if_needed(now[0])
+        await supervisor._recover_systemic_l2_stale(
+            connection, now_ms=now[0]
+        )
+        assert [message["method"] for message in connection.sent] == [
+            "unsubscribe", "subscribe",
+        ]
+        assert supervisor._open_gaps
+        assert supervisor._l2_stream_is_stale("l2Book:BTC", now_ms=now[0])
+        now[0] = 12_500
+        supervisor._last_server_message_ms = now[0]
+        with pytest.raises(
+            ConnectionError, match="targeted l2 recovery timed out"
+        ):
+            await supervisor._recover_systemic_l2_stale(
+                connection, now_ms=now[0]
+            )
+        assert supervisor.health.systemic_l2_stale_reconnect_count == 1
+        assert supervisor._open_gaps
+
+    asyncio.run(run())
+
+
+def test_l2_recovery_trigger_floor_must_be_positive() -> None:
+    for minimum in (0, -1):
+        with pytest.raises(
+            ValueError, match="systemic_l2_recovery_trigger_floor_ms"
+        ):
+            WebSocketSupervisor(
+                lambda: None,  # type: ignore[arg-type]
+                (),
+                event_sink=lambda _: None,  # type: ignore[arg-type]
+                gap_sink=lambda _: None,  # type: ignore[arg-type]
+                clock_ms=lambda: 0,
+                utcnow=lambda: datetime.now(UTC),
+                systemic_l2_recovery_trigger_floor_ms=minimum,
             )
