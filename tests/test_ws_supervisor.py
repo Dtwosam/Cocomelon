@@ -2032,7 +2032,7 @@ def test_l2_recovery_trigger_waits_beyond_stale_gap_without_accepting_books() ->
             systemic_l2_stale_reconnect_fraction=0.5,
             max_systemic_l2_targeted_resubscribes=1,
             targeted_l2_recovery_timeout_ms=6_000,
-            systemic_l2_recovery_trigger_floor_ms=5_500,
+            systemic_l2_recovery_trigger_floor_ms=11_000,
         )
         await supervisor._dispatch(book(1_000))
         now[0] = 4_500
@@ -2048,11 +2048,22 @@ def test_l2_recovery_trigger_waits_beyond_stale_gap_without_accepting_books() ->
         assert supervisor.health.systemic_l2_targeted_resubscribe_count == 0
         assert supervisor.l2_delivery_diagnostics(
             now_ms=now[0]
-        )["l2_recovery_trigger_floor_ms"] == 5_500
+        )["l2_recovery_trigger_floor_ms"] == 11_000
 
-        # A genuine next-period book can heal the gap without resubscribe.
-        now[0] = 6_000
-        await supervisor._dispatch(book(6_000))
+        # Still reject stale books after a whole missed 5s period, but
+        # give another ordinary deep-book cadence a chance to arrive.
+        now[0] = 9_000
+        supervisor._last_server_message_ms = now[0]
+        await supervisor._open_l2_stale_gaps_if_needed(now[0])
+        await supervisor._recover_systemic_l2_stale(
+            connection, now_ms=now[0]
+        )
+        assert supervisor._open_gaps
+        assert not connection.sent
+
+        # A later authentic book heals the signed gap without resubscribe.
+        now[0] = 10_000
+        await supervisor._dispatch(book(10_000))
         assert supervisor.stale_l2_streams(now_ms=now[0]) == ()
         assert supervisor._open_gaps == {}
         assert any(gap.reason == "recovered" for gap in gaps)
@@ -2086,7 +2097,7 @@ def test_l2_silent_source_still_tries_targeted_and_reconnects_bounded() -> None:
             systemic_l2_stale_reconnect_fraction=0.5,
             max_systemic_l2_targeted_resubscribes=1,
             targeted_l2_recovery_timeout_ms=6_000,
-            systemic_l2_recovery_trigger_floor_ms=5_500,
+            systemic_l2_recovery_trigger_floor_ms=11_000,
         )
         await supervisor._dispatch(book(1_000))
         now[0] = 6_500
@@ -2095,12 +2106,21 @@ def test_l2_silent_source_still_tries_targeted_and_reconnects_bounded() -> None:
         await supervisor._recover_systemic_l2_stale(
             connection, now_ms=now[0]
         )
+        assert supervisor._open_gaps
+        assert not connection.sent
+
+        # With two full source periods missing, targeted recovery resumes.
+        now[0] = 12_500
+        supervisor._last_server_message_ms = now[0]
+        await supervisor._recover_systemic_l2_stale(
+            connection, now_ms=now[0]
+        )
         assert [message["method"] for message in connection.sent] == [
             "unsubscribe", "subscribe",
         ]
         assert supervisor._open_gaps
         assert supervisor._l2_stream_is_stale("l2Book:BTC", now_ms=now[0])
-        now[0] = 12_500
+        now[0] = 18_500
         supervisor._last_server_message_ms = now[0]
         with pytest.raises(
             ConnectionError, match="targeted l2 recovery timed out"
