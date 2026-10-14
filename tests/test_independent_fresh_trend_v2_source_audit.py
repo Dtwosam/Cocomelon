@@ -86,6 +86,128 @@ def _artifact(
     }
 
 
+def _failed_but_terminally_archived_v2() -> tuple[
+    dict[str, object], dict[str, object],
+]:
+    run, jobs = _source()
+    run["conclusion"] = "failure"
+    job = jobs["jobs"][0]
+    job["status"] = "completed"
+    job["conclusion"] = "failure"
+    job["steps"][0] = {
+        "name": "Run continuous paper trader",
+        "status": "completed",
+        "conclusion": "failure",
+    }
+    job["steps"].extend({
+        "name": name, "status": "completed", "conclusion": "success",
+    } for name in (
+        "Measure durable continuous paper state",
+        "Pack fast continuous paper resume state",
+        "Upload fast continuous paper resume state",
+        "Queue exact successor from fast resume",
+        "Pack durable continuous paper state",
+        "Upload durable continuous paper state",
+    ))
+    job["steps"].append({
+        "name": "Fail closed on upgrade handoff source",
+        "status": "completed", "conclusion": "failure",
+    })
+    return run, jobs
+
+
+def test_actual_failed_v2_trader_archived_terminal_accounts_are_auditable() -> None:
+    # Observed first Oct 14 v2 worker 38506173767 has exactly these
+    # two red steps, followed by successful post-exit custody and ZIP.
+    run, jobs = _failed_but_terminally_archived_v2()
+    assert audit._source_class(
+        run=run, jobs=jobs, repository=REPO, run_id=RUN,
+        attempt=ATTEMPT, campaign="v2",
+    ) == "completed_terminal_archived_trader_failure_worker"
+    # Legacy v1 source must never acquire this new exception.
+    with pytest.raises(audit.TrendPairHandoffAuditError, match="not both proven"):
+        audit._source_class(
+            run=run, jobs=jobs, repository=REPO, run_id=RUN,
+            attempt=ATTEMPT, campaign="v1",
+        )
+
+
+@pytest.mark.parametrize("bad_step", [
+    "Verify fresh v2 trend paired account consistency before source ZIP",
+    audit.V2_SOURCE_UPLOAD_STEP,
+    "Measure durable continuous paper state",
+    "Pack fast continuous paper resume state",
+    "Upload fast continuous paper resume state",
+    "Queue exact successor from fast resume",
+    "Pack durable continuous paper state",
+    "Upload durable continuous paper state",
+    "Fail closed on upgrade handoff source",
+])
+def test_failed_v2_trader_needs_every_exact_terminal_custody_step(
+    bad_step: str,
+) -> None:
+    run, jobs = _failed_but_terminally_archived_v2()
+    jobs["jobs"][0]["steps"] = [
+        s for s in jobs["jobs"][0]["steps"] if s["name"] != bad_step
+    ]
+    with pytest.raises(audit.TrendPairHandoffAuditError, match="not both proven"):
+        audit._source_class(
+            run=run, jobs=jobs, repository=REPO, run_id=RUN,
+            attempt=ATTEMPT, campaign="v2",
+        )
+
+
+@pytest.mark.parametrize("defect", [
+    "active_run", "cancelled_run", "uncompleted_job", "active_trader",
+    "unexpected_failure", "wrong_trader_status", "wrong_job_conclusion",
+    "wrong_attempt", "duplicate_paper_job",
+])
+def test_uncontrolled_v2_trader_failure_never_inherits_terminal_custody(
+    defect: str,
+) -> None:
+    run, jobs = _failed_but_terminally_archived_v2()
+    job = jobs["jobs"][0]
+    if defect == "active_run":
+        run["status"] = "in_progress"
+        run["conclusion"] = None
+    elif defect == "cancelled_run":
+        run["conclusion"] = "cancelled"
+    elif defect == "uncompleted_job":
+        job["status"] = "in_progress"
+    elif defect == "active_trader":
+        job["steps"][0]["status"] = "in_progress"
+    elif defect == "unexpected_failure":
+        job["steps"].append({
+            "name": "Unexpected account write failed",
+            "status": "completed", "conclusion": "failure",
+        })
+    elif defect == "wrong_trader_status":
+        job["steps"][0]["conclusion"] = "timed_out"
+    elif defect == "wrong_job_conclusion":
+        job["conclusion"] = "cancelled"
+    elif defect == "wrong_attempt":
+        job["run_attempt"] = ATTEMPT + 1
+    elif defect == "duplicate_paper_job":
+        jobs["jobs"].append(json.loads(json.dumps(job)))
+    def classify() -> str:
+        return audit._source_class(
+            run=run, jobs=jobs, repository=REPO,
+            run_id=RUN, attempt=ATTEMPT, campaign="v2",
+        )
+    if defect == "wrong_attempt":
+        with pytest.raises(audit.TrendPairHandoffAuditError, match="not both proven"):
+            classify()
+    elif defect == "duplicate_paper_job":
+        with pytest.raises(audit.TrendPairHandoffAuditError, match="not both proven"):
+            classify()
+    elif defect == "active_run":
+        with pytest.raises(audit.TrendPairHandoffAuditError, match="not both proven"):
+            classify()
+    else:
+        with pytest.raises(audit.TrendPairHandoffAuditError, match="not both proven"):
+            classify()
+
+
 def test_v2_source_class_requires_prospective_time_and_exact_upload() -> None:
     run, jobs = _source()
     assert audit._source_class(

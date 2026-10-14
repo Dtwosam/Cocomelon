@@ -5,6 +5,23 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def test_v2_auditor_code_change_rechecks_exact_original_source() -> None:
+    text = Path(
+        ".github/workflows/independent-fresh-trend-v2-source-audit.yml"
+    ).read_text(encoding="utf-8")
+    paths = text.split("  push:", 1)[1].split("  schedule:", 1)[0]
+    for source in (
+        ".github/workflows/independent-fresh-trend-v2-source-audit.yml",
+        "scripts/audit_both_side_trend_paired_handoff.py",
+        "scripts/audit_fresh_trend_v2_selected_anchor.py",
+        "scripts/audit_fresh_trend_v2_forward_outcome.py",
+    ):
+        assert f'      - "{source}"' in paths
+    assert "  workflow_run:" in text
+    assert "  schedule:" in text
+    assert "COCOMELON_EXECUTION_MODE: live" not in text
+
+
 def test_selected_v2_anchor_not_promoted_or_assumed_first() -> None:
     source = Path(
         ".github/workflows/independent-fresh-trend-v2-source-audit.yml"

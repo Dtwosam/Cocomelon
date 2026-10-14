@@ -5,6 +5,11 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/independent-fresh-trend-v2-source-audit.yml"
+      # Auditor/verifier repairs must refresh a previously unverified exact
+      # source immediately instead of waiting for the 3-hour schedule.
+      - "scripts/audit_both_side_trend_paired_handoff.py"
+      - "scripts/audit_fresh_trend_v2_selected_anchor.py"
+      - "scripts/audit_fresh_trend_v2_forward_outcome.py"
   schedule:
     - cron: "27 */3 * * *"
   workflow_run:
