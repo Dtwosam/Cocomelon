@@ -2078,6 +2078,9 @@ def _supervisor_group_health_payload(
                 ),
                 "duplicate_count": health.duplicate_count,
                 "anomaly_count": health.anomaly_count,
+                # Lane-local received/accepted book diagnostics do not affect
+                # source-gap accounting or book freshness admissibility.
+                **supervisor.l2_delivery_diagnostics(now_ms=now_ms),
                 "last_server_message_ms": (
                     health.last_server_message_ms
                 ),
