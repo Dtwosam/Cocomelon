@@ -1,0 +1,101 @@
+name: Optional QuickNode Full-Depth gRPC Diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: optional-quicknode-grpc-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      COCOMELON_EXECUTION_MODE: paper
+      GRPC_ENDPOINT: ${{ secrets.QUICKNODE_HYPERCORE_GRPC_ENDPOINT }}
+      AUTH_TOKEN: ${{ secrets.QUICKNODE_HYPERCORE_GRPC_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install isolated read-only probe dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install "grpcio>=1.67,<2" "protobuf>=5,<7"
+
+      - name: Validate hosted provider access without logging credentials
+        run: |
+          set -euo pipefail
+          if [ -z "$GRPC_ENDPOINT" ] || [ -z "$AUTH_TOKEN" ]; then
+            echo "::error::QuickNode gRPC endpoint/token not configured. No observations or source certification."
+            exit 1
+          fi
+
+      - name: Collect read-only 20-level per-block source receipts
+        run: |
+          set -euo pipefail
+          python -m cocomelon.research.block_l2_grpc_probe \
+            --duration-seconds 180 \
+            --out-dir grpc-l2-diagnostic
+
+      - name: Publish non-certifying candidate comparison
+        if: always()
+        run: |
+          set -euo pipefail
+          python - <<'PY' > grpc-l2-report.md
+          import json
+          import os
+          from pathlib import Path
+          print("## Optional hosted gRPC full-depth L2 diagnostic")
+          print()
+          print(f"- workflow run: {os.environ['GITHUB_RUN_ID']}")
+          print(f"- code SHA: {os.environ['GITHUB_SHA']}")
+          print("- **DIAGNOSTIC ONLY:** no execution, signed source promotion, or profitability inference")
+          path = Path("grpc-l2-diagnostic/summary.json")
+          if not path.exists():
+              print("- **NOT VERIFIED:** provider access absent, runtime failed, or no observations")
+          else:
+              data = json.loads(path.read_text())
+              print(f"- observation completed: **{data.get('observation_window_completed', False)}**")
+              print(f"- elapsed ms: {data['elapsed_ms']}")
+              print(f"- requested levels / per-book source events: {data['n_levels_requested']} / {data['unique_blocks']}")
+              print(f"- parse / stream errors: {data['parse_errors']} / {data['stream_errors']}")
+              print(f"- receipt SHA-256: {data['receipts_sha256']}")
+              print()
+              print("| Market | Unique blocks | Under-depth | Height regressions | Update gaps >=3s | Fresh >=20x20 under 3s time |")
+              print("| --- | ---: | ---: | ---: | ---: | ---: |")
+              for coin, market in data["markets"].items():
+                  print(f"| {coin} | {market['unique_blocks']} | "
+                        f"{market['books_under_20_levels_per_side']} | "
+                        f"{market['height_regressions']} | "
+                        f"{market['interval_ge_3s']} | "
+                        f"{market['full_depth_fresh3_time_fraction']} |")
+              print()
+              print("- These metrics cannot certify block completeness, independent timestamp accuracy,")
+              print("  latency advantage, trading readiness or economic edge.")
+          PY
+          gh issue comment 1235 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file grpc-l2-report.md
+
+      - name: Upload candidate diagnostics only
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: hosted-grpc-l2-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            grpc-l2-diagnostic/
+            grpc-l2-report.md
+          if-no-files-found: warn
+          retention-days: 30
