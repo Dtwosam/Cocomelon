@@ -10042,6 +10042,15 @@ def _render_operational_live_status(
                 f"{payload.get('record_pump_last_slow_record')}"
             ),
             (
+                "- slow paper journal SQL >=2s count / max: "
+                f"{payload.get('journal_slow_sql_transaction_count', 0)} / "
+                f"{payload.get('journal_slow_sql_max_total_ms', 0)}ms"
+            ),
+            (
+                "- last slow paper journal SQL stages (anonymous): "
+                f"{payload.get('journal_last_slow_sql_profile')}"
+            ),
+            (
                 "- checkpoint max snapshot / background write / starts / skips: "
                 f"{payload.get('checkpoint_max_snapshot_ms', 0)}ms / "
                 f"{payload.get('checkpoint_max_background_write_ms', 0)}ms / "
