@@ -2342,7 +2342,9 @@ def test_pinned_independent_v2_audit_follows_exact_successor_dispatch() -> None:
         "- name: Dispatch preliminary independent v2 audit after exact handoff"
     )
     assert workflow.index("- name: Queue exact successor from fast resume") < step
-    assert workflow.index("- name: Upload isolated fresh v2 trend paired-paper evidence") < step
+    assert workflow.index(
+        "- name: Upload isolated fresh v2 trend paired-paper evidence"
+    ) < step
     assert workflow.index("- name: Remove local fast resume archive") < step
     gated = workflow[step:workflow.index("\n      - name:", step + 1)]
     # Only the original source run and successful, terminal-archived worker
@@ -2363,7 +2365,10 @@ def test_pinned_independent_v2_audit_follows_exact_successor_dispatch() -> None:
     assert "for attempt in 1 2 3 4" in gated
     assert "existing scheduled and completed-run auditors remain authoritative" in gated
     assert "PRELIMINARY" in gated
-    assert "72-hour after-cost profitability / LIVE authority: UNVERIFIED / FALSE" in gated
+    assert (
+        "72-hour after-cost profitability / LIVE authority: UNVERIFIED / FALSE"
+        in gated
+    )
     assert "COCOMELON_EXECUTION_MODE: live" not in gated
 
 
