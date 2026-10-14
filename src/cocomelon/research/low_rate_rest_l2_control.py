@@ -107,7 +107,8 @@ class RestFullDepthControl:
             "schema": SCHEMA,
             "http_request_latency_ms": round(request_latency_ms, 2),
             "full_depth_20x20_observed": (
-                receipt["bid_levels"] >= 20 and receipt["ask_levels"] >= 20
+                cast(int, receipt["bid_levels"]) >= 20
+                and cast(int, receipt["ask_levels"]) >= 20
             ),
             "production_trading_authorized": False,
         }
@@ -203,7 +204,7 @@ async def collect_rest(
         await asyncio.sleep(remaining_ns / 1_000_000_000)
     result = probe.summary(end_ns=time.monotonic_ns())
     result["observation_window_completed"] = (
-        result["duration_ms"] >= duration_seconds * 1_000
+        cast(float, result["duration_ms"]) >= duration_seconds * 1_000
         and result["http_errors"] == 0
         and result["invalid_responses"] == 0
         and result["unique_books"] != 0
