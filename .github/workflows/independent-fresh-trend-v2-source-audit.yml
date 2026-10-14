@@ -88,41 +88,62 @@ jobs:
             echo "Exact workflow-run source $SOURCE_RUN_ID preserved; no substitution of an actual worker." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # A scheduled search checks a completed original paper worker. It
-      # cannot certify all previous workers, and never elects a new genesis.
-      - name: Find latest completed source with exact new v2 artifact
+      # A scheduled/guard-only-triggered search can inspect a completed
+      # worker or one whose real trader, terminal v2 verifier and artifact
+      # upload succeeded while noncritical research still runs. An active
+      # worker source is PRELIMINARY, never full worker completion, and the
+      # independent verifier itself keeps its promotion gates closed.
+      - name: Find latest actual terminal-archived v2 paper source
         if: ${{ github.event_name == 'schedule' || github.event_name == 'push' || env.GUARD_ONLY_SOURCE_TRIGGER == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
           source scripts/gh_api_bounded_retry.sh
           mkdir -p /tmp/fresh-trend-v2-audit
-          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?status=completed&branch=main&per_page=100" > /tmp/fresh-trend-v2-audit/completed.json
+          gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&per_page=100" > /tmp/fresh-trend-v2-audit/completed.json
           chosen=""
           attempt=""
-          while read -r run_id run_attempt; do
+          source_status=""
+          while read -r run_id run_attempt candidate_status; do
             [[ "$run_id" =~ ^[1-9][0-9]*$ && "$run_attempt" =~ ^[1-9][0-9]*$ ]] || exit 1
             if [[ "${GUARD_ONLY_SOURCE_TRIGGER:-}" == "true" && "$run_id" -ge "$SOURCE_RUN_ID" ]]; then
               continue  # Never replace a guard with future/parallel evidence.
             fi
             gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" > /tmp/fresh-trend-v2-audit/latest-artifacts.json
             name="continuous-paper-both-side-trend-paired-shadow-v2-$run_id-$run_attempt"
-            if jq -e --arg name "$name" '
+            if ! jq -e --arg name "$name" '
               [.artifacts[] | select(.name == $name and .expired == false)]
               | length == 1
             ' /tmp/fresh-trend-v2-audit/latest-artifacts.json > /dev/null; then
+              continue
+            fi
+            # An uploaded archive alone cannot establish that the genuine
+            # paper trader and signed terminal v2 gate actually succeeded.
+            gh_api_bounded_retry "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100" > /tmp/fresh-trend-v2-audit/source-candidate-jobs.json
+            if jq -e '
+              [.jobs[] | select(.name == "paper") | .steps[]?
+               | select(
+                   (.name == "Run continuous paper trader"
+                    or .name == "Verify fresh v2 trend paired account consistency before source ZIP"
+                    or .name == "Upload isolated fresh v2 trend paired-paper evidence")
+                   and .conclusion == "success"
+                 ) | .name] | unique | length == 3
+            ' /tmp/fresh-trend-v2-audit/source-candidate-jobs.json > /dev/null; then
               chosen="$run_id"
               attempt="$run_attempt"
+              source_status="$candidate_status"
               break
             fi
           done < <(
             jq -r '
-              .workflow_runs[]
-              | select(.status == "completed" and .head_branch == "main"
+              [.workflow_runs[]
+              | select((.status == "completed" or .status == "in_progress")
+                and .head_branch == "main"
                 and .event == "workflow_dispatch"
                 and .path == ".github/workflows/continuous-paper.yml"
-                and .run_started_at >= "2026-10-14T00:00:00Z")
-              | "\(.id) \(.run_attempt)"
+                and .run_started_at >= "2026-10-14T00:00:00Z")]
+              | sort_by(.id) | reverse | .[]
+              | "\(.id) \(.run_attempt) \(.status)"
             ' /tmp/fresh-trend-v2-audit/completed.json
           )
           if [ -z "$chosen" ]; then
@@ -131,7 +152,12 @@ jobs:
             exit 0
           fi
           printf 'SOURCE_RUN_ID=%s\nSOURCE_ATTEMPT=%s\n' "$chosen" "$attempt" >> "$GITHUB_ENV"
-          echo "Auditing actual archived original PAPER source $chosen attempt $attempt (not a guard-only run)." >> "$GITHUB_STEP_SUMMARY"
+          echo "Auditing actual terminal-archived PAPER source $chosen attempt $attempt (not a guard-only run)." >> "$GITHUB_STEP_SUMMARY"
+          echo "GitHub source run status: $source_status" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$source_status" = "in_progress" ]; then
+            echo "::notice::Active worker: independent v2 archive audit is preliminary only; worker completion, cross-worker continuity, complete market feed and 72h economics remain unverified."
+            echo "PRELIMINARY ACTIVE SOURCE ONLY — no worker-completion, market-feed or profitability certificate." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Fetch same-attempt original GitHub evidence
         if: ${{ env.SOURCE_AVAILABLE != 'false' }}
