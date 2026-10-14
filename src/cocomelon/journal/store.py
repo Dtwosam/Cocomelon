@@ -9,6 +9,7 @@ from dataclasses import asdict
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from enum import Enum
+from itertools import islice
 from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
@@ -25,6 +26,9 @@ from cocomelon.domain.strategy import Direction
 
 SCHEMA_VERSION = 1
 SLOW_TRADE_TRANSACTION_MS = 2_000
+# Four bind parameters per ref: 200 rows = 800 variables, below SQLite's
+# conservative 999-variable limit, even in older build configurations.
+TRADE_REF_INSERT_ROWS_PER_STATEMENT = 200
 logger = logging.getLogger(__name__)
 
 
@@ -488,20 +492,30 @@ class JournalStore:
                 ),
             )
             refs_started = perf_counter()
-            # Bind the identical rows/ordinals in original ref-kind order,
-            # without one Python-to-SQLite execute per reference and without
-            # allocating an unbounded second copy of a large trade's refs.
-            connection.executemany(
-                """
-                INSERT INTO journal_trade_refs(trade_id, ref_kind, ordinal, ref_id)
-                VALUES (?, ?, ?, ?)
-                """,
-                (
-                    (trade.trade_id, ref_kind, ordinal, ref_id)
-                    for ref_kind, values in refs
-                    for ordinal, ref_id in enumerate(values)
-                ),
+            # Insert the exact same reference rows and ordinals in original
+            # ref-kind order. executemany still steps SQLite's INSERT once
+            # per row (771 observed refs took 4,037ms in the paper worker).
+            # Each bounded multi-VALUES SQL statement instead batches up to
+            # 200 rows / 800 bind variables, safely within SQLite's original
+            # 999-variable compatibility ceiling. Only one small batch exists
+            # at a time, and the encompassing transaction remains atomic.
+            ref_rows = (
+                (trade.trade_id, ref_kind, ordinal, ref_id)
+                for ref_kind, values in refs
+                for ordinal, ref_id in enumerate(values)
             )
+            while batch := list(
+                islice(ref_rows, TRADE_REF_INSERT_ROWS_PER_STATEMENT)
+            ):
+                placeholders = ",".join(
+                    "(?, ?, ?, ?)" for _ in batch
+                )
+                connection.execute(
+                    "INSERT INTO journal_trade_refs("
+                    "trade_id, ref_kind, ordinal, ref_id) VALUES "
+                    + placeholders,
+                    tuple(value for row in batch for value in row),
+                )
             refs_done = perf_counter()
             connection.commit()
             committed = perf_counter()
