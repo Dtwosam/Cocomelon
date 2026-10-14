@@ -2387,3 +2387,48 @@ def test_terminal_audit_step_ids_preserve_named_custody_checks() -> None:
     # Archive dispatch must follow successful fast-resume custody, never
     # require an unrelated, optional research tail or accept a failed ZIP.
     assert "steps.fast_resume_dispatch.outcome == 'success'" in workflow
+
+
+
+def test_failed_paper_worker_emits_anonymous_exit_receipt_before_evidence() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    trader = workflow.index("- name: Run continuous paper trader")
+    upload = workflow.index("- name: Upload anonymous PAPER trader failure receipt")
+    source = workflow.index(
+        "- name: Verify terminal trend paired account consistency before source ZIP"
+    )
+    assert trader < upload < source
+    runtime = workflow[trader:upload]
+    receipt = workflow[upload:source]
+    assert 'trader_status="${pipeline_status[0]}"' not in runtime
+    assert 'reader_status="${pipeline_status[0]}"' in runtime
+    assert 'tee_status="${pipeline_status[1]}"' in runtime
+    for key in (
+        "failure_class",
+        "trader_exit_code",
+        "heartbeat_reader_exit_code",
+        "session_tee_exit_code",
+        "upgrade_stop_requested",
+        "captured_heartbeat_line_count",
+        "original_account_verified=not_inferred",
+        "v2_source_complete=not_inferred",
+        "after_cost_profit_verified=false",
+        "live_authority=false",
+    ):
+        assert key in runtime
+    assert 'printf "run_id' not in runtime
+    assert 'git fetch --quiet --depth=1 origin main' in runtime
+    assert 'echo "::error::continuous PAPER $failure_class' in runtime
+    assert "continuous-paper-trader-failure.txt" in runtime
+    assert "COCOMELON_PAPER_HEARTBEAT " in runtime
+    assert "continue-on-error: true" in receipt
+    assert "timeout-minutes: 2" in receipt
+    assert "if-no-files-found: warn" in receipt
+    assert "retention-days: 30" in receipt
+    assert "steps.guard.outputs.skip != 'true'" in receipt
+    assert "steps.paper_trader.outcome == 'failure'" in receipt
+    assert "actions/upload-artifact@v7" in receipt
+    assert "continuous-paper-trader-failure.txt" in receipt
+    assert "continuous-paper-session.json" not in receipt
+    assert "continuous-paper-state/" not in receipt
+    assert "COCOMELON_EXECUTION_MODE: live" not in workflow
