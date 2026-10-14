@@ -6069,6 +6069,14 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
             "lanes": [
                 {
                     "lane": 0,
+                    "l2_normalized_count": 123,
+                    "l2_duplicate_count": 4,
+                    "l2_out_of_order_count": 1,
+                    "l2_stale_on_receive_count": 35,
+                    "l2_fresh_accepted_count": 83,
+                    "l2_max_event_sink_await_ms": 22613,
+                    "l2_last_normalized_age_ms": 4600,
+                    "l2_last_fresh_accepted_age_ms": 5000,
                     "connected": True,
                     "reconnect_count": 7,
                     "systemic_l2_stale_reconnect_count": 6,
@@ -6394,6 +6402,11 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         in rendered
     )
     assert "last slow record pump:" in rendered
+    assert (
+        "L2 lane 0 received/duplicate/out-of-order/stale/fresh: "
+        "123/4/1/35/83; sink-await-max=22613ms; "
+        "last-book-age=4600ms; last-fresh-age=5000ms"
+    ) in rendered
     assert "slow paper journal SQL >=2s count / max: 2 / 22613ms" in rendered
     assert "last slow paper journal SQL stages (anonymous):" in rendered
     assert "'ref_insert_ms': 22400" in rendered
