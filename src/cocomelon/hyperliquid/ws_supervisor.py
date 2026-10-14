@@ -5,6 +5,7 @@ import math
 from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime
+from time import perf_counter
 
 from cocomelon.domain.stream import DataGap, FreshnessState, StreamEvent, StreamHealth, StreamKind
 from cocomelon.hyperliquid.ws_client import WsConnection
@@ -132,6 +133,16 @@ class WebSocketSupervisor:
         self._stale_deadline_buffered_message_count = 0
         self._duplicate_count = 0
         self._anomaly_count = 0
+        # Anonymous process-only diagnostics: never part of signed source
+        # records, trade execution or eligibility / source-gap decisions.
+        self._l2_normalized_count = 0
+        self._l2_duplicate_count = 0
+        self._l2_out_of_order_count = 0
+        self._l2_stale_on_receive_count = 0
+        self._l2_fresh_accepted_count = 0
+        self._l2_max_event_sink_await_ms = 0
+        self._last_l2_normalized_ms: int | None = None
+        self._last_l2_fresh_accepted_ms: int | None = None
 
     @property
     def health(self) -> StreamHealth:
@@ -152,6 +163,27 @@ class WebSocketSupervisor:
     @property
     def stale_deadline_buffered_message_count(self) -> int:
         return self._stale_deadline_buffered_message_count
+
+    def l2_delivery_diagnostics(self, *, now_ms: int) -> dict[str, int | None]:
+        """Read-only lane-local observations, not venue completeness proof."""
+        received_age = (
+            None if self._last_l2_normalized_ms is None
+            else max(0, now_ms - self._last_l2_normalized_ms)
+        )
+        fresh_age = (
+            None if self._last_l2_fresh_accepted_ms is None
+            else max(0, now_ms - self._last_l2_fresh_accepted_ms)
+        )
+        return {
+            "l2_normalized_count": self._l2_normalized_count,
+            "l2_duplicate_count": self._l2_duplicate_count,
+            "l2_out_of_order_count": self._l2_out_of_order_count,
+            "l2_stale_on_receive_count": self._l2_stale_on_receive_count,
+            "l2_fresh_accepted_count": self._l2_fresh_accepted_count,
+            "l2_max_event_sink_await_ms": self._l2_max_event_sink_await_ms,
+            "l2_last_normalized_age_ms": received_age,
+            "l2_last_fresh_accepted_age_ms": fresh_age,
+        }
 
     async def _recv_buffered_at_deadline(
         self,
@@ -475,6 +507,10 @@ class WebSocketSupervisor:
                 self._activity_hook("normalize_message", False)
         for event in events:
             stream_id = event_stream_id(event)
+            is_l2 = event.kind is StreamKind.L2_BOOK
+            if is_l2:
+                self._l2_normalized_count += 1
+                self._last_l2_normalized_ms = now_ms
             # Receive-time stream liveness is distinct from book-state
             # freshness. Even an exact duplicate proves the subscription
             # delivered a message now, so refresh the liveness clock before
@@ -483,6 +519,8 @@ class WebSocketSupervisor:
             self._last_stream_message[stream_id] = now_ms
             if not self._remember(stream_id, event.event_key):
                 self._duplicate_count += 1
+                if is_l2:
+                    self._l2_duplicate_count += 1
                 continue
 
             exchange_time = event.exchange_time_ms
@@ -493,6 +531,8 @@ class WebSocketSupervisor:
                 and exchange_time < previous_exchange_time
             ):
                 self._anomaly_count += 1
+                if is_l2:
+                    self._l2_out_of_order_count += 1
                 await self._emit_gap(
                     DataGap(
                         stream_id=stream_id,
@@ -513,18 +553,32 @@ class WebSocketSupervisor:
                 )
             )
             if l2_is_stale:
+                self._l2_stale_on_receive_count += 1
                 await self._open_l2_stale_gaps_if_needed(now_ms)
             # A recovered source must have delivered its normalized event
             # downstream before the durable gap is declared healed. If the
             # event sink fails, the open gap remains unresolved.
-            await self._emit_event(event)
+            sink_started = perf_counter() if is_l2 else None
+            try:
+                await self._emit_event(event)
+            finally:
+                if sink_started is not None:
+                    self._l2_max_event_sink_await_ms = max(
+                        self._l2_max_event_sink_await_ms,
+                        max(0, int((perf_counter() - sink_started) * 1000)),
+                    )
             if not l2_is_stale:
                 await self._close_gap_if_needed(
                     stream_id,
                     now_ms,
                 )
+                if is_l2:
+                    # Only accepted fresh source evidence can advance this
+                    # diagnostic; failed source/gap sinks never count here.
+                    self._l2_fresh_accepted_count += 1
+                    self._last_l2_fresh_accepted_ms = now_ms
                 if (
-                    event.kind is StreamKind.L2_BOOK
+                    is_l2
                     and stream_id
                     in self._pending_l2_targeted_recovery_streams
                     and exchange_time is not None
