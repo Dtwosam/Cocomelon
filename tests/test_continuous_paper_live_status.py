@@ -6078,6 +6078,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                     "l2_last_normalized_age_ms": 4600,
                     "l2_last_fresh_accepted_age_ms": 5000,
                     "l2_arrival_stale_threshold_ms": 3000,
+                    "l2_targeted_recovery_timeout_ms": 6000,
                     "l2_unique_interval_samples": 80,
                     "l2_unique_interval_ge_stale_count": 25,
                     "l2_unique_interval_ge_5000_count": 10,
@@ -6434,7 +6435,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "L2 lane 0 distinct-book coverage: unseen=5/20, "
         "aged>=3000ms=7, aged>=5000ms=4, oldest=5900ms; "
         "reset-censored-intervals=4, censored>=3000ms=3, "
-        "max-censored-elapsed=8500ms"
+        "max-censored-elapsed=8500ms; targeted-recovery-timeout=6000ms"
     ) in rendered
     assert "slow paper journal SQL >=2s count / max: 2 / 22613ms" in rendered
     assert "last slow paper journal SQL stages (anonymous):" in rendered
