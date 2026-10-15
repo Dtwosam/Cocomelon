@@ -94,16 +94,43 @@ class OriginalPaperMicrostructureCapture:
         self.offered_count = 0
         self.dropped_count = 0
         self.last_available_at_ms: int | None = None
+        # The PAPER pipeline is allowed to clamp regressing receive clocks;
+        # the original research copy is NOT. Preserve the unmodified first-
+        # received timestamp, and permanently disqualify a clamped input.
+        self.last_offered_available_at_ms: int | None = None
+        self.received_clock_regressions = 0
+        self.first_received_clock_regression: dict[str, object] | None = None
         self.failure: str | None = None
         self.closed = False
         self._task = asyncio.create_task(self._writer())
 
-    def offer(self, record: ReplayRecord) -> None:
+    def offer(
+        self, record: ReplayRecord, *,
+        paper_previous_at_ms: int | None = None,
+    ) -> None:
         if self.closed:
             self.dropped_count += 1
             self.failure = self.failure or "offer_after_close"
             return
         self.offered_count += 1
+        # The caller MUST pass the PAPER pipeline's previous timestamp,
+        # including a restored previous-worker checkpoint. Comparing only
+        # local offered rows would overlook a first-record regression.
+        latest = max(
+            self.last_offered_available_at_ms or 0,
+            paper_previous_at_ms or 0,
+        )
+        if record.available_at_ms < latest:
+            self.received_clock_regressions += 1
+            if self.first_received_clock_regression is None:
+                self.first_received_clock_regression = {
+                    "original_available_at_ms": record.available_at_ms,
+                    "prior_original_or_paper_available_at_ms": latest,
+                    "original_event_key": record.event_key,
+                    "original_market": record.market,
+                }
+            self.failure = self.failure or "original_received_clock_regression"
+        self.last_offered_available_at_ms = record.available_at_ms
         if self.failure is not None:
             self.dropped_count += 1
             return
@@ -161,10 +188,21 @@ class OriginalPaperMicrostructureCapture:
             "written_count": self.record_count,
             "dropped_count": self.dropped_count,
             "last_written_available_at_ms": self.last_available_at_ms,
+            "last_original_offered_available_at_ms": (
+                self.last_offered_available_at_ms
+            ),
+            "original_received_clock_regressions": (
+                self.received_clock_regressions
+            ),
+            "first_original_received_clock_regression": (
+                self.first_received_clock_regression
+            ),
+            "paper_monotonic_clock_adjustment_not_used_as_source": True,
             "failure": self.failure,
             "complete": (
                 self.failure is None
                 and self.dropped_count == 0
+                and self.received_clock_regressions == 0
                 and self.record_count == self.offered_count
                 and self.record_count > 0
             ),

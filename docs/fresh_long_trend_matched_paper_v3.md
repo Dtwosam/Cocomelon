@@ -152,3 +152,20 @@ Once the normal PAPER successor has been dispatched, the uploader reads an exact
 
 Each artifact covers **one originating worker only**. Independent source verification still needs to tie GitHub's published original ZIP SHA, run, attempt, head, job upload step to the archived bytes; reconstruct **authenticated** uninterrupted handoffs across many workers; and verify venue coverage, original L2 completeness, full selected cohort, 72h forward matched accounts and absolute net-after-cost profitability. Current negative PAPER PnL is not an edge certificate.
 
+
+## Original receive clocks are immutable research input
+
+The actual PAPER execution engine may clamp an out-of-order new received
+timestamp to its prior clock for safe account processing, including when
+restoring an earlier worker's checkpoint. The separate v3 original input
+collector is intentionally stricter: it is now offered the **unchanged**
+incoming ReplayRecord before any PAPER receive-clock correction, with the
+prior PAPER timestamp supplied as an independent bound. It records the
+first regressing market/event key and both source/previous timestamps, sets
+a permanent original-source failure, and refuses sealing into a publishable
+original ZIP. No source-time correction, backdating, event repair or gap
+waiver can turn a bad capture into valid forward evidence. An original
+receive-clock failure affects research only; PAPER trading continues under
+its existing monotonic safety policy. Duplicate event-key handling remains
+the original PAPER intake policy, not a proof of full exchange delivery.
+

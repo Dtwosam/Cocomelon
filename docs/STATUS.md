@@ -1,5 +1,21 @@
 # Cocomelon Project Status
 
+> Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). This PAPER account has no independently certified after-cost positive expectancy; frozen v3 remains research-only.
+
+## October 15 — original v3 source clock cannot inherit PAPER's monotonic clamp
+
+Previously the record pump cloned a regressing first-received ReplayRecord to
+the PAPER account's most recent timestamp BEFORE offering the same object to
+the original-v3 research collector. This would hide real receive-clock
+regressions inside a superficially chronological GitHub original ZIP.
+The collector now queues the unmodified original record first; any receive
+timestamp older than the last original offered record OR an incoming record
+older than the restored PAPER checkpoint fails v3 research permanently. The
+terminal receipt includes raw timestamps and the first regression source ID;
+only research capture is blocked. Ordinary PAPER order and execution clocks
+remain unchanged; the v3 hypothesis and LIVE-disabled mode are unchanged.
+
+
 ## October 15 — real v3 original PAPER source collection and handoff
 
 The ordinary PAPER record pump now optionally copies each actual normalized consumed event and gap into a bounded in-memory queue, with fsync performed by a separate `asyncio.to_thread` writer, no market REST/WS calls and no awaiting source I/O in the pipeline. The continuous-paper workflow enables this in genuine PAPER, writes the capture outside the large durable resume state, and, only **after a successful successor handoff**, seals the closed capture into replay manifest plus original JSONL source segments. An original artifact named `continuous-paper-v3-microstructure-<run>-<attempt>` is uploaded only when no row was dropped or unwritten and there are authentic post-Oct16 06:00 UTC L2 observations. A failure never blocks normal PAPER continuation and never produces an admissible source archive. Exact original GitHub artifact digest and independent venue/handoff completeness still require external verification. No strategy, risk or LIVE changes.
