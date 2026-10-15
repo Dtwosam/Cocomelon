@@ -1,5 +1,19 @@
 # Cocomelon Project Status
 
+## October 15 — original v3 worker-to-worker predecessor hints retained
+
+The PAPER source recorder now preserves the workflow's actual declared
+`source_run_id` and `source_run_attempt` input (both or neither) in its
+original terminal receipt, and the sealed GitHub source ZIP contains
+`source-handoff-receipt.json` with those hints, exact original writer
+journal SHA, worker run/attempt/head and source manifest record bounds.
+The read-only ZIP/worker verifier requires a matching receipt and rejects
+forged continuity credentials, missing/partial predecessor hints, altered
+source row counts or timestamps. Exact prior artifact/resume state and
+exchange-feed continuity are NOT independently verified merely by this
+hint. Genuine 72h v3 PnL remains unproven. LIVE orders disabled.
+
+
 ## October 15 — v3 restore exact original intra-millisecond event order
 
 The original paper capture has a truly ordered per-worker receipt journal,
