@@ -1,5 +1,12 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 15 — genuinely collect paper inputs without blocking the trader
+
+The *missing physical source* for the frozen LONG trend v3 economic trial is now addressed with a bounded, paper-only **asynchronous copy of the exact ReplayRecord stream consumed by the normal mainnet PAPER pipeline**. Original received rows are written outside durable trading state to a GitHub-run/attempt-specific file with background fsync batches. The record pump only queues copies; research recorder I/O **cannot block the trader**. A queue overflow, disk failure, unclosed worker, mismatched original worker run/commit or absent post-embargo L2 permanently disqualifies research; there is no attempt to fabricate dropped rows. Each closed captured worker is sealed AFTER its successor has already been dispatched into a replay-format original manifest plus original event/gap segments and uploaded as its own SHA256-addressable GitHub artifact.
+
+A worker capture is **only one observed session**, not a signed 72-hour trial: the archive does NOT certify exchange completeness, a precommitted venue market universe, clean gap/handoff continuity, or positive after-fee/funding whole-account PnL. No v1/v2 data imported and no hypothetical LONG skip credited. The v3 full 72h inter-worker source/account verification and independent profitability gate remain open. LIVE orders remain disabled.
+
+
 ## October 15 — v3 original selected-market cohort cannot be hindsight-trimmed
 
 The v3 LONG-trend candidate is a matched whole-account comparison, not a right to replay only historical winning markets. Its source preflight now checks the **entire original post-embargo market observation universe** from the pinned microstructure recording and fails before account creation if the caller omits ANY market with an original recorded forward event, including non-L2 market snapshots. Per-market L2 receipt and zero-gap gates remain in force. This protects against locally subsetting an original ZIP by an observed return without changing the frozen strategy rule, risk, fees or mainnet PAPER account.
