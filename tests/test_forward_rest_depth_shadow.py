@@ -493,3 +493,84 @@ def test_non_429_transport_error_does_not_claim_hard_rate_limit() -> None:
     assert summary["http_errors"] == 1
     assert summary["http_429_count"] == 0
     assert summary["rate_limit_circuit_open"] is False
+
+
+def test_shared_budget_reports_attributed_required_and_shadow_weight() -> None:
+    clock = [100.0]
+    budget = RollingRateBudget(limit=1000, monotonic=lambda: clock[0])
+    def transport(url: str, payload: dict[str, object], timeout: float) -> object:
+        del url, timeout
+        return book("BLUR", 1000) if payload["type"] == "l2Book" else {}
+    reader = InfoClient(Settings(), budget=budget, transport=transport)
+    assert reader.meta_and_asset_ctxs() == {}
+    allowed, value = reader.try_shadow_l2_book(MarketId(dex="", coin="BLUR"))
+    assert allowed is True
+    assert value is not None
+    assert budget.try_acquire(4) is True
+    snapshot = reader.rest_budget_snapshot()
+    assert snapshot is not None
+    assert snapshot["total_rolling_weight"] == 26
+    assert snapshot["required_rolling_weight"] == 20
+    assert snapshot["shadow_rolling_weight"] == 2
+    assert snapshot["other_rolling_weight"] == 4
+    assert snapshot["peak_total_rolling_weight"] == 26
+    assert snapshot["peak_required_rolling_weight"] == 20
+    assert snapshot["peak_shadow_rolling_weight"] == 2
+    assert snapshot["shadow_admitted_lifetime"] == 1
+    assert snapshot["shadow_denied_lifetime"] == 0
+    assert snapshot["shadow_priority_reserve_weight"] == 300
+    assert snapshot["external_process_ip_weight_verified"] is False
+    assert snapshot["source_or_execution_authority"] is False
+    clock[0] = 161
+    expired = reader.rest_budget_snapshot()
+    assert expired is not None
+    assert expired["total_rolling_weight"] == 0
+    assert expired["required_rolling_weight"] == 0
+    assert expired["shadow_rolling_weight"] == 0
+    assert expired["peak_total_rolling_weight"] == 26
+
+
+def test_shared_budget_records_shadow_priority_denials_without_network() -> None:
+    observed: list[str] = []
+    def transport(url: str, payload: dict[str, object], timeout: float) -> object:
+        del url, timeout
+        observed.append(str(payload["type"]))
+        return {}
+    budget = RollingRateBudget(limit=1000)
+    client = InfoClient(Settings(), budget=budget, transport=transport)
+    assert budget.try_acquire(700)
+    denied, value = client.try_shadow_l2_book(MarketId(dex="", coin="BLUR"))
+    assert denied is False and value is None
+    assert observed == []
+    snapshot = client.rest_budget_snapshot()
+    assert snapshot is not None
+    assert snapshot["total_rolling_weight"] == 700
+    assert snapshot["other_rolling_weight"] == 700
+    assert snapshot["shadow_rolling_weight"] == 0
+    assert snapshot["shadow_denied_lifetime"] == 1
+
+
+def test_shadow_summary_exposes_only_local_reader_budget_not_external_ip(
+) -> None:
+    budget = RollingRateBudget(limit=1000)
+    reader = InfoClient(Settings(), budget=budget, transport=lambda *args: {})
+    shadow = RestDepthShadow(
+        reader,
+        config=RestShadowConfig(enabled=True),
+        start_ns=time.monotonic_ns(),
+    )
+    report = shadow.summary(now_ns=time.monotonic_ns())
+    local = report["same_reader_rest_budget_snapshot"]
+    assert isinstance(local, dict)
+    assert local["rolling_weight_limit"] == 1000
+    assert local["external_process_ip_weight_verified"] is False
+    assert local["source_or_execution_authority"] is False
+    assert report["execution_authority"] is False
+    assert report["other_process_ip_weight_verified"] is False
+
+
+def test_invalid_local_budget_origin_rejected_before_any_reservation() -> None:
+    budget = RollingRateBudget(limit=50)
+    with pytest.raises(ValueError, match="origin"):
+        budget.try_acquire(2, origin="required")
+    assert budget.snapshot()["total_rolling_weight"] == 0

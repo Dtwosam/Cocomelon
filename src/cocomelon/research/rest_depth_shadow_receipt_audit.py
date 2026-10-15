@@ -269,6 +269,43 @@ def audit_shadow_receipts(
             raise ShadowAuditError(f"counter mismatch: {counter_name}")
     if summary.get("rate_limit_circuit_open") is not seen_rate_limit:
         raise ShadowAuditError("rate-limit circuit flag conflicts with receipts")
+    # Optional local in-process ledger is independently checked for
+    # arithmetic consistency. It is NOT an external egress-IP rate audit.
+    local_budget = summary.get("same_reader_rest_budget_snapshot")
+    if local_budget is not None:
+        local = _obj(local_budget, "same-reader quota snapshot")
+        if (
+            local.get("external_process_ip_weight_verified") is not False
+            or local.get("source_or_execution_authority") is not False
+        ):
+            raise ShadowAuditError("local quota snapshot asserted external IP authority")
+        keys = (
+            "rolling_window_seconds", "rolling_weight_limit",
+            "total_rolling_weight", "required_rolling_weight",
+            "shadow_rolling_weight", "other_rolling_weight",
+            "peak_total_rolling_weight", "peak_required_rolling_weight",
+            "peak_shadow_rolling_weight", "shadow_admitted_lifetime",
+            "shadow_denied_lifetime", "shadow_priority_reserve_weight",
+        )
+        metrics = {name: _integer(local.get(name), name) for name in keys}
+        if any(value < 0 for value in metrics.values()):
+            raise ShadowAuditError("negative quota-weight snapshot")
+        if (
+            metrics["rolling_window_seconds"] != 60
+            or metrics["rolling_weight_limit"] <= 0
+            or metrics["total_rolling_weight"] != (
+                metrics["required_rolling_weight"]
+                + metrics["shadow_rolling_weight"]
+                + metrics["other_rolling_weight"]
+            )
+            or metrics["total_rolling_weight"] > metrics["rolling_weight_limit"]
+            or metrics["peak_total_rolling_weight"] < metrics["total_rolling_weight"]
+            or metrics["peak_total_rolling_weight"] > metrics["rolling_weight_limit"]
+            or metrics["peak_required_rolling_weight"] < metrics["required_rolling_weight"]
+            or metrics["peak_shadow_rolling_weight"] < metrics["shadow_rolling_weight"]
+            or metrics["shadow_priority_reserve_weight"] > metrics["rolling_weight_limit"]
+        ):
+            raise ShadowAuditError("inconsistent same-reader rolling quota snapshot")
     if start_utc_ms is None:
         raise ShadowAuditError("empty source receipts")
     ended_utc_ms = _integer(summary.get("ended_utc"), "ended_utc")
@@ -297,6 +334,7 @@ def audit_shadow_receipts(
         "window_end_skew_ms": round(end_skew, 2),
         "observation_window_completed": completed,
         "clean_research_receipts": completed and counters["duplicate_books"] == 0,
+        "in_process_rate_snapshot_consistent": local_budget is not None,
         "same_ip_external_processes_verified": False,
         "source_completeness_certified": False,
         "production_source_authorized": False,

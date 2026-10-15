@@ -74,3 +74,18 @@ subsequent slot statuses, cumulative error and circuit counters, and the
 independent `rate_limit_circuit_open` summary flag. A record indicating
 later HTTP polling makes the whole research artifact nonqualifying.
 This cannot validate other processes behind the same IP.
+
+
+## Optional attributed in-process REST quota snapshot
+
+When the observer runs with the PAPER worker's **original InfoClient**,
+the summary may contain `same_reader_rest_budget_snapshot` identifying
+the mandatory (priority) and optional shadow weight used within that one
+rolling 60-second in-process ledger. The offline auditor verifies that
+rolling weights add up, peaks are consistent, reserves are bounded and all
+external-IP/production-authority claims remain **false**. A missing
+snapshot is not retroactively invented.
+
+The ledger does **not** see other processes or machines behind the same
+public IP. Even a successful quota arithmetic audit cannot certify
+public-IP usage headroom or authorize REST source promotion or trading.

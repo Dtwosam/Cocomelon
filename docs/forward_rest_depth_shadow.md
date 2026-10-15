@@ -144,3 +144,21 @@ reads, alter WebSocket market evidence, or extend a book's source time.
 It also does not prove unused IP quota or prevent other processes sharing
 a public IP from issuing their own requests. The existing observer
 remains **disabled by default**.
+
+
+## Attributed shared REST request budget (local evidence only)
+
+The shared `RollingRateBudget` now differentiates **mandatory PAPER**
+`InfoClient.post_info` weight from explicitly marked **optional shadow**
+reservations, alongside other unspecialized reservations. Its atomic
+snapshot reports current 60-second weight, observed lifetime peak rolling
+weight, mandatory/shadow/other breakdown, denied optional calls, and the
+priority worker reserve. The enabled observer appends a
+`same_reader_rest_budget_snapshot` to its diagnostic summary.
+
+This local classification helps identify whether the **same PAPER
+process's reader** has enough capacity for a small research observer.
+It **cannot** prove egress-IP isolation or third-party usage; all output
+explicitly sets `external_process_ip_weight_verified=false` and
+`source_or_execution_authority=false`. No external budget guarantee
+is inferred, and the observer remains disabled by default.
