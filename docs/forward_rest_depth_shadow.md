@@ -123,3 +123,24 @@ signed stale or 5-second strategy freshness rules. Do not infer
 profitability from any source-speed experiment.
 
 Tracking: [Issue #1243](https://github.com/Dtwosam/Cocomelon/issues/1243).
+
+
+## Hard 429 response protection
+
+If **any** anonymous REST depth shadow request receives HTTP **429**, the
+observer immediately opens a research-only circuit breaker across all
+three markets. It **never retries** that request and never starts a new
+shadow REST request in subsequent polling slots. Already dispatched
+same-tick HTTP calls may complete; they are still charged to the shared
+request-weight budget. Every later scheduled market slot is retained as
+`rate_limit_circuit_open`, an explicitly **non-source** observation.
+The summary publishes `http_429_count`, `rate_limit_circuit_open`, and
+`rate_limit_circuit_skips`; the independent auditor verifies their
+consistency against raw receipts and rejects any HTTP request resumed
+after the circuit opens.
+
+The breaker does **not** disable the paper worker's required InfoClient
+reads, alter WebSocket market evidence, or extend a book's source time.
+It also does not prove unused IP quota or prevent other processes sharing
+a public IP from issuing their own requests. The existing observer
+remains **disabled by default**.
