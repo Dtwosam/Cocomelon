@@ -1,5 +1,41 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 15 — exact original 246-close evidence rejects the naive fee gate
+
+Read-only analysis of **the same actual worker #38737278661 completed research
+receipts**, each independently downloaded and whole-ZIP SHA256 checked against
+GitHub artifact metadata. Workflow overall conclusion was failure, so do NOT
+call these completed-research receipts a verified source-contiguous trading
+account or original venue certification.
+
+- Entire original 246-close journal: [scoreboard artifact 11982185958](https://github.com/Dtwosam/Cocomelon/actions/runs/38737278661), ZIP SHA256 \`37150b47e701c3ab8c1af23808254f305b443862c90c040b0a49fe002a9a1d93\`. Original booked gross **+$41.600551**, fees **$196.002197**, funding **−$1.681863**, exact closed net **−$156.083509**. **214/246** original trade paths lack complete chart coverage. Historical LONG trend **96 closes, −$151.640795 net**, SHORT trend **100 closes, +$2.069915 net**, SHORT breakout **18 closes, +$78.297395 net dollars but −2.108 net-R**. Full PAPER marked equity is a separate measure and was still negative.
+- Frozen forward-only SHORT breakout rank: [artifact 11984560827](https://github.com/Dtwosam/Cocomelon/actions/runs/38737278661), ZIP SHA256 \`1f3c41b2b75570b7dcb66432c89705e60558581a21a8d498abc6c9823f94d9b0\`. On **89 forward closes**, only **2** rank-4+ SHORT breakout losses omitted in zero-replacement bookkeeping, theoretical **+$0.263565**, with **strict screen FALSE**. Neither two small skipped losers nor 89 closes prove a matched profitable account.
+- Pre-frozen symmetric quarter-R ex-ante entry-friction filter: [artifact 11984780357](https://github.com/Dtwosam/Cocomelon/actions/runs/38737278661), ZIP SHA256 \`13bb8757f79f798c89a4c2334922aabccc0af8b624cd09624fce46b3b914b4a5\`. On **107 forward closes**, it excluded **83 original fills** and reduced the hypothetical after-cost booked result from **+$200.567753 to +$22.638848** (**−$177.928905 delta**); robust screen **FALSE**. A fee-related heuristic can destroy legitimate gross-positive opportunities. It is **not safe** to turn this entry-cost rule on because historical fees are high.
+- All three source cohorts have **different fixed forward cutoffs**. Never sum their hypothetical cash deltas or compare their sample totals as an account-matched A/B experiment. Positive prospective same-original booked original trades are not necessarily positive marked whole-account equity.
+
+New \`scripts/review_original_forward_economic_candidates.py\` independently
+recomputes the original whole-booked gross−fees+funding identity, long+short
+closed-cash/record counts and the original-to-hypothetical cash conservation
+for BOTH frozen forward screens. It refuses original ZIP SHA mismatch,
+unexpected candidate identities, asymmetric/fake skipped trade cash,
+unverified authority, or mismatched source totals. It returns a **negative
+research triage decision** for this cost gate, an **insufficient descriptive
+sample** verdict for this rank hypothesis, and no source/strategy/PAPER/LIVE
+promotion permission under any output; its CLI always exits nonzero.
+Before reusing, independently authenticate each GitHub run/attempt/artifact
+and upload-step provenance. It never rewrites original reports.
+
+**Actionable priority:** stop treating friction-threshold abstention or top-3
+SHORT breakout selection as a proven edge. Focus a **future new, predeclared,
+independent capital/risk-matched paper study** on whether source-proven LONG
+trend opportunities have economically favorable risk-adjusted *forward*
+returns at all, without dropping prior losers, suppressing open capital costs,
+or reusing the broken v1/v2 accounts. Need full source-gap coverage, every
+actual fee/funding and marked whole-account path, a sufficient horizon, and
+separately validated entry timestamps before considering strategy change.
+Do NOT change existing paper direction, execution rates, limits or LIVE flags.
+
+
 ## October 14 — paper record-pump journal write bottleneck and latency repair
 
 The live corrected-paper worker at 10:26 UTC reported a **23,498 ms** record processing maximum on an actual CASHCAT L2 event, including **22,613 ms** awaiting `journal_trade_persist`, with only 0 ms recorded async lock acquisition wait. JournalStore already persists a closed trade from `asyncio.to_thread`: this does NOT prove the SQLite write directly froze the entire event loop, but the record pump waits **inside its ordered lock**, so later market records cannot progress during the transaction. The same genuine v2 source saw 59,749 redundant-disconnect start records and 58,764 recovered rows, 13 still-open scopes and unverified original account economics, so loss of source coverage remains a real operational risk; causality is not yet established.
