@@ -5,7 +5,7 @@ import copy
 import hashlib
 import json
 import zipfile
-from datetime import UTC, datetime
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -67,8 +67,6 @@ def _fixture(tmp_path: Path) -> dict[str, object]:
     )
     zip_path = tmp_path / "original-github-upload.zip"
     with zipfile.ZipFile(zip_path, "w") as archive:
-        from dataclasses import asdict
-
         archive.writestr(
             "replay-manifest.json",
             json.dumps({
