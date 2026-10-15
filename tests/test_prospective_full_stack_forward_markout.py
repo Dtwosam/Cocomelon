@@ -620,6 +620,11 @@ def test_approved_post_integrity_cohort_preserves_dirty_history(
 
     assert result["integrity_clean"] is False
     assert result["missing_rank"] == 1
+    witness = result["original_missing_rank_source_witness"]
+    assert isinstance(witness, list) and len(witness) == 1
+    assert witness[0]["opportunity_id"] == dirty.opportunity_id
+    assert witness[0]["baseline_risk_approved"] is True
+    assert result["original_missing_rank_witness_risk_rejected_count"] == 0
     assert result["integrity_last_miss_at_ms"] == (
         dirty.opportunity_timestamp_ms
     )
@@ -918,6 +923,19 @@ def test_risk_rejected_integrity_is_isolated_from_candidate_readiness(
     assert result["integrity_clean"] is True
     assert result["risk_rejected_stack_evaluated"] == 0
     assert result["risk_rejected_missing_rank"] == 1
+    witness = result["original_missing_rank_source_witness"]
+    assert isinstance(witness, list) and len(witness) == 1
+    assert result["original_missing_rank_witness_count"] == 1
+    assert result["original_missing_rank_witness_risk_rejected_count"] == 1
+    assert witness[0]["opportunity_id"] == rejected.opportunity_id
+    assert witness[0]["timestamp_ms"] == rejected.opportunity_timestamp_ms
+    assert witness[0]["market"] == rejected.market
+    assert witness[0]["baseline_risk_reason_codes"] == list(
+        rejected.baseline_risk_reason_codes
+    )
+    assert witness[0]["original_rank_ordinal"] is None
+    assert witness[0]["synthetic_rank_applied"] is False
+    assert result["risk_rejected_rows"] == []
     assert result["risk_rejected_integrity_clean"] is False
     assert result["risk_rejected_integrity_last_miss_at_ms"] == (
         rejected.opportunity_timestamp_ms
