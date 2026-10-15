@@ -24,6 +24,7 @@ from cocomelon.hyperliquid.client import InfoClient, InfoHttpError
 from cocomelon.hyperliquid.rate_limit import RollingRateBudget
 from cocomelon.research.full_depth_cadence_probe import FullDepthCadenceProbe
 from cocomelon.research.low_rate_rest_l2_control import COHORT
+from cocomelon.research.rest_shadow_budget_gate import screen_local_rest_shadow_headroom
 
 SCHEMA = "bounded-paper-public-rest-depth-shadow-v1"
 SHADOW_WEIGHT_PER_MINUTE = 360
@@ -446,7 +447,12 @@ def attached_shadow_allowed(
         return False
     # The PAPER worker must hand us its existing production InfoClient.
     # Its single shared budget guards both mandatory and optional reads.
-    return type(reader) is InfoClient
+    if type(reader) is not InfoClient:
+        return False
+    # Two environment assertions alone cannot admit an observer when the
+    # already-observed mandatory REST peak leaves insufficient local capacity.
+    # This remains only a process-local screen, not shared-IP certification.
+    return screen_local_rest_shadow_headroom(reader.rest_budget_snapshot()).permitted
 
 
 def start_attached_paper_shadow(

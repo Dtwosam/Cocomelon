@@ -60,3 +60,26 @@ def test_malformed_or_nonadditive_local_counters_are_invalid() -> None:
     corrected = {**base, "total_rolling_weight": True}
     text2 = "\n".join(_local_rest_budget_lines(corrected))
     assert "INVALID: missing or malformed counters" in text2
+
+
+def test_rest_quota_renderer_blocks_shadow_when_historical_peak_is_full() -> None:
+    rows = _local_rest_budget_lines({
+        "rolling_window_seconds": 60,
+        "rolling_weight_limit": 1000,
+        "total_rolling_weight": 400,
+        "required_rolling_weight": 400,
+        "shadow_rolling_weight": 0,
+        "other_rolling_weight": 0,
+        "peak_total_rolling_weight": 987,
+        "peak_required_rolling_weight": 987,
+        "peak_shadow_rolling_weight": 0,
+        "shadow_priority_reserve_weight": 300,
+        "shadow_denied_lifetime": 0,
+        "external_process_ip_weight_verified": False,
+        "source_or_execution_authority": False,
+    })
+    text = "\\n".join(rows)
+    assert "new 3-market observer startup: `BLOCKED`" in text
+    assert "insufficient_peak_headroom" in text
+    assert "1647 / 1000" in text
+    assert "other processes behind public IP: `unverified`" in text

@@ -1,5 +1,18 @@
 # Cocomelon Project Status
 
+## October 15 — block optional REST observer on unsafe measured worker peaks
+
+The authenticated October 15 PAPER status reported a 60-second in-reader
+REST weight of 400/1000 with an observed lifetime high water of 987/1000
+and zero REST-shadow usage. The new conservative **default-off** observer
+startup screen rejects inadequate history, malformed readings, rate limits
+above the conservative configured 1000 ceiling and projected local
+peak + 360 optional REST weight + 300 mandatory reserve above the actual
+in-reader cap. The PAPER status will now expose this projection. Other
+processes behind the public IP are still unverified; no source switch,
+risk changes, economic advantage or live authority follows from this patch.
+
+
 > Read [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md) first. No profitable paper strategy has been independently certified; v2 remains an unproven precommitted research plan.
 
 ## October 14 — observed original PAPER journal persist latency
