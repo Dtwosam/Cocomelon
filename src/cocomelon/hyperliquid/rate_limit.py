@@ -44,17 +44,19 @@ class RollingRateBudget:
     def limit(self) -> int:
         return self._limit
 
-    def try_acquire(self, weight: int) -> bool:
+    def try_acquire(self, weight: int, *, reserve_remaining: int = 0) -> bool:
         """Atomically reserve weight or return False; NEVER sleep or retry.
 
         A low-priority observer must call this rather than block the trading
         worker. Reservations are charged even if the ensuing HTTP read fails.
         """
         self._validate(weight)
+        if isinstance(reserve_remaining, bool) or reserve_remaining < 0:
+            raise ValueError("reserve_remaining must be nonnegative")
         with self._lock:
             now = self._monotonic()
             self._purge(now)
-            if self._used_weight + weight > self._limit:
+            if self._used_weight + weight + reserve_remaining > self._limit:
                 return False
             self._events.append((now, weight))
             self._used_weight += weight
