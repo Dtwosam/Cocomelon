@@ -10,12 +10,16 @@ import hashlib
 import json
 import stat
 import zipfile
+from collections.abc import Callable, Sequence
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import ReplayManifest
+from cocomelon.evidence.contracts import BaselineReplayConfig
+from cocomelon.evidence.lifecycle import DecisionEpochEngine
 
 MAX_ORIGINAL_ZIP_BYTES = 512 * 1024 * 1024
 MAX_SINGLE_SEGMENT_BYTES = 128 * 1024 * 1024
@@ -296,9 +300,10 @@ def run_original_zip_bound_fresh_long_trend_paper(
     jobs_metadata: dict[str, object],
     artifact_metadata: dict[str, object],
     repository: str,
-    config: Any,
-    selected_markets: Any,
+    config: BaselineReplayConfig,
+    selected_markets: Sequence[MarketId],
     account_root: Path,
+    decision_engine_factory: Callable[[], DecisionEpochEngine] | None = None,
 ) -> dict[str, object]:
     """Require the original ZIP/worker source preflight BEFORE new accounts."""
     from cocomelon.research.fresh_long_trend_forward_pair import (
@@ -324,6 +329,7 @@ def run_original_zip_bound_fresh_long_trend_paper(
         config=config,
         selected_markets=selected_markets,
         account_root=account_root,
+        decision_engine_factory=decision_engine_factory,
     )
     result = dict(outcome)
     result["offline_original_github_zip_source_crosscheck"] = receipt
