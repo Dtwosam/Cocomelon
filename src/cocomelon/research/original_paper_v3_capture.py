@@ -7,7 +7,6 @@ Only ordinary PAPER's actual ReplayRecord input, not fabricated venue data.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import os
 from collections.abc import Sequence
@@ -98,7 +97,6 @@ class OriginalPaperMicrostructureCapture:
         self.failure: str | None = None
         self.closed = False
         self._task = asyncio.create_task(self._writer())
-        self._started = True
 
     def offer(self, record: ReplayRecord) -> None:
         if self.closed:
