@@ -252,6 +252,7 @@ jobs:
       STATE_ROOT: continuous-paper-state
       LIVE_STATUS_ISSUE: "469"
       PREDECESSOR_RUN_ID: ${{ inputs.source_run_id || '' }}
+      PREDECESSOR_RUN_ATTEMPT: ${{ inputs.source_run_attempt || '' }}
     steps:
       - name: Skip bootstrap/watchdog when a continuous paper run is already active
         id: guard
