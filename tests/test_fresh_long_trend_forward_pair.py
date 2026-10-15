@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,6 +23,10 @@ from cocomelon.domain.strategy import Direction, StrategyDecision
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.epochs import EpochMarketEvaluation
 from cocomelon.research import fresh_long_trend_forward_pair as study
+from cocomelon.research.fresh_long_trend_account_audit import (
+    V3AccountAuditError,
+    audit_fresh_v3_paired_accounts,
+)
 from cocomelon.research.loss_context_portfolio_shadow_entry import (
     CONTEXT_BLOCK_REASON,
     PRE_BOUNDARY_REASON,
@@ -239,6 +244,16 @@ def test_fresh_source_replay_constructs_new_independent_account_pair(
     )
     assert response["after_cost_72h_profitability_verified"] is False
     assert response["full_account_study_admissible"] is False
+    receipt = response["locally_reconciled_original_paired_sqlite_accounts"]
+    assert isinstance(receipt, dict)
+    assert receipt["local_checkpoint_self_digest_and_exact_accounts_reconciled"] is True
+    assert receipt["baseline"]["starting_cash_usd"] == "10000"
+    assert receipt["candidate"]["starting_cash_usd"] == "10000"
+    assert receipt["baseline"]["fill_fees_usd"] == "0"
+    assert receipt["candidate"]["funding_cash_usd"] == "0"
+    assert receipt["candidate_minus_baseline_marked_after_cost_usd"] == "0"
+    assert receipt["72h_forward_profitability_certified"] is False
+    assert receipt["promotion_authority"] is False
     assert response["promotion_authority"] is False
     assert response["execution_authority"] is False
     summary = response["paired_account_original_runtime_summary"]
@@ -259,6 +274,99 @@ def test_fresh_source_replay_constructs_new_independent_account_pair(
             config=BaselineReplayConfig(execution=PaperExecutionConfig()),
             selected_markets=(MARKET,),
             account_root=root,
+        )
+
+
+def _completed_v3(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> (
+    tuple[Path, dict[str, object], dict[str, object]]
+):
+    _Source.deny = False
+    _Source.loaded = (_original_snapshot(study.FORWARD_NOT_BEFORE_MS + 10),)
+    monkeypatch.setattr(study, "PinnedShortRankReplaySource", _Source)
+    root = tmp_path / "v3-cash-audit"
+    report = study.run_digest_pinned_long_trend_matched_paper(
+        source_root=tmp_path / "original-untrusted-source",
+        manifest=_manifest(),
+        expected_manifest_id="0123456789abcdef01234567",
+        config=BaselineReplayConfig(execution=PaperExecutionConfig()),
+        selected_markets=(MARKET,),
+        account_root=root,
+    )
+    summary = report["paired_account_original_runtime_summary"]
+    assert isinstance(summary, dict)
+    checkpoint = json.loads((root / "paired-shadow-state.json").read_text())
+    return root, checkpoint, summary
+
+
+@pytest.mark.parametrize("mutate", [
+    "account_id", "account_equity", "fill_fee", "funding_cash",
+    "checkpoint", "summary_relative",
+])
+def test_independent_v3_audit_refuses_torn_or_invented_cash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutate: str,
+) -> None:
+    root, checkpoint, summary = _completed_v3(tmp_path, monkeypatch)
+    original_other = (root / "baseline-execution.sqlite3").read_bytes()
+    candidate_db = root / "candidate-execution.sqlite3"
+
+    if mutate in ("account_id", "account_equity", "fill_fee", "funding_cash"):
+        with sqlite3.connect(candidate_db) as conn:
+            if mutate == "account_id":
+                conn.execute(
+                    "UPDATE paper_account_state SET state_id=? WHERE singleton_id=1",
+                    ("f" * 64,),
+                )
+            elif mutate == "account_equity":
+                row = conn.execute(
+                    "SELECT payload_json FROM paper_account_state "
+                    "WHERE singleton_id=1"
+                ).fetchone()
+                assert row is not None
+                payload = json.loads(row[0])
+                payload["equity"] = "10099"
+                conn.execute(
+                    "UPDATE paper_account_state SET payload_json=? WHERE singleton_id=1",
+                    (json.dumps(payload),),
+                )
+            elif mutate == "fill_fee":
+                conn.execute(
+                    "INSERT INTO paper_fills(fill_id, attempt_id, plan_id, payload_json) "
+                    "VALUES (?,?,?,?)",
+                    ("forged", "forged", "forged", '{"taker_fee":"1.50"}'),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO paper_funding_events("
+                    "accrual_id,market,boundary_ms,position_id,payload_json) "
+                    "VALUES (?,?,?,?,?)",
+                    ("forged", "TEST", study.FORWARD_NOT_BEFORE_MS, "fake",
+                     '{"cash_delta":"7"}'),
+                )
+    elif mutate == "checkpoint":
+        checkpoint["record_count"] = 5
+    else:
+        summary["candidate_minus_baseline_total_account_pnl"] = "999"
+
+    with pytest.raises(V3AccountAuditError):
+        audit_fresh_v3_paired_accounts(
+            root, checkpoint=checkpoint, summary=summary,
+            starting_cash=Decimal("10000"),
+            expected_candidate_id=study.fresh_long_trend_freeze().candidate_id,
+            expected_record_count=1,
+        )
+    assert (root / "baseline-execution.sqlite3").read_bytes() == original_other
+
+
+def test_independent_account_audit_refuses_nonempty_prior_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, checkpoint, summary = _completed_v3(tmp_path, monkeypatch)
+    with pytest.raises(V3AccountAuditError):
+        audit_fresh_v3_paired_accounts(
+            root, checkpoint=checkpoint, summary=summary,
+            starting_cash=Decimal("0"),
+            expected_candidate_id=study.fresh_long_trend_freeze().candidate_id,
+            expected_record_count=1,
         )
 
 
