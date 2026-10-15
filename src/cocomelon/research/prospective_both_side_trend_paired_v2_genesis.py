@@ -17,6 +17,10 @@ from typing import Final, cast
 from cocomelon.research.loss_context_portfolio_shadow_candidate import (
     LossContextPortfolioShadowFreeze,
 )
+from cocomelon.research.v2_restore_integrity_preflight import (
+    V2RestorePreflightError,
+    verify_v2_restore_preflight,
+)
 from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
     FORWARD_NOT_BEFORE_MS_V2,
     FROZEN_AT_MS_V2,
@@ -214,9 +218,15 @@ def prepare_v2_genesis(
             or sorted(set(restored_markets)) != restored_markets
         ):
             raise V2GenesisError("restored v2 ranked universe not canonical")
-        # The actual actor will restore this signed selection and then
-        # reconcile both lanes to the new mainnet scanner selection. Neither
-        # lane may import data from v1 or reset its signed economic history.
+        # Fail before constructing either execution adapter: an old signed
+        # state with newer append-only original gaps or advanced SQLite
+        # accounts cannot be resumed as one coherent forward-paper study.
+        try:
+            verify_v2_restore_preflight(root, signed)
+        except V2RestorePreflightError as exc:
+            raise V2GenesisError("v2 original signed restore parity invalid") from exc
+        # The actual actor will still recheck every original gap record,
+        # review row and execution account while restoring this selection.
         return existing
 
     # The freeze lives outside this root. Any nonempty new-root evidence
