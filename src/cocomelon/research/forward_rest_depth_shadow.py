@@ -273,7 +273,7 @@ class RestDepthShadow:
         # This is the original PAPER InfoClient's in-process rate ledger,
         # not proof that a NAT egress IP is dedicated to this worker.
         if type(self.reader) is InfoClient:
-            local = cast(InfoClient, self.reader).rest_budget_snapshot()
+            local = self.reader.rest_budget_snapshot()
             if local is not None:
                 report["same_reader_rest_budget_snapshot"] = local
         return report
