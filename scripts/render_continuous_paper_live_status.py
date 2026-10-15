@@ -9449,6 +9449,14 @@ def _local_rest_budget_lines(raw: object) -> list[str]:
             "- other processes behind public IP: `unverified`",
             "",
         ]
+    from cocomelon.research.rest_shadow_budget_gate import screen_local_rest_shadow_headroom
+
+    screen = screen_local_rest_shadow_headroom(raw)
+    projected = (
+        str(screen.projected_peak_weight)
+        if screen.projected_peak_weight is not None else "unknown"
+    )
+    status = "LOCALLY ELIGIBLE (IP UNVERIFIED)" if screen.permitted else "BLOCKED"
     lines.extend([
         f"- 60-second rolling REST weight, total / limit: `{total} / {capacity}`",
         (
@@ -9460,6 +9468,14 @@ def _local_rest_budget_lines(raw: object) -> list[str]:
             f"`{peak} / {reserve}`"
         ),
         f"- shadow quota-denied calls since startup: `{denied}`",
+        (
+            "- new 3-market observer startup: "
+            f"`{status}` (reason: `{screen.reason}`)"
+        ),
+        (
+            "- conservative peak + 360 shadow + priority reserve / limit: "
+            f"`{projected} / {capacity}`"
+        ),
         "- other processes behind public IP: `unverified`",
         "",
     ])
