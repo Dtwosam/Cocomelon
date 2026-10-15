@@ -78,13 +78,48 @@ qualifies a trade. A positive standalone run does not prove exchange
 source completeness, in-worker rate headroom, after-cost profitability
 or any LIVE trading permission.
 
+## In-worker lifecycle hookup (default OFF)
+
+The worker now calls `start_attached_paper_shadow()` beside its existing
+monitoring loop, with its **original InfoClient reader** (one shared
+`RollingRateBudget`). However this helper returns immediately with **no
+task, disk writes or HTTP** unless BOTH environmental toggles are exactly
+the string `1`:
+
+    COCOMELON_PAPER_REST_SHADOW_ENABLED=1
+    COCOMELON_PAPER_REST_SHADOW_SHARED_IP_ACCOUNTED=1
+
+These are deliberately *not* set by the GitHub workflow, and should
+not be added until independent same-IP request accounting has been
+established. The second flag represents an explicit operator assertion
+about the IP quota; **a flag is not measurement or proof** that the host
+is dedicated or that all other clients behind its public IP are known.
+The observer refuses non-PAPER mode or an unknown reader implementation.
+
+With both flags set, one optional **180-second** research-only window runs
+alongside the real paper worker, sharing mandatory REST request budget and
+staying under its own 360-weight/minute cap. Its artifacts are under a
+separate `rest-depth-research-only-<session-start-ms>` folder. It never
+touches the signed WebSocket receipts, journal, trade checkpoints, mux,
+risk logic or source gap recovery. Automatic deployment leaves it OFF.
+
+The lifecycle respects worker stop/upgrade requests and cancels any
+remaining observer task **before** the authoritative account checkpoint
+and handoff. Interrupted windows are explicitly stamped
+`observation_window_completed=false` with a receipt-file SHA-256 if
+possible; no snapshot can be called qualifying after interruption.
+An in-flight thread that was already granted a REST reservation may
+still complete its bounded HTTP call when its coroutine is cancelled,
+but no further polls can start. Research errors are restricted to error
+class names in worker logs and must never abort the paper trader.
+
 ## Next qualification gate
 
-Wire the observer **default-off** to the existing PAPER worker's single
-InfoClient reader, verify all IP-coincident REST request sources, and
-record a prospective multi-day shadow with independent market receipts
-and account continuity. Keep original dual-WS signed source events
-authoritative. Do not change 3-second signed stale or 5-second strategy
-freshness rules.
+Before enabling, independently verify all public-IP-coincident REST
+consumption on the actual runner, including other processes, and record
+a prospective multi-day forward-only research shadow. Keep original
+dual-WS signed source events authoritative. Do not change 3-second
+signed stale or 5-second strategy freshness rules. Do not infer
+profitability from any source-speed experiment.
 
 Tracking: [Issue #1243](https://github.com/Dtwosam/Cocomelon/issues/1243).
