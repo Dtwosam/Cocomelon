@@ -1,5 +1,10 @@
 # Cocomelon Project Status
 
+## October 15 — prevent posthoc v3 market cohort selection
+
+The frozen LONG-trend v3 replay source check refuses to construct PAPER portfolios if the caller-selected market set omits any market present in the original post-embargo normalized market feed, including extra L2 or market snapshots. This is a local original-source anti-cherry-picking gate; it does not independently verify the producer's contemporaneous full market list, GitHub source integrity, or exchange continuity. Independent after-cost success remains UNPROVEN; existing risk/order settings unchanged.
+
+
 ## October 15 — fail-closed original GitHub v3 source ZIP identity
 
 A separate read-only source-bound v3 LONG-trend research entrypoint cross-checks exact GitHub run/attempt/head, completed paper/upload step, original outer ZIP SHA-256, manifest ID and original per-segment SHA-256 against local replay files BEFORE any new paired PAPER accounts are opened. Its output never claims independently authenticated venue completeness or signed economic continuity. Required source artifact name: `continuous-paper-v3-microstructure-<run>-<attempt>`, containing `replay-manifest.json` plus exactly `microstructure/<recording segment paths>`. The original worker has not produced this forward artifact; old v1/v2 research remains quarantined. The existing v3 one-shot offline research remains nonpromotable, with LIVE disabled.
