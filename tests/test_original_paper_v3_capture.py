@@ -4,13 +4,21 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
 from cocomelon.domain.execution import PaperExecutionConfig
-from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
+from cocomelon.domain.replay import (
+    EvidenceClass,
+    ReplayManifest,
+    ReplayRecord,
+    SourceRecordKind,
+)
 from cocomelon.evidence.contracts import BaselineReplayConfig
-from cocomelon.replay.source import validate_recording
+from cocomelon.replay.clock import canonical_record_order
+from cocomelon.replay.source import JsonlReplaySource, validate_recording
 from cocomelon.research.fresh_long_trend_forward_pair import FORWARD_NOT_BEFORE_MS
 from cocomelon.research.original_paper_v3_capture import OriginalPaperMicrostructureCapture
 from scripts.seal_original_paper_v3_source import (
@@ -93,6 +101,36 @@ def test_exact_original_source_is_sealed_from_received_paper_records(
     )
     assert manifest["manifest"]["gap_refs"] == []
     assert manifest["manifest"]["start_ms"] == FORWARD_NOT_BEFORE_MS - 1
+
+
+def test_same_millisecond_received_order_survives_partitioned_replay(
+    tmp_path: Path,
+) -> None:
+    at = FORWARD_NOT_BEFORE_MS + 1
+    # The original input is z BEFORE a, although a legacy canonical sort
+    # would place event-key "a" before "z" for an equal-ms market book.
+    incoming = (_book(at, "z-original-first"), _book(at, "a-original-second"))
+    assert asyncio.run(_capture(tmp_path / "original", incoming))[
+        "complete"
+    ] is True
+    receipt = _seal(tmp_path)
+    assert receipt["original_source_receive_ordinals_preserved"] is True
+    root = tmp_path / "upload" / "microstructure"
+    segments = validate_recording(root)
+    manifest = cast(ReplayManifest, SimpleNamespace(
+        segments=segments,
+        start_ms=at,
+        end_ms=at,
+        evidence_class=EvidenceClass.MICROSTRUCTURE,
+    ))
+    decoded = tuple(JsonlReplaySource(root).iter_records(manifest))
+    assert [r.event_key for r in decoded] == [
+        "z-original-first", "a-original-second",
+    ]
+    assert [r.source_receive_ordinal for r in decoded] == [1, 2]
+    assert [r.event_key for r in canonical_record_order(tuple(reversed(decoded)))] == [
+        "z-original-first", "a-original-second",
+    ]
 
 
 def test_capture_disk_failure_cannot_block_paper_or_seal(

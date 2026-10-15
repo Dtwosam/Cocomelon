@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
@@ -53,6 +55,35 @@ def test_canonical_order_uses_explicit_kind_priority_and_stable_ties() -> None:
 
     assert [item.event_key for item in ordered] == ["gap", "a", "b", "z"]
     assert KIND_PRIORITY["data_gap"] < KIND_PRIORITY["l2_book"] < KIND_PRIORITY["trade"]
+
+
+def test_original_first_received_ordinals_override_legacy_same_ms_kind_order() -> None:
+    # Actual original PAPER receipt: trade before book before snapshot,
+    # all within one millisecond. A legacy replay would sort snapshot first.
+    rows = (
+        replace(record(
+            available_at_ms=1_000, event_kind="trade", event_key="z",
+        ), source_receive_ordinal=1),
+        replace(record(
+            available_at_ms=1_000, event_kind="l2_book", event_key="m",
+        ), source_receive_ordinal=2),
+        replace(record(
+            available_at_ms=1_000, event_kind="market_snapshot", event_key="a",
+        ), source_receive_ordinal=3),
+    )
+    assert canonical_record_order(tuple(reversed(rows))) == rows
+    assert canonical_record_order(tuple(
+        replace(row, source_receive_ordinal=None) for row in rows
+    )) != rows
+
+
+@pytest.mark.parametrize("invalid", [0, -1, True, 1.5])
+def test_source_receive_ordinal_must_be_original_positive_int(invalid: object) -> None:
+    with pytest.raises(ValueError, match="source_receive_ordinal"):
+        replace(
+            record(available_at_ms=1000, event_kind="l2_book"),
+            source_receive_ordinal=invalid,
+        )
 
 
 def test_canonical_order_supports_public_rest_evidence_kinds() -> None:

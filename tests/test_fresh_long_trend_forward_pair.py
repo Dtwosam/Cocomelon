@@ -409,6 +409,29 @@ def test_independent_account_audit_refuses_nonempty_prior_roots(
         )
 
 
+def test_original_source_bound_requires_full_receipt_order_before_accounts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _Source.deny = False
+    _Source.loaded = _original_source_rows()  # A local unindexed old-style source.
+    monkeypatch.setattr(study, "PinnedShortRankReplaySource", _Source)
+    root = tmp_path / "no-original-order-no-account"
+    with pytest.raises(
+        study.LongTrendForwardTrialError,
+        match="requires every original receive ordinal",
+    ):
+        study.run_digest_pinned_long_trend_matched_paper(
+            source_root=tmp_path / "old-original-unindexed",
+            manifest=_manifest(),
+            expected_manifest_id="0123456789abcdef01234567",
+            config=BaselineReplayConfig(execution=PaperExecutionConfig()),
+            selected_markets=(MARKET,),
+            account_root=root,
+            require_original_receive_ordinals=True,
+        )
+    assert not root.exists()
+
+
 def test_manifest_calendar_end_cannot_fabricate_72h_observation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

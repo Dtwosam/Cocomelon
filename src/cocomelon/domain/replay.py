@@ -101,8 +101,19 @@ class ReplayRecord:
     event_key: str | None
     payload_json: str
     event_kind: str | None = None
+    # Optional original recorder position: never fabricate one from
+    # lexicographic event kind, market name or exchange-time ordering.
+    source_receive_ordinal: int | None = None
 
     def __post_init__(self) -> None:
+        if (
+            self.source_receive_ordinal is not None
+            and (
+                type(self.source_receive_ordinal) is not int
+                or self.source_receive_ordinal <= 0
+            )
+        ):
+            raise ValueError("source_receive_ordinal must be a positive integer")
         if self.available_at_ms < 0:
             raise ValueError("available_at_ms must be non-negative")
         _require_nonempty(self.source, "source")

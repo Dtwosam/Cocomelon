@@ -267,6 +267,7 @@ def test_valid_wrapper_cannot_misstate_source_or_trade_permission(
         account_root=tmp_path / "fresh-accounts",
     )
     assert len(invoked) == 1
+    assert invoked[0]["require_original_receive_ordinals"] is True
     assert result["offline_original_github_zip_source_crosscheck"][
         "original_zip_bytes_match_supplied_github_digest"
     ] is True

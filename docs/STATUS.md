@@ -2,6 +2,20 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). This PAPER account has no independently certified after-cost positive expectancy; frozen v3 remains research-only.
 
+## October 15 — v3 source replay preserves actual first-received tie order
+
+The frozen v3 source seal now writes the actual 1-based original received
+record ordinal into each per-market/per-kind JSONL row. The normal replay
+clock sorts same-ms original events by that ordinal rather than by inferred
+event kind/market/event key. Legacy source files without an original ordinal
+retain their preexisting sort order and semantics.
+
+The original source-bound LONG-only v3 matched PAPER runner fails before
+opening accounts on missing/mixed, duplicated or reordered original ordinals.
+This is a negative provenance/economic-validity requirement, not a forward
+profitability certificate, original feed delivery proof or change to ordinary
+PAPER trading. v1/v2 archive failures remain quarantined; LIVE disabled.
+
 ## October 15 — v3 original execution and fee model now source-bound
 
 The new v3 microstructure collector records the SOURCE worker's actual full

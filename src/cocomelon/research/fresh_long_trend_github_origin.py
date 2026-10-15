@@ -330,6 +330,7 @@ def run_original_zip_bound_fresh_long_trend_paper(
         selected_markets=selected_markets,
         account_root=account_root,
         decision_engine_factory=decision_engine_factory,
+        require_original_receive_ordinals=True,
     )
     result = dict(outcome)
     result["offline_original_github_zip_source_crosscheck"] = receipt
