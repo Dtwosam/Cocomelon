@@ -16,11 +16,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
-from cocomelon.research.forward_rest_depth_shadow import (
-    COHORT,
-    SCHEMA,
-    _DepthClock,
-)
+from cocomelon.research.forward_rest_depth_shadow import SCHEMA, _DepthClock
+from cocomelon.research.low_rate_rest_l2_control import COHORT
 
 MAX_BYTES = 8_000_000
 MAX_ROWS = 12_000
@@ -242,9 +239,9 @@ def audit_shadow_receipts(
             reported = _number(item.get(field), field)
             if abs(reported - cast(float, actual[field])) > 0.0006:
                 raise ShadowAuditError("full-depth elapsed freshness differs from receipts")
-    for key, observed in counters.items():
-        if _integer(summary.get(key), key) != observed:
-            raise ShadowAuditError(f"counter mismatch: {key}")
+    for counter_name, observed in counters.items():
+        if _integer(summary.get(counter_name), counter_name) != observed:
+            raise ShadowAuditError(f"counter mismatch: {counter_name}")
     if start_utc_ms is None:
         raise ShadowAuditError("empty source receipts")
     ended_utc_ms = _integer(summary.get("ended_utc"), "ended_utc")
