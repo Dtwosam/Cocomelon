@@ -113,6 +113,33 @@ still complete its bounded HTTP call when its coroutine is cancelled,
 but no further polls can start. Research errors are restricted to error
 class names in worker logs and must never abort the paper trader.
 
+## Conservative in-worker peak-admission screen (still OFF)
+
+The attached observer now has an additional **fail-closed local quota peak
+screen**, separate from the existing two environment assertions. Before it
+creates an asyncio task, any files or HTTP calls, it reads the *same PAPER
+InfoClient* quota snapshot. The worker must have observed at least one real
+mandatory-weight reservation, be using the known 60-second, <=1000-weight
+in-process cap, and have internally consistent quota counters with a clean
+zero-shadow historical baseline. If its observed total high water plus the
+frozen 360-weight/60s three-market demand plus the 300-weight priority
+reserve exceeds the local cap, observer startup is rejected. Missing,
+malformed, inflated caps, reduced reserves and unsupported authority claims
+fail closed.
+
+For example, a measured local 987/1000 peak projects **1647/1000** when
+adding 360 optional weight and 300 reserved weight; the observer is
+**BLOCKED**. This is an intentionally conservative forward projection:
+historical peaks need not overlap perfectly, but the worker must not
+risk required market operations on an unproved optimistic assumption.
+The main worker's authenticated status renders this local startup screen.
+
+A passing screen is **NOT** permission to activate a shadow: other processes
+on the public egress IP remain unverified, the sample is not proof of future
+traffic, and strict per-request quota admission remains required even during
+a study. The default-off flags are not added to any workflow. Nothing in
+this screen can promote books into trading authority or alter account economics.
+
 ## Next qualification gate
 
 Before enabling, independently verify all public-IP-coincident REST
