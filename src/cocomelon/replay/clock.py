@@ -24,15 +24,22 @@ def _kind_key(record: ReplayRecord) -> str:
     return record.event_kind
 
 
-def canonical_order_key(record: ReplayRecord) -> tuple[int, int, str, str]:
+def canonical_order_key(record: ReplayRecord) -> tuple[int, int, int, str, str]:
     kind = _kind_key(record)
     try:
         priority = KIND_PRIORITY[kind]
     except KeyError as exc:
         raise ValueError(f"unsupported replay record kind: {kind}") from exc
+    # Legacy recorded data has no source ordinal and keeps the existing
+    # priority/market/key ordering. New ORIGINAL v3 source segments retain
+    # their actual received order when multiple different markets or event
+    # kinds arrive within the SAME millisecond. Do not silently sort a
+    # first-seen decision behind a later market book.
+    original = record.source_receive_ordinal
     return (
         record.available_at_ms,
-        priority,
+        0 if original is not None else 1,
+        original if original is not None else priority,
         record.market or "",
         record.event_key or record.payload_json,
     )
