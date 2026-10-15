@@ -1,5 +1,12 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 15 — v3 original selected-market cohort cannot be hindsight-trimmed
+
+The v3 LONG-trend candidate is a matched whole-account comparison, not a right to replay only historical winning markets. Its source preflight now checks the **entire original post-embargo market observation universe** from the pinned microstructure recording and fails before account creation if the caller omits ANY market with an original recorded forward event, including non-L2 market snapshots. Per-market L2 receipt and zero-gap gates remain in force. This protects against locally subsetting an original ZIP by an observed return without changing the frozen strategy rule, risk, fees or mainnet PAPER account.
+
+The original ZIP and independent GitHub-run/source manifest pin must still be authenticated externally and the source producer must capture a precommitted market universe. A ZIP containing only handpicked markets from the outset is NOT thereby proven unbiased. No 72h or after-cost v3 edge exists yet; LIVE disabled.
+
+
 ## October 15 — v3 original GitHub ZIP and worker identity bound before account construction
 
 The frozen LONG-trend v3 source-bound research entrypoint now requires a **whole original Github Actions ZIP SHA-256** matched against the published artifact, the exact continuous PAPER run ID/attempt/commit/repository/main branch, exact **completed** paper job and an expressly successful *future* v3 microstructure source upload step. The ZIP must contain one canonical replay manifest and exactly its original recorded segment bytes; every segment's SHA must also match the independent local replay archive and pinned manifest. Any mismatch rejects before allocating baseline or challenger PAPER accounts. No historical v1/v2 or a large generic paper account ZIP can substitute for a frozen v3 microstructure recording.

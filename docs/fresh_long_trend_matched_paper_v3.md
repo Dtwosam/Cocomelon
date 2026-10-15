@@ -138,3 +138,8 @@ The uploaded ZIP must have **exactly** `replay-manifest.json` (`{manifest_id,man
 
 **Not yet available:** the continuous PAPER worker does not produce this exact v3 source artifact or its upload step yet, and the current original live worker head predates this research. This code establishes a strict **future collector contract**, not a claim of real post–October 16 06:00 UTC capture. Supplied JSON metadata can itself be forged unless independently retrieved from GitHub; the wrapper always reports independent metadata/venue authentication, signed cross-worker continuity, positive account profit and promotion as FALSE. Even a locally valid ZIP must still pass the separate recorded-gap/L2 gate and independent after-cost accounting, and can never turn LIVE on.
 
+
+## No retrospective market-cohort cherry-picking
+
+The complete original pinned forward microstructure recording determines the market universe. The caller cannot submit a reduced `selected_markets` containing only favorable observed returns: the source preflight rejects EVERY omitted forward market with a recorded original normalized event (L2, market snapshot or other market-specific event) before constructing either PAPER account. The same no-gap/L2 freshness and original-row SHA constraints apply. This alone cannot prove the recorder captured the entire precommitted market universe; that must be independently verified from its original worker setup and source receipts. No change to frozen LONG trend predicate, ordinary execution or LIVE gates.
+

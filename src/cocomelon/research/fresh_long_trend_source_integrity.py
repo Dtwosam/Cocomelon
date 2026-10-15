@@ -52,6 +52,12 @@ def audit_fresh_long_trend_original_records(
     observed: dict[str, tuple[int, int, int]] = {
         market: (0, 0, 0) for market in markets
     }
+    # A caller cannot replay the same original ZIP, retain only the markets
+    # that later looked profitable, and label the reduced cohort an
+    # independently matched account. All first-seen market observations
+    # in the original forward recorder determine the universe to replay.
+    all_forward_market_sources: set[str] = set()
+    all_forward_l2_sources: set[str] = set()
     digest = hashlib.sha256()
     last_available = -1
     for record in records:
@@ -68,6 +74,13 @@ def audit_fresh_long_trend_original_records(
             )
         if record.record_kind is not SourceRecordKind.NORMALIZED_EVENT:
             raise FreshLongTrendSourceError("unexpected source record kind")
+        if (
+            record.market is not None
+            and record.available_at_ms >= forward_not_before_ms
+        ):
+            all_forward_market_sources.add(record.market)
+            if record.event_kind == "l2_book":
+                all_forward_l2_sources.add(record.market)
         line = json.dumps({
             "record_kind": record.record_kind.value,
             "available_at_ms": record.available_at_ms,
@@ -108,6 +121,13 @@ def audit_fresh_long_trend_original_records(
             "source missing post-embargo L2 on selected markets: "
             + ",".join(absent)
         )
+    unexpected = sorted(all_forward_market_sources - set(markets))
+    extra_l2 = sorted(all_forward_l2_sources - set(markets))
+    if unexpected or extra_l2:
+        raise FreshLongTrendSourceError(
+            "posthoc selected-market subset omits original forward source: "
+            + ",".join(unexpected or extra_l2)
+        )
     # A challenger holding a stale market cannot count time passing on a
     # different active market as a shared, independent comparison window.
     common_end = min(last for _, last, _ in observed.values())
@@ -116,6 +136,9 @@ def audit_fresh_long_trend_original_records(
         "record_count": len(records),
         "local_canonical_record_stream_sha256": digest.hexdigest(),
         "original_market_count": len(markets),
+        "all_original_forward_market_count": len(all_forward_market_sources),
+        "all_original_forward_l2_market_count": len(all_forward_l2_sources),
+        "selected_market_covers_full_original_forward_universe": True,
         "selected_market_first_l2_at_ms": {
             market: first for market, (first, _, _) in observed.items()
         },

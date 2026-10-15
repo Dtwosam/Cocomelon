@@ -154,6 +154,36 @@ def test_declared_manifest_gap_blocks_study_before_any_account(ref: str) -> None
         )
 
 
+def test_original_forward_extra_market_cannot_be_excluded_posthoc() -> None:
+    rows = (
+        _record(START + 1, market=A),
+        _record(START + 2, market=B),
+        _record(START + 3, market=MarketId("", "CCC")),
+    )
+    with pytest.raises(FreshLongTrendSourceError, match="posthoc selected-market subset"):
+        _check(rows, selected_markets=(A, B))
+    with pytest.raises(FreshLongTrendSourceError, match="posthoc selected-market subset"):
+        _check((
+            _record(START + 1, market=A),
+            _record(START + 2, market=B),
+            _record(START + 3, market=MarketId("", "CCC"),
+                    kind="market_snapshot"),
+        ), selected_markets=(A, B))
+
+
+def test_complete_original_market_selection_preserves_nonpromotable_report() -> None:
+    rows = (
+        _record(START + 1, market=A),
+        _record(START + 2, market=B),
+    )
+    receipt = _check(rows, selected_markets=(A, B))
+    assert receipt["selected_market_covers_full_original_forward_universe"] is True
+    assert receipt["all_original_forward_market_count"] == 2
+    assert receipt["all_original_forward_l2_market_count"] == 2
+    assert receipt["promotion_authority"] is False
+    assert receipt["original_exchange_feed_independently_authenticated"] is False
+
+
 def test_missing_market_l2_rejected_even_with_mature_other_market() -> None:
     with pytest.raises(FreshLongTrendSourceError, match="BBB"):
         _check((
