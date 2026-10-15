@@ -20,7 +20,7 @@ from typing import Protocol, TextIO, cast
 
 from cocomelon.config import ExecutionMode, Settings
 from cocomelon.domain.market import MarketId
-from cocomelon.hyperliquid.client import InfoClient
+from cocomelon.hyperliquid.client import InfoClient, InfoHttpError
 from cocomelon.hyperliquid.rate_limit import RollingRateBudget
 from cocomelon.research.full_depth_cadence_probe import FullDepthCadenceProbe
 from cocomelon.research.low_rate_rest_l2_control import COHORT
@@ -126,6 +126,9 @@ class RestDepthShadow:
         self.out_of_order = 0
         self.duplicate = 0
         self.missed_poll_count = 0
+        self.http_429_count = 0
+        self.circuit_skipped_count = 0
+        self.http_circuit_open = False
 
     def record(
         self,
@@ -136,6 +139,7 @@ class RestDepthShadow:
         utc_ms: int,
         result: str,
         http_ms: float = 0.0,
+        is_rate_limit: bool = False,
     ) -> dict[str, object]:
         if market not in self.clocks or now_ns < self.start_ns:
             raise ValueError("invalid shadow market or clock")
@@ -152,6 +156,8 @@ class RestDepthShadow:
         }
         if result == "missed_poll":
             self.missed_poll_count += 1
+        elif result == "rate_limit_circuit_open":
+            self.circuit_skipped_count += 1
         elif result == "shadow_budget_skipped":
             self.shadow_slice_skipped += 1
         elif result == "shared_budget_skipped":
@@ -162,6 +168,12 @@ class RestDepthShadow:
             self.http_requests += 1
             self.http_errors += 1
             self.clocks[market].revoke(now_ns)
+            if is_rate_limit:
+                # Hard stop across ALL markets for the remaining observation
+                # window. Concurrent requests already in-flight may finish.
+                self.http_429_count += 1
+                self.http_circuit_open = True
+                data["http_429"] = True
         elif result == "ok":
             self.http_requests += 1
             if not isinstance(response, dict) or response.get("coin") != market:
@@ -230,6 +242,9 @@ class RestDepthShadow:
                 + self.config.poll_interval_ms - 1
             ) // self.config.poll_interval_ms,
             "missed_poll_count": self.missed_poll_count,
+            "http_429_count": self.http_429_count,
+            "rate_limit_circuit_open": self.http_circuit_open,
+            "rate_limit_circuit_skips": self.circuit_skipped_count,
             "actual_http_requests": self.http_requests,
             "shared_budget_skips": self.quota_skipped,
             "shadow_slice_budget_skips": self.shadow_slice_skipped,
@@ -259,6 +274,12 @@ class RestDepthShadow:
     async def poll_one(self, market: str, *, now_ns: int) -> dict[str, object]:
         if market not in self.config.markets:
             raise ValueError("noncohort shadow request")
+        if self.http_circuit_open:
+            return self.record(
+                market, None, now_ns=now_ns,
+                utc_ms=time.time_ns() // 1_000_000,
+                result="rate_limit_circuit_open",
+            )
         if not self.slice_budget.try_acquire(2):
             return self.record(
                 market, None, now_ns=now_ns,
@@ -270,11 +291,13 @@ class RestDepthShadow:
                 self.reader.try_shadow_l2_book,
                 MarketId(dex="", coin=market),
             )
-        except Exception:
+        except Exception as exc:
             # No retries and no error-body or credential leakage.
+            is_429 = isinstance(exc, InfoHttpError) and exc.status == 429
             return self.record(
                 market, None, now_ns=time.monotonic_ns(),
                 utc_ms=time.time_ns() // 1_000_000, result="http_error",
+                is_rate_limit=is_429,
             )
         ended = time.monotonic_ns()
         return self.record(
@@ -338,6 +361,8 @@ async def collect_shadow(
         cast(float, report["elapsed_ms"]) >= duration * 1_000
         and shadow.attempts == ticks * len(shadow.config.markets)
         and shadow.missed_poll_count == 0
+        and shadow.http_429_count == 0
+        and shadow.circuit_skipped_count == 0
         and shadow.http_errors == 0
         and shadow.protocol_failures == 0
         and shadow.shallow == 0
