@@ -37,14 +37,13 @@ def _write_signed_checkpoint(
     markets: list[str],
     candidate_id: str | None = None,
 ) -> None:
-    from cocomelon.research.prospective_both_side_trend_paired_v2_genesis import (
-        _digest,
-    )
-
     from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
         FILE_NAME,
         V2SourceGapWitness,
         read_source_gap_witness,
+    )
+    from cocomelon.research.prospective_both_side_trend_paired_v2_genesis import (
+        _digest,
     )
 
     if not (root / FILE_NAME).exists():
