@@ -9391,6 +9391,74 @@ def _delayed_entry_stop_l2_lines(
     return lines
 
 
+def _local_rest_budget_lines(raw: object) -> list[str]:
+    """Publish same-reader quota without claiming external-IP completeness."""
+    lines = [
+        "### Public REST quota (local PAPER reader only)",
+        "",
+        "- scope: `IN-PROCESS ONLY / NOT A SHARED-IP CERTIFICATE`",
+        "- production-source promotion: `not authorized`",
+    ]
+    if not isinstance(raw, dict):
+        return lines + [
+            "- REST rolling budget: `not yet reported by this worker`",
+            "- other processes behind public IP: `unverified`",
+            "",
+        ]
+    if (
+        raw.get("external_process_ip_weight_verified") is not False
+        or raw.get("source_or_execution_authority") is not False
+    ):
+        return lines + [
+            "- REST rolling budget: `INVALID: unsupported authority claim`",
+            "- other processes behind public IP: `unverified`",
+            "",
+        ]
+
+    def integer(name: str) -> int | None:
+        value = raw.get(name)
+        if type(value) is not int or value < 0:
+            return None
+        return value
+
+    required = integer("required_rolling_weight")
+    shadow = integer("shadow_rolling_weight")
+    other = integer("other_rolling_weight")
+    total = integer("total_rolling_weight")
+    capacity = integer("rolling_weight_limit")
+    peak = integer("peak_total_rolling_weight")
+    reserve = integer("shadow_priority_reserve_weight")
+    denied = integer("shadow_denied_lifetime")
+    if (
+        None in (required, shadow, other, total, capacity, peak, reserve, denied)
+        or total != required + shadow + other
+        or capacity <= 0
+        or total > capacity
+        or peak < total
+        or peak > capacity
+    ):
+        return lines + [
+            "- REST rolling budget: `INVALID: inconsistent local counters`",
+            "- other processes behind public IP: `unverified`",
+            "",
+        ]
+    lines.extend([
+        f"- 60-second rolling REST weight, total / limit: `{total} / {capacity}`",
+        (
+            "- rolling priority-required / optional-shadow / other weight: "
+            f"`{required} / {shadow} / {other}`"
+        ),
+        (
+            "- peak rolling REST weight / mandatory reserved weight: "
+            f"`{peak} / {reserve}`"
+        ),
+        f"- shadow quota-denied calls since startup: `{denied}`",
+        "- other processes behind public IP: `unverified`",
+        "",
+    ])
+    return lines
+
+
 def _render_operational_live_status(
     payload: Mapping[str, Any],
     *,
@@ -10099,6 +10167,7 @@ def _render_operational_live_status(
             ),
             "### Runtime",
             "",
+            *_local_rest_budget_lines(payload.get("local_public_rest_budget")),
             f"- selected markets: {payload['selected_market_count']}",
             f"- processed records: {payload['processed_records']}",
             (
