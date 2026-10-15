@@ -228,7 +228,7 @@ class RestDepthShadow:
         markets = cast(dict[str, dict[str, object]], self.probe.summary(
             end_ns=now_ns
         )["markets"])
-        return {
+        report: dict[str, object] = {
             "schema": SCHEMA,
             "mode": "READ_ONLY_UNCERTIFIED_REST_PAPER_SHADOW",
             "enabled": True,
@@ -270,6 +270,13 @@ class RestDepthShadow:
                 for market, clock in self.clocks.items()
             },
         }
+        # This is the original PAPER InfoClient's in-process rate ledger,
+        # not proof that a NAT egress IP is dedicated to this worker.
+        if type(self.reader) is InfoClient:
+            local = cast(InfoClient, self.reader).rest_budget_snapshot()
+            if local is not None:
+                report["same_reader_rest_budget_snapshot"] = local
+        return report
 
     async def poll_one(self, market: str, *, now_ns: int) -> dict[str, object]:
         if market not in self.config.markets:
