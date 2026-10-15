@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from decimal import Decimal
 from pathlib import Path
 
@@ -40,7 +41,22 @@ def _write_signed_checkpoint(
         _digest,
     )
 
+    from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+        FILE_NAME,
+        V2SourceGapWitness,
+        read_source_gap_witness,
+    )
+
+    if not (root / FILE_NAME).exists():
+        V2SourceGapWitness(root, restoring=False)
+    receipt = read_source_gap_witness(
+        root / FILE_NAME, total_processed_records=0,
+    )
     payload: dict[str, object] = {
+        "record_count": 0,
+        "v2_source_gap_event_witness": receipt,
+        "baseline": {"account_state_id": "signed-baseline"},
+        "candidate": {"account_state_id": "signed-candidate"},
         "portfolio_shadow_candidate_id": (
             candidate_id or both_side_trend_matched_shadow_v2_freeze().candidate_id
         ),
@@ -54,6 +70,20 @@ def _write_signed_checkpoint(
     (root / "paired-shadow-state.json").write_text(
         json.dumps(payload), encoding="utf-8",
     )
+
+
+def _write_test_accounts(root: Path) -> None:
+    for lane in ("baseline", "candidate"):
+        database = root / f"{lane}-execution.sqlite3"
+        with sqlite3.connect(database) as connection:
+            connection.execute(
+                "CREATE TABLE paper_account_state "
+                "(singleton_id INTEGER PRIMARY KEY, state_id TEXT NOT NULL)"
+            )
+            connection.execute(
+                "INSERT INTO paper_account_state VALUES (1, ?)",
+                (f"signed-{lane}",),
+            )
 
 
 def test_only_new_accounts_can_create_write_once_git_origin(
@@ -74,8 +104,7 @@ def test_only_new_accounts_can_create_write_once_git_origin(
     # Simulate a signed original checkpoint and both independently stored
     # paper accounts. Real market rankings may be different next worker.
     _write_signed_checkpoint(tmp_path, markets=["BTC", "ETH"])
-    for file in ("baseline-execution.sqlite3", "candidate-execution.sqlite3"):
-        (tmp_path / file).write_bytes(b"existing-original-worker")
+    _write_test_accounts(tmp_path)
     monkeypatch.setenv("GITHUB_RUN_ID", "40002")
     monkeypatch.setenv("GITHUB_SHA", "b" * 40)
     restored = _prepare(tmp_path)
@@ -184,8 +213,7 @@ def test_frozen_initial_selection_can_evolve_on_signed_ranked_worker_handoff(
     # The original paper scanner reranked its universe DURING the first
     # worker. Both matched lanes consumed that signed selection.
     _write_signed_checkpoint(tmp_path, markets=["BTC", "SOL"])
-    for name in ("baseline-execution.sqlite3", "candidate-execution.sqlite3"):
-        (tmp_path / name).write_bytes(b"existing-accounts")
+    _write_test_accounts(tmp_path)
     monkeypatch.setenv("GITHUB_RUN_ID", "40002")
     monkeypatch.setenv("GITHUB_SHA", "b" * 40)
     # A different current startup ranking is a future reconciliation,
@@ -216,8 +244,7 @@ def test_unsupported_dynamic_market_change_does_not_restore(
 ) -> None:
     _prepare(tmp_path)
     _write_signed_checkpoint(tmp_path, markets=["BTC", "SOL"])
-    for name in ("baseline-execution.sqlite3", "candidate-execution.sqlite3"):
-        (tmp_path / name).write_bytes(b"existing-accounts")
+    _write_test_accounts(tmp_path)
     if mutation == "unsigned_market_change":
         payload = json.loads(
             (tmp_path / "paired-shadow-state.json").read_text(),
