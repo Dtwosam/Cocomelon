@@ -46,6 +46,10 @@ def _fixture(root: Path) -> None:
         "changes_closed_trade_readiness_gate": False,
         "risk_rejected_integrity_clean": True,
         "risk_rejected_missing_rank": 0,
+        "missing_rank": 0,
+        "original_missing_rank_source_witness": [],
+        "original_missing_rank_witness_count": 0,
+        "original_missing_rank_witness_risk_rejected_count": 0,
         "risk_rejected_stack_evaluated": 0,
         "risk_rejected_rows": [],
         "overlap_started_at_ms": 1_791_000_000_000,
@@ -148,7 +152,7 @@ def test_empty_required_summary_is_not_authenticated(tmp_path: Path) -> None:
                 risk_rejected_integrity_clean=False,
                 risk_rejected_missing_rank=67,
             ),
-            "risk_rejected_integrity_not_clean",
+            "original_missing_rank_witness_not_reconciled",
         ),
         (
             lambda doc: doc.update(enabled=False, error="producer_failed"),
@@ -264,6 +268,24 @@ def _dirty_historic_before_frozen_window(
     payload.update(
         risk_rejected_integrity_clean=False,
         risk_rejected_missing_rank=67,
+        original_missing_rank_source_witness=[
+            {
+                "opportunity_id": f"original-rejected-unranked-{i:03d}",
+                "timestamp_ms": CLEAN_FORWARD_START_MS - 1_000 - i,
+                "market": "BTC",
+                "direction": "long",
+                "lead_strategy": "trend",
+                "baseline_risk_approved": False,
+                "baseline_risk_reason_codes": ["weekly_drawdown_lockout"],
+                "original_rank_observed_at_ms": None,
+                "original_rank_ordinal": None,
+                "rank_missing": True,
+                "synthetic_rank_applied": False,
+            }
+            for i in range(67)
+        ],
+        original_missing_rank_witness_count=67,
+        original_missing_rank_witness_risk_rejected_count=67,
         risk_rejected_integrity_last_miss_at_ms=last_miss_ms,
         risk_rejected_rows=[
             {
@@ -299,6 +321,8 @@ def test_earlier_rank_defects_do_not_erase_clean_frozen_forward_evidence(
     assert metric["risk_rejected_integrity_clean"] is False
     assert metric["risk_rejected_missing_rank"] == 67
     assert metric["historic_missing_rank_retained"] == 67
+    assert metric["original_missing_rank_witness_total"] == 67
+    assert metric["original_missing_rank_witness_rejected"] == 67
     assert metric["entire_history_integrity_clean"] is False
     assert metric["frozen_forward_scope_start_ms"] == CLEAN_FORWARD_START_MS
     assert metric["frozen_forward_rank_checked_rows"] == 1
@@ -313,7 +337,7 @@ def test_earlier_rank_defects_do_not_erase_clean_frozen_forward_evidence(
             CLEAN_FORWARD_START_MS + 1,
             "risk_rejected_integrity_overlaps_frozen_window",
         ),
-        (-1, "risk_rejected_integrity_not_clean"),
+        (-1, "original_missing_rank_witness_last_miss_invalid"),
     ],
 )
 def test_frozen_window_overlap_or_bad_boundary_fails_closed(
