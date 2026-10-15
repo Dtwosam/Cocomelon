@@ -86,6 +86,9 @@ from cocomelon.journal.store import JournalStore
 from cocomelon.research.account_lifecycle_bridge import (
     account_lifecycle_bridge,
 )
+from cocomelon.research.original_paper_v3_capture import (
+    OriginalPaperMicrostructureCapture,
+)
 from cocomelon.research.adaptive_delay_selector import (
     AdaptiveDelaySelectorState,
     adaptive_delay_selector_summary,
@@ -4867,9 +4870,11 @@ class _RecordPump:
         loss_context_paired_shadow_runtime: (
             LossContextPairedShadowRuntime | PairedShadowTrendSidecar | None
         ) = None,
+        original_v3_capture: OriginalPaperMicrostructureCapture | None = None,
     ) -> None:
         self.pipeline = pipeline
         self.journal = journal
+        self.original_v3_capture = original_v3_capture
         self.loss_context_paired_shadow_runtime = (
             loss_context_paired_shadow_runtime
         )
@@ -5025,6 +5030,16 @@ class _RecordPump:
                     payload_json=record.payload_json,
                     event_kind=record.event_kind,
                 )
+            # Original source capture is best-effort for PAPER safety and
+            # STRICTLY FAIL-CLOSED for prospective research. No awaited I/O
+            # or source network calls in the record pump.
+            if self.original_v3_capture is not None:
+                try:
+                    self.original_v3_capture.offer(record)
+                except Exception as exc:
+                    self.original_v3_capture.failure = (
+                        "record_offer_failed:" + type(exc).__name__
+                    )
             component_ms: dict[str, int] = {}
 
             def finish_component(name: str, started: float) -> None:
@@ -10166,6 +10181,7 @@ async def run_continuous_paper_session(
     )
 
     event_loop_lag_task: asyncio.Task[None] | None = None
+    original_v3_capture: OriginalPaperMicrostructureCapture | None = None
     loss_context_paired_shadow_runtime: (
         LossContextPairedShadowRuntime | PairedShadowTrendSidecar | None
     ) = None
@@ -10462,10 +10478,37 @@ async def run_continuous_paper_session(
         )
         decision_epoch_wakeup = asyncio.Event()
         component_started = time.perf_counter()
+        # Each GitHub worker writes a separate original receipt outside
+        # durable trading state. Never import an earlier worker's unsigned
+        # market rows or obstruct a genuine PAPER successor handoff.
+        if os.environ.get("V3_CAPTURE_ORIGINAL_SOURCE") == "1":
+            try:
+                runner_temp = os.environ.get("RUNNER_TEMP")
+                run_id = os.environ.get("GITHUB_RUN_ID")
+                attempt = os.environ.get("GITHUB_RUN_ATTEMPT")
+                head_sha = os.environ.get("GITHUB_SHA")
+                if not all((runner_temp, run_id, attempt, head_sha)):
+                    raise ValueError("original source GitHub provenance missing")
+                assert runner_temp and run_id and attempt and head_sha
+                original_v3_capture = OriginalPaperMicrostructureCapture(
+                    Path(runner_temp) / (
+                        "v3-original-capture-" + run_id + "-" + attempt
+                    ),
+                    run_id=run_id,
+                    run_attempt=attempt,
+                    head_sha=head_sha,
+                    selected_markets=tuple(m.canonical for m in selected),
+                    first_observed_ms=started_at_ms,
+                )
+            except Exception:
+                # A failed capture remains ineligible: post-handoff sealer
+                # will find no clean terminal receipt and will not upload.
+                original_v3_capture = None
         pump = _RecordPump(
             pipeline,
             journal,
             last_available_at_ms=restored_available_at_ms,
+            original_v3_capture=original_v3_capture,
             cadence_shadow=cadence_shadow,
             entry_mid_markout_shadow=entry_mid_markout_shadow,
             position_provider=lambda: execution.account.positions,
@@ -12922,6 +12965,13 @@ async def run_continuous_paper_session(
         _write_json_atomic(root / SUMMARY_FILENAME, summary.payload())
         return summary
     finally:
+        if original_v3_capture is not None:
+            try:
+                await original_v3_capture.close()
+            except Exception:
+                # Research source errors must never interrupt the ordinary
+                # PAPER account/SQLite handoff and cleanup.
+                pass
         if loss_context_paired_shadow_runtime is not None:
             try:
                 await loss_context_paired_shadow_runtime.close()
