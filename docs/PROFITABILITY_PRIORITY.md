@@ -1,5 +1,24 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 15 — v3 forward source requires continuous per-market original L2
+
+The fresh LONG-trend v3 offline paired PAPER study now refuses ANY original
+captured DATA_GAP or declared manifest gap and requires original post-embargo
+`l2_book` observations on EVERY selected market: first book within five
+minutes of the fixed Oct 16 06:00 UTC boundary, no observed book drought
+over five minutes. 72-hour elapsed evidence is the earliest LAST original
+L2 receipt time across all selected markets, never a late candle, generic
+update, source gap or the manifest calendar end. These strict source
+conditions are tested before constructing either new PAPER account;
+the terminal economic checkpoint uses the later actual final record clock
+when relevant. Observed event sequence gets a local SHA-256 receipt.
+
+**This is not independent venue completeness verification.** Unrecorded
+events or compromised GitHub archive origin remain unverified; no local
+72-hour age or favorable challenger-relative net authorizes source
+promotion, live trades or an after-cost profitability certificate.
+
+
 ## October 15 — true paired-account cash must match original v3 SQLite ledgers
 
 The fresh LONG-trend v3 **one-shot PAPER-only** comparison now publishes a

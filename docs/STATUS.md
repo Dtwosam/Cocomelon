@@ -1,5 +1,20 @@
 # Cocomelon Project Status
 
+## October 15 — v3 forward source-gap and L2 maturity safeguards
+
+New original-record preflight for the frozen Oct 16 06:00 UTC LONG-trend
+v3 comparison fails closed on ANY DATA_GAP, declared manifest gap,
+missing selected-market post-embargo L2, first book recorded after a
+five-minute opening lapse, or later observed L2 silence exceeding five
+minutes. The apparent study horizon comes from the MINIMUM of the last
+real L2 receipt timestamp on every selected market, not a calendar
+manifest end or a late non-L2 event. This source gate runs before
+creating baseline/candidate PAPER stores. Original exchange completeness,
+genuine future captures, cross-worker signing and absolute net-after-cost
+profitability remain UNVERIFIED. No current PAPER risk/strategy or
+LIVE setting changes.
+
+
 ## October 15 — independent immutable v3 PAPER equity/account audit
 
 For new frozen LONG-trend v3 **one-shot offline** research, the runner now
