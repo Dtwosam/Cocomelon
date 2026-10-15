@@ -18,11 +18,11 @@ from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import ReplayManifest, ReplayRecord
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.lifecycle import DecisionEpochEngine
-from cocomelon.research.historical_discovery_freeze import (
-    MIN_PROSPECTIVE_EMBARGO_MS,
-)
 from cocomelon.research.fresh_long_trend_account_audit import (
     audit_fresh_v3_paired_accounts,
+)
+from cocomelon.research.historical_discovery_freeze import (
+    MIN_PROSPECTIVE_EMBARGO_MS,
 )
 from cocomelon.research.loss_context_paired_portfolio_shadow import (
     LossContextPairedPortfolioShadow,
