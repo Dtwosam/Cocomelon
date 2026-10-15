@@ -15,6 +15,7 @@ from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import ReplayManifest, ReplayRecord, SourceRecordKind
 
 ZERO_GAP_POLICY: Final = "reject_every_original_gap_in_entire_replayed_warmup_and_forward_window"
+MAX_FORWARD_L2_SILENCE_MS: Final = 5 * 60 * 1000
 
 
 class FreshLongTrendSourceError(ValueError):
@@ -86,7 +87,16 @@ def audit_fresh_long_trend_original_records(
             and record.market in observed
             and record.available_at_ms >= forward_not_before_ms
         ):
-            first, _last, count = observed[record.market]
+            first, previous, count = observed[record.market]
+            if (
+                (count == 0 and record.available_at_ms
+                 > forward_not_before_ms + MAX_FORWARD_L2_SILENCE_MS)
+                or (count > 0 and
+                    record.available_at_ms - previous > MAX_FORWARD_L2_SILENCE_MS)
+            ):
+                raise FreshLongTrendSourceError(
+                    "forward original L2 market drought exceeds five-minute limit"
+                )
             observed[record.market] = (
                 first if count else record.available_at_ms,
                 record.available_at_ms,
@@ -118,6 +128,8 @@ def audit_fresh_long_trend_original_records(
         "last_record_available_at_ms": last_available,
         "common_selected_market_l2_end_ms": common_end,
         "common_l2_forward_elapsed_ms": common_end - forward_not_before_ms,
+        "maximum_allowed_original_l2_silence_ms": MAX_FORWARD_L2_SILENCE_MS,
+        "every_market_has_initial_l2_and_no_observed_5min_drought": True,
         "recorded_source_gap_count": 0,
         "source_gap_policy": ZERO_GAP_POLICY,
         "local_manifest_and_record_validation_only": True,
