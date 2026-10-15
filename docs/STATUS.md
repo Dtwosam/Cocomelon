@@ -1,5 +1,23 @@
 # Cocomelon Project Status
 
+## October 15 — v3 restore exact original intra-millisecond event order
+
+The original paper capture has a truly ordered per-worker receipt journal,
+with a writer-thread SHA-256 persisted in its terminal receipt. Post-worker
+sealing rejects any changed original journal bytes, including equal-ms row
+swaps preserving the row count and last timestamp. The microstructure ZIP
+still partitions events by market/type.
+Generic replay sorted by timestamp and event key and could exchange the
+original order of records with equal receive time. The v3 sealer now
+stores immutable original global 1-based ordinals on every partitioned
+row; the v3 offline paired experiment independently checks exact ordinal
+coverage, per-record membership and nonregressing observed clock before
+constructing either account, then replays the ORIGINAL order. It rejects
+legacy ordinal-less archives and changed/broken sequences, preserving
+all old evidence. No paper order-flow, risk, source gap, fee settings or
+LIVE activation changes.
+
+
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). This PAPER account has no independently certified after-cost positive expectancy; frozen v3 remains research-only.
 
 ## October 15 — v3 original execution and fee model now source-bound

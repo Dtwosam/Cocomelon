@@ -2,17 +2,33 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from cocomelon.domain.execution import PaperExecutionConfig
-from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
+from cocomelon.domain.replay import (
+    EvidenceClass,
+    ReplayManifest,
+    ReplayRecord,
+    SourceRecordKind,
+    SourceSegment,
+)
 from cocomelon.evidence.contracts import BaselineReplayConfig
-from cocomelon.replay.source import validate_recording
+from cocomelon.replay.clock import canonical_record_order
+from cocomelon.replay.source import JsonlReplaySource, validate_recording
 from cocomelon.research.fresh_long_trend_forward_pair import FORWARD_NOT_BEFORE_MS
+from cocomelon.research.fresh_long_trend_receipt_order import (
+    OriginalV3ReceiptOrderError,
+    restore_original_v3_received_order,
+)
 from cocomelon.research.original_paper_v3_capture import OriginalPaperMicrostructureCapture
+from cocomelon.research.prospective_short_breakout_pinned_source import (
+    PinnedShortRankReplaySource,
+)
 from scripts.seal_original_paper_v3_source import (
     OriginalV3CaptureSealError,
     seal_original_paper_v3_source,
@@ -93,6 +109,123 @@ def test_exact_original_source_is_sealed_from_received_paper_records(
     )
     assert manifest["manifest"]["gap_refs"] == []
     assert manifest["manifest"]["start_ms"] == FORWARD_NOT_BEFORE_MS - 1
+
+
+def _sealed_replay_manifest(upload: Path) -> ReplayManifest:
+    payload = json.loads((upload / "replay-manifest.json").read_text())["manifest"]
+    return ReplayManifest(
+        **{
+            **payload,
+            "evidence_class": EvidenceClass(payload["evidence_class"]),
+            "segments": tuple(SourceSegment(**part) for part in payload["segments"]),
+            "gap_refs": tuple(payload["gap_refs"]),
+        }
+    )
+
+
+def test_same_millisecond_original_arrival_order_survives_partitioned_zip(
+    tmp_path: Path,
+) -> None:
+    # Both L2 books were genuinely consumed by the PAPER record pump at the
+    # same millisecond; the canonical replay comparator sorts their event
+    # keys in the OPPOSITE order from actual received PAPER order.
+    t = FORWARD_NOT_BEFORE_MS + 1
+    rows = (
+        _book(FORWARD_NOT_BEFORE_MS - 1, "warmup"),
+        _book(t, "z-first-received"),
+        _book(t, "a-second-received"),
+    )
+    status = asyncio.run(_capture(tmp_path / "original", rows))
+    assert status["complete"] is True
+    _seal(tmp_path)
+    upload = tmp_path / "upload"
+    source = upload / "microstructure"
+    manifest = _sealed_replay_manifest(upload)
+    canonical = PinnedShortRankReplaySource(
+        root=source, manifest=manifest,
+        expected_manifest_id=manifest.manifest_id,
+    ).verified_records(forward_not_before_ms=FORWARD_NOT_BEFORE_MS)
+    assert [r.event_key for r in canonical] == [
+        "warmup", "a-second-received", "z-first-received",
+    ]
+    original = restore_original_v3_received_order(source, manifest, canonical)
+    assert [r.event_key for r in original] == [
+        "warmup", "z-first-received", "a-second-received",
+    ]
+    assert [r.available_at_ms for r in original] == [
+        FORWARD_NOT_BEFORE_MS - 1, t, t,
+    ]
+
+
+@pytest.mark.parametrize("damage", ["missing", "duplicate", "out_of_range", "regressed"])
+def test_original_ordinal_absence_duplication_and_forgery_fail_closed(
+    tmp_path: Path, damage: str,
+) -> None:
+    t = FORWARD_NOT_BEFORE_MS + 1
+    asyncio.run(_capture(tmp_path / "original", (
+        _book(FORWARD_NOT_BEFORE_MS - 1, "warmup"),
+        _book(t, "first"),
+        _book(t, "second"),
+    )))
+    _seal(tmp_path)
+    source = tmp_path / "upload" / "microstructure"
+    original_manifest = _sealed_replay_manifest(tmp_path / "upload")
+    segment = source / original_manifest.segments[-1].relative_path
+    rows = [json.loads(line) for line in segment.read_text().splitlines()]
+    assert len(rows) == 3
+    if damage == "missing":
+        rows[1].pop("original_receipt_ordinal")
+    elif damage == "duplicate":
+        rows[1]["original_receipt_ordinal"] = 1
+    elif damage == "out_of_range":
+        rows[1]["original_receipt_ordinal"] = 200
+    else:
+        # Leave unique original ordinals intact but forge one row's receipt
+        # timestamp to precede the prior row in the original worker order.
+        # All bytes remain in the same UTC partition and manifesto window.
+        rows[2]["receive_time"] = (
+            "2026-10-16T05:59:59.999Z"
+        )
+    segment.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
+    )
+    # Rebuild local test-only segment identity to isolate ordinal validation
+    # from the independently pinned GitHub whole-ZIP SHA mismatch. In a real
+    # original archive, that external ZIP/SHA check fails even earlier.
+    altered_segments = validate_recording(source)
+    forged = replace(original_manifest, segments=altered_segments)
+    independently_loaded = canonical_record_order(
+        JsonlReplaySource(source).iter_records(forged)
+    )
+    with pytest.raises(OriginalV3ReceiptOrderError):
+        restore_original_v3_received_order(source, forged, independently_loaded)
+
+
+def test_original_journal_same_millisecond_swap_cannot_change_sealed_order(
+    tmp_path: Path,
+) -> None:
+    timestamp = FORWARD_NOT_BEFORE_MS + 1
+    status = asyncio.run(_capture(tmp_path / "original", (
+        _book(timestamp, "z-first"),
+        _book(timestamp, "a-second"),
+        _book(timestamp, "m-third"),
+    )))
+    journal = tmp_path / "original" / "original-received-rows.jsonl"
+    raw = journal.read_bytes()
+    assert status["complete"] is True
+    assert status["original_received_journal_sha256"] == (
+        hashlib.sha256(raw).hexdigest()
+    )
+    original_lines = raw.splitlines(keepends=True)
+    assert len(original_lines) == 3
+    # Fraudulent post-worker swap preserves row count and LAST timestamp,
+    # so a count/end-time check alone would not find a changed source order.
+    journal.write_bytes(b"".join((
+        original_lines[1], original_lines[0], original_lines[2],
+    )))
+    with pytest.raises(OriginalV3CaptureSealError, match="writer SHA256"):
+        _seal(tmp_path)
+    assert not (tmp_path / "upload").exists()
 
 
 def test_capture_disk_failure_cannot_block_paper_or_seal(

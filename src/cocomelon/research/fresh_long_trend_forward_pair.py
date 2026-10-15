@@ -21,6 +21,9 @@ from cocomelon.evidence.lifecycle import DecisionEpochEngine
 from cocomelon.research.fresh_long_trend_account_audit import (
     audit_fresh_v3_paired_accounts,
 )
+from cocomelon.research.fresh_long_trend_receipt_order import (
+    restore_original_v3_received_order,
+)
 from cocomelon.research.fresh_long_trend_source_integrity import (
     audit_fresh_long_trend_original_records,
 )
@@ -164,11 +167,18 @@ def run_digest_pinned_long_trend_matched_paper(
         expected_manifest_id=expected_manifest_id,
     )
     # Validate the ENTIRE archive before creating even an empty paper account.
-    original: tuple[ReplayRecord, ...] = source.verified_records(
+    independently_validated: tuple[ReplayRecord, ...] = source.verified_records(
         forward_not_before_ms=freeze.prospective_not_before_ms,
     )
-    if len(original) > MAX_RECORDS:
+    if len(independently_validated) > MAX_RECORDS:
         raise LongTrendForwardTrialError("forward source exceeds bounded replay")
+    # The general replay loader sorts observations across partitioned
+    # segments. It is not the original received-event order for millisecond
+    # timestamp ties. v3 requires every row's original sealed ordinal and
+    # restores that order BEFORE decisions, entries, exits or PnL replay.
+    original = restore_original_v3_received_order(
+        Path(source_root), manifest, independently_validated,
+    )
     markets = tuple(sorted(selected_markets, key=lambda item: item.canonical))
     if not markets or len({m.canonical for m in markets}) != len(markets):
         raise LongTrendForwardTrialError("paired account markets not unique")
@@ -246,6 +256,7 @@ def run_digest_pinned_long_trend_matched_paper(
             "replay_risk_fee_strategy_matches_original_manifest": True,
             "unverified_locally_pinned_source": source.verification_receipt(original),
             "source_records_replayed": len(original),
+            "exact_original_received_order_replayed": True,
             "locally_checked_market_gap_and_l2_receipt": source_audit,
             "last_original_forward_record_at_ms": terminal_record_ms,
             "last_common_original_l2_at_ms": common_l2_end_ms,

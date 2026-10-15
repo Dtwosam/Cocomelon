@@ -1,5 +1,37 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 15 — original PAPER receipt ordering is NOT canonical replay sorting
+
+A source ZIP partitioned by `events/date/kind/market` discards global
+arrival ordering unless original ordinals are preserved explicitly. In
+particular, two genuine PAPER records with the **same received millisecond**
+can have different `event_key` order; replaying them after a canonical
+(event-kind/market/key) sort can change first-seen information and the
+candidate's opening/fill history even though all segment hashes match.
+
+The asynchronous PAPER research writer additionally commits a SHA-256 over
+the exact original ordered journal bytes at worker close, and the post-handoff
+sealer refuses the archive if a same-millisecond record swap changes those
+bytes even when the row count and terminal timestamp remain equal. That
+writer-thread digest is LOCAL self-integrity, not an external signature.
+Original v3 post-worker sealing now embeds each row's **globally consecutive
+1-based receipt ordinal** from the actual append-only paper source journal
+into its SHA-pinned partition segment. The frozen v3 study validates every
+manifest segment, reconstructs the exact original per-worker event order,
+requires ordinals 1..N with no gaps or duplicates, rejects source-clock
+regressions, and independently checks its multiset exactly equals the
+previously validated records **before opening either PAPER account**.
+The shadow account is driven by this original order, never by an
+artificial tie-break sorting of market observations.
+
+This is *local* actual-paper recorder ordering, not venue feed
+completeness or continuity across worker handoffs. Previous sources with
+no original ordinal cannot be retrospectively repaired or qualified.
+Original v1/v2 broken research archives stay quarantined, frozen v3
+LONG-only hypothesis and ordinary PAPER execution/risk unchanged;
+LIVE disabled. Actual 72h forward after-cost profitability unproven.
+
+
 ## October 15 — original forward source must pin REAL PAPER fee/risk configuration
 
 A prospective LONG-trend source ZIP is not economically trustworthy when

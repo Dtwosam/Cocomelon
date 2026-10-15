@@ -244,6 +244,13 @@ def test_gap_or_no_l2_is_denied_before_v3_sqlite_directory_is_created(
             return (_record(START + 1, market=A), _gap(START + 2))
 
     monkeypatch.setattr(study, "PinnedShortRankReplaySource", OriginalStub)
+    # This test's synthetic source has no actual original sealed files.
+    # Receipt-order validation is covered independently with real captured
+    # source ZIP segments; keep this one focused on zero-gap denial.
+    monkeypatch.setattr(
+        study, "restore_original_v3_received_order",
+        lambda _root, _manifest, rows: rows,
+    )
     root = tmp_path / "must-remain-uncreated"
     with pytest.raises(FreshLongTrendSourceError, match="original received DATA_GAP"):
         study.run_digest_pinned_long_trend_matched_paper(
