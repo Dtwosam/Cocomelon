@@ -238,6 +238,9 @@ from cocomelon.research.fill_aware_delay_selector import (
 from cocomelon.research.first_seen_opening_witness import (
     first_seen_opening_witness_summary,
 )
+from cocomelon.research.forward_rest_depth_shadow import (
+    start_attached_paper_shadow,
+)
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.loss_context_paired_shadow_runtime import (
     LossContextPairedShadowRuntime,
@@ -11535,6 +11538,16 @@ async def run_continuous_paper_session(
             )
             return True
 
+        # OFF unless both explicit flags are set. When explicitly enabled,
+        # this research task shares the PAPER reader's exact REST quota.
+        # It never passes snapshots to mux, pipeline, decisions or orders.
+        rest_depth_shadow_task = start_attached_paper_shadow(
+            reader,
+            settings,
+            root,
+            session_started_ms=started_at_ms,
+            stop_requested=lambda: _stop_requested(stop_path),
+        )
         exit_reason = "duration_elapsed"
         try:
             while utc_now_ms() < deadline_ms:
@@ -11907,6 +11920,13 @@ async def run_continuous_paper_session(
                     if exc is not None:
                         raise exc
         finally:
+            # Research must not delay or veto the authoritative PAPER
+            # checkpoint/upgrade. Its incomplete receipts are noncertifying.
+            if rest_depth_shadow_task is not None:
+                rest_depth_shadow_task.cancel()
+                await asyncio.gather(
+                    rest_depth_shadow_task, return_exceptions=True,
+                )
             replacement_funding_oracle_task.cancel()
             await _cancel_supervisor_group(supervisor_group)
             await asyncio.gather(

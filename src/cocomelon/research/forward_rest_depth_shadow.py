@@ -11,8 +11,9 @@ import argparse
 import asyncio
 import hashlib
 import json
+import os
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, TextIO, cast
@@ -278,6 +279,7 @@ async def collect_shadow(
     shadow: RestDepthShadow,
     *,
     receipts: TextIO,
+    stop_requested: Callable[[], bool] | None = None,
 ) -> dict[str, object]:
     """No catch-up requests. Runs only after explicit enabled config."""
     start_ns = shadow.start_ns
@@ -286,13 +288,17 @@ async def collect_shadow(
     ticks = (duration * 1_000_000_000 + interval_ns - 1) // interval_ns
     deadline = start_ns + duration * 1_000_000_000
     for tick in range(ticks):
+        if stop_requested is not None and stop_requested():
+            break
         due = start_ns + tick * interval_ns
         now = time.monotonic_ns()
         if now >= deadline:
             break
         if due > now:
             await asyncio.sleep((due - now) / 1_000_000_000)
-        if time.monotonic_ns() >= deadline:
+        if time.monotonic_ns() >= deadline or (
+            stop_requested is not None and stop_requested()
+        ):
             break
         # If a deadline was missed, do not accumulate catch-up REST calls.
         if time.monotonic_ns() - due >= interval_ns:
@@ -304,7 +310,7 @@ async def collect_shadow(
         for row in rows:
             receipts.write(json.dumps(row, sort_keys=True) + "\n")
     remaining = deadline - time.monotonic_ns()
-    if remaining > 0:
+    if remaining > 0 and (stop_requested is None or not stop_requested()):
         await asyncio.sleep(remaining / 1_000_000_000)
     report = shadow.summary(now_ns=time.monotonic_ns())
     markets = cast(dict[str, dict[str, object]], report["markets"])
@@ -329,6 +335,8 @@ async def run_to_files(
     reader: ShadowInfoReader,
     config: RestShadowConfig,
     out_dir: Path,
+    *,
+    stop_requested: Callable[[], bool] | None = None,
 ) -> dict[str, object]:
     """Explicit opt-in research files, NEVER paper journals or checkpoints."""
     if not config.enabled:
@@ -338,15 +346,99 @@ async def run_to_files(
     shadow = RestDepthShadow(
         reader, config=config, start_ns=time.monotonic_ns()
     )
+    interrupted = False
     with raw_path.open("x", encoding="utf-8") as receipts:
-        summary = await collect_shadow(shadow, receipts=receipts)
+        try:
+            summary = await collect_shadow(
+                shadow, receipts=receipts, stop_requested=stop_requested,
+            )
+        except asyncio.CancelledError:
+            # A PAPER upgrade must never wait for REST shadow evidence. Save
+            # only an incomplete research receipt; re-raise cancellation.
+            interrupted = True
+            summary = shadow.summary(now_ns=time.monotonic_ns())
+            summary["observation_window_completed"] = False
+    summary["interrupted"] = interrupted
     summary["receipt_sha256"] = hashlib.sha256(raw_path.read_bytes()).hexdigest()
     summary["ended_utc"] = time.time_ns() // 1_000_000
     (out_dir / "summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    if interrupted:
+        raise asyncio.CancelledError
     return summary
+
+
+# Both variables must be deliberately set by the operator. A flag is NOT
+# proof of a dedicated public IP or a complete cross-process rate ledger.
+ENABLED_ENV = "COCOMELON_PAPER_REST_SHADOW_ENABLED"
+IP_QUOTA_ENV = "COCOMELON_PAPER_REST_SHADOW_SHARED_IP_ACCOUNTED"
+
+
+def attached_shadow_allowed(
+    reader: InfoClient,
+    settings: Settings,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> bool:
+    """No implicit activation on deploy or predecessor handoff."""
+    flags = os.environ if environ is None else environ
+    if flags.get(ENABLED_ENV) != "1":
+        return False
+    if flags.get(IP_QUOTA_ENV) != "1":
+        return False
+    if settings.execution_mode is not ExecutionMode.PAPER:
+        return False
+    # The PAPER worker must hand us its existing production InfoClient.
+    # Its single shared budget guards both mandatory and optional reads.
+    return type(reader) is InfoClient
+
+
+def start_attached_paper_shadow(
+    reader: InfoClient,
+    settings: Settings,
+    state_root: Path,
+    *,
+    session_started_ms: int,
+    stop_requested: Callable[[], bool],
+    environ: Mapping[str, str] | None = None,
+) -> asyncio.Task[None] | None:
+    """Schedule a research-only single window; zero side effects when off."""
+    if not attached_shadow_allowed(reader, settings, environ=environ):
+        return None
+    if stop_requested():
+        return None
+
+    async def observe() -> None:
+        try:
+            result = await run_to_files(
+                reader,
+                RestShadowConfig(enabled=True),
+                state_root / f"rest-depth-research-only-{session_started_ms}",
+                stop_requested=stop_requested,
+            )
+            print(
+                "PAPER_REST_DEPTH_SHADOW_RESEARCH "
+                + json.dumps({
+                    "completed": result.get("observation_window_completed") is True,
+                    "source_authorized": False,
+                    "execution_authority": False,
+                }, sort_keys=True),
+                flush=True,
+            )
+        except asyncio.CancelledError:
+            # Upgrades and stop requests always take precedence. Incomplete
+            # receipt files, if any, are explicitly not qualifying evidence.
+            raise
+        except Exception as exc:
+            # Never let a research observer kill execution or leak HTTP bodies.
+            print(
+                "PAPER_REST_DEPTH_SHADOW_ERROR " + type(exc).__name__,
+                flush=True,
+            )
+
+    return asyncio.create_task(observe(), name="research-only-rest-20depth")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
