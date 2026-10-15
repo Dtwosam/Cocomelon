@@ -1,5 +1,23 @@
 # Cocomelon Project Status
 
+> Read [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md) first. The original PAPER account has not proven positive after-cost expectancy and old v1/v2 paired research is quarantined.
+
+## October 15 — predeclared independent LONG-trend matched PAPER trial foundation
+
+New nonexecuting production configuration under
+`fresh_long_trend_forward_pair.py` pins a **future Oct 16 00:00 UTC
+freeze / 06:00 UTC forward eligibility**, LONG-only trend lead abstention,
+new isolated baseline/candidate PAPER execution stores, identical
+strategy/risk/fill/fees/funding logic and SHA-pinned original microstructure
+recording prerequisites. The one-shot paired-account runner rejects
+nonempty old roots and any source failure before creating execution
+stores. No v1/v2 broken account state enters, no current PAPER
+decision changes, and no short historical discovery wins become a
+forward claim. See `docs/fresh_long_trend_matched_paper_v3.md`.
+Actual future original feed, signed continuity, 72h outcome and
+independent profitability review remain **NOT VERIFIED**.
+
+
 > Read [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md) first. No profitable PAPER strategy has been independently certified; v2 remains quarantined after an original signed-account/witness checkpoint split.
 
 ## October 15 — terminal receipt must bind actual original v2 DATA_GAP bytes

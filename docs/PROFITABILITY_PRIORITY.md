@@ -1,5 +1,28 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 15 — new predeclared LONG-only matched-paper v3 experiment
+
+A fixed new future hypothesis is codified in
+`src/cocomelon/research/fresh_long_trend_forward_pair.py` and
+`docs/fresh_long_trend_matched_paper_v3.md`, selected before its eligible
+opening cohort begins: **freeze October 16 00:00 UTC; first post-six-hour-
+embargo opening October 16 06:00 UTC**. The ONLY intentional candidate
+difference is abstaining on **LONG + lead_strategy=trend**; SHORT trend and
+all other strategy entries, full account risk/cost/equity accounting, fees,
+funding, source record order and market set remain matched.
+
+A genuinely fresh one-shot independent PAPER pair is executed ONLY after a
+fully verified, exact-manifest microstructure recording has been supplied.
+It cannot reuse any original failed v1/v2 shadow state, starts with separate
+equal-capital baseline/candidate execution stores, and never retrospectively
+skips booked original trade cash. It exposes marked actual simulated account
+outcomes and fixed candidate admissions, but **never** source or after-cost
+profitability certification: no genuine post-2026-10-16 06:00 UTC records
+have yet qualified, and live worker/venue completeness, signed handoff and
+72h maturity remain independently unproven. No current strategy, risk,
+mainnet PAPER account or LIVE orders change.
+
+
 ## October 15 — exact original 246-close evidence rejects the naive fee gate
 
 Read-only analysis of **the same actual worker #38737278661 completed research
