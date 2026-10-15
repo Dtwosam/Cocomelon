@@ -20,7 +20,7 @@ def test_read_only_paper_status_formats_required_shadow_and_other_rest_weight() 
     assert "126 / 1000" in text
     assert "120 / 6 / 0" in text
     assert "180 / 300" in text
-    assert "since startup: \`2\`" in text
+    assert "since startup: `2`" in text
     assert "NOT A SHARED-IP CERTIFICATE" in text
     assert "unverified" in text
     assert "not authorized" in text
