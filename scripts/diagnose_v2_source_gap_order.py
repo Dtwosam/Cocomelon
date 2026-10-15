@@ -79,9 +79,10 @@ def diagnose_source_gap_order(
                 continue
 
             def fail(reason: str, ordinal: int | None = None,
-                     at_ms: int | None = None) -> None:
+                     at_ms: int | None = None, *,
+                     row_index: int = line_number) -> None:
                 nonlocal first_failure
-                first_failure = (reason, line_number, ordinal, at_ms)
+                first_failure = (reason, row_index, ordinal, at_ms)
 
             if not line.endswith(b"\n"):
                 fail("truncated_row")
