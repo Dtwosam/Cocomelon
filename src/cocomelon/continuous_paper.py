@@ -86,9 +86,6 @@ from cocomelon.journal.store import JournalStore
 from cocomelon.research.account_lifecycle_bridge import (
     account_lifecycle_bridge,
 )
-from cocomelon.research.original_paper_v3_capture import (
-    OriginalPaperMicrostructureCapture,
-)
 from cocomelon.research.adaptive_delay_selector import (
     AdaptiveDelaySelectorState,
     adaptive_delay_selector_summary,
@@ -259,6 +256,9 @@ from cocomelon.research.opening_fill_liquidity import (
 from cocomelon.research.opportunity_inventory_witness import (
     OpportunityInventoryWitnessStore,
     original_inventory_overlap_audit,
+)
+from cocomelon.research.original_paper_v3_capture import (
+    OriginalPaperMicrostructureCapture,
 )
 from cocomelon.research.original_stop_book_evidence import (
     OriginalStopBookCapture,
