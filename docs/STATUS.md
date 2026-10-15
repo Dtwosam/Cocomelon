@@ -1,5 +1,10 @@
 # Cocomelon Project Status
 
+## October 15 — original rank-missing LONG source root-cause evidence
+
+Genuine paper-worker #38772751569 compact LONG source-preflight artifact #11995243449 records 67 risk-rejected opportunities with missing rank, last missing observation inside the predeclared forward window, and 34 LONG opportunity source records with no missing exit path. The exact-source export is correctly **BLOCKED**, not allowed to infer ranks or cherry-pick clean rows. The full-stack producer now preserves original IDs, market, timestamp, direction, lead strategy and risk-rejection reasons for opportunities excluded by a genuinely missing coarse rank; the independent compact preflight requires exact witness-count/last-miss reconciliation and rejects fabricated ordinals. LIVE and any strategy/risk changes remain disabled.
+
+
 ## October 15 — v3 forward source-gap and L2 maturity safeguards
 
 New original-record preflight for the frozen Oct 16 06:00 UTC LONG-trend
