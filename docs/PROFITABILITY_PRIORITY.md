@@ -1,5 +1,12 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 15 — v3 original GitHub ZIP and worker identity bound before account construction
+
+The frozen LONG-trend v3 source-bound research entrypoint now requires a **whole original Github Actions ZIP SHA-256** matched against the published artifact, the exact continuous PAPER run ID/attempt/commit/repository/main branch, exact **completed** paper job and an expressly successful *future* v3 microstructure source upload step. The ZIP must contain one canonical replay manifest and exactly its original recorded segment bytes; every segment's SHA must also match the independent local replay archive and pinned manifest. Any mismatch rejects before allocating baseline or challenger PAPER accounts. No historical v1/v2 or a large generic paper account ZIP can substitute for a frozen v3 microstructure recording.
+
+This is **only an offline metadata/byte identity cross-check**; callers still must independently fetch trusted GitHub API metadata, verify original venue feed receipts and sign cross-worker continuity. The worker does not yet publish the named original v3 microstructure artifact, so **no genuine forward trial is thereby admitted**, and no 72h or positive after-cost PnL is claimed. No ordinary PAPER/LIVE orders or risk logic change.
+
+
 ## October 15 — original skipped rank misses now retain exact source identities
 
 An authenticated compact LONG-trend exact-source preflight from paper worker #38772751569 (artifact #11995243449) found **67 original risk-rejected opportunities with missing coarse rank**, with the last miss inside the frozen forward window. The predeclared exact 5m/15m research source correctly refuses this evidence; 34 separately captured LONG opportunities and complete exit paths alone cannot cure the contaminated rank comparison. Do not invent missing original ordinals or erase risk-rejected opportunities.
