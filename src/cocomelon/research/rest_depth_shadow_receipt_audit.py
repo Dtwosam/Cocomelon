@@ -26,7 +26,7 @@ MAX_SUMMARY_END_SKEW_MS = 5_000
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 NON_SOURCE = frozenset({
     "missed_poll", "shadow_budget_skipped", "shared_budget_skipped",
-    "http_error", "invalid",
+    "http_error", "invalid", "rate_limit_circuit_open",
 })
 BOOK_STATUS = frozenset({"unique", "duplicate", "out_of_order"})
 
@@ -110,6 +110,8 @@ def audit_shadow_receipts(
     counts: dict[str, int] = defaultdict(int)
     counters = {
         "missed_poll_count": 0,
+        "http_429_count": 0,
+        "rate_limit_circuit_skips": 0,
         "shared_budget_skips": 0,
         "shadow_slice_budget_skips": 0,
         "http_errors": 0,
@@ -122,6 +124,8 @@ def audit_shadow_receipts(
     }
     start_utc_ms: float | None = None
     max_clock_drift = 0.0
+    seen_rate_limit = False
+    rate_limit_slot: int | None = None
     for line in rows:
         try:
             event = _obj(json.loads(line), "shadow receipt")
@@ -163,6 +167,15 @@ def audit_shadow_receipts(
             raise ShadowAuditError("invalid REST HTTP diagnostic latency")
         status = event.get("status")
         now_ns = round(elapsed * 1_000_000)
+        # JSONL rows are emitted in complete tick order. A 429 opens a
+        # fail-closed circuit for subsequent slots; other same-tick
+        # requests might already be in-flight.
+        if (
+            rate_limit_slot is not None
+            and slot > rate_limit_slot
+            and status != "rate_limit_circuit_open"
+        ):
+            raise ShadowAuditError("HTTP requests continued after rate-limit circuit opened")
         if status in NON_SOURCE:
             if any(key in event for key in (
                 "exchange_ms", "source_age_ms", "bid_levels", "ask_levels",
@@ -171,6 +184,10 @@ def audit_shadow_receipts(
                 raise ShadowAuditError("nonsource poll pretended to hold a book")
             if status == "missed_poll":
                 counters["missed_poll_count"] += 1
+            elif status == "rate_limit_circuit_open":
+                if rate_limit_slot is None or slot <= rate_limit_slot:
+                    raise ShadowAuditError("rate-limit circuit skip without prior 429")
+                counters["rate_limit_circuit_skips"] += 1
             elif status == "shared_budget_skipped":
                 counters["shared_budget_skips"] += 1
             elif status == "shadow_budget_skipped":
@@ -178,6 +195,14 @@ def audit_shadow_receipts(
             elif status == "http_error":
                 counters["actual_http_requests"] += 1
                 counters["http_errors"] += 1
+                marker = event.get("http_429", False)
+                if not isinstance(marker, bool):
+                    raise ShadowAuditError("HTTP 429 marker is not boolean")
+                if marker:
+                    counters["http_429_count"] += 1
+                    seen_rate_limit = True
+                    if rate_limit_slot is None:
+                        rate_limit_slot = slot
                 clocks[market].revoke(now_ns)
             else:
                 counters["actual_http_requests"] += 1
@@ -242,6 +267,8 @@ def audit_shadow_receipts(
     for counter_name, observed in counters.items():
         if _integer(summary.get(counter_name), counter_name) != observed:
             raise ShadowAuditError(f"counter mismatch: {counter_name}")
+    if summary.get("rate_limit_circuit_open") is not seen_rate_limit:
+        raise ShadowAuditError("rate-limit circuit flag conflicts with receipts")
     if start_utc_ms is None:
         raise ShadowAuditError("empty source receipts")
     ended_utc_ms = _integer(summary.get("ended_utc"), "ended_utc")
@@ -252,7 +279,8 @@ def audit_shadow_receipts(
         elapsed_ms >= duration_s * 1000
         and all(counts[m] >= 2 for m in COHORT)
         and all(counters[k] == 0 for k in (
-            "missed_poll_count", "shared_budget_skips",
+            "missed_poll_count", "http_429_count", "rate_limit_circuit_skips",
+            "shared_budget_skips",
             "shadow_slice_budget_skips", "http_errors", "protocol_failures",
             "shallow_books", "future_dated_books", "out_of_order_books",
         ))

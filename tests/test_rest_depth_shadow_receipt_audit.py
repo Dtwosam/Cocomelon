@@ -40,6 +40,7 @@ def produce(
     missed: bool = False,
     shallow: bool = False,
     replay: bool = False,
+    limited: bool = False,
 ) -> tuple[Path, Path]:
     directory.mkdir()
     start_ns = 1_000_000_000
@@ -58,7 +59,22 @@ def produce(
                 continue
             elapsed_ns = tick * 1_000_000_000
             now_utc = begin_utc + tick * 1_000
-            if missed and tick == 12 and market == "BLUR":
+            if limited and tick > 10:
+                row = shadow.record(
+                    market, None,
+                    now_ns=start_ns + elapsed_ns,
+                    utc_ms=now_utc,
+                    result="rate_limit_circuit_open",
+                )
+            elif limited and tick == 10 and market == "BLUR":
+                row = shadow.record(
+                    market, None,
+                    now_ns=start_ns + elapsed_ns,
+                    utc_ms=now_utc,
+                    result="http_error",
+                    is_rate_limit=True,
+                )
+            elif missed and tick == 12 and market == "BLUR":
                 row = shadow.record(
                     market, None,
                     now_ns=start_ns + elapsed_ns,
@@ -86,7 +102,7 @@ def produce(
     report["ended_utc"] = begin_utc + 30_000
     report["receipt_sha256"] = hashlib.sha256(raw).hexdigest()
     report["observation_window_completed"] = (
-        not (missing or missed or shallow or replay)
+        not (missing or missed or shallow or replay or limited)
     )
     summary.write_text(json.dumps(report))
     return summary, receipts
@@ -223,4 +239,42 @@ def test_bad_authority_or_ip_attestation_rejected(
     report["other_process_ip_weight_verified"] = True
     pair[0].write_text(json.dumps(report))
     with pytest.raises(ShadowAuditError, match="unsafe authority or IP"):
+        audit_shadow_receipts(*pair)
+
+
+
+def test_429_circuit_fails_completion_and_preserves_all_future_non_source_slots(
+    tmp_path: Path,
+) -> None:
+    result = audit_shadow_receipts(*produce(tmp_path / "429", limited=True))
+    assert result["expected_slots"] == result["observed_slots"] == 90
+    assert result["observation_window_completed"] is False
+    assert result["clean_research_receipts"] is False
+
+
+def test_forged_http_after_429_circuit_is_rejected_with_rehashed_receipts(
+    tmp_path: Path,
+) -> None:
+    pair = produce(tmp_path / "continued", limited=True)
+    def forge(rows: list[dict[str, object]]) -> None:
+        # A different market would be contacted on a later tick despite the
+        # account-wide low-priority REST circuit being open.
+        row = next(
+            item for item in rows
+            if item["market"] == "BLUR" and item["slot_index"] == 11
+        )
+        row["status"] = "shared_budget_skipped"
+    mutate(pair, forge)
+    with pytest.raises(ShadowAuditError, match="continued after rate-limit"):
+        audit_shadow_receipts(*pair)
+
+
+def test_forged_rate_limit_circuit_flag_must_match_original_429_receipts(
+    tmp_path: Path,
+) -> None:
+    pair = produce(tmp_path / "circuitMissing", limited=True)
+    summary = json.loads(pair[0].read_text())
+    summary["rate_limit_circuit_open"] = False
+    pair[0].write_text(json.dumps(summary))
+    with pytest.raises(ShadowAuditError, match="circuit flag"):
         audit_shadow_receipts(*pair)
