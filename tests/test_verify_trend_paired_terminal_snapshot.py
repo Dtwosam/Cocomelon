@@ -8,6 +8,11 @@ from pathlib import Path
 
 import pytest
 
+from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
+from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+    V2SourceGapWitness,
+    read_source_gap_witness,
+)
 from scripts import verify_trend_paired_terminal_snapshot as audit
 
 
@@ -208,11 +213,6 @@ def _v2_fixture(
     signed_path = v2_folder / "paired-shadow-state.json"
     state = json.loads(signed_path.read_text())
     state["portfolio_shadow_candidate_id"] = frozen.candidate_id
-    from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
-        V2SourceGapWitness,
-        read_source_gap_witness,
-    )
-
     V2SourceGapWitness(v2_folder, restoring=False)
     state["v2_source_gap_event_witness"] = read_source_gap_witness(
         v2_folder / "source-gap-record-witness.jsonl",
@@ -275,12 +275,6 @@ def test_v2_original_gap_receipt_cannot_be_stale_even_with_matching_accounts(
     summary_path = root / "both-side-trend-paired-shadow-v2-summary.json"
 
     if damage == "uncheckpointed_tail":
-        from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
-
-        from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
-            V2SourceGapWitness,
-        )
-
         # This is a perfectly valid new original SHA-chained row, but it is
         # NOT included in the old processed-record count or signed receipt.
         witness = V2SourceGapWitness(folder, restoring=True)
