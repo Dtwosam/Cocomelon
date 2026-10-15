@@ -75,6 +75,24 @@ def _fixture(tmp_path: Path) -> dict[str, object]:
             }),
         )
         archive.writestr("microstructure/" + FILE, SOURCE_BYTES)
+        archive.writestr("source-handoff-receipt.json", json.dumps({
+            "schema": "v3-original-paper-source-worker-link-v1",
+            "worker_run_id": str(RUN_ID),
+            "worker_run_attempt": "1",
+            "worker_head_sha": HEAD,
+            "declared_predecessor_run_id": None,
+            "declared_predecessor_run_attempt": None,
+            "original_journal_sha256": hashlib.sha256(SOURCE_BYTES).hexdigest(),
+            "original_record_count": 1,
+            "original_first_available_at_ms": manifest.start_ms,
+            "original_last_available_at_ms": manifest.end_ms,
+            "original_selected_markets_at_worker_start": ["TEST"],
+            "original_resume_chain_independently_verified": False,
+            "original_exchange_feed_continuity_verified": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+        }))
     run = {
         "id": RUN_ID,
         "run_attempt": 1,
@@ -139,6 +157,8 @@ def test_exact_original_zip_and_git_metadata_are_read_only_and_unpromotable(
     assert receipt["run_head_sha"] == HEAD
     assert receipt["manifest_id"] == kw["expected_manifest_id"]
     assert receipt["original_zip_bytes_match_supplied_github_digest"] is True
+    assert receipt["original_worker_link_receipt_matches_run"] is True
+    assert receipt["declared_predecessor_run_id"] is None
     for flag in (
         "independently_fetched_github_metadata_proven",
         "original_exchange_event_completeness_proven",
