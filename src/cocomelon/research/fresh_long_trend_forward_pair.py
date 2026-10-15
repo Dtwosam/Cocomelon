@@ -147,6 +147,17 @@ def run_digest_pinned_long_trend_matched_paper(
     )
     if len(original) > MAX_RECORDS:
         raise LongTrendForwardTrialError("forward source exceeds bounded replay")
+    # A manifest claiming a long calendar window is not evidence that a
+    # contemporaneous market row was actually captured at its far end.
+    forward_observed = [
+        row.available_at_ms for row in original
+        if row.available_at_ms >= freeze.prospective_not_before_ms
+    ]
+    if not forward_observed:
+        raise LongTrendForwardTrialError(
+            "forward source contains no actual post-embargo observation"
+        )
+    last_observed = max(forward_observed)
     markets = tuple(sorted(selected_markets, key=lambda item: item.canonical))
     if not markets or len({m.canonical for m in markets}) != len(markets):
         raise LongTrendForwardTrialError("paired account markets not unique")
@@ -176,7 +187,7 @@ def run_digest_pinned_long_trend_matched_paper(
     try:
         for row in original:
             actor.on_record(row, row.available_at_ms)
-        summary = actor.summary_payload(end_ms=manifest.end_ms)
+        summary = actor.summary_payload(end_ms=last_observed)
         if summary["record_count"] != len(original):
             raise LongTrendForwardTrialError("paired source row count mismatch")
         # We intentionally refuse a signed terminal-receipt claim. This
@@ -190,9 +201,12 @@ def run_digest_pinned_long_trend_matched_paper(
             "expected_manifest_id": expected_manifest_id,
             "unverified_locally_pinned_source": source.verification_receipt(original),
             "source_records_replayed": len(original),
-            "start_to_end_ms": manifest.end_ms - freeze.prospective_not_before_ms,
+            "last_original_forward_record_at_ms": last_observed,
+            "record_observed_forward_elapsed_ms": (
+                last_observed - freeze.prospective_not_before_ms
+            ),
             "minimum_forward_elapsed": (
-                manifest.end_ms - freeze.prospective_not_before_ms >= MINIMUM_FORWARD_MS
+                last_observed - freeze.prospective_not_before_ms >= MINIMUM_FORWARD_MS
             ),
             "paired_account_original_runtime_summary": summary,
             "independent_record_gap_continuity_authenticated": False,
