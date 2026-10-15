@@ -310,7 +310,11 @@ def test_attached_shadow_requires_both_flags_same_reader_and_paper_mode(
     from cocomelon.config import ExecutionMode
     from cocomelon.research import forward_rest_depth_shadow as observer
 
-    reader = InfoClient(Settings())
+    # A real worker has already issued mandatory REST reads before admission.
+    # Prime the shared quota ledger without any HTTP test traffic.
+    budget = RollingRateBudget(limit=1000)
+    budget.acquire(20)
+    reader = InfoClient(Settings(), budget=budget)
     flags = {
         observer.ENABLED_ENV: "1",
         observer.IP_QUOTA_ENV: "1",
