@@ -73,11 +73,14 @@ def restore_original_v3_received_order(
     # that no row was changed or substituted when reconstructing the global
     # arrival stream from disjoint partition segments. Include canonical
     # payload for same-key ordering ties.
-    def identity(row: ReplayRecord) -> tuple[object, ...]:
+    def identity(
+        row: ReplayRecord,
+    ) -> tuple[int, str, str, int, str, int, str, str, str]:
         return (
-            row.sort_key, row.record_kind, row.available_at_ms, row.source,
-            row.schema_version, row.market, row.exchange_time_ms,
-            row.event_key, row.event_kind, row.payload_json,
+            row.available_at_ms, row.record_kind.value, row.source,
+            row.schema_version, row.market or "",
+            row.exchange_time_ms if row.exchange_time_ms is not None else -1,
+            row.event_key or "", row.event_kind or "", row.payload_json,
         )
 
     if sorted(actual, key=identity) != sorted(validated_records, key=identity):
