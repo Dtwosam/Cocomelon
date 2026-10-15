@@ -5017,6 +5017,22 @@ class _RecordPump:
             ):
                 self.duplicate_records_dropped += 1
                 return
+            # Original source must be copied BEFORE PAPER's permitted
+            # monotonic-clock clamp. Clamping is useful for normal trading
+            # continuity but would launder a regressing received timestamp
+            # into apparently gap-free original research evidence.
+            # No disk/network awaits on the trading event loop; a regression
+            # fails only future v3 research, never ordinary PAPER orders.
+            if self.original_v3_capture is not None:
+                try:
+                    self.original_v3_capture.offer(
+                        record,
+                        paper_previous_at_ms=self.last_available_at_ms,
+                    )
+                except Exception as exc:
+                    self.original_v3_capture.failure = (
+                        "record_offer_failed:" + type(exc).__name__
+                    )
             available = max(self.last_available_at_ms, record.available_at_ms)
             if available != record.available_at_ms:
                 record = ReplayRecord(
@@ -5030,16 +5046,6 @@ class _RecordPump:
                     payload_json=record.payload_json,
                     event_kind=record.event_kind,
                 )
-            # Original source capture is best-effort for PAPER safety and
-            # STRICTLY FAIL-CLOSED for prospective research. No awaited I/O
-            # or source network calls in the record pump.
-            if self.original_v3_capture is not None:
-                try:
-                    self.original_v3_capture.offer(record)
-                except Exception as exc:
-                    self.original_v3_capture.failure = (
-                        "record_offer_failed:" + type(exc).__name__
-                    )
             component_ms: dict[str, int] = {}
 
             def finish_component(name: str, started: float) -> None:
