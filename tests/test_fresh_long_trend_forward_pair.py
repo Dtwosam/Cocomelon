@@ -98,6 +98,7 @@ def _manifest(
         start_ms=study.FORWARD_NOT_BEFORE_MS + start_offset,
         end_ms=study.FORWARD_NOT_BEFORE_MS + end_offset,
         manifest_id="0123456789abcdef01234567",
+        gap_refs=(),
     ))
 
 
@@ -159,6 +160,30 @@ def _original_snapshot(at_ms: int) -> ReplayRecord:
                 "prev_day_px": "101",
             },
         }, sort_keys=True),
+    )
+
+
+def _original_book(at_ms: int) -> ReplayRecord:
+    return ReplayRecord(
+        record_kind=SourceRecordKind.NORMALIZED_EVENT,
+        available_at_ms=at_ms,
+        source="test-captured-mainnet-paper-l2",
+        schema_version=1,
+        market=MARKET.canonical,
+        exchange_time_ms=at_ms - 1,
+        event_key=f"l2:{at_ms}",
+        event_kind="l2_book",
+        payload_json=json.dumps({
+            "bids": [{"px": "99.9", "sz": "1000", "n": 1}],
+            "asks": [{"px": "100.1", "sz": "1000", "n": 1}],
+        }, sort_keys=True),
+    )
+
+
+def _original_source_rows() -> tuple[ReplayRecord, ...]:
+    return (
+        _original_snapshot(study.FORWARD_NOT_BEFORE_MS + 10),
+        _original_book(study.FORWARD_NOT_BEFORE_MS + 11),
     )
 
 
@@ -225,7 +250,7 @@ def test_fresh_source_replay_constructs_new_independent_account_pair(
 ) -> None:
     root = tmp_path / "new-long-study"
     _Source.deny = False
-    _Source.loaded = (_original_snapshot(study.FORWARD_NOT_BEFORE_MS + 10),)
+    _Source.loaded = _original_source_rows()
     monkeypatch.setattr(study, "PinnedShortRankReplaySource", _Source)
     response = study.run_digest_pinned_long_trend_matched_paper(
         source_root=tmp_path / "untrusted-replay-placeholder",
@@ -236,11 +261,17 @@ def test_fresh_source_replay_constructs_new_independent_account_pair(
         account_root=root,
     )
     assert _Source.last_forward == study.FORWARD_NOT_BEFORE_MS
-    assert response["source_records_replayed"] == 1
+    assert response["source_records_replayed"] == 2
+    source_receipt = response["locally_checked_market_gap_and_l2_receipt"]
+    assert isinstance(source_receipt, dict)
+    assert source_receipt["recorded_source_gap_count"] == 0
+    assert source_receipt["selected_market_post_embargo_l2_counts"] == {"TEST": 1}
+    assert source_receipt["common_l2_forward_elapsed_ms"] == 11
+    assert source_receipt["original_exchange_feed_independently_authenticated"] is False
     assert response["minimum_forward_elapsed"] is False
-    assert response["record_observed_forward_elapsed_ms"] == 10
+    assert response["record_observed_forward_elapsed_ms"] == 11
     assert response["last_original_forward_record_at_ms"] == (
-        study.FORWARD_NOT_BEFORE_MS + 10
+        study.FORWARD_NOT_BEFORE_MS + 11
     )
     assert response["after_cost_72h_profitability_verified"] is False
     assert response["full_account_study_admissible"] is False
@@ -281,7 +312,7 @@ def _completed_v3(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> (
     tuple[Path, dict[str, object], dict[str, object]]
 ):
     _Source.deny = False
-    _Source.loaded = (_original_snapshot(study.FORWARD_NOT_BEFORE_MS + 10),)
+    _Source.loaded = _original_source_rows()
     monkeypatch.setattr(study, "PinnedShortRankReplaySource", _Source)
     root = tmp_path / "v3-cash-audit"
     report = study.run_digest_pinned_long_trend_matched_paper(
@@ -352,7 +383,7 @@ def test_independent_v3_audit_refuses_torn_or_invented_cash(
             root, checkpoint=checkpoint, summary=summary,
             starting_cash=Decimal("10000"),
             expected_candidate_id=study.fresh_long_trend_freeze().candidate_id,
-            expected_record_count=1,
+            expected_record_count=2,
         )
     assert (root / "baseline-execution.sqlite3").read_bytes() == original_other
 
@@ -366,7 +397,7 @@ def test_independent_account_audit_refuses_nonempty_prior_roots(
             root, checkpoint=checkpoint, summary=summary,
             starting_cash=Decimal("0"),
             expected_candidate_id=study.fresh_long_trend_freeze().candidate_id,
-            expected_record_count=1,
+            expected_record_count=2,
         )
 
 
@@ -374,7 +405,7 @@ def test_manifest_calendar_end_cannot_fabricate_72h_observation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _Source.deny = False
-    _Source.loaded = (_original_snapshot(study.FORWARD_NOT_BEFORE_MS + 10),)
+    _Source.loaded = _original_source_rows()
     monkeypatch.setattr(study, "PinnedShortRankReplaySource", _Source)
     report = study.run_digest_pinned_long_trend_matched_paper(
         source_root=tmp_path / "original-source-placeholder",
@@ -384,7 +415,7 @@ def test_manifest_calendar_end_cannot_fabricate_72h_observation(
         selected_markets=(MARKET,),
         account_root=tmp_path / "fresh-source-age",
     )
-    assert report["record_observed_forward_elapsed_ms"] == 10
+    assert report["record_observed_forward_elapsed_ms"] == 11
     assert report["minimum_forward_elapsed"] is False
     assert report["after_cost_72h_profitability_verified"] is False
 
@@ -398,7 +429,7 @@ def test_prior_trial_roots_are_forbidden_before_account_creation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rootname: str,
 ) -> None:
     _Source.deny = False
-    _Source.loaded = (_original_snapshot(study.FORWARD_NOT_BEFORE_MS + 10),)
+    _Source.loaded = _original_source_rows()
     monkeypatch.setattr(study, "PinnedShortRankReplaySource", _Source)
     root = tmp_path / rootname
     with pytest.raises(study.LongTrendForwardTrialError, match="prior shadow root"):
