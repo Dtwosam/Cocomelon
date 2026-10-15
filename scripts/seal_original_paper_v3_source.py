@@ -239,6 +239,11 @@ def seal_original_paper_v3_source(
                 if row.record_kind is SourceRecordKind.DATA_GAP:
                     gap_refs.append(row.event_key or row.payload_json)
                 partition, encoded = _recorder_row(row)
+                # These globally consecutive ordinals are assigned while
+                # reading the CLOSED original worker journal in receipt order.
+                # Partitioning by market/event type otherwise loses ordering
+                # when two actual observations share a receive millisecond.
+                encoded["original_receipt_ordinal"] = original_rows
                 payload = _encode_json_line(encoded)
                 n, count, length = per_partition.get(partition, (1, 0, 0))
                 if (
@@ -307,6 +312,9 @@ def seal_original_paper_v3_source(
             "source_head_sha": head_sha,
             "manifest_id": manifest.manifest_id,
             "original_received_record_count": original_rows,
+            "original_receipt_ordinals_contiguous_in_original_journal": True,
+            "original_receipt_ordinal_first": 1,
+            "original_receipt_ordinal_last": original_rows,
             "original_received_gap_count": len(gap_refs),
             "original_source_segments": len(segments),
             "original_capture_market_count": len(actual_markets),
