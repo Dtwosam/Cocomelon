@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
+from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
+from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.replay.source import validate_recording
 from cocomelon.research.fresh_long_trend_forward_pair import FORWARD_NOT_BEFORE_MS
 from cocomelon.research.original_paper_v3_capture import OriginalPaperMicrostructureCapture
@@ -39,12 +41,14 @@ def _book(at: int, key: str) -> ReplayRecord:
 
 
 async def _capture(
-    root: Path, rows: tuple[ReplayRecord, ...],
+    root: Path, rows: tuple[ReplayRecord, ...], *,
+    config: BaselineReplayConfig | None = None,
 ) -> dict[str, object]:
     recorder = OriginalPaperMicrostructureCapture(
         root, run_id=RUN, run_attempt=ATTEMPT, head_sha=HEAD,
         selected_markets=("TEST",),
         first_observed_ms=FORWARD_NOT_BEFORE_MS - 120_000,
+            replay_config=config or BaselineReplayConfig(),
     )
     for row in rows:
         recorder.offer(row)
@@ -80,6 +84,13 @@ def test_exact_original_source_is_sealed_from_received_paper_records(
     manifest = json.loads((tmp_path / "upload" / "replay-manifest.json").read_text())
     assert manifest["manifest_id"] == receipt["manifest_id"]
     assert manifest["manifest"]["code_revision"] == HEAD
+    assert manifest["manifest"]["config_digest"] == BaselineReplayConfig().config_digest
+    assert manifest["manifest"]["execution_config_version"] == (
+        BaselineReplayConfig().execution.config_version
+    )
+    assert manifest["manifest"]["fee_schedule_id"] == (
+        BaselineReplayConfig().execution.fee_schedule_id
+    )
     assert manifest["manifest"]["gap_refs"] == []
     assert manifest["manifest"]["start_ms"] == FORWARD_NOT_BEFORE_MS - 1
 
@@ -109,6 +120,7 @@ def test_bounded_source_queue_overflow_permanently_blocks_research(
             tmp_path / "original", run_id=RUN, run_attempt=ATTEMPT,
             head_sha=HEAD, selected_markets=("TEST",),
             first_observed_ms=FORWARD_NOT_BEFORE_MS,
+            replay_config=BaselineReplayConfig(),
         )
         record = _book(FORWARD_NOT_BEFORE_MS + 1, "unchanged")
         for _ in range(16_390):
@@ -174,6 +186,7 @@ def test_raw_original_clock_regression_never_becomes_clamped_replay_evidence(
             tmp_path / "original", run_id=RUN, run_attempt=ATTEMPT,
             head_sha=HEAD, selected_markets=("TEST",),
             first_observed_ms=FORWARD_NOT_BEFORE_MS - 10_000,
+            replay_config=BaselineReplayConfig(),
         )
         recorder.offer(_book(FORWARD_NOT_BEFORE_MS + 2, "earlier-received"))
         recorder.offer(_book(FORWARD_NOT_BEFORE_MS + 1, "late-arrival"))
@@ -203,6 +216,7 @@ def test_first_record_older_than_restored_paper_checkpoint_fails_source(
             tmp_path / "original", run_id=RUN, run_attempt=ATTEMPT,
             head_sha=HEAD, selected_markets=("TEST",),
             first_observed_ms=FORWARD_NOT_BEFORE_MS - 10_000,
+            replay_config=BaselineReplayConfig(),
         )
         recorder.offer(
             _book(FORWARD_NOT_BEFORE_MS + 1, "first-arrival"),
@@ -255,6 +269,7 @@ def test_record_pump_preserves_raw_input_for_capture_before_clock_clamp(
             tmp_path / "original", run_id=RUN, run_attempt=ATTEMPT,
             head_sha=HEAD, selected_markets=("TEST",),
             first_observed_ms=FORWARD_NOT_BEFORE_MS - 10_000,
+            replay_config=BaselineReplayConfig(),
         )
         pipeline = Pipeline()
         pump = _RecordPump(
@@ -282,4 +297,58 @@ def test_record_pump_preserves_raw_input_for_capture_before_clock_clamp(
     assert status["complete"] is False
     with pytest.raises(OriginalV3CaptureSealError, match="lost rows"):
         _seal(tmp_path)
+
+
+
+def test_original_worker_custom_fee_schedule_not_silently_replaced_by_defaults(
+    tmp_path: Path,
+) -> None:
+    from decimal import Decimal
+
+    config = BaselineReplayConfig(
+        execution=PaperExecutionConfig(
+            taker_fee_rate=Decimal("0.0023"),
+            fee_schedule_id="original-custom-paper-fees-v1",
+        )
+    )
+    status = asyncio.run(_capture(
+        tmp_path / "original",
+        (_book(FORWARD_NOT_BEFORE_MS + 1, "custom-fee-original"),),
+        config=config,
+    ))
+    assert status["complete"] is True
+    assert status["original_effective_replay_config_digest"] == config.config_digest
+    assert status["original_effective_fee_schedule_id"] == (
+        "original-custom-paper-fees-v1"
+    )
+    receipt = _seal(tmp_path)
+    assert receipt["original_effective_replay_config_digest"] == (
+        config.config_digest
+    )
+    manifest = json.loads(
+        (tmp_path / "upload" / "replay-manifest.json").read_text()
+    )["manifest"]
+    assert manifest["config_digest"] == config.config_digest
+    assert manifest["fee_schedule_id"] == "original-custom-paper-fees-v1"
+    assert manifest["execution_config_version"] == config.execution.config_version
+    assert manifest["config_digest"] != BaselineReplayConfig().config_digest
+
+
+def test_missing_original_effective_paper_fee_and_risk_identity_blocks_seal(
+    tmp_path: Path,
+) -> None:
+    assert asyncio.run(_capture(
+        tmp_path / "original",
+        (_book(FORWARD_NOT_BEFORE_MS + 1, "fee-missing"),),
+    ))["complete"] is True
+    terminal = tmp_path / "original" / "original-capture-terminal.json"
+    recorded = json.loads(terminal.read_text())
+    recorded.pop("original_effective_replay_config_digest")
+    terminal.write_text(json.dumps(recorded))
+    with pytest.raises(
+        OriginalV3CaptureSealError,
+        match="original effective PAPER replay/fee identity unavailable",
+    ):
+        _seal(tmp_path)
+    assert not (tmp_path / "upload").exists()
 
