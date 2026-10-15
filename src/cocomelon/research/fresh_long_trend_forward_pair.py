@@ -21,6 +21,9 @@ from cocomelon.evidence.lifecycle import DecisionEpochEngine
 from cocomelon.research.historical_discovery_freeze import (
     MIN_PROSPECTIVE_EMBARGO_MS,
 )
+from cocomelon.research.fresh_long_trend_account_audit import (
+    audit_fresh_v3_paired_accounts,
+)
 from cocomelon.research.loss_context_paired_portfolio_shadow import (
     LossContextPairedPortfolioShadow,
 )
@@ -187,13 +190,29 @@ def run_digest_pinned_long_trend_matched_paper(
     try:
         for row in original:
             actor.on_record(row, row.available_at_ms)
+        # Atomically persist both original PAPER execution stores and
+        # publish a LOCAL self-digested checkpoint. The v1/v2 failure
+        # showed that a summary without durable parity is not evidence.
+        # This is NOT a source-authenticated inter-worker checkpoint.
+        checkpoint = actor.checkpoint(end_ms=last_observed)
         summary = actor.summary_payload(end_ms=last_observed)
         if summary["record_count"] != len(original):
             raise LongTrendForwardTrialError("paired source row count mismatch")
-        # We intentionally refuse a signed terminal-receipt claim. This
-        # one-shot experimental replay is not wired to source-gap/SQLite
-        # atomic checkpoint protocols or external archive authentication.
-        return {
+    finally:
+        actor.close()
+
+    # Independently reopen both CLOSED paper execution stores immutable/RO,
+    # reconstruct their actual state IDs, fill fee/funding ledgers, and
+    # reconcile their marked equity to both the local checkpoint and report.
+    local_account_audit = audit_fresh_v3_paired_accounts(
+        root, checkpoint=checkpoint, summary=summary,
+        starting_cash=config.starting_cash,
+        expected_candidate_id=freeze.candidate_id,
+        expected_record_count=len(original),
+    )
+    # No local digest proves original venue market completeness or that the
+    # full 72h prospective account evidence passed independent review.
+    return {
             "schema": "fresh-long-trend-matched-paper-v3-one-shot-v1",
             "trial_id": TRIAL_ID,
             "frozen_precommitment": PRECOMMITMENT,
@@ -209,6 +228,7 @@ def run_digest_pinned_long_trend_matched_paper(
                 last_observed - freeze.prospective_not_before_ms >= MINIMUM_FORWARD_MS
             ),
             "paired_account_original_runtime_summary": summary,
+            "locally_reconciled_original_paired_sqlite_accounts": local_account_audit,
             "independent_record_gap_continuity_authenticated": False,
             "independent_signed_terminal_account_parity_certified": False,
             "after_cost_72h_profitability_verified": False,
@@ -219,5 +239,3 @@ def run_digest_pinned_long_trend_matched_paper(
             "execution_authority": False,
             "promotion_authority": False,
         }
-    finally:
-        actor.close()
