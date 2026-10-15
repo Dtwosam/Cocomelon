@@ -8503,6 +8503,7 @@ def _operational_live_status_payload(
     prospective_breakeven_profit_lock_state: (
         ProspectiveBreakevenProfitLockState | None
     ) = None,
+    local_rest_budget: dict[str, int | bool] | None = None,
 ) -> dict[str, object]:
     positions: list[dict[str, object]] = []
     for position in execution.account.positions:
@@ -8595,6 +8596,9 @@ def _operational_live_status_payload(
         "kind": "continuous-paper-heartbeat",
         "heartbeat_scope": "operational",
         "timestamp_ms": timestamp_ms,
+        # In-process InfoClient rolling weights only. No egress public-IP
+        # scope or execution authority is asserted by this observation.
+        "local_public_rest_budget": local_rest_budget,
         "open_trailing_profit_preview": (
             None
             if profit_trailing_execution_shadow is None
@@ -8884,6 +8888,7 @@ def _emit_operational_live_status(
     prospective_breakeven_profit_lock_state: (
         ProspectiveBreakevenProfitLockState | None
     ) = None,
+    local_rest_budget: dict[str, int | bool] | None = None,
 ) -> None:
     payload = _operational_live_status_payload(
         execution,
@@ -8897,6 +8902,7 @@ def _emit_operational_live_status(
         prospective_breakeven_profit_lock_state=(
             prospective_breakeven_profit_lock_state
         ),
+        local_rest_budget=local_rest_budget,
     )
     print(
         "COCOMELON_PAPER_HEARTBEAT "
@@ -11103,6 +11109,7 @@ async def run_continuous_paper_session(
                 prospective_breakeven_profit_lock_state=(
                     prospective_breakeven_profit_lock_state
                 ),
+                local_rest_budget=reader.rest_budget_snapshot(),
             )
 
         async def connection_factory() -> Any:
@@ -11608,6 +11615,7 @@ async def run_continuous_paper_session(
                         prospective_breakeven_profit_lock_state=(
                             prospective_breakeven_profit_lock_state
                         ),
+                        local_rest_budget=reader.rest_budget_snapshot(),
                     )
 
                 if now_ms < next_context_poll_ms:
@@ -11644,6 +11652,7 @@ async def run_continuous_paper_session(
                         prospective_breakeven_profit_lock_state=(
                             prospective_breakeven_profit_lock_state
                         ),
+                        local_rest_budget=reader.rest_budget_snapshot(),
                     )
                     # Keep the previous context timestamps untouched.
                     # Eligibility will fail closed as they age, and the next
@@ -11898,6 +11907,7 @@ async def run_continuous_paper_session(
                     prospective_breakeven_profit_lock_state=(
                         prospective_breakeven_profit_lock_state
                     ),
+                    local_rest_budget=reader.rest_budget_snapshot(),
                 )
 
                 _mark_event_loop_phase(pump, "control_wait")
