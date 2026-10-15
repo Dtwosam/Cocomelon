@@ -129,3 +129,12 @@ certificate or a new trial promotion path: unrecorded exchange events,
 worker handoff source loss and source archive origin remain subject to
 independent verification. The 72-hour age alone never admits profitability.
 
+
+## Original GitHub upload binding — read-only offline v3 runner
+
+New `cocomelon.research.fresh_long_trend_github_origin.run_original_zip_bound_fresh_long_trend_paper` performs an exact offline GitHub worker/source ZIP binding **before** invoking the existing v3 independent paired PAPER replay. Its inputs are original worker-run JSON, jobs JSON and artifact metadata fetched *independently* from GitHub, the original artifact ZIP and the unmodified local microstructure segment directory, the exact precommitted replay manifest and ID, selected markets, risk config and a new empty account root. The archive name is `continuous-paper-v3-microstructure-<run_id>-<run_attempt>`; it must come from `main` `Continuous Mainnet Paper Trader`, have a completed exact run/attempt, completed PAPER job, successful `Run continuous paper trader` step and independently completed `Upload frozen v3 original microstructure source` step.
+
+The uploaded ZIP must have **exactly** `replay-manifest.json` (`{manifest_id,manifest}`) and one `microstructure/<segment.relative_path>` for every pinned original `SourceSegment`, no extra/duplicate/unsafe members. Original ZIP whole SHA-256 must match its GitHub published digest, run/artifact IDs/head SHA/branch must agree, and every original ZIP segment must byte-hash identically to both the local unmodified replay segment and the pinned `ReplayManifest`. The ZIP and local recording are read-only. Archive upload must chronologically follow the recorded forward source timestamps.
+
+**Not yet available:** the continuous PAPER worker does not produce this exact v3 source artifact or its upload step yet, and the current original live worker head predates this research. This code establishes a strict **future collector contract**, not a claim of real post–October 16 06:00 UTC capture. Supplied JSON metadata can itself be forged unless independently retrieved from GitHub; the wrapper always reports independent metadata/venue authentication, signed cross-worker continuity, positive account profit and promotion as FALSE. Even a locally valid ZIP must still pass the separate recorded-gap/L2 gate and independent after-cost accounting, and can never turn LIVE on.
+
