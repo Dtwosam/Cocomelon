@@ -1,5 +1,32 @@
 # Cocomelon Project Status
 
+## October 15 — fail closed before restoring a torn v2 research checkpoint
+
+The original frozen v2 actor can only resume from one matching signed
+account/witness state. The first real v2 source archives proved an exact
+signed prefix followed by 52,991 additional DATA_GAP rows and independently
+advanced baseline and candidate SQLite IDs. Restoring and then discovering
+this mismatch is unnecessarily late.
+
+The prospective frozen v2 genesis restore now performs a **read-only
+preflight** *before* constructing either paper execution adapter. After its
+existing write-once genesis, state-digest and frozen identity checks, it
+streams the original DATA_GAP JSONL to match the exact signed SHA-256,
+length and row count, then reads both actual SQLite singleton state IDs
+using immutable read-only SQLite connections and compares them against
+the same signed checkpoint. Any missing, modified, out-of-sync witness
+or account fails closed without trimming originals or starting research.
+The actor still independently verifies every original gap record and the
+signed review ledger on its ordinary restore path.
+
+The change is specific to already-existing frozen v2 research state;
+ordinary mainnet PAPER account state and execution, source freshness,
+REST quotas, risk, signed historical records and LIVE-disabled mode do
+not change. It does not repair archived v2 history or restart from an
+unverified advanced account. New forward-only economic studies remain
+unproven until independent original venue/source and after-cost audits pass.
+
+
 ## October 15 — original v2 archive proves three-way checkpoint split
 
 Read-only independent checks of separately SHA-256-verified original paired-v2
