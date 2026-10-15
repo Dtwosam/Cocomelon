@@ -69,7 +69,7 @@ def diagnose_source_gap_order(
     previous_ordinal = 0
     previous_time: int | None = None
     first_failure: tuple[str, int, int | None, int | None] | None = None
-    first_excess: tuple[int, int, int | None] | None = None
+    first_excess: tuple[int, int, int, int | None, int] | None = None
     accepted = 0
     with path.open("rb") as handle:
         for line_number, line in enumerate(handle, start=1):
@@ -120,7 +120,11 @@ def diagnose_source_gap_order(
             number = row.get("record_ordinal")
             at_ms = record.get("available_at_ms")
             if type(number) is not int or number <= previous_ordinal:
-                fail("ordinal_not_strictly_increasing")
+                fail(
+                    "ordinal_not_strictly_increasing",
+                    number if type(number) is int else None,
+                    at_ms if type(at_ms) is int else None,
+                )
                 continue
             if type(at_ms) is not int or at_ms < 0:
                 fail("invalid_received_timestamp", number)
@@ -159,7 +163,9 @@ def diagnose_source_gap_order(
                 fail("noncanonical_gap_envelope", number, at_ms)
                 continue
             if number > signed_processed_records and first_excess is None:
-                first_excess = (line_number, number, at_ms)
+                first_excess = (
+                    line_number, previous_ordinal, number, previous_time, at_ms,
+                )
             previous_digest = expected_digest
             previous_ordinal = number
             previous_time = at_ms
@@ -180,13 +186,14 @@ def diagnose_source_gap_order(
             observed_available_at_ms=at_ms,
         )
     elif first_excess is not None:
-        row_number, number, at_ms = first_excess
+        row_number, prev_number, number, prev_time, at_ms = first_excess
         result.update(
             status="uncheckpointed_witness_tail",
             reason="ordinal_exceeds_signed_processed_count",
             first_failed_row_number=row_number,
-            previous_record_ordinal=None,
+            previous_record_ordinal=prev_number or None,
             observed_record_ordinal=number,
+            previous_available_at_ms=prev_time,
             observed_available_at_ms=at_ms,
         )
     else:
