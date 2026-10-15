@@ -163,6 +163,13 @@ def test_new_long_only_candidate_distinct_and_embargo_immutable() -> None:
     assert freeze.source_composition_digest != previous.source_composition_digest
     assert freeze.dimensions == ("lead_strategy", "direction")
     assert freeze.values == ("trend", "long")
+    assert freeze.source_paper_run_id == 38737278661
+    assert freeze.source_paper_run_attempt == 1
+    assert freeze.source_paper_head_sha == (
+        "bcfd0eab058cda4ba9270dcd449a8cdf67b9199c"
+    )
+    assert freeze.source_max_timestamp_ms == 1_792_074_581_000
+    assert freeze.source_max_timestamp_ms < freeze.frozen_at_ms
     assert freeze.frozen_at_ms == 1_792_108_800_000
     assert freeze.prospective_not_before_ms == study.FORWARD_NOT_BEFORE_MS
     assert freeze.prospective_not_before_ms - freeze.frozen_at_ms == 6 * 3_600_000
