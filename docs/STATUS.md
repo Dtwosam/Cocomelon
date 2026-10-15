@@ -1,8 +1,10 @@
 # Cocomelon Project Status
 
+**Mandatory start:** Read [`PROFITABILITY_PRIORITY.md`](PROFITABILITY_PRIORITY.md) before prioritizing work. Whole-account after-cost expectancy, not infrastructure counts, is the project objective.
+
 ## October 15 — independent v3 original-source negative diagnostics
 
-The genuine PAPER workflow now saves `v3-original-source-preflight.json` after the successor handoff whether the original source seal passed or correctly refused. A tiny diagnostic artifact is published separately from `continuous-paper-v3-microstructure-...` so the original market archive can never be substituted with a source error receipt. Negative records preserve the real reason while **not mutating any PAPEr account, fixing missing rows or claiming an edge**. Source and after-cost 72h proof still pending; LIVE disabled.
+The genuine PAPER workflow now saves `v3-original-source-preflight.json` after the successor handoff whether the original source seal passed or correctly refused. A tiny diagnostic artifact is published separately from `continuous-paper-v3-microstructure-...` so the original market archive can never be substituted with a source error receipt. Negative records preserve the real reason while **not mutating any PAPER account, fixing missing rows or claiming an edge**. Source and after-cost 72h proof still pending; LIVE disabled.
 
 
 ## October 15 — real v3 original PAPER source collection and handoff
