@@ -1,5 +1,10 @@
 # Cocomelon Project Status
 
+## October 15 — fail-closed original GitHub v3 source ZIP identity
+
+A separate read-only source-bound v3 LONG-trend research entrypoint cross-checks exact GitHub run/attempt/head, completed paper/upload step, original outer ZIP SHA-256, manifest ID and original per-segment SHA-256 against local replay files BEFORE any new paired PAPER accounts are opened. Its output never claims independently authenticated venue completeness or signed economic continuity. Required source artifact name: `continuous-paper-v3-microstructure-<run>-<attempt>`, containing `replay-manifest.json` plus exactly `microstructure/<recording segment paths>`. The original worker has not produced this forward artifact; old v1/v2 research remains quarantined. The existing v3 one-shot offline research remains nonpromotable, with LIVE disabled.
+
+
 ## October 15 — original rank-missing LONG source root-cause evidence
 
 Genuine paper-worker #38772751569 compact LONG source-preflight artifact #11995243449 records 67 risk-rejected opportunities with missing rank, last missing observation inside the predeclared forward window, and 34 LONG opportunity source records with no missing exit path. The exact-source export is correctly **BLOCKED**, not allowed to infer ranks or cherry-pick clean rows. The full-stack producer now preserves original IDs, market, timestamp, direction, lead strategy and risk-rejection reasons for opportunities excluded by a genuinely missing coarse rank; the independent compact preflight requires exact witness-count/last-miss reconciliation and rejects fabricated ordinals. LIVE and any strategy/risk changes remain disabled.
