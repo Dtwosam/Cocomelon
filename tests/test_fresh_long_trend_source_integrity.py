@@ -77,19 +77,23 @@ def _check(
 
 
 def test_market_common_horizon_requires_last_real_l2_for_each_market() -> None:
-    rows = (
+    # Densely captured genuine observations across the whole 72h horizon,
+    # never only two sparse samples with a misleading calendar interval.
+    rows = tuple(sorted((
         _record(START - 1, market=A),
-        _record(START + 1, market=A),
-        _record(START + 2, market=B),
+        *(
+            _record(START + step * 300_000, market=market)
+            for step in range(865) for market in (A, B)
+        ),
         _record(START + study.MINIMUM_FORWARD_MS + 10, market=A),
         _record(START + study.MINIMUM_FORWARD_MS + 11, market=B),
-    )
+    ), key=lambda row: (row.available_at_ms, row.market or "")))
     report = _check(rows)
     assert report["recorded_source_gap_count"] == 0
     assert report["original_market_count"] == 2
     assert report["common_l2_forward_elapsed_ms"] == study.MINIMUM_FORWARD_MS + 10
     assert report["selected_market_post_embargo_l2_counts"] == {
-        "AAA": 2, "BBB": 2,
+        "AAA": 866, "BBB": 866,
     }
     assert report["local_canonical_record_stream_sha256"]
     assert report["continuous_l2_without_unrecorded_gaps_certified"] is False
@@ -98,16 +102,33 @@ def test_market_common_horizon_requires_last_real_l2_for_each_market() -> None:
 
 
 def test_stale_market_cannot_borrow_active_other_market_or_calendar_end() -> None:
-    rows = (
+    rows = tuple(sorted((
         _record(START + 1, market=B),
-        _record(START + 2, market=A),
-        _record(START + study.MINIMUM_FORWARD_MS + 40, market=A),
+        *(
+            _record(START + step * 300_000, market=A)
+            for step in range(865)
+        ),
         _record(START + study.MINIMUM_FORWARD_MS + 41, market=A, kind="market_snapshot"),
-    )
+    ), key=lambda row: (row.available_at_ms, row.market or "")))
     receipt = _check(rows)
     assert receipt["last_record_available_at_ms"] == START + study.MINIMUM_FORWARD_MS + 41
     assert receipt["common_selected_market_l2_end_ms"] == START + 1
     assert receipt["common_l2_forward_elapsed_ms"] == 1
+
+
+def test_sparse_or_left_censored_l2_cannot_claim_72h_coverage() -> None:
+    with pytest.raises(FreshLongTrendSourceError, match="L2 market drought"):
+        _check((
+            _record(START + 1, market=A),
+            _record(START + 2, market=B),
+            _record(START + study.MINIMUM_FORWARD_MS, market=A),
+            _record(START + study.MINIMUM_FORWARD_MS + 1, market=B),
+        ))
+    with pytest.raises(FreshLongTrendSourceError, match="L2 market drought"):
+        _check((
+            _record(START + 301_000, market=A),
+            _record(START + 301_001, market=B),
+        ))
 
 
 @pytest.mark.parametrize("when", [START - 2, START + 3])
@@ -137,9 +158,7 @@ def test_missing_market_l2_rejected_even_with_mature_other_market() -> None:
     with pytest.raises(FreshLongTrendSourceError, match="BBB"):
         _check((
             _record(START + 1, market=A),
-            _record(START + study.MINIMUM_FORWARD_MS + 4, market=A),
-            _record(START + study.MINIMUM_FORWARD_MS + 5, market=B,
-                    kind="market_snapshot"),
+            _record(START + 2, market=B, kind="market_snapshot"),
         ))
 
 
