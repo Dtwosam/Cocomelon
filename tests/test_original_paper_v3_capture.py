@@ -13,8 +13,10 @@ from cocomelon.research.fresh_long_trend_forward_pair import FORWARD_NOT_BEFORE_
 from cocomelon.research.original_paper_v3_capture import OriginalPaperMicrostructureCapture
 from scripts.seal_original_paper_v3_source import (
     OriginalV3CaptureSealError,
-    main as seal_main,
     seal_original_paper_v3_source,
+)
+from scripts.seal_original_paper_v3_source import (
+    main as seal_main,
 )
 
 RUN = "1002345"
