@@ -1,5 +1,7 @@
 # Cocomelon Project Status
 
+> Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). This PAPER account has no independently certified after-cost positive expectancy; frozen v3 remains research-only.
+
 ## October 15 — original v3 source clock cannot inherit PAPER's monotonic clamp
 
 Previously the record pump cloned a regressing first-received ReplayRecord to
