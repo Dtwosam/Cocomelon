@@ -14,10 +14,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
-from cocomelon.domain.execution import PaperExecutionConfig
-from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
+from cocomelon.domain.replay import (
+    EvidenceClass,
+    ReplayManifest,
+    ReplayRecord,
+    SourceRecordKind,
+)
 from cocomelon.recorder import _encode_json_line
-from cocomelon.replay.manifest import build_replay_manifest
 from cocomelon.replay.source import validate_recording
 from cocomelon.research.fresh_long_trend_forward_pair import (
     FORWARD_NOT_BEFORE_MS,
@@ -161,6 +164,29 @@ def seal_original_paper_v3_source(
         or selected != sorted(set(selected))
     ):
         raise OriginalV3CaptureSealError("original selected market cohort invalid")
+    identity_names = (
+        "original_effective_replay_config_digest",
+        "original_effective_execution_config_version",
+        "original_effective_fee_schedule_id",
+        "original_effective_feature_version",
+        "original_effective_strategy_version",
+        "original_effective_risk_version",
+        "original_effective_replay_engine_version",
+    )
+    if (
+        not all(
+            isinstance(terminal.get(field), str) and terminal[field]
+            for field in identity_names
+        )
+        or len(terminal["original_effective_replay_config_digest"]) != 64
+        or any(
+            c not in "0123456789abcdef"
+            for c in terminal["original_effective_replay_config_digest"]
+        )
+    ):
+        raise OriginalV3CaptureSealError(
+            "original effective PAPER replay/fee identity unavailable"
+        )
     original_rows = 0
     first: int | None = None
     last: int | None = None
@@ -240,26 +266,29 @@ def seal_original_paper_v3_source(
         if not forward_l2.issubset(set(selected)):
             raise OriginalV3CaptureSealError("original L2 escaped startup cohort")
         segments = validate_recording(src)
-        execution = PaperExecutionConfig()
-        manifest = build_replay_manifest(
-            segments,
+        # The manifest MUST name the effective PAPER engine/risk/fee contract
+        # used by the actual source worker, never reconstructed defaults.
+        # Its config_digest is the original BaselineReplayConfig digest,
+        # independently checked again against the replay caller's config.
+        manifest = ReplayManifest(
             evidence_class=EvidenceClass.MICROSTRUCTURE,
             start_ms=first,
             end_ms=last,
+            segments=segments,
+            gap_refs=tuple(gap_refs),
             code_revision=head_sha,
-            config_snapshot={
-                "original_capture_run_id": run_id,
-                "original_capture_attempt": run_attempt,
-                "original_record_count": original_rows,
-                "start_selected_markets": selected,
-                "paper_execution_config_version": execution.config_version,
-            },
-            feature_version="original-paper-v3-forward-v1",
-            strategy_version="frozen-v3-long-trend-research-v1",
-            risk_version="unchanged-paper-risk-v1",
-            execution_config=execution,
-            gap_refs=gap_refs,
-            replay_engine_version="phase8-v1",
+            config_digest=terminal["original_effective_replay_config_digest"],
+            feature_version=terminal["original_effective_feature_version"],
+            strategy_version=terminal["original_effective_strategy_version"],
+            risk_version=terminal["original_effective_risk_version"],
+            execution_config_version=terminal[
+                "original_effective_execution_config_version"
+            ],
+            fee_schedule_id=terminal["original_effective_fee_schedule_id"],
+            replay_engine_version=terminal[
+                "original_effective_replay_engine_version"
+            ],
+            dataset_manifest_id=None,
         )
         (staging / "replay-manifest.json").write_text(
             json.dumps({
@@ -283,6 +312,11 @@ def seal_original_paper_v3_source(
             "original_capture_market_count": len(actual_markets),
             "original_post_embargo_l2_market_count": len(forward_l2),
             "original_cohort_at_worker_start": selected,
+            "original_effective_replay_config_digest": manifest.config_digest,
+            "original_effective_execution_config_version": (
+                manifest.execution_config_version
+            ),
+            "original_effective_fee_schedule_id": manifest.fee_schedule_id,
             "original_continuity_across_workers_certified": False,
             "venue_original_event_completeness_certified": False,
             "72h_forward_profitability_certified": False,
