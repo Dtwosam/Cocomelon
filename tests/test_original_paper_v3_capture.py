@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -198,6 +199,33 @@ def test_original_ordinal_absence_duplication_and_forgery_fail_closed(
     )
     with pytest.raises(OriginalV3ReceiptOrderError):
         restore_original_v3_received_order(source, forged, independently_loaded)
+
+
+def test_original_journal_same_millisecond_swap_cannot_change_sealed_order(
+    tmp_path: Path,
+) -> None:
+    timestamp = FORWARD_NOT_BEFORE_MS + 1
+    status = asyncio.run(_capture(tmp_path / "original", (
+        _book(timestamp, "z-first"),
+        _book(timestamp, "a-second"),
+        _book(timestamp, "m-third"),
+    )))
+    journal = tmp_path / "original" / "original-received-rows.jsonl"
+    raw = journal.read_bytes()
+    assert status["complete"] is True
+    assert status["original_received_journal_sha256"] == (
+        hashlib.sha256(raw).hexdigest()
+    )
+    original_lines = raw.splitlines(keepends=True)
+    assert len(original_lines) == 3
+    # Fraudulent post-worker swap preserves row count and LAST timestamp,
+    # so a count/end-time check alone would not find a changed source order.
+    journal.write_bytes(b"".join((
+        original_lines[1], original_lines[0], original_lines[2],
+    )))
+    with pytest.raises(OriginalV3CaptureSealError, match="writer SHA256"):
+        _seal(tmp_path)
+    assert not (tmp_path / "upload").exists()
 
 
 def test_capture_disk_failure_cannot_block_paper_or_seal(
