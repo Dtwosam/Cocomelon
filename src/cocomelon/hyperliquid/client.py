@@ -132,8 +132,13 @@ class InfoClient:
         Never bypasses the shared reader budget or returns an event to the
         strategy. It cannot account for independent processes sharing an IP.
         """
-        reserve = getattr(self._budget, "try_acquire", None)
-        if reserve is None or not reserve(2):
+        # For known real shared ledgers, leave at least 300 weight
+        # unconsumed for required PAPER information reads. Unknown or
+        # uninstrumented budget implementations fail closed (no HTTP).
+        if not isinstance(self._budget, RollingRateBudget):
+            return False, None
+        headroom = min(300, self._budget.limit // 3)
+        if not self._budget.try_acquire(2, reserve_remaining=headroom):
             return False, None
         response = self._transport(
             self._endpoint,
