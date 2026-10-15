@@ -239,6 +239,11 @@ def seal_original_paper_v3_source(
                 if row.record_kind is SourceRecordKind.DATA_GAP:
                     gap_refs.append(row.event_key or row.payload_json)
                 partition, encoded = _recorder_row(row)
+                # The partitioned recorder physically groups by market/kind,
+                # so it cannot preserve cross-partition same-ms intake order
+                # without this original monotonic receipt index. NEVER
+                # derive order later from event_key/market/strategy or prices.
+                encoded["source_receive_ordinal"] = original_rows
                 payload = _encode_json_line(encoded)
                 n, count, length = per_partition.get(partition, (1, 0, 0))
                 if (
@@ -307,6 +312,7 @@ def seal_original_paper_v3_source(
             "source_head_sha": head_sha,
             "manifest_id": manifest.manifest_id,
             "original_received_record_count": original_rows,
+            "original_source_receive_ordinals_preserved": True,
             "original_received_gap_count": len(gap_refs),
             "original_source_segments": len(segments),
             "original_capture_market_count": len(actual_markets),
