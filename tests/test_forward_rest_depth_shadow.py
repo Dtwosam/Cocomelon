@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -298,3 +300,136 @@ def test_shadow_reservations_exclude_invalid_negative_priority_reserve() -> None
         with pytest.raises(ValueError, match="reserve_remaining"):
             budget.try_acquire(2, reserve_remaining=bad)
     assert budget.used_weight == 0
+
+
+
+def test_attached_shadow_requires_both_flags_same_reader_and_paper_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cocomelon.config import ExecutionMode
+    from cocomelon.research import forward_rest_depth_shadow as observer
+
+    reader = InfoClient(Settings())
+    flags = {
+        observer.ENABLED_ENV: "1",
+        observer.IP_QUOTA_ENV: "1",
+    }
+    assert not observer.attached_shadow_allowed(reader, Settings(), environ={})
+    assert not observer.attached_shadow_allowed(
+        reader, Settings(), environ={observer.ENABLED_ENV: "1"}
+    )
+    assert not observer.attached_shadow_allowed(
+        reader, Settings(execution_mode=ExecutionMode.LIVE), environ=flags
+    )
+    assert observer.attached_shadow_allowed(reader, Settings(), environ=flags)
+
+    calls: list[tuple[object, object, Path]] = []
+
+    async def no_network_run(
+        selected_reader: object,
+        config: RestShadowConfig,
+        root: Path,
+        *,
+        stop_requested: object = None,
+    ) -> dict[str, object]:
+        calls.append((selected_reader, config, root))
+        assert callable(stop_requested)
+        return {"observation_window_completed": False}
+
+    monkeypatch.setattr(observer, "run_to_files", no_network_run)
+
+    async def run() -> None:
+        for env in ({}, {observer.ENABLED_ENV: "1"}):
+            assert observer.start_attached_paper_shadow(
+                reader, Settings(), tmp_path,
+                session_started_ms=111, stop_requested=lambda: False,
+                environ=env,
+            ) is None
+        assert observer.start_attached_paper_shadow(
+            reader, Settings(), tmp_path,
+            session_started_ms=111, stop_requested=lambda: True,
+            environ=flags,
+        ) is None
+        task = observer.start_attached_paper_shadow(
+            reader, Settings(), tmp_path,
+            session_started_ms=111, stop_requested=lambda: False,
+            environ=flags,
+        )
+        assert task is not None
+        await task
+
+    asyncio.run(run())
+    assert len(calls) == 1
+    assert calls[0][0] is reader
+    assert isinstance(calls[0][1], RestShadowConfig)
+    assert cast(RestShadowConfig, calls[0][1]).enabled is True
+    assert calls[0][2] == tmp_path / "rest-depth-research-only-111"
+
+
+def test_attached_shadow_stop_does_not_emit_any_http_or_qualify(
+    tmp_path: Path,
+) -> None:
+    reader = FakeReader()
+
+    async def run() -> dict[str, object]:
+        return await run_to_files(
+            reader,
+            RestShadowConfig(enabled=True),
+            tmp_path / "stopped",
+            stop_requested=lambda: True,
+        )
+
+    report = asyncio.run(run())
+    assert reader.calls == []
+    assert report["observation_window_completed"] is False
+    assert report["actual_http_requests"] == 0
+    assert report["interrupted"] is False
+    raw = (tmp_path / "stopped" / "shadow-attempts.jsonl").read_bytes()
+    assert raw == b""
+    assert report["receipt_sha256"] == hashlib.sha256(raw).hexdigest()
+
+
+def test_attached_shadow_cancel_writes_incomplete_receipt_not_trading_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cocomelon.research import forward_rest_depth_shadow as observer
+
+    ready = asyncio.Event()
+
+    async def mock_collect(
+        shadow: RestDepthShadow,
+        *,
+        receipts: object,
+        stop_requested: object = None,
+    ) -> dict[str, object]:
+        del shadow, stop_requested
+        assert hasattr(receipts, "write")
+        receipts.write('{"kind":"uncompleted_research"}\n')
+        ready.set()
+        await asyncio.Future()
+        return {"observation_window_completed": True}
+
+    monkeypatch.setattr(observer, "collect_shadow", mock_collect)
+
+    async def run() -> None:
+        task = asyncio.create_task(observer.run_to_files(
+            FakeReader(),
+            RestShadowConfig(enabled=True),
+            tmp_path / "interrupted",
+        ))
+        await ready.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(run())
+    folder = tmp_path / "interrupted"
+    receipts = (folder / "shadow-attempts.jsonl").read_bytes()
+    report = json.loads((folder / "summary.json").read_text())
+    assert report["interrupted"] is True
+    assert report["observation_window_completed"] is False
+    assert report["receipt_sha256"] == hashlib.sha256(receipts).hexdigest()
+    assert report["execution_authority"] is False
+    assert report["paper_account_changed"] is False
