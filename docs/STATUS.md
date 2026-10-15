@@ -1,5 +1,7 @@
 # Cocomelon Project Status
 
+> Read [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md) first. No profitable PAPER strategy has been independently certified; v2 remains quarantined after an original signed-account/witness checkpoint split.
+
 ## October 15 — fail closed before restoring a torn v2 research checkpoint
 
 The original frozen v2 actor can only resume from one matching signed
