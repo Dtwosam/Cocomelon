@@ -1,5 +1,10 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 15 — preserve fail-closed v3 source-capture diagnoses
+
+Post-handoff source sealing now emits a small structured **success or failure** receipt even when no qualifying original market ZIP exists. GitHub uploads `continuous-paper-v3-source-preflight-<run>-<attempt>` independently of the actual source artifact. It tells us whether original L2 had not yet arrived, async capture dropped/unwrote rows, provenance mismatched or the original archive exceeded a fixed size. It **cannot replace or validate** the original microstructure ZIP; its presence never admits an after-cost trial or enables orders. The original source artifact remains gated strictly on a successful real-source seal, independent signed handoff and external GitHub/venue checks still outstanding.
+
+
 ## October 15 — genuinely collect paper inputs without blocking the trader
 
 The *missing physical source* for the frozen LONG trend v3 economic trial is now addressed with a bounded, paper-only **asynchronous copy of the exact ReplayRecord stream consumed by the normal mainnet PAPER pipeline**. Original received rows are written outside durable trading state to a GitHub-run/attempt-specific file with background fsync batches. The record pump only queues copies; research recorder I/O **cannot block the trader**. A queue overflow, disk failure, unclosed worker, mismatched original worker run/commit or absent post-embargo L2 permanently disqualifies research; there is no attempt to fabricate dropped rows. Each closed captured worker is sealed AFTER its successor has already been dispatched into a replay-format original manifest plus original event/gap segments and uploaded as its own SHA256-addressable GitHub artifact.
