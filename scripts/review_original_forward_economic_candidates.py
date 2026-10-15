@@ -109,6 +109,11 @@ def _paper_overall(root: dict[str, object]) -> dict[str, object]:
     sides = root.get("side_cohorts")
     if not isinstance(sides, list) or len(sides) != 2:
         raise EconomicVetoError("whole booked sides missing")
+    if {
+        _object(row, "side cohort").get("cohort", {}).get("side")
+        for row in sides
+    } != {"long", "short"}:
+        raise EconomicVetoError("whole booked long/short cohorts invalid")
     if sum(
         (_count(_object(row, "side cohort").get("trades"), "side closes")
          for row in sides)
@@ -187,6 +192,51 @@ def _candidate(root: dict[str, object], *, expected: str,
         or (kind == "short_breakout" and abs(delta + originals) > CASH_ROUNDING)
     ):
         raise EconomicVetoError(f"{kind} booked hypothetical contribution invalid")
+    # Do not permit selection of just the profitable direction or hiding
+    # losing skipped originals inside an unverified positive headline.
+    if kind == "short_breakout":
+        winners = _count(overall.get("skipped_original_winners"), "skipped winners")
+        losers = _count(overall.get("skipped_original_losers"), "skipped losers")
+    else:
+        winners = _count(root.get("blocked_actual_winners"), "blocked winners")
+        losers = _count(root.get("blocked_actual_losers"), "blocked losers")
+    if winners + losers != blocked:
+        raise EconomicVetoError(f"{kind} blocked winners/losses do not sum")
+
+    sides = _object(root.get("by_direction"), f"{kind} by direction")
+    if set(sides) != {"long", "short"}:
+        raise EconomicVetoError(f"{kind} missing original direction")
+    counts = 0
+    blocked_by_side = 0
+    amount_sums = {original_key: ZERO, candidate_key: ZERO,
+                   delta_key: ZERO, rkey: ZERO}
+    for direction in ("long", "short"):
+        row = _object(sides[direction], f"{kind} {direction}")
+        n = (
+            _count(row.get("trades"), "rank side closes")
+            if kind == "short_breakout"
+            else _count(row.get("retained_trades"), "cost side retained")
+            + _count(row.get("blocked_trades"), "cost side blocked")
+        )
+        skipped = _count(
+            row.get("skipped" if kind == "short_breakout" else "blocked_trades"),
+            "side blocked",
+        )
+        if skipped > n:
+            raise EconomicVetoError(f"{kind} side blocked exceeds trades")
+        counts += n
+        blocked_by_side += skipped
+        for name in amount_sums:
+            amount_sums[name] += _amount(row.get(name), f"{kind} side {name}")
+    if (
+        counts != compared_n or blocked_by_side != blocked
+        or any(
+            abs(amount_sums[field] - _amount(overall.get(field), field))
+            > CASH_ROUNDING
+            for field in amount_sums
+        )
+    ):
+        raise EconomicVetoError(f"{kind} side-to-whole forward cash or R drift")
     strict = root.get("strict_descriptive_screen_passes")
     if type(strict) is not bool:
         raise EconomicVetoError(f"{kind} robustness screen missing")
