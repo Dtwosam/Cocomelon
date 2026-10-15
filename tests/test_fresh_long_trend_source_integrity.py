@@ -55,11 +55,21 @@ def _gap(at: int, *, market: MarketId | None = None) -> ReplayRecord:
 
 
 def _manifest(*, end: int | None = None, gap_refs: tuple[str, ...] = ()) -> ReplayManifest:
+    from cocomelon.evidence.contracts import BaselineReplayConfig
+
+    config = BaselineReplayConfig()
     return cast(ReplayManifest, SimpleNamespace(
         start_ms=START - 60_000,
         end_ms=START + study.MINIMUM_FORWARD_MS + 180_000
         if end is None else end,
         gap_refs=gap_refs,
+        config_digest=config.config_digest,
+        execution_config_version=config.execution.config_version,
+        fee_schedule_id=config.execution.fee_schedule_id,
+        feature_version=config.feature_version,
+        strategy_version=config.strategy_version,
+        risk_version=config.risk_version,
+        replay_engine_version=config.replay_engine_version,
     ))
 
 
