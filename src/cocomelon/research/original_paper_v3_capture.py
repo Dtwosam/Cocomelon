@@ -7,6 +7,7 @@ Only ordinary PAPER's actual ReplayRecord input, not fabricated venue data.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 from collections.abc import Sequence
@@ -107,6 +108,10 @@ class OriginalPaperMicrostructureCapture:
         self.offered_count = 0
         self.dropped_count = 0
         self.last_available_at_ms: int | None = None
+        # Digest the original ordered bytes IN THE writer thread so the
+        # terminal receipt binds the actual append-only source journal,
+        # not an order assigned later by the post-worker ZIP sealer.
+        self._original_journal_sha256 = hashlib.sha256()
         # The PAPER pipeline is allowed to clamp regressing receive clocks;
         # the original research copy is NOT. Preserve the unmodified first-
         # received timestamp, and permanently disqualify a clamped input.
@@ -157,7 +162,11 @@ class OriginalPaperMicrostructureCapture:
     def _write_batch(self, rows: list[ReplayRecord]) -> None:
         with (self.root / RECORD_FILE).open("ab") as stream:
             for row in rows:
-                stream.write(_canonical_json(_replay_payload(row)))
+                encoded = _canonical_json(_replay_payload(row))
+                written = stream.write(encoded)
+                if written != len(encoded):
+                    raise OSError("short original source journal write")
+                self._original_journal_sha256.update(encoded)
             stream.flush()
             os.fsync(stream.fileno())
 
@@ -210,6 +219,9 @@ class OriginalPaperMicrostructureCapture:
             ),
             "offered_count": self.offered_count,
             "written_count": self.record_count,
+            "original_received_journal_sha256": (
+                self._original_journal_sha256.hexdigest()
+            ),
             "dropped_count": self.dropped_count,
             "last_written_available_at_ms": self.last_available_at_ms,
             "last_original_offered_available_at_ms": (
