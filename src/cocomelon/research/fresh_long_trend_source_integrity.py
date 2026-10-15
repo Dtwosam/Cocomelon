@@ -60,7 +60,15 @@ def audit_fresh_long_trend_original_records(
     all_forward_l2_sources: set[str] = set()
     digest = hashlib.sha256()
     last_available = -1
-    for record in records:
+    ordinal_count = 0
+    for original_index, record in enumerate(records, start=1):
+        ordinal = record.source_receive_ordinal
+        if ordinal is not None:
+            ordinal_count += 1
+            if ordinal != original_index:
+                raise FreshLongTrendSourceError(
+                    "original source received order differs from replay ordinal"
+                )
         if (
             record.available_at_ms < manifest.start_ms
             or record.available_at_ms > manifest.end_ms
@@ -91,6 +99,7 @@ def audit_fresh_long_trend_original_records(
             "event_key": record.event_key,
             "event_kind": record.event_kind,
             "payload_json": record.payload_json,
+            "source_receive_ordinal": record.source_receive_ordinal,
         }, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
             allow_nan=False).encode("utf-8")
         digest.update(line)
@@ -115,6 +124,10 @@ def audit_fresh_long_trend_original_records(
                 record.available_at_ms,
                 count + 1,
             )
+    if ordinal_count not in (0, len(records)):
+        raise FreshLongTrendSourceError(
+            "mixed original source ordinals cannot prove receive-time order"
+        )
     absent = [market for market, (_, _, count) in observed.items() if count == 0]
     if absent:
         raise FreshLongTrendSourceError(
@@ -135,6 +148,9 @@ def audit_fresh_long_trend_original_records(
         "schema": "v3-original-local-common-market-l2-horizon-v1",
         "record_count": len(records),
         "local_canonical_record_stream_sha256": digest.hexdigest(),
+        "complete_original_source_receive_ordinals_verified": (
+            ordinal_count == len(records)
+        ),
         "original_market_count": len(markets),
         "all_original_forward_market_count": len(all_forward_market_sources),
         "all_original_forward_l2_market_count": len(all_forward_l2_sources),
