@@ -277,8 +277,8 @@ def verify_original_v3_github_zip_source(
                 or handoff["original_last_available_at_ms"] != manifest.end_ms
                 or not isinstance(original_markets, list)
                 or not original_markets
-                or original_markets != sorted(set(original_markets))
                 or not all(isinstance(m, str) and m for m in original_markets)
+                or original_markets != sorted(set(original_markets))
                 or (predecessor_id is None) != (predecessor_attempt is None)
                 or handoff["original_resume_chain_independently_verified"]
                 is not False
