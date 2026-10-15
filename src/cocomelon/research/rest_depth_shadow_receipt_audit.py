@@ -170,7 +170,11 @@ def audit_shadow_receipts(
         # JSONL rows are emitted in complete tick order. A 429 opens a
         # fail-closed circuit for subsequent slots; other same-tick
         # requests might already be in-flight.
-        if rate_limit_slot is not None and slot > rate_limit_slot and status != "rate_limit_circuit_open":
+        if (
+            rate_limit_slot is not None
+            and slot > rate_limit_slot
+            and status != "rate_limit_circuit_open"
+        ):
             raise ShadowAuditError("HTTP requests continued after rate-limit circuit opened")
         if status in NON_SOURCE:
             if any(key in event for key in (
