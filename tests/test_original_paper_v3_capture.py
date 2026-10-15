@@ -164,3 +164,122 @@ def test_paper_workflow_seals_after_successor_without_lifting_trade_controls() -
     assert "steps.seal_v3_original_source.outcome == 'success'" in workflow[seal:upload+400]
     assert "continuous-paper-v3-microstructure-" in workflow[upload:upload+500]
     assert "live_orders: true" not in workflow[seal:upload]
+
+
+def test_raw_original_clock_regression_never_becomes_clamped_replay_evidence(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> dict[str, object]:
+        recorder = OriginalPaperMicrostructureCapture(
+            tmp_path / "original", run_id=RUN, run_attempt=ATTEMPT,
+            head_sha=HEAD, selected_markets=("TEST",),
+            first_observed_ms=FORWARD_NOT_BEFORE_MS - 10_000,
+        )
+        recorder.offer(_book(FORWARD_NOT_BEFORE_MS + 2, "earlier-received"))
+        recorder.offer(_book(FORWARD_NOT_BEFORE_MS + 1, "late-arrival"))
+        return await recorder.close()
+
+    status = asyncio.run(scenario())
+    assert status["original_received_clock_regressions"] == 1
+    assert status["first_original_received_clock_regression"] == {
+        "original_available_at_ms": FORWARD_NOT_BEFORE_MS + 1,
+        "prior_original_or_paper_available_at_ms": FORWARD_NOT_BEFORE_MS + 2,
+        "original_event_key": "late-arrival",
+        "original_market": "TEST",
+    }
+    assert status["paper_monotonic_clock_adjustment_not_used_as_source"] is True
+    assert status["failure"] == "original_received_clock_regression"
+    assert status["complete"] is False
+    with pytest.raises(OriginalV3CaptureSealError, match="lost rows"):
+        _seal(tmp_path)
+    assert not (tmp_path / "upload").exists()
+
+
+def test_first_record_older_than_restored_paper_checkpoint_fails_source(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> dict[str, object]:
+        recorder = OriginalPaperMicrostructureCapture(
+            tmp_path / "original", run_id=RUN, run_attempt=ATTEMPT,
+            head_sha=HEAD, selected_markets=("TEST",),
+            first_observed_ms=FORWARD_NOT_BEFORE_MS - 10_000,
+        )
+        recorder.offer(
+            _book(FORWARD_NOT_BEFORE_MS + 1, "first-arrival"),
+            paper_previous_at_ms=FORWARD_NOT_BEFORE_MS + 5,
+        )
+        return await recorder.close()
+
+    status = asyncio.run(scenario())
+    assert status["original_received_clock_regressions"] == 1
+    assert status["last_original_offered_available_at_ms"] == (
+        FORWARD_NOT_BEFORE_MS + 1
+    )
+    assert status["first_original_received_clock_regression"][
+        "prior_original_or_paper_available_at_ms"
+    ] == FORWARD_NOT_BEFORE_MS + 5
+    assert status["complete"] is False
+    with pytest.raises(OriginalV3CaptureSealError, match="lost rows"):
+        _seal(tmp_path)
+
+
+def test_record_pump_preserves_raw_input_for_capture_before_clock_clamp(
+    tmp_path: Path,
+) -> None:
+    from cocomelon.continuous_paper import _RecordPump
+
+    class Pipeline:
+        processed: list[tuple[int, int]]
+
+        def __init__(self) -> None:
+            self.processed = []
+
+        def on_record(
+            self, record: ReplayRecord, now_ms: int,
+        ) -> tuple[object, ...]:
+            self.processed.append((record.available_at_ms, now_ms))
+            return ()
+
+        def finalize(self, _now_ms: int) -> tuple[object, ...]:
+            return ()
+
+    class Journal:
+        def iter_trades(self) -> tuple[object, ...]:
+            return ()
+
+        def record_observation(self, _value: object) -> None:
+            raise AssertionError("no observations expected")
+
+    async def scenario() -> tuple[dict[str, object], list[tuple[int, int]]]:
+        recorder = OriginalPaperMicrostructureCapture(
+            tmp_path / "original", run_id=RUN, run_attempt=ATTEMPT,
+            head_sha=HEAD, selected_markets=("TEST",),
+            first_observed_ms=FORWARD_NOT_BEFORE_MS - 10_000,
+        )
+        pipeline = Pipeline()
+        pump = _RecordPump(
+            pipeline,  # type: ignore[arg-type]
+            Journal(),  # type: ignore[arg-type]
+            last_available_at_ms=FORWARD_NOT_BEFORE_MS + 6,
+            original_v3_capture=recorder,
+        )
+        await pump.process(
+            _book(FORWARD_NOT_BEFORE_MS + 2, "genuine-received-unclamped")
+        )
+        return await recorder.close(), pipeline.processed
+
+    status, received = asyncio.run(scenario())
+    assert received == [(
+        FORWARD_NOT_BEFORE_MS + 6, FORWARD_NOT_BEFORE_MS + 6,
+    )]
+    assert status["first_original_received_clock_regression"][
+        "original_available_at_ms"
+    ] == FORWARD_NOT_BEFORE_MS + 2
+    assert status["last_original_offered_available_at_ms"] == (
+        FORWARD_NOT_BEFORE_MS + 2
+    )
+    assert status["failure"] == "original_received_clock_regression"
+    assert status["complete"] is False
+    with pytest.raises(OriginalV3CaptureSealError, match="lost rows"):
+        _seal(tmp_path)
+
