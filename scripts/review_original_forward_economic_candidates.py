@@ -110,7 +110,9 @@ def _paper_overall(root: dict[str, object]) -> dict[str, object]:
     if not isinstance(sides, list) or len(sides) != 2:
         raise EconomicVetoError("whole booked sides missing")
     if {
-        _object(row, "side cohort").get("cohort", {}).get("side")
+        _object(
+            _object(row, "side cohort").get("cohort"), "side cohort identity",
+        ).get("side")
         for row in sides
     } != {"long", "short"}:
         raise EconomicVetoError("whole booked long/short cohorts invalid")
