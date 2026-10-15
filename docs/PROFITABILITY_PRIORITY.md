@@ -1,5 +1,29 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 15 — v3 original receive order survives same-millisecond replay
+
+The original PAPER recorder is the source of truth for **arrival order**, not
+a lexicographic sort by market, event kind or event key. Historically, the
+partitioned JSONL replay loader rebuilt deterministic order for equal received
+milliseconds by prioritizing event kinds; that could reorder an actual first
+received market book and a same-ms trade/snapshot, changing a paired
+account's decision/fill sequence and its apparent fee-adjusted advantage.
+
+When sealing a genuinely captured v3 source, the exporter now stamps every
+normalized market event and received source gap with its **1-based original
+source_receive_ordinal** from the unchanged per-worker append-only input.
+Canonical replay prioritizes this original ordinal ONLY for indexed records
+with the same actual receive time; legacy unindexed historical replay retains
+its original deterministic kind/market/event-key policy.
+
+The v3 original record-audit rejects mixed ordinals, duplicates, omissions
+and any mismatch between replay order and exact original ordinal sequence.
+The externally GitHub-archive-bound entrypoint **requires** this complete
+original ordering before allocating either PAPER account. A local old-format
+unindexed replay may still run as unverified research, but cannot become the
+source-bound v3 profitability trial. No claimed venue completeness, 72h
+after-cost edge, risk/strategy modification or LIVE activation.
+
 ## October 15 — original forward source must pin REAL PAPER fee/risk configuration
 
 A prospective LONG-trend source ZIP is not economically trustworthy when
