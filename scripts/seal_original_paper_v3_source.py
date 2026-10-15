@@ -165,6 +165,29 @@ def seal_original_paper_v3_source(
         raise OriginalV3CaptureSealError("original capture lost rows or changed identity")
     if not stream_path.is_file() or stream_path.is_symlink():
         raise OriginalV3CaptureSealError("original captured source journal missing")
+    predecessor_id = terminal.get("declared_predecessor_run_id")
+    predecessor_attempt = terminal.get("declared_predecessor_run_attempt")
+    if (
+        (predecessor_id is None) != (predecessor_attempt is None)
+        or (
+            predecessor_id is not None
+            and (
+                type(predecessor_id) is not str
+                or not predecessor_id.isdecimal()
+                or int(predecessor_id) <= 0
+                or predecessor_id == run_id
+                or type(predecessor_attempt) is not str
+                or not predecessor_attempt.isdecimal()
+                or int(predecessor_attempt) <= 0
+            )
+        )
+        or terminal.get(
+            "predecessor_state_restore_independently_authenticated"
+        ) is not False
+    ):
+        raise OriginalV3CaptureSealError(
+            "original declared paper predecessor identity malformed"
+        )
     selected = terminal["selected_markets_at_worker_start"]
     if (
         not selected or not all(isinstance(m, str) and m for m in selected)
@@ -318,6 +341,36 @@ def seal_original_paper_v3_source(
             }, sort_keys=True, separators=(",", ":"), allow_nan=False) + "\n",
             encoding="utf-8",
         )
+        # This stays inside the exact original GitHub ZIP; later cross-run
+        # audits must compare it with independent GitHub dispatch and resume
+        # artifact proof, not treat its worker-declared predecessor as proof.
+        handoff = {
+            "schema": "v3-original-paper-source-worker-link-v1",
+            "worker_run_id": run_id,
+            "worker_run_attempt": run_attempt,
+            "worker_head_sha": head_sha,
+            "declared_predecessor_run_id": predecessor_id,
+            "declared_predecessor_run_attempt": predecessor_attempt,
+            "original_journal_sha256": terminal[
+                "original_received_journal_sha256"
+            ],
+            "original_record_count": original_rows,
+            "original_first_available_at_ms": first,
+            "original_last_available_at_ms": last,
+            "original_selected_markets_at_worker_start": selected,
+            "original_resume_chain_independently_verified": False,
+            "original_exchange_feed_continuity_verified": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+        }
+        (staging / "source-handoff-receipt.json").write_text(
+            json.dumps(
+                handoff, sort_keys=True, separators=(",", ":"),
+                allow_nan=False,
+            ) + "\n",
+            encoding="utf-8",
+        )
         # Reconciled original rows and manifest segments, still NOT venue
         # authenticity. The original archive SHA is assigned by GitHub on
         # upload and must be fetched separately before any replay.
@@ -331,6 +384,9 @@ def seal_original_paper_v3_source(
             "original_original_writer_journal_sha256": (
                 original_journal_sha256.hexdigest()
             ),
+            "declared_predecessor_run_id": predecessor_id,
+            "declared_predecessor_run_attempt": predecessor_attempt,
+            "original_resume_chain_independently_verified": False,
             "original_receipt_ordinals_contiguous_in_original_journal": True,
             "original_receipt_ordinal_first": 1,
             "original_receipt_ordinal_last": original_rows,
