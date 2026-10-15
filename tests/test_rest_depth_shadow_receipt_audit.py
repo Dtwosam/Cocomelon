@@ -278,3 +278,49 @@ def test_forged_rate_limit_circuit_flag_must_match_original_429_receipts(
     pair[0].write_text(json.dumps(summary))
     with pytest.raises(ShadowAuditError, match="circuit flag"):
         audit_shadow_receipts(*pair)
+
+
+
+def test_optional_worker_rest_quota_snapshot_consistency_is_audited(
+    tmp_path: Path,
+) -> None:
+    pair = produce(tmp_path / "localquota")
+    original = json.loads(pair[0].read_text())
+    original["same_reader_rest_budget_snapshot"] = {
+        "rolling_window_seconds": 60,
+        "rolling_weight_limit": 1000,
+        "total_rolling_weight": 22,
+        "required_rolling_weight": 20,
+        "shadow_rolling_weight": 2,
+        "other_rolling_weight": 0,
+        "peak_total_rolling_weight": 22,
+        "peak_required_rolling_weight": 20,
+        "peak_shadow_rolling_weight": 2,
+        "shadow_admitted_lifetime": 1,
+        "shadow_denied_lifetime": 0,
+        "shadow_priority_reserve_weight": 300,
+        "external_process_ip_weight_verified": False,
+        "source_or_execution_authority": False,
+    }
+    pair[0].write_text(json.dumps(original))
+    report = audit_shadow_receipts(*pair)
+    assert report["in_process_rate_snapshot_consistent"] is True
+    assert report["same_ip_external_processes_verified"] is False
+    original["same_reader_rest_budget_snapshot"]["total_rolling_weight"] = 500
+    pair[0].write_text(json.dumps(original))
+    with pytest.raises(ShadowAuditError, match="inconsistent same-reader"):
+        audit_shadow_receipts(*pair)
+
+
+def test_unsafe_local_quota_claim_cannot_certify_egress_ip(
+    tmp_path: Path,
+) -> None:
+    pair = produce(tmp_path / "forgedIP")
+    original = json.loads(pair[0].read_text())
+    original["same_reader_rest_budget_snapshot"] = {
+        "external_process_ip_weight_verified": True,
+        "source_or_execution_authority": False,
+    }
+    pair[0].write_text(json.dumps(original))
+    with pytest.raises(ShadowAuditError, match="external IP authority"):
+        audit_shadow_receipts(*pair)
