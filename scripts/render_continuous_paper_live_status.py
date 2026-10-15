@@ -9430,12 +9430,19 @@ def _local_rest_budget_lines(raw: object) -> list[str]:
     reserve = integer("shadow_priority_reserve_weight")
     denied = integer("shadow_denied_lifetime")
     if (
-        None in (required, shadow, other, total, capacity, peak, reserve, denied)
-        or total != required + shadow + other
-        or capacity <= 0
-        or total > capacity
-        or peak < total
-        or peak > capacity
+        required is None or shadow is None or other is None
+        or total is None or capacity is None or peak is None
+        or reserve is None or denied is None
+    ):
+        return lines + [
+            "- REST rolling budget: `INVALID: missing or malformed counters`",
+            "- other processes behind public IP: `unverified`",
+            "",
+        ]
+    if (
+        total != required + shadow + other
+        or capacity <= 0 or total > capacity or peak < total or peak > capacity
+        or reserve > capacity
     ):
         return lines + [
             "- REST rolling budget: `INVALID: inconsistent local counters`",
