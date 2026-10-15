@@ -7,6 +7,7 @@ Never manufacture fills, rank observations or missing market data.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from collections.abc import Sequence
 from dataclasses import asdict
@@ -154,6 +155,12 @@ def seal_original_paper_v3_source(
         or terminal.get("offered_count") != terminal["written_count"]
         or terminal["written_count"] > MAX_SOURCE_ROWS
         or not isinstance(terminal.get("selected_markets_at_worker_start"), list)
+        or not isinstance(terminal.get("original_received_journal_sha256"), str)
+        or len(terminal["original_received_journal_sha256"]) != 64
+        or any(
+            char not in "0123456789abcdef"
+            for char in terminal["original_received_journal_sha256"]
+        )
     ):
         raise OriginalV3CaptureSealError("original capture lost rows or changed identity")
     if not stream_path.is_file() or stream_path.is_symlink():
@@ -194,6 +201,7 @@ def seal_original_paper_v3_source(
     actual_markets: set[str] = set()
     gap_refs: list[str] = []
     source_bytes = 0
+    original_journal_sha256 = hashlib.sha256()
     # Avoid partial runnable artifacts: staging occurs in a transient
     # directory and is exposed only after validation has completed.
     staging = upload_root.with_name(upload_root.name + ".unverified")
@@ -208,6 +216,7 @@ def seal_original_paper_v3_source(
                 if not original_line.endswith(b"\n"):
                     raise OriginalV3CaptureSealError("torn original received row")
                 source_bytes += len(original_line)
+                original_journal_sha256.update(original_line)
                 if source_bytes > MAX_SOURCE_BYTES:
                     raise OriginalV3CaptureSealError("original source exceeds ZIP budget")
                 try:
@@ -264,6 +273,13 @@ def seal_original_paper_v3_source(
             raise OriginalV3CaptureSealError(
                 "original capture terminal count/end timestamp mismatch"
             )
+        if (
+            original_journal_sha256.hexdigest()
+            != terminal["original_received_journal_sha256"]
+        ):
+            raise OriginalV3CaptureSealError(
+                "original PAPER received journal differs from writer SHA256"
+            )
         if last < FORWARD_NOT_BEFORE_MS or not forward_l2:
             raise OriginalV3CaptureSealError(
                 "post-embargo genuine original L2 has not arrived"
@@ -312,6 +328,9 @@ def seal_original_paper_v3_source(
             "source_head_sha": head_sha,
             "manifest_id": manifest.manifest_id,
             "original_received_record_count": original_rows,
+            "original_original_writer_journal_sha256": (
+                original_journal_sha256.hexdigest()
+            ),
             "original_receipt_ordinals_contiguous_in_original_journal": True,
             "original_receipt_ordinal_first": 1,
             "original_receipt_ordinal_last": original_rows,
