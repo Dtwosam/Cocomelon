@@ -189,3 +189,30 @@ economics, but this check does not externally authenticate GitHub metadata
 or venue completeness, and a locally consistent v3 replay is still not
 a verified 72-hour profitable strategy.
 
+
+## Preserve the original same-millisecond market input sequence
+
+The genuine PAPER input collector has a single, ordered, append-only sequence
+of ReplayRecord objects. When its post-worker source sealer partitions this
+stream by date/market/event kind, physical JSONL file order is no longer the
+full received order. Previously the canonical replay then broke same-ms
+ties using inferred event-kind priorities and event key sorting. That could
+rewrite the temporal relationship between a received trade, order book
+and market snapshot and distort independent account fills.
+
+Each sealed normalized market row or received gap now carries a positive
+`source_receive_ordinal` in its original first-received stream position.
+The original replay adapter recovers this index, and canonical ordering uses
+it for equal received millisecond timestamps. It does not alter older source
+recordings that lack the field; those continue the preexisting legacy order.
+
+The independent source audit requires the complete actual ordinal sequence
+to match its original row population when any ordinal is present; mixed,
+missing, duplicated or retrospectively re-numbered entries fail. The
+GitHub-original-source-bound runner specifically refuses any unindexed
+recording BEFORE paired PAPER account construction. This is required for
+a credible source-bound study, but external GitHub/venue authentication,
+cross-worker provenance, L2 continuity and after-cost economic edge still
+need separate proofs. A signed full 72h account comparison is NOT yet
+available; no v3 output authorizes trading.
+
