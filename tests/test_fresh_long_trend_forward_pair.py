@@ -86,10 +86,12 @@ def _evaluation(
     )
 
 
-def _manifest(*, start_offset: int = -1) -> ReplayManifest:
+def _manifest(
+    *, start_offset: int = -1, end_offset: int = 1_000,
+) -> ReplayManifest:
     return cast(ReplayManifest, SimpleNamespace(
         start_ms=study.FORWARD_NOT_BEFORE_MS + start_offset,
-        end_ms=study.FORWARD_NOT_BEFORE_MS + 1_000,
+        end_ms=study.FORWARD_NOT_BEFORE_MS + end_offset,
         manifest_id="0123456789abcdef01234567",
     ))
 
@@ -231,6 +233,10 @@ def test_fresh_source_replay_constructs_new_independent_account_pair(
     assert _Source.last_forward == study.FORWARD_NOT_BEFORE_MS
     assert response["source_records_replayed"] == 1
     assert response["minimum_forward_elapsed"] is False
+    assert response["record_observed_forward_elapsed_ms"] == 10
+    assert response["last_original_forward_record_at_ms"] == (
+        study.FORWARD_NOT_BEFORE_MS + 10
+    )
     assert response["after_cost_72h_profitability_verified"] is False
     assert response["full_account_study_admissible"] is False
     assert response["promotion_authority"] is False
@@ -254,6 +260,25 @@ def test_fresh_source_replay_constructs_new_independent_account_pair(
             selected_markets=(MARKET,),
             account_root=root,
         )
+
+
+def test_manifest_calendar_end_cannot_fabricate_72h_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _Source.deny = False
+    _Source.loaded = (_original_snapshot(study.FORWARD_NOT_BEFORE_MS + 10),)
+    monkeypatch.setattr(study, "PinnedShortRankReplaySource", _Source)
+    report = study.run_digest_pinned_long_trend_matched_paper(
+        source_root=tmp_path / "original-source-placeholder",
+        manifest=_manifest(end_offset=study.MINIMUM_FORWARD_MS + 20_000),
+        expected_manifest_id="0123456789abcdef01234567",
+        config=BaselineReplayConfig(execution=PaperExecutionConfig()),
+        selected_markets=(MARKET,),
+        account_root=tmp_path / "fresh-source-age",
+    )
+    assert report["record_observed_forward_elapsed_ms"] == 10
+    assert report["minimum_forward_elapsed"] is False
+    assert report["after_cost_72h_profitability_verified"] is False
 
 
 @pytest.mark.parametrize("rootname", [
