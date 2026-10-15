@@ -208,6 +208,16 @@ def test_fresh_v2_terminal_parity_uses_only_v2_sqlite_and_signed_state(
     signed_path = v2_folder / "paired-shadow-state.json"
     state = json.loads(signed_path.read_text())
     state["portfolio_shadow_candidate_id"] = frozen.candidate_id
+    from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+        V2SourceGapWitness,
+        read_source_gap_witness,
+    )
+
+    V2SourceGapWitness(v2_folder, restoring=False)
+    state["v2_source_gap_event_witness"] = read_source_gap_witness(
+        v2_folder / "source-gap-record-witness.jsonl",
+        total_processed_records=10,
+    )
     state.pop("state_digest")
     state["state_digest"] = audit._state_digest(state)
     signed_path.write_text(json.dumps(state))
@@ -225,6 +235,8 @@ def test_fresh_v2_terminal_parity_uses_only_v2_sqlite_and_signed_state(
     assert result["campaign_state_root"] == "both-side-trend-paired-shadow-v2"
     assert result["frozen_v2_candidate_identity_verified"] is True
     assert result["terminal_account_ids_match_signed_checkpoint"] is True
+    assert result["v2_original_received_gap_witness_matches_signed_checkpoint"] is True
+    assert result["v2_received_gap_event_count"] == 0
     assert result["forward_after_cost_edge_verified"] is False
     assert result["promotion_authority"] is False
 
