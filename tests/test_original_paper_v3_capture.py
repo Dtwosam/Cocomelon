@@ -17,20 +17,17 @@ from cocomelon.domain.replay import (
     SourceSegment,
 )
 from cocomelon.evidence.contracts import BaselineReplayConfig
-from cocomelon.replay.source import (
-    JsonlReplaySource,
-    validate_recording,
-)
 from cocomelon.replay.clock import canonical_record_order
+from cocomelon.replay.source import JsonlReplaySource, validate_recording
+from cocomelon.research.fresh_long_trend_forward_pair import FORWARD_NOT_BEFORE_MS
 from cocomelon.research.fresh_long_trend_receipt_order import (
     OriginalV3ReceiptOrderError,
     restore_original_v3_received_order,
 )
+from cocomelon.research.original_paper_v3_capture import OriginalPaperMicrostructureCapture
 from cocomelon.research.prospective_short_breakout_pinned_source import (
     PinnedShortRankReplaySource,
 )
-from cocomelon.research.fresh_long_trend_forward_pair import FORWARD_NOT_BEFORE_MS
-from cocomelon.research.original_paper_v3_capture import OriginalPaperMicrostructureCapture
 from scripts.seal_original_paper_v3_source import (
     OriginalV3CaptureSealError,
     seal_original_paper_v3_source,
