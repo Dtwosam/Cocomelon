@@ -3,7 +3,10 @@
 ## October 15 — v3 restore exact original intra-millisecond event order
 
 The original paper capture has a truly ordered per-worker receipt journal,
-but the post-worker microstructure ZIP partitions events by market/type.
+with a writer-thread SHA-256 persisted in its terminal receipt. Post-worker
+sealing rejects any changed original journal bytes, including equal-ms row
+swaps preserving the row count and last timestamp. The microstructure ZIP
+still partitions events by market/type.
 Generic replay sorted by timestamp and event key and could exchange the
 original order of records with equal receive time. The v3 sealer now
 stores immutable original global 1-based ordinals on every partitioned
