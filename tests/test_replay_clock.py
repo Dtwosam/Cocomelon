@@ -1,5 +1,6 @@
-import pytest
 from dataclasses import replace
+
+import pytest
 
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.replay.clock import KIND_PRIORITY, ReplayClock, canonical_record_order
