@@ -138,6 +138,22 @@ def run_digest_pinned_long_trend_matched_paper(
     but cannot itself prove completeness of the exchange feed.
     """
     freeze = fresh_long_trend_freeze()
+    # The source-sealing worker now binds the ENTIRE original effective
+    # BaselineReplayConfig digest, not merely a nominal fee schedule ID.
+    # Refuse any later matched-account replay with cheaper taker fees,
+    # altered slippage/fills, relaxed risk or different strategy versions.
+    if (
+        manifest.config_digest != config.config_digest
+        or manifest.execution_config_version != config.execution.config_version
+        or manifest.fee_schedule_id != config.execution.fee_schedule_id
+        or manifest.feature_version != config.feature_version
+        or manifest.strategy_version != config.strategy_version
+        or manifest.risk_version != config.risk_version
+        or manifest.replay_engine_version != config.replay_engine_version
+    ):
+        raise LongTrendForwardTrialError(
+            "original PAPER risk/fee/strategy configuration differs from replay"
+        )
     if manifest.start_ms > freeze.prospective_not_before_ms:
         raise LongTrendForwardTrialError(
             "forward manifest starts after frozen trial; left-censored history"
@@ -226,6 +242,8 @@ def run_digest_pinned_long_trend_matched_paper(
             "frozen_precommitment": PRECOMMITMENT,
             "frozen_candidate_id": freeze.candidate_id,
             "expected_manifest_id": expected_manifest_id,
+            "source_effective_replay_config_digest": manifest.config_digest,
+            "replay_risk_fee_strategy_matches_original_manifest": True,
             "unverified_locally_pinned_source": source.verification_receipt(original),
             "source_records_replayed": len(original),
             "locally_checked_market_gap_and_l2_receipt": source_audit,

@@ -2,6 +2,20 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). This PAPER account has no independently certified after-cost positive expectancy; frozen v3 remains research-only.
 
+## October 15 — v3 original execution and fee model now source-bound
+
+The new v3 microstructure collector records the SOURCE worker's actual full
+effective PAPER replay configuration digest and fee, risk, execution,
+feature/strategy and replay model versions. Source sealing no longer
+constructs a default PaperExecutionConfig and falsely attributes it to a
+worker using potentially different settings. The offline independent matched
+PAPER runner refuses account creation if ANY original config digest, fee
+schedule or version differs from the replay model, including the case of a
+changed taker fee or IOC slippage rate under the same fee-schedule ID.
+This safeguard is evidence-only; true original exchange completeness,
+source provenance, future 72h full account returns and LIVE trading
+remain unverified/disabled.
+
 ## October 15 — original v3 source clock cannot inherit PAPER's monotonic clamp
 
 Previously the record pump cloned a regressing first-received ReplayRecord to

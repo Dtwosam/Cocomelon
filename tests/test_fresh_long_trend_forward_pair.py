@@ -94,10 +94,18 @@ def _evaluation(
 def _manifest(
     *, start_offset: int = -1, end_offset: int = 1_000,
 ) -> ReplayManifest:
+    source_config = BaselineReplayConfig(execution=PaperExecutionConfig())
     return cast(ReplayManifest, SimpleNamespace(
         start_ms=study.FORWARD_NOT_BEFORE_MS + start_offset,
         end_ms=study.FORWARD_NOT_BEFORE_MS + end_offset,
         manifest_id="0123456789abcdef01234567",
+        config_digest=source_config.config_digest,
+        execution_config_version=source_config.execution.config_version,
+        fee_schedule_id=source_config.execution.fee_schedule_id,
+        feature_version=source_config.feature_version,
+        strategy_version=source_config.strategy_version,
+        risk_version=source_config.risk_version,
+        replay_engine_version=source_config.replay_engine_version,
         gap_refs=(),
     ))
 
@@ -463,6 +471,64 @@ def test_invalid_source_fails_before_creating_accounts(
         assert not root.exists()
     finally:
         _Source.deny = False
+
+
+
+@pytest.mark.parametrize("change", [
+    "taker_fee_rate", "slippage", "risk_budget", "fee_schedule_id",
+])
+def test_replay_cannot_use_alternate_fee_or_risk_settings_from_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str,
+) -> None:
+    from dataclasses import replace
+
+    monkeypatch.setattr(study, "PinnedShortRankReplaySource", _Source)
+    _Source.deny = False
+    _Source.last_forward = None
+    normal = BaselineReplayConfig(execution=PaperExecutionConfig())
+    if change == "taker_fee_rate":
+        replay = replace(
+            normal,
+            execution=replace(
+                normal.execution,
+                taker_fee_rate=Decimal("0.00001"),
+            ),
+        )
+    elif change == "slippage":
+        replay = replace(
+            normal,
+            execution=replace(
+                normal.execution,
+                max_ioc_slippage_bps=Decimal("8"),
+            ),
+        )
+    elif change == "risk_budget":
+        replay = replace(
+            normal, starting_cash=Decimal("11000"),
+        )
+    else:
+        replay = replace(
+            normal,
+            execution=replace(
+                normal.execution,
+                fee_schedule_id="invented-cheaper-fee-schedule",
+            ),
+        )
+    root = tmp_path / "never-authorized-paper-accounts"
+    with pytest.raises(
+        study.LongTrendForwardTrialError,
+        match="original PAPER risk/fee/strategy configuration differs",
+    ):
+        study.run_digest_pinned_long_trend_matched_paper(
+            source_root=tmp_path / "original-source",
+            manifest=_manifest(),
+            expected_manifest_id="0123456789abcdef01234567",
+            config=replay,
+            selected_markets=(MARKET,),
+            account_root=root,
+        )
+    assert _Source.last_forward is None
+    assert not root.exists()
 
 
 def test_manifest_left_censored_starts_late_without_account_side_effects(

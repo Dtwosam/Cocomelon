@@ -10505,6 +10505,7 @@ async def run_continuous_paper_session(
                     head_sha=head_sha,
                     selected_markets=tuple(m.canonical for m in selected),
                     first_observed_ms=started_at_ms,
+                    replay_config=replay_config,
                 )
             except Exception:
                 # A failed capture remains ineligible: post-handoff sealer
