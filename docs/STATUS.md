@@ -1,5 +1,7 @@
 # Cocomelon Project Status
 
+> Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). This PAPER account has no independently certified after-cost positive expectancy; frozen v3 remains research-only.
+
 ## October 15 — original v3 worker-to-worker predecessor hints retained
 
 The PAPER source recorder now preserves the workflow's actual declared
@@ -32,7 +34,7 @@ all old evidence. No paper order-flow, risk, source gap, fee settings or
 LIVE activation changes.
 
 
-> Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). This PAPER account has no independently certified after-cost positive expectancy; frozen v3 remains research-only.
+
 
 ## October 15 — v3 original execution and fee model now source-bound
 
