@@ -125,6 +125,30 @@ class InfoClient:
             weight=2,
         )
 
+    def try_shadow_l2_book(self, market: MarketId) -> tuple[bool, object | None]:
+        """One anonymous nonretrying read using the SAME mandatory-read quota.
+
+        False means quota unavailable, with NO HTTP request and NO delay.
+        Never bypasses the shared reader budget or returns an event to the
+        strategy. It cannot account for independent processes sharing an IP.
+        """
+        # For known real shared ledgers, leave at least 300 weight
+        # unconsumed for required PAPER information reads. Unknown or
+        # uninstrumented budget implementations fail closed (no HTTP).
+        if not isinstance(self._budget, RollingRateBudget):
+            return False, None
+        headroom = min(300, self._budget.limit // 3)
+        if not self._budget.try_acquire(2, reserve_remaining=headroom):
+            return False, None
+        response = self._transport(
+            self._endpoint,
+            {"type": "l2Book", "coin": market.wire_name},
+            min(self._timeout, 4.0),
+        )
+        if not isinstance(response, (dict, list)):
+            raise TransportError("shadow L2 requires JSON object or array")
+        return True, response
+
     def candles(
         self,
         market: MarketId,
