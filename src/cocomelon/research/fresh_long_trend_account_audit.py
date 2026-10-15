@@ -12,7 +12,6 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, cast
 
-from cocomelon.execution.accounting import PaperAccountState
 from cocomelon.execution.store import (
     _account_from_payload,
     _account_payload,
