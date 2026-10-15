@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -84,6 +85,34 @@ def _check(
         selected_markets=selected_markets,
         forward_not_before_ms=START,
     )
+
+
+def test_exact_original_recv_ordinals_are_replayed_not_inferred() -> None:
+    rows = (
+        replace(_record(START + 1, market=A), source_receive_ordinal=1),
+        replace(_record(START + 2, market=B), source_receive_ordinal=2),
+    )
+    receipt = _check(rows)
+    assert receipt["complete_original_source_receive_ordinals_verified"] is True
+    assert receipt["execution_authority"] is False
+    assert receipt["original_exchange_feed_independently_authenticated"] is False
+
+
+@pytest.mark.parametrize("ordinals", [
+    (2, 1), (1, 1), (1, None), (None, 2),
+])
+def test_missing_duplicate_or_out_of_order_original_recorder_rows_rejected(
+    ordinals: tuple[int | None, int | None],
+) -> None:
+    rows = (
+        replace(_record(START + 1, market=A), source_receive_ordinal=ordinals[0]),
+        replace(_record(START + 2, market=B), source_receive_ordinal=ordinals[1]),
+    )
+    with pytest.raises(
+        FreshLongTrendSourceError,
+        match="source received order|mixed original source ordinals",
+    ):
+        _check(rows)
 
 
 def test_market_common_horizon_requires_last_real_l2_for_each_market() -> None:
