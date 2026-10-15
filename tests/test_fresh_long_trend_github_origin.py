@@ -171,6 +171,68 @@ def test_exact_original_zip_and_git_metadata_are_read_only_and_unpromotable(
     assert source_zip.read_bytes() == before
 
 
+def _rewrite_original_worker_link(
+    kw: dict[str, object], changes: dict[str, object],
+) -> None:
+    path = kw["source_zip"]
+    artifact = kw["artifact_metadata"]
+    assert isinstance(path, Path) and isinstance(artifact, dict)
+    with zipfile.ZipFile(path) as old:
+        originals = {
+            name: old.read(name)
+            for name in old.namelist()
+        }
+    receipt = json.loads(originals["source-handoff-receipt.json"])
+    receipt.update(changes)
+    originals["source-handoff-receipt.json"] = json.dumps(
+        receipt, sort_keys=True,
+    ).encode()
+    replacement = path.with_suffix(".repacked.zip")
+    with zipfile.ZipFile(replacement, "w") as new:
+        for name, data in originals.items():
+            new.writestr(name, data)
+    replacement.replace(path)
+    artifact["size_in_bytes"] = path.stat().st_size
+    artifact["digest"] = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("worker_run_id", "999999"),
+    ("worker_run_attempt", "2"),
+    ("worker_head_sha", "b" * 40),
+    ("declared_predecessor_run_id", "1234"),
+    ("original_record_count", 8),
+    ("original_last_available_at_ms", FORWARD_NOT_BEFORE_MS + 3000),
+    ("original_journal_sha256", "invalid"),
+    ("original_selected_markets_at_worker_start", ["ONLY-HINDSIGHT"]),
+    ("original_resume_chain_independently_verified", True),
+    ("original_exchange_feed_continuity_verified", True),
+    ("promotion_authority", True),
+])
+def test_repacked_original_worker_link_cannot_forge_provenance_or_handoff(
+    tmp_path: Path, field: str, value: object,
+) -> None:
+    kw = _fixture(tmp_path)
+    _rewrite_original_worker_link(kw, {field: value})
+    with pytest.raises(OriginalV3GitHubSourceError):
+        verify_original_v3_github_zip_source(**kw)
+
+
+def test_declared_original_predecessor_can_be_preserved_without_certification(
+    tmp_path: Path,
+) -> None:
+    kw = _fixture(tmp_path)
+    _rewrite_original_worker_link(kw, {
+        "declared_predecessor_run_id": "998877",
+        "declared_predecessor_run_attempt": "2",
+    })
+    receipt = verify_original_v3_github_zip_source(**kw)
+    assert receipt["declared_predecessor_run_id"] == "998877"
+    assert receipt["declared_predecessor_run_attempt"] == "2"
+    assert receipt["signed_cross_worker_handoff_proven"] is False
+    assert receipt["promotion_authority"] is False
+
+
 @pytest.mark.parametrize("change", [
     "wrong_run_id", "wrong_attempt", "wrong_repo", "wrong_commit",
     "unfinished", "non_paper_workflow", "bad_artifact_name",
