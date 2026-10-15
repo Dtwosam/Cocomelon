@@ -101,3 +101,31 @@ A positive relative challenger advantage with both accounts losing
 is NOT a positive absolute strategy edge. Keep old torn v1/v2 sources
 quarantined and preserve all new failure snapshots.
 
+
+## Original L2 and gap admission — before allocating the two PAPER accounts
+
+The v3 source preflight now demands one actual captured **post-embargo
+`l2_book` observation for EVERY selected market**, with the first L2
+within five minutes of the fixed six-hour embargo boundary and no more
+than five minutes between that market's consecutive received L2 records.
+Any source DATA_GAP record across replay warmup or forward records, or
+ANY declared source gap in the pinned replay manifest, rejects the whole
+candidate study **before** either paper account is created. The preflight
+does not waive gaps that occurred before the embargo but could taint the
+warmup or original first-seen entry decisions.
+
+The local 72-hour observation age is measured from **the earliest final L2
+timestamp across all selected markets**, not from a manifest's nominal end,
+a funding/candle/context update after books went stale, or a gap record.
+Terminal account/funding processing still occurs at the actual LAST
+received replay timestamp so the equity mark and finalization clock do
+not regress.
+
+A local SHA-256 over the exact canonical replayed record sequence, selected
+market first/last book times, observed L2 counts and gap policy now
+accompany the economic report. These facts are **LOCAL replay checks**,
+not a cryptographic exchange capture guarantee, source-feed completeness
+certificate or a new trial promotion path: unrecorded exchange events,
+worker handoff source loss and source archive origin remain subject to
+independent verification. The 72-hour age alone never admits profitability.
+
