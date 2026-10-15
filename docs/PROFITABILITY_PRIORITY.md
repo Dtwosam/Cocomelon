@@ -9,6 +9,11 @@ can have different `event_key` order; replaying them after a canonical
 (event-kind/market/key) sort can change first-seen information and the
 candidate's opening/fill history even though all segment hashes match.
 
+The asynchronous PAPER research writer additionally commits a SHA-256 over
+the exact original ordered journal bytes at worker close, and the post-handoff
+sealer refuses the archive if a same-millisecond record swap changes those
+bytes even when the row count and terminal timestamp remain equal. That
+writer-thread digest is LOCAL self-integrity, not an external signature.
 Original v3 post-worker sealing now embeds each row's **globally consecutive
 1-based receipt ordinal** from the actual append-only paper source journal
 into its SHA-pinned partition segment. The frozen v3 study validates every
