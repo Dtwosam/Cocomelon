@@ -169,3 +169,23 @@ receive-clock failure affects research only; PAPER trading continues under
 its existing monotonic safety policy. Duplicate event-key handling remains
 the original PAPER intake policy, not a proof of full exchange delivery.
 
+
+## Original worker execution economics are not replay defaults
+
+The sealed v3 `ReplayManifest` now contains the exact original PAPER
+worker's immutable `BaselineReplayConfig.config_digest` and explicitly
+recorded `execution_config_version`, `fee_schedule_id`, feature/strategy,
+risk and replay engine versions, captured before the worker's first
+received source event. A deferred seal must NEVER instantiate its own
+default `PaperExecutionConfig()` to replace those original economics.
+
+The offline v3 paired research runner checks ALL identities against the
+actual intended `BaselineReplayConfig` before looking at source rows or
+opening PAPER accounts. A different taker fee, liquidation/risk budget,
+IOC slippage or starting cash—even with a conveniently unchanged fee
+schedule ID—changes the full canonical configuration digest and is
+rejected. Baseline and challenger still use identical PAPER account
+economics, but this check does not externally authenticate GitHub metadata
+or venue completeness, and a locally consistent v3 replay is still not
+a verified 72-hour profitable strategy.
+
