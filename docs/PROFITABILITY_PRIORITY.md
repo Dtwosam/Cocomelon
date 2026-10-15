@@ -1,5 +1,12 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 15 — original skipped rank misses now retain exact source identities
+
+An authenticated compact LONG-trend exact-source preflight from paper worker #38772751569 (artifact #11995243449) found **67 original risk-rejected opportunities with missing coarse rank**, with the last miss inside the frozen forward window. The predeclared exact 5m/15m research source correctly refuses this evidence; 34 separately captured LONG opportunities and complete exit paths alone cannot cure the contaminated rank comparison. Do not invent missing original ordinals or erase risk-rejected opportunities.
+
+The forward markout producer now retains a separate **original source missing-rank witness** for all excluded opportunities: immutable opportunity ID, first-received decision timestamp, market, direction, lead strategy, original risk approval/rejection reasons and NULL original rank. The compact source preflight independently counts every such miss, validates original IDs, null ranks and unchanged original last-miss chronology and refuses duplicated/altered/backdated witness rows. It does not automatically mark any historical source clean or loosen a frozen-window veto. This is provenance debugging for a prospective data defect, not an entry/risk strategy change or profitability certificate.
+
+
 ## October 15 — v3 forward source requires continuous per-market original L2
 
 The fresh LONG-trend v3 offline paired PAPER study now refuses ANY original

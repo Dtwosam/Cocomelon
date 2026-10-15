@@ -89,6 +89,83 @@ def _check_summary(raw: dict[str, object]) -> tuple[str | None, dict[str, object
     if type(overlap) is not int or overlap < 0:
         return "full_stack_overlap_invalid", metrics
 
+    # An original opportunity with no rank is NOT in risk_rejected_rows,
+    # because the stack cannot legitimately compute an ordinal for it.
+    # Require the complete original missing-rank witness before trusting an
+    # apparent clean frozen window. Do not backfill a rank or drop any miss.
+    approved_missing = raw.get("missing_rank", 0)
+    rejected_missing = raw.get("risk_rejected_missing_rank", 0)
+    witness = raw.get("original_missing_rank_source_witness")
+    witnessed_count = raw.get("original_missing_rank_witness_count")
+    witnessed_rejected = raw.get(
+        "original_missing_rank_witness_risk_rejected_count"
+    )
+    metrics["original_missing_rank_witness_present"] = isinstance(witness, list)
+    if (
+        type(approved_missing) is not int or approved_missing < 0
+        or type(rejected_missing) is not int or rejected_missing < 0
+    ):
+        return "original_missing_rank_count_invalid", metrics
+    if witness is None and approved_missing == rejected_missing == 0:
+        witness = []
+        witnessed_count = 0
+        witnessed_rejected = 0
+    if not isinstance(witness, list) or (
+        type(witnessed_count) is not int
+        or type(witnessed_rejected) is not int
+        or witnessed_count != len(witness)
+        or len(witness) != approved_missing + rejected_missing
+    ):
+        return "original_missing_rank_witness_not_reconciled", metrics
+    original_ids: set[str] = set()
+    rejected_times: list[int] = []
+    for item in witness:
+        if not isinstance(item, dict) or set(item) != {
+            "opportunity_id", "timestamp_ms", "market", "direction",
+            "lead_strategy", "baseline_risk_approved",
+            "baseline_risk_reason_codes", "original_rank_observed_at_ms",
+            "original_rank_ordinal", "rank_missing",
+            "synthetic_rank_applied",
+        }:
+            return "original_missing_rank_witness_row_invalid", metrics
+        event_id = item["opportunity_id"]
+        ts = item["timestamp_ms"]
+        reasons = item["baseline_risk_reason_codes"]
+        if (
+            not isinstance(event_id, str) or not event_id
+            or event_id in original_ids
+            or type(ts) is not int or ts < overlap
+            or not isinstance(item["market"], str) or not item["market"]
+            or item["direction"] not in {"long", "short"}
+            or not isinstance(item["lead_strategy"], str)
+            or not item["lead_strategy"]
+            or type(item["baseline_risk_approved"]) is not bool
+            or not isinstance(reasons, list)
+            or not all(isinstance(reason, str) for reason in reasons)
+            or item["original_rank_observed_at_ms"] is not None
+            or item["original_rank_ordinal"] is not None
+            or item["rank_missing"] is not True
+            or item["synthetic_rank_applied"] is not False
+        ):
+            return "original_missing_rank_witness_row_invalid", metrics
+        original_ids.add(event_id)
+        if item["baseline_risk_approved"] is False:
+            rejected_times.append(ts)
+    if len(rejected_times) != rejected_missing or (
+        witnessed_rejected != rejected_missing
+    ):
+        return "original_missing_rank_witness_not_reconciled", metrics
+    metrics["original_missing_rank_witness_total"] = len(witness)
+    metrics["original_missing_rank_witness_rejected"] = len(rejected_times)
+    # Validate against the producer's last-miss bound; a forged earlier
+    # timestamp cannot hide any original observed rejected opportunity.
+    original_last = raw.get("risk_rejected_integrity_last_miss_at_ms")
+    if rejected_times and (
+        type(original_last) is not int
+        or original_last < max(rejected_times)
+    ):
+        return "original_missing_rank_witness_last_miss_invalid", metrics
+
     # The 5m and 15m original producers already enforce their *independent*
     # frozen start times against risk_rejected_integrity_last_miss_at_ms.
     # This shared compact preflight must use the EARLIEST frozen start.

@@ -802,6 +802,10 @@ def prospective_full_stack_forward_markout_summary(
     risk_rejected_decision_counts: Counter[str] = Counter()
     rows: list[dict[str, object]] = []
     risk_rejected_rows: list[dict[str, object]] = []
+    # Preserve the exact original identities of opportunity records excluded
+    # by missing first-seen rank. Do NOT invent an ordinal or drop these
+    # records from the global integrity-failure counters.
+    missing_rank_source_witness: list[dict[str, object]] = []
 
     for evidence in prospective:
         risk_approved = evidence.baseline_risk_approved
@@ -846,6 +850,21 @@ def prospective_full_stack_forward_markout_summary(
         observed_at = evidence.rank_observed_at_ms
         ordinal = evidence.rank_ordinal
         if observed_at is None or ordinal is None:
+            missing_rank_source_witness.append({
+                "opportunity_id": evidence.opportunity_id,
+                "timestamp_ms": evidence.opportunity_timestamp_ms,
+                "market": evidence.market,
+                "direction": evidence.direction,
+                "lead_strategy": evidence.lead_strategy,
+                "baseline_risk_approved": risk_approved,
+                "baseline_risk_reason_codes": list(
+                    evidence.baseline_risk_reason_codes
+                ),
+                "original_rank_observed_at_ms": observed_at,
+                "original_rank_ordinal": ordinal,
+                "rank_missing": True,
+                "synthetic_rank_applied": False,
+            })
             if risk_approved:
                 missing_rank += 1
                 integrity_last_miss_at_ms = max(
@@ -1293,6 +1312,12 @@ def prospective_full_stack_forward_markout_summary(
             sorted(risk_rejected_block_layer_counts.items())
         ),
         "risk_rejected_missing_rank": risk_rejected_missing_rank,
+        "original_missing_rank_source_witness": missing_rank_source_witness,
+        "original_missing_rank_witness_count": len(missing_rank_source_witness),
+        "original_missing_rank_witness_risk_rejected_count": sum(
+            not row["baseline_risk_approved"]
+            for row in missing_rank_source_witness
+        ),
         "risk_rejected_stale_rank": risk_rejected_stale_rank,
         "risk_rejected_momentum_feature_integrity_misses": (
             risk_rejected_momentum_feature_integrity_misses
