@@ -219,3 +219,31 @@ This is not proof that every venue event was captured, nor a signed
 cross-worker ordering chain. Those independent gates and the 72h
 net-after-fee/funding whole-account screen remain mandatory and unproven.
 
+
+## Preserve original handoff hints across many genuine PAPER workers
+
+The new original recording captures the GITHUB Actions workflow-dispatch
+inputs `source_run_id` and `source_run_attempt` as an optional complete
+pair at real worker startup. If either half is missing/malformed or
+refers to this same worker, source capture fails without touching PAPER
+trading. The original terminal receipt records that exact declaration,
+never a fabricated predecessor when the worker bootstraps fresh.
+
+The completed-worker sealer writes an additional, SHA-pinned GitHub
+archive member `source-handoff-receipt.json`, alongside
+`replay-manifest.json` and the exact `microstructure/` segments. It
+contains the declared predecessor worker run/attempt, source worker
+run/attempt/head, original terminal journal SHA, original received row
+count/first/last timestamps and first-captured markets. The offline
+source verifier requires that exact member, the current worker identity
+and manifest/row bounds to agree, and its external-proof fields to stay
+FALSE.
+
+This is a **negative provenance and future multi-worker stitching
+prerequisite**, not an authenticated successor chain. It must be compared
+with independent GitHub dispatch inputs and the exact origin restore
+artifact plus paired source/ledger handoff. Two adjacent declared run IDs
+or close market timestamps alone do not prove every venue event or
+account state was preserved. No signed 72-hour whole-account after-cost
+profitability or v3 promotion certificate exists.
+
