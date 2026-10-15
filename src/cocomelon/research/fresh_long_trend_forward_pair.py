@@ -41,6 +41,12 @@ MINIMUM_FORWARD_MS: Final = 72 * 60 * 60 * 1000
 MAX_RECORDS: Final = 5_000_000
 BASELINE_SOURCE_ARTIFACT_ID: Final = 11982185958
 BASELINE_SOURCE_WORKER_RUN_ID: Final = 38737278661
+BASELINE_SOURCE_WORKER_ATTEMPT: Final = 1
+BASELINE_SOURCE_WORKER_HEAD_SHA: Final = (
+    "bcfd0eab058cda4ba9270dcd449a8cdf67b9199c"
+)
+# Upper bound at verified GitHub artifact creation (not exchange-event time).
+BASELINE_SOURCE_UPLOAD_UPPER_BOUND_MS: Final = 1_792_074_581_000
 BASELINE_SOURCE_ZIP_SHA256: Final = (
     "37150b47e701c3ab8c1af23808254f305b443862c90c040b0a49fe002a9a1d93"
 )
@@ -55,6 +61,10 @@ PRECOMMITMENT: Final = {
     "minimum_forward_ms": MINIMUM_FORWARD_MS,
     "baseline_source_artifact_id": BASELINE_SOURCE_ARTIFACT_ID,
     "discovery_run_id": BASELINE_SOURCE_WORKER_RUN_ID,
+    "discovery_run_attempt": BASELINE_SOURCE_WORKER_ATTEMPT,
+    "discovery_head_sha": BASELINE_SOURCE_WORKER_HEAD_SHA,
+    "discovery_uploaded_upper_bound_ms": BASELINE_SOURCE_UPLOAD_UPPER_BOUND_MS,
+    "discovery_upload_time_not_original_market_event_time": True,
     "discovery_outer_zip_sha256": BASELINE_SOURCE_ZIP_SHA256,
     "discovery_cohort_not_evidence_of_future_edge": True,
     "post_selection_rule_change_allowed": False,
@@ -92,6 +102,10 @@ def fresh_long_trend_freeze() -> LossContextPortfolioShadowFreeze:
             "policy": ["lead_strategy=trend", "direction=long"],
         }),
         source_composition_digest=_digest(PRECOMMITMENT),
+        source_max_timestamp_ms=BASELINE_SOURCE_UPLOAD_UPPER_BOUND_MS,
+        source_paper_run_id=BASELINE_SOURCE_WORKER_RUN_ID,
+        source_paper_run_attempt=BASELINE_SOURCE_WORKER_ATTEMPT,
+        source_paper_head_sha=BASELINE_SOURCE_WORKER_HEAD_SHA,
         dimensions=("lead_strategy", "direction"),
         values=("trend", "long"),
         frozen_at_ms=FROZEN_AT_MS,
