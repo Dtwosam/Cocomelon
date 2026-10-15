@@ -125,6 +125,7 @@ class RestDepthShadow:
         self.future_dated = 0
         self.out_of_order = 0
         self.duplicate = 0
+        self.missed_poll_count = 0
 
     def record(
         self,
@@ -149,7 +150,9 @@ class RestDepthShadow:
             "source_authority": False,
             "account_or_order_changed": False,
         }
-        if result == "shadow_budget_skipped":
+        if result == "missed_poll":
+            self.missed_poll_count += 1
+        elif result == "shadow_budget_skipped":
             self.shadow_slice_skipped += 1
         elif result == "shared_budget_skipped":
             self.quota_skipped += 1
@@ -220,6 +223,13 @@ class RestDepthShadow:
             "cohort": list(self.config.markets),
             "elapsed_ms": round((now_ns - self.start_ns) / 1_000_000, 2),
             "scheduled_attempts": self.attempts,
+            "duration_seconds": self.config.duration_seconds,
+            "poll_interval_ms": self.config.poll_interval_ms,
+            "expected_poll_ticks": (
+                self.config.duration_seconds * 1000
+                + self.config.poll_interval_ms - 1
+            ) // self.config.poll_interval_ms,
+            "missed_poll_count": self.missed_poll_count,
             "actual_http_requests": self.http_requests,
             "shared_budget_skips": self.quota_skipped,
             "shadow_slice_budget_skips": self.shadow_slice_skipped,
@@ -300,14 +310,24 @@ async def collect_shadow(
             stop_requested is not None and stop_requested()
         ):
             break
-        # If a deadline was missed, do not accumulate catch-up REST calls.
+        # Record every missed poll as NOT-FRESH evidence: silently dropping
+        # slots previously let a 180s run look "complete" with almost no
+        # source coverage. Never make network catch-up calls.
         if time.monotonic_ns() - due >= interval_ns:
+            for market in shadow.config.markets:
+                missed = shadow.record(
+                    market, None, now_ns=time.monotonic_ns(),
+                    utc_ms=time.time_ns() // 1_000_000, result="missed_poll",
+                )
+                missed["slot_index"] = tick
+                receipts.write(json.dumps(missed, sort_keys=True) + "\n")
             continue
         rows = await asyncio.gather(*(
             shadow.poll_one(market, now_ns=time.monotonic_ns())
             for market in shadow.config.markets
         ))
         for row in rows:
+            row["slot_index"] = tick
             receipts.write(json.dumps(row, sort_keys=True) + "\n")
     remaining = deadline - time.monotonic_ns()
     if remaining > 0 and (stop_requested is None or not stop_requested()):
@@ -316,6 +336,8 @@ async def collect_shadow(
     markets = cast(dict[str, dict[str, object]], report["markets"])
     report["observation_window_completed"] = (
         cast(float, report["elapsed_ms"]) >= duration * 1_000
+        and shadow.attempts == ticks * len(shadow.config.markets)
+        and shadow.missed_poll_count == 0
         and shadow.http_errors == 0
         and shadow.protocol_failures == 0
         and shadow.shallow == 0
