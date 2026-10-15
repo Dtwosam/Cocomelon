@@ -132,7 +132,6 @@ def seal_original_paper_v3_source(
     stream_path = capture_root / RECORD_FILE
     if (
         capture_root.is_symlink() or not terminal_path.is_file()
-        or not stream_path.is_file() or stream_path.is_symlink()
     ):
         raise OriginalV3CaptureSealError("no CLOSED original worker capture")
     try:
@@ -154,6 +153,8 @@ def seal_original_paper_v3_source(
         or not isinstance(terminal.get("selected_markets_at_worker_start"), list)
     ):
         raise OriginalV3CaptureSealError("original capture lost rows or changed identity")
+    if not stream_path.is_file() or stream_path.is_symlink():
+        raise OriginalV3CaptureSealError("original captured source journal missing")
     selected = terminal["selected_markets_at_worker_start"]
     if (
         not selected or not all(isinstance(m, str) and m for m in selected)
