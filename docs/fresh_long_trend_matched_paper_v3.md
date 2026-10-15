@@ -193,7 +193,12 @@ a verified 72-hour profitable strategy.
 ## Receipt order is part of original market-source evidence
 
 The original physical PAPER source worker records a global JSONL consumption
-sequence, but sealing splits normalized events into `events/<date>/<kind>/<market>`
+sequence and commits an entire original journal SHA-256 in its terminal
+receipt before the sealer runs. The sealer checks that exact writer-thread
+SHA against every original journal byte before assigning ordinals; a
+retrospectively reordered original journal is rejected even when counts
+and timestamps match. This is a LOCAL digest and not an externally signed
+venue attestation. Sealing splits normalized events into `events/<date>/<kind>/<market>`
 segments. The v3 sealer writes a global `original_receipt_ordinal` (1..N)
 onto each original emitted segment row before its segment SHA-256 is
 sealed and GitHub uploads the containing ZIP. Generic `canonical_record_order`
