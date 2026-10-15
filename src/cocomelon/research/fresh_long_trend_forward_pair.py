@@ -163,8 +163,15 @@ def run_digest_pinned_long_trend_matched_paper(
         original, manifest=manifest, selected_markets=markets,
         forward_not_before_ms=freeze.prospective_not_before_ms,
     )
-    terminal_record_ms = int(source_audit["last_record_available_at_ms"])
-    common_l2_end_ms = int(source_audit["common_selected_market_l2_end_ms"])
+    terminal_record_ms = source_audit["last_record_available_at_ms"]
+    common_l2_end_ms = source_audit["common_selected_market_l2_end_ms"]
+    if (
+        type(terminal_record_ms) is not int
+        or type(common_l2_end_ms) is not int
+    ):
+        raise LongTrendForwardTrialError("validated source timestamps invalid")
+    assert isinstance(terminal_record_ms, int)
+    assert isinstance(common_l2_end_ms, int)
     root = Path(account_root)
     if root.exists() and (
         not root.is_dir() or root.is_symlink() or any(root.iterdir())
