@@ -1,5 +1,10 @@
 # Cocomelon Project Status
 
+## October 15 — independent v3 original-source negative diagnostics
+
+The genuine PAPER workflow now saves `v3-original-source-preflight.json` after the successor handoff whether the original source seal passed or correctly refused. A tiny diagnostic artifact is published separately from `continuous-paper-v3-microstructure-...` so the original market archive can never be substituted with a source error receipt. Negative records preserve the real reason while **not mutating any PAPEr account, fixing missing rows or claiming an edge**. Source and after-cost 72h proof still pending; LIVE disabled.
+
+
 ## October 15 — real v3 original PAPER source collection and handoff
 
 The ordinary PAPER record pump now optionally copies each actual normalized consumed event and gap into a bounded in-memory queue, with fsync performed by a separate `asyncio.to_thread` writer, no market REST/WS calls and no awaiting source I/O in the pipeline. The continuous-paper workflow enables this in genuine PAPER, writes the capture outside the large durable resume state, and, only **after a successful successor handoff**, seals the closed capture into replay manifest plus original JSONL source segments. An original artifact named `continuous-paper-v3-microstructure-<run>-<attempt>` is uploaded only when no row was dropped or unwritten and there are authentic post-Oct16 06:00 UTC L2 observations. A failure never blocks normal PAPER continuation and never produces an admissible source archive. Exact original GitHub artifact digest and independent venue/handoff completeness still require external verification. No strategy, risk or LIVE changes.
