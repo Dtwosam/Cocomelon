@@ -1,5 +1,28 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 15 — original forward source must pin REAL PAPER fee/risk configuration
+
+A prospective LONG-trend source ZIP is not economically trustworthy when
+its manifest's fee/risk identity is rebuilt using DEFAULT execution settings,
+rather than the settings actually used by the source PAPER worker. The original
+asynchronous v3 capture now stores the exact effective
+`BaselineReplayConfig.config_digest`, actual execution config version,
+fee schedule ID and feature/strategy/risk/replay versions at original
+worker startup. The post-handoff seal binds the ORIGINAL values into
+the signed-by-GitHub-ZIP-hash `ReplayManifest` rather than fabricating a
+default `PaperExecutionConfig()` identity.
+
+Before v3 constructs either simulated PAPER account, it checks the
+manifest's full original configuration SHA-256 against the replay engine's
+actual `config.config_digest`, and rechecks fee, execution, risk and strategy
+version identifiers. Alternate taker fee rates or IOC slippage remain
+rejected even if someone recycles the same nominal fee-schedule ID.
+This prevents improving hypothetical after-cost equity by using cheaper
+execution economics than the original pinned paper feed/config.
+It is a negative local source+economic gate, NOT external venue
+authentication, inter-worker continuity, a true capital-matched
+72-hour profitable result, or permission to change current PAPER or LIVE.
+
 ## October 15 — prevent quiet source-time rewrites in original v3 capture
 
 The regular PAPER trading pipeline deliberately clamps delayed original receive
