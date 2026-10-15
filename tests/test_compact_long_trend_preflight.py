@@ -330,6 +330,64 @@ def test_earlier_rank_defects_do_not_erase_clean_frozen_forward_evidence(
 
 
 @pytest.mark.parametrize(
+    ("mutate", "expected_reason"),
+    [
+        (
+            lambda doc: doc["original_missing_rank_source_witness"].pop(),
+            "original_missing_rank_witness_not_reconciled",
+        ),
+        (
+            lambda doc: doc["original_missing_rank_source_witness"][1].update(
+                opportunity_id=doc["original_missing_rank_source_witness"][0][
+                    "opportunity_id"
+                ]
+            ),
+            "original_missing_rank_witness_row_invalid",
+        ),
+        (
+            lambda doc: doc["original_missing_rank_source_witness"][0].update(
+                original_rank_ordinal=3
+            ),
+            "original_missing_rank_witness_row_invalid",
+        ),
+        (
+            lambda doc: doc["original_missing_rank_source_witness"][0].update(
+                synthetic_rank_applied=True
+            ),
+            "original_missing_rank_witness_row_invalid",
+        ),
+        (
+            lambda doc: doc["original_missing_rank_source_witness"][0].update(
+                timestamp_ms=CLEAN_FORWARD_START_MS + 2
+            ),
+            "original_missing_rank_witness_last_miss_invalid",
+        ),
+    ],
+)
+def test_missing_rank_original_witness_tampering_fails_closed(
+    tmp_path: Path, mutate: object, expected_reason: str
+) -> None:
+    root = tmp_path / "state"
+    _fixture(root)
+    _dirty_historic_before_frozen_window(
+        root, last_miss_ms=CLEAN_FORWARD_START_MS - 101
+    )
+    target = root / FILES[0]
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    mutate(payload)
+    target.write_text(json.dumps(payload), encoding="utf-8")
+    result = _run(root, tmp_path / "preflight.json")
+    assert result.returncode != 0
+    report = json.loads(
+        (tmp_path / "preflight.json").read_text(encoding="utf-8")
+    )
+    assert report["ready"] is False
+    assert report["inputs"][0]["reason"] == expected_reason
+    assert report["promotion_authority"] is False
+    assert report["execution_authority"] is False
+
+
+@pytest.mark.parametrize(
     ("last_miss_ms", "reason"),
     [
         (CLEAN_FORWARD_START_MS, "risk_rejected_integrity_overlaps_frozen_window"),
