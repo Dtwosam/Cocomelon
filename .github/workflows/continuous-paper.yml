@@ -2326,7 +2326,23 @@ jobs:
             --upload-root "$RUNNER_TEMP/v3-original-source-upload" \
             --run-id "$GITHUB_RUN_ID" \
             --run-attempt "$GITHUB_RUN_ATTEMPT" \
-            --head-sha "$GITHUB_SHA"
+            --head-sha "$GITHUB_SHA" \
+            --diagnostic-out v3-original-source-preflight.json
+
+      # Negative source evidence must survive independently when a valid
+      # original ZIP cannot be published. A diagnostic never substitutes
+      # for the genuine stream/manifest ZIP.
+      - name: Upload v3 original capture preflight diagnostic
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('v3-original-source-preflight.json') != '' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-v3-source-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: v3-original-source-preflight.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
 
       - name: Upload frozen v3 original microstructure source
         id: upload_v3_original_source

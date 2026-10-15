@@ -306,7 +306,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--run-attempt", required=True)
     parser.add_argument("--head-sha", required=True)
+    parser.add_argument("--diagnostic-out", type=Path)
     args = parser.parse_args(argv)
+    code = 0
     try:
         receipt = seal_original_paper_v3_source(
             capture_root=args.capture_root,
@@ -315,14 +317,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             run_attempt=args.run_attempt,
             head_sha=args.head_sha,
         )
+        diagnostic = {
+            "ready": True,
+            "source_artifact_upload_ready": True,
+            "capture_seal_receipt": receipt,
+            "promotion_authority": False,
+            "execution_authority": False,
+        }
     except (OSError, ValueError, OriginalV3CaptureSealError) as exc:
-        print(json.dumps({
-            "ready": False, "reason": f"{type(exc).__name__}: {exc}",
-            "promotion_authority": False, "execution_authority": False,
-        }, sort_keys=True))
-        return 1
-    print(json.dumps(receipt, sort_keys=True))
-    return 0
+        code = 1
+        diagnostic = {
+            "ready": False,
+            "source_artifact_upload_ready": False,
+            "reason": f"{type(exc).__name__}: {exc}",
+            "run_id": args.run_id,
+            "run_attempt": args.run_attempt,
+            "promotion_authority": False,
+            "execution_authority": False,
+        }
+    if args.diagnostic_out is not None:
+        args.diagnostic_out.write_text(
+            json.dumps(diagnostic, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+    print(json.dumps(diagnostic, sort_keys=True))
+    return code
 
 
 if __name__ == "__main__":
