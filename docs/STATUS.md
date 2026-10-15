@@ -1,5 +1,28 @@
 # Cocomelon Project Status
 
+## October 15 — original v2 archive proves three-way checkpoint split
+
+Read-only independent checks of separately SHA-256-verified original paired-v2
+ZIP artifacts 11974152140 (worker 38735165251) and 11979576395 (worker
+38737278661) found the SAME older signed durable checkpoint at record count
+1,084,955, same exact signed gap witness prefix of 198,982 rows, and 52,991
+extra original received-gap rows in an intact later hash-chain tail. First
+extra original witness row is #198983, record ordinal 1,086,171. All 251,973
+witness rows have valid row and predecessor digests with no received-clock or
+ordinal regression. BOTH original baseline/candidate SQLite account state IDs
+differ from the signed durable state IDs. The real observed failure therefore
+is not a fraudulent hash or timestamp order but a split among signed state,
+continued witness records and advanced execution stores.
+
+The separately offline, non-promotable archive diagnostic validates the
+exact original ZIP hash, signed state self-digest, signed witness prefix
+bytes/row count/digest, full JSONL first-failure screen and both SQLite ID
+parity, with regression fixtures. It cannot repair or rewrite this v2 history,
+prove original venue-feed completeness, revalidate lost checkpoints, grant
+restart permission or certify positive after-cost expectancy. The original
+actor remains quarantined; live trading remains DISABLED.
+
+
 ## October 15 — block optional REST observer on unsafe measured worker peaks
 
 The authenticated October 15 PAPER status reported a 60-second in-reader
