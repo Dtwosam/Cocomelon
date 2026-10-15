@@ -145,6 +145,17 @@ def _validate_partition(
     raise RecordingValidationError(f"unsupported record_type: {record_type}")
 
 
+def _source_receive_ordinal(row: Mapping[str, object]) -> int | None:
+    if "source_receive_ordinal" not in row:
+        return None
+    raw = row["source_receive_ordinal"]
+    if type(raw) is not int or raw < 1:
+        raise RecordingValidationError(
+            "original source_receive_ordinal must be a positive integer"
+        )
+    return raw
+
+
 def _record_from_row(row: Mapping[str, object]) -> ReplayRecord:
     record_type = _string(row.get("record_type"), "record_type")
     schema_version = _integer(row.get("schema_version"), "schema_version")
@@ -171,6 +182,7 @@ def _record_from_row(row: Mapping[str, object]) -> ReplayRecord:
             event_key=event_key,
             payload_json=_canonical_json(payload),
             event_kind=event_kind,
+            source_receive_ordinal=_source_receive_ordinal(row),
         )
 
     if record_type == SourceRecordKind.DATA_GAP.value:
@@ -198,6 +210,7 @@ def _record_from_row(row: Mapping[str, object]) -> ReplayRecord:
             event_key=f"gap:{stream_id}:{started_ms}:{ended_ms}:{reason}",
             payload_json=_canonical_json(payload),
             event_kind=None,
+            source_receive_ordinal=_source_receive_ordinal(row),
         )
 
     raise RecordingValidationError(f"unsupported record_type: {record_type}")
