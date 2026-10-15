@@ -1,5 +1,35 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 15 — source worker must preserve its declared predecessor handoff
+
+A genuine 72-hour matched-account v3 study necessarily spans multiple
+ordinary PAPER worker runs. Previously the original source ZIP was bound
+to its own GitHub run and content, but did not preserve which exact prior
+run/attempt its PAPER account had declared restoring from. This makes a
+missing or incorrectly joined worker handoff difficult to audit even if
+each independent per-worker ZIP looks internally complete.
+
+The real worker now passes the exact workflow-dispatch predecessor
+run ID and attempt into the optional nonblocking research capture,
+where malformed or partial identifiers fail research capture only.
+Its original terminal receipt records the **declared** predecessor
+(or null for a fresh bootstrap). Post-worker sealing checks the same
+fields and includes a `source-handoff-receipt.json` inside the
+SHA-pinned GitHub v3 microstructure ZIP. Offline GitHub source checking
+validates that receipt's worker ID, head/attempt, original record count,
+source timestamp bounds and immutable journal hash against the worker
+metadata and exact manifest; falsified predecessor or continuity-claim
+fields fail closed.
+
+**A declared predecessor is NOT proof it was actually restored.**
+Independent source-run GitHub dispatch inputs, original resume artifact,
+signed PAPER account state and inter-run market-gap/receipt continuity
+still must be checked BEFORE 72h or profitability promotion. Neither
+this addition nor equal source timestamp endpoints authenticates venue
+completeness. LIVE remains DISABLED; original v3 trading hypothesis,
+risk, fees/funding and PAPER account unchanged.
+
+
 ## October 15 — original PAPER receipt ordering is NOT canonical replay sorting
 
 A source ZIP partitioned by `events/date/kind/market` discards global
