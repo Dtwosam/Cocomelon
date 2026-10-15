@@ -22,6 +22,8 @@ from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
 )
 from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
     FILE_NAME as V2_GAP_WITNESS_FILE,
+)
+from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
     V2SourceGapWitnessError,
     read_source_gap_witness,
 )
