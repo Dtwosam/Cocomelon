@@ -38,6 +38,7 @@ def _score() -> dict[str, object]:
         },
         "side_cohorts": [
             {
+                "cohort": {"side": "long"},
                 "trades": 2,
                 "gross_realized_pnl": "5",
                 "fees": "6",
@@ -46,6 +47,7 @@ def _score() -> dict[str, object]:
                 "net_r": "-0.75",
             },
             {
+                "cohort": {"side": "short"},
                 "trades": 2,
                 "gross_realized_pnl": "5",
                 "fees": "6",
@@ -72,11 +74,31 @@ def _short() -> dict[str, object]:
         "overall": {
             "trades": 3,
             "skipped": 1,
+            "skipped_original_winners": 0,
+            "skipped_original_losers": 1,
             "skipped_original_net_pnl": "-0.25",
             "original_net_pnl": "2",
             "candidate_skip_only_net_pnl": "2.25",
             "candidate_minus_original_net_pnl": "0.25",
             "candidate_minus_original_net_r": "0.1",
+        },
+        "by_direction": {
+            "long": {
+                "trades": 1,
+                "skipped": 0,
+                "original_net_pnl": "1",
+                "candidate_skip_only_net_pnl": "1",
+                "candidate_minus_original_net_pnl": "0",
+                "candidate_minus_original_net_r": "0",
+            },
+            "short": {
+                "trades": 2,
+                "skipped": 1,
+                "original_net_pnl": "1",
+                "candidate_skip_only_net_pnl": "1.25",
+                "candidate_minus_original_net_pnl": "0.25",
+                "candidate_minus_original_net_r": "0.1",
+            },
         },
     }
 
@@ -94,11 +116,31 @@ def _cost() -> dict[str, object]:
         "closed_prospective_trades": 3,
         "hypothetically_blocked_trades": 2,
         "retained_trades": 1,
+        "blocked_actual_winners": 0,
+        "blocked_actual_losers": 2,
         "overall": {
             "actual_net_pnl": "15",
             "candidate_net_pnl": "-5",
             "delta_net_pnl": "-20",
             "delta_net_r": "-1.1",
+        },
+        "by_direction": {
+            "long": {
+                "retained_trades": 1,
+                "blocked_trades": 1,
+                "actual_net_pnl": "5",
+                "candidate_net_pnl": "-4",
+                "delta_net_pnl": "-9",
+                "delta_net_r": "-0.5",
+            },
+            "short": {
+                "retained_trades": 0,
+                "blocked_trades": 1,
+                "actual_net_pnl": "10",
+                "candidate_net_pnl": "-1",
+                "delta_net_pnl": "-11",
+                "delta_net_r": "-0.6",
+            },
         },
     }
 
@@ -233,6 +275,24 @@ def test_future_positive_strict_screen_is_not_full_account_certification(
         "candidate_net_pnl": "1",
         "delta_net_pnl": "6",
         "delta_net_r": "0.4",
+    }
+    cost["by_direction"] = {
+        "long": {
+            "retained_trades": 1,
+            "blocked_trades": 1,
+            "actual_net_pnl": "-3",
+            "candidate_net_pnl": "1",
+            "delta_net_pnl": "4",
+            "delta_net_r": "0.3",
+        },
+        "short": {
+            "retained_trades": 0,
+            "blocked_trades": 1,
+            "actual_net_pnl": "-2",
+            "candidate_net_pnl": "0",
+            "delta_net_pnl": "2",
+            "delta_net_r": "0.1",
+        },
     }
     receipt = review_original_forward_economics(
         **_inputs(tmp_path, short=short, cost=cost)
