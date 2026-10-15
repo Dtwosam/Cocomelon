@@ -128,6 +128,7 @@ def run_digest_pinned_long_trend_matched_paper(
     selected_markets: Sequence[MarketId],
     account_root: str | Path,
     decision_engine_factory: Callable[[], DecisionEpochEngine] | None = None,
+    require_original_receive_ordinals: bool = False,
 ) -> dict[str, object]:
     """Run a ONE-SHOT independent paper pair, with absolutely no promotion.
 
@@ -179,6 +180,14 @@ def run_digest_pinned_long_trend_matched_paper(
         original, manifest=manifest, selected_markets=markets,
         forward_not_before_ms=freeze.prospective_not_before_ms,
     )
+    if (
+        require_original_receive_ordinals
+        and source_audit["complete_original_source_receive_ordinals_verified"]
+        is not True
+    ):
+        raise LongTrendForwardTrialError(
+            "source-bound v3 requires every original receive ordinal"
+        )
     terminal_record_ms = source_audit["last_record_available_at_ms"]
     common_l2_end_ms = source_audit["common_selected_market_l2_end_ms"]
     if (
