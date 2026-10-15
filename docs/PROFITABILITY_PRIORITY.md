@@ -1,5 +1,23 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 15 — prevent quiet source-time rewrites in original v3 capture
+
+The regular PAPER trading pipeline deliberately clamps delayed original receive
+timestamps to its last accepted timestamp to maintain monotonic execution.
+However, its asynchronous original-v3 research copy must **NOT** capture that
+rewritten clock as if the venue record had actually arrived then. The v3
+collector now receives the original normalized incoming ReplayRecord BEFORE
+the PAPER clock clamp, compares it both with the previously offered original
+receive timestamp and the actual restored PAPER timestamp, and permanently
+fails research evidence on any regression. Its terminal diagnostic reports
+the first original event key, market, real receive time, prior clock and
+regression count. No missing or reordered market data is synthesized,
+postdated, or quietly declared source-complete. A regressing source never
+seals a promotable artifact; normal paper-account clocks and risk/order
+decisions remain unchanged. Genuine venue continuity, 72-hour economics and
+source provenance are still independently UNVERIFIED; LIVE stays disabled.
+
+
 ## October 15 — genuinely collect paper inputs without blocking the trader
 
 The *missing physical source* for the frozen LONG trend v3 economic trial is now addressed with a bounded, paper-only **asynchronous copy of the exact ReplayRecord stream consumed by the normal mainnet PAPER pipeline**. Original received rows are written outside durable trading state to a GitHub-run/attempt-specific file with background fsync batches. The record pump only queues copies; research recorder I/O **cannot block the trader**. A queue overflow, disk failure, unclosed worker, mismatched original worker run/commit or absent post-embargo L2 permanently disqualifies research; there is no attempt to fabricate dropped rows. Each closed captured worker is sealed AFTER its successor has already been dispatched into a replay-format original manifest plus original event/gap segments and uploaded as its own SHA256-addressable GitHub artifact.
