@@ -260,6 +260,11 @@ def test_fresh_source_replay_constructs_new_independent_account_pair(
     _Source.deny = False
     _Source.loaded = _original_source_rows()
     monkeypatch.setattr(study, "PinnedShortRankReplaySource", _Source)
+    # Separate test fixtures exercise the real sealed-order restoration.
+    monkeypatch.setattr(
+        study, "restore_original_v3_received_order",
+        lambda _root, _manifest, rows: rows,
+    )
     response = study.run_digest_pinned_long_trend_matched_paper(
         source_root=tmp_path / "untrusted-replay-placeholder",
         manifest=_manifest(),
@@ -322,6 +327,11 @@ def _completed_v3(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> (
     _Source.deny = False
     _Source.loaded = _original_source_rows()
     monkeypatch.setattr(study, "PinnedShortRankReplaySource", _Source)
+    # Separate test fixtures exercise the real sealed-order restoration.
+    monkeypatch.setattr(
+        study, "restore_original_v3_received_order",
+        lambda _root, _manifest, rows: rows,
+    )
     root = tmp_path / "v3-cash-audit"
     report = study.run_digest_pinned_long_trend_matched_paper(
         source_root=tmp_path / "original-untrusted-source",
@@ -415,6 +425,11 @@ def test_manifest_calendar_end_cannot_fabricate_72h_observation(
     _Source.deny = False
     _Source.loaded = _original_source_rows()
     monkeypatch.setattr(study, "PinnedShortRankReplaySource", _Source)
+    # Separate test fixtures exercise the real sealed-order restoration.
+    monkeypatch.setattr(
+        study, "restore_original_v3_received_order",
+        lambda _root, _manifest, rows: rows,
+    )
     report = study.run_digest_pinned_long_trend_matched_paper(
         source_root=tmp_path / "original-source-placeholder",
         manifest=_manifest(end_offset=study.MINIMUM_FORWARD_MS + 20_000),
@@ -439,6 +454,11 @@ def test_prior_trial_roots_are_forbidden_before_account_creation(
     _Source.deny = False
     _Source.loaded = _original_source_rows()
     monkeypatch.setattr(study, "PinnedShortRankReplaySource", _Source)
+    # Separate test fixtures exercise the real sealed-order restoration.
+    monkeypatch.setattr(
+        study, "restore_original_v3_received_order",
+        lambda _root, _manifest, rows: rows,
+    )
     root = tmp_path / rootname
     with pytest.raises(study.LongTrendForwardTrialError, match="prior shadow root"):
         study.run_digest_pinned_long_trend_matched_paper(
@@ -456,6 +476,11 @@ def test_invalid_source_fails_before_creating_accounts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(study, "PinnedShortRankReplaySource", _Source)
+    # Separate test fixtures exercise the real sealed-order restoration.
+    monkeypatch.setattr(
+        study, "restore_original_v3_received_order",
+        lambda _root, _manifest, rows: rows,
+    )
     _Source.deny = True
     root = tmp_path / "fresh-only"
     try:
@@ -483,6 +508,11 @@ def test_replay_cannot_use_alternate_fee_or_risk_settings_from_source(
     from dataclasses import replace
 
     monkeypatch.setattr(study, "PinnedShortRankReplaySource", _Source)
+    # Separate test fixtures exercise the real sealed-order restoration.
+    monkeypatch.setattr(
+        study, "restore_original_v3_received_order",
+        lambda _root, _manifest, rows: rows,
+    )
     _Source.deny = False
     _Source.last_forward = None
     normal = BaselineReplayConfig(execution=PaperExecutionConfig())
