@@ -21,6 +21,9 @@ from cocomelon.evidence.lifecycle import DecisionEpochEngine
 from cocomelon.research.fresh_long_trend_account_audit import (
     audit_fresh_v3_paired_accounts,
 )
+from cocomelon.research.fresh_long_trend_source_integrity import (
+    audit_fresh_long_trend_original_records,
+)
 from cocomelon.research.historical_discovery_freeze import (
     MIN_PROSPECTIVE_EMBARGO_MS,
 )
@@ -150,20 +153,18 @@ def run_digest_pinned_long_trend_matched_paper(
     )
     if len(original) > MAX_RECORDS:
         raise LongTrendForwardTrialError("forward source exceeds bounded replay")
-    # A manifest claiming a long calendar window is not evidence that a
-    # contemporaneous market row was actually captured at its far end.
-    forward_observed = [
-        row.available_at_ms for row in original
-        if row.available_at_ms >= freeze.prospective_not_before_ms
-    ]
-    if not forward_observed:
-        raise LongTrendForwardTrialError(
-            "forward source contains no actual post-embargo observation"
-        )
-    last_observed = max(forward_observed)
     markets = tuple(sorted(selected_markets, key=lambda item: item.canonical))
     if not markets or len({m.canonical for m in markets}) != len(markets):
         raise LongTrendForwardTrialError("paired account markets not unique")
+    # Never count a late gap or non-L2 snapshot as a full 72-hour
+    # market-observable paired-account horizon. This check runs before any
+    # account root can be created and rejects ALL original source gaps.
+    source_audit = audit_fresh_long_trend_original_records(
+        original, manifest=manifest, selected_markets=markets,
+        forward_not_before_ms=freeze.prospective_not_before_ms,
+    )
+    terminal_record_ms = int(source_audit["last_record_available_at_ms"])
+    common_l2_end_ms = int(source_audit["common_selected_market_l2_end_ms"])
     root = Path(account_root)
     if root.exists() and (
         not root.is_dir() or root.is_symlink() or any(root.iterdir())
@@ -194,8 +195,8 @@ def run_digest_pinned_long_trend_matched_paper(
         # publish a LOCAL self-digested checkpoint. The v1/v2 failure
         # showed that a summary without durable parity is not evidence.
         # This is NOT a source-authenticated inter-worker checkpoint.
-        checkpoint = actor.checkpoint(end_ms=last_observed)
-        summary = actor.summary_payload(end_ms=last_observed)
+        checkpoint = actor.checkpoint(end_ms=terminal_record_ms)
+        summary = actor.summary_payload(end_ms=terminal_record_ms)
         if summary["record_count"] != len(original):
             raise LongTrendForwardTrialError("paired source row count mismatch")
     finally:
@@ -220,12 +221,14 @@ def run_digest_pinned_long_trend_matched_paper(
             "expected_manifest_id": expected_manifest_id,
             "unverified_locally_pinned_source": source.verification_receipt(original),
             "source_records_replayed": len(original),
-            "last_original_forward_record_at_ms": last_observed,
+            "locally_checked_market_gap_and_l2_receipt": source_audit,
+            "last_original_forward_record_at_ms": terminal_record_ms,
+            "last_common_original_l2_at_ms": common_l2_end_ms,
             "record_observed_forward_elapsed_ms": (
-                last_observed - freeze.prospective_not_before_ms
+                common_l2_end_ms - freeze.prospective_not_before_ms
             ),
             "minimum_forward_elapsed": (
-                last_observed - freeze.prospective_not_before_ms >= MINIMUM_FORWARD_MS
+                common_l2_end_ms - freeze.prospective_not_before_ms >= MINIMUM_FORWARD_MS
             ),
             "paired_account_original_runtime_summary": summary,
             "locally_reconciled_original_paired_sqlite_accounts": local_account_audit,
