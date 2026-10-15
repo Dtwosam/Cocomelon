@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Final
 
 from cocomelon.domain.replay import ReplayRecord
+from cocomelon.evidence.contracts import BaselineReplayConfig
 
 MAX_PENDING_RECORDS: Final = 16_384
 BATCH_SIZE: Final = 256
@@ -68,6 +69,7 @@ class OriginalPaperMicrostructureCapture:
         head_sha: str,
         selected_markets: Sequence[str],
         first_observed_ms: int,
+        replay_config: BaselineReplayConfig,
     ) -> None:
         if (
             not run_id.isdecimal() or not run_attempt.isdecimal()
@@ -86,6 +88,17 @@ class OriginalPaperMicrostructureCapture:
         if len(set(self.selected_markets)) != len(self.selected_markets):
             raise ValueError("duplicate original selected markets")
         self.first_observed_ms = first_observed_ms
+        # Capture the *actual effective* PAPER strategy/risk/cost contract.
+        # A later offline replay may never substitute cheaper fees, a
+        # different fill model or a looser risk configuration and call it
+        # a matched original-source forward account.
+        self.replay_config_digest = replay_config.config_digest
+        self.execution_config_version = replay_config.execution.config_version
+        self.fee_schedule_id = replay_config.execution.fee_schedule_id
+        self.feature_version = replay_config.feature_version
+        self.strategy_version = replay_config.strategy_version
+        self.risk_version = replay_config.risk_version
+        self.replay_engine_version = replay_config.replay_engine_version
         self.root.mkdir(parents=True, exist_ok=False)
         self.queue: asyncio.Queue[ReplayRecord] = asyncio.Queue(
             maxsize=MAX_PENDING_RECORDS
@@ -184,6 +197,17 @@ class OriginalPaperMicrostructureCapture:
             "head_sha": self.head_sha,
             "first_observed_ms": self.first_observed_ms,
             "selected_markets_at_worker_start": list(self.selected_markets),
+            "original_effective_replay_config_digest": self.replay_config_digest,
+            "original_effective_execution_config_version": (
+                self.execution_config_version
+            ),
+            "original_effective_fee_schedule_id": self.fee_schedule_id,
+            "original_effective_feature_version": self.feature_version,
+            "original_effective_strategy_version": self.strategy_version,
+            "original_effective_risk_version": self.risk_version,
+            "original_effective_replay_engine_version": (
+                self.replay_engine_version
+            ),
             "offered_count": self.offered_count,
             "written_count": self.record_count,
             "dropped_count": self.dropped_count,
