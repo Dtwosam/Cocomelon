@@ -189,3 +189,28 @@ economics, but this check does not externally authenticate GitHub metadata
 or venue completeness, and a locally consistent v3 replay is still not
 a verified 72-hour profitable strategy.
 
+
+## Receipt order is part of original market-source evidence
+
+The original physical PAPER source worker records a global JSONL consumption
+sequence, but sealing splits normalized events into `events/<date>/<kind>/<market>`
+segments. The v3 sealer writes a global `original_receipt_ordinal` (1..N)
+onto each original emitted segment row before its segment SHA-256 is
+sealed and GitHub uploads the containing ZIP. Generic `canonical_record_order`
+sorts equal-millisecond observations by event type/market/key; those
+tie-breakers **are not** proof of the original PAPER receipt sequence.
+
+Before v3 constructs new baseline/candidate accounts, a separate read-only
+validator re-reads every SHA-pinned segment, verifies a unique contiguous
+ordinal for every record, checks source timestamp monotonicity in the actual
+original ordinal sequence, and verifies the complete population against
+the separately validated source loader. The paper simulation consumes
+this reconstructed original order, including equal-timestamp ties.
+Missing, duplicated, out-of-range or reordered ordinals fail closed.
+No old ordinal-less ZIP can be reconstructed using hindsight sorting and
+used as a qualified prospective v3 market source.
+
+This is not proof that every venue event was captured, nor a signed
+cross-worker ordering chain. Those independent gates and the 72h
+net-after-fee/funding whole-account screen remain mandatory and unproven.
+
