@@ -3,11 +3,11 @@ from __future__ import annotations
 from inspect import signature
 from pathlib import Path
 
+from cocomelon import continuous_paper
 from cocomelon.config import Settings
 from cocomelon.domain.market import MarketId
 from cocomelon.hyperliquid.client import InfoClient
 from cocomelon.hyperliquid.rate_limit import RollingRateBudget
-from cocomelon import continuous_paper
 
 
 def test_all_operational_paper_heartbeats_report_original_reader_budget() -> None:
