@@ -61,3 +61,16 @@ validated. The observer remains default-off in the worker, and the
 existing workflow sets neither activation flag.
 
 Tracking: [#1243](https://github.com/Dtwosam/Cocomelon/issues/1243).
+
+
+## Hard HTTP 429 circuit proof
+
+A single REST HTTP **429** on any observed market trips a global low-priority
+shadow stop. Every subsequent slot must be logged as
+`rate_limit_circuit_open` with **no exchange request**. Already issued
+same-tick requests may finish, but retries or new requests at later ticks
+are forbidden. The offline auditor verifies the first 429 receipt, all
+subsequent slot statuses, cumulative error and circuit counters, and the
+independent `rate_limit_circuit_open` summary flag. A record indicating
+later HTTP polling makes the whole research artifact nonqualifying.
+This cannot validate other processes behind the same IP.
