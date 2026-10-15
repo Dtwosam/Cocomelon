@@ -117,8 +117,8 @@ def _paper_overall(root: dict[str, object]) -> dict[str, object]:
     } != {"long", "short"}:
         raise EconomicVetoError("whole booked long/short cohorts invalid")
     if sum(
-        (_count(_object(row, "side cohort").get("trades"), "side closes")
-         for row in sides)
+        _count(_object(row, "side cohort").get("trades"), "side closes")
+        for row in sides
     ) != closes or any(
         abs(sum(
             (_amount(_object(row, "side cohort").get(key), f"side {key}")
