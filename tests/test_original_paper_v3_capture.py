@@ -21,7 +21,7 @@ from cocomelon.replay.source import (
     JsonlReplaySource,
     validate_recording,
 )
-from cocomelon.replay.validation import canonical_record_order
+from cocomelon.replay.clock import canonical_record_order
 from cocomelon.research.fresh_long_trend_receipt_order import (
     OriginalV3ReceiptOrderError,
     restore_original_v3_received_order,
@@ -182,11 +182,12 @@ def test_original_ordinal_absence_duplication_and_forgery_fail_closed(
     elif damage == "out_of_range":
         rows[1]["original_receipt_ordinal"] = 200
     else:
-        rows[1]["original_receipt_ordinal"] = 3
-        rows[2]["original_receipt_ordinal"] = 2
-        # Put the last original timestamp below the prior row; changing
-        # chronology must still fail even when forged ordinals are unique.
-        rows[2]["receive_time"] = "2026-10-15T00:00:00.000Z"
+        # Leave unique original ordinals intact but forge one row's receipt
+        # timestamp to precede the prior row in the original worker order.
+        # All bytes remain in the same UTC partition and manifesto window.
+        rows[2]["receive_time"] = (
+            "2026-10-16T05:59:59.999Z"
+        )
     segment.write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
     )
