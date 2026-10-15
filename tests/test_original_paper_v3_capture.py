@@ -13,6 +13,7 @@ from cocomelon.research.fresh_long_trend_forward_pair import FORWARD_NOT_BEFORE_
 from cocomelon.research.original_paper_v3_capture import OriginalPaperMicrostructureCapture
 from scripts.seal_original_paper_v3_source import (
     OriginalV3CaptureSealError,
+    main as seal_main,
     seal_original_paper_v3_source,
 )
 
@@ -164,3 +165,63 @@ def test_paper_workflow_seals_after_successor_without_lifting_trade_controls() -
     assert "steps.seal_v3_original_source.outcome == 'success'" in workflow[seal:upload+400]
     assert "continuous-paper-v3-microstructure-" in workflow[upload:upload+500]
     assert "live_orders: true" not in workflow[seal:upload]
+
+
+def test_real_source_failed_seal_publishes_nonpromotable_diagnostic(
+    tmp_path: Path,
+) -> None:
+    asyncio.run(_capture(
+        tmp_path / "original", (_book(FORWARD_NOT_BEFORE_MS - 1, "early"),)
+    ))
+    diagnostic = tmp_path / "sealing-diagnostic.json"
+    result = seal_main([
+        "--capture-root", str(tmp_path / "original"),
+        "--upload-root", str(tmp_path / "upload"),
+        "--run-id", RUN, "--run-attempt", ATTEMPT,
+        "--head-sha", HEAD, "--diagnostic-out", str(diagnostic),
+    ])
+    assert result == 1
+    report = json.loads(diagnostic.read_text())
+    assert report["ready"] is False
+    assert report["source_artifact_upload_ready"] is False
+    assert "post-embargo genuine original L2" in report["reason"]
+    assert report["execution_authority"] is False
+    assert report["promotion_authority"] is False
+    assert not (tmp_path / "upload").exists()
+
+
+def test_real_source_clean_diagnostic_is_not_a_profit_certificate(
+    tmp_path: Path,
+) -> None:
+    asyncio.run(_capture(
+        tmp_path / "original", (_book(FORWARD_NOT_BEFORE_MS + 1, "real"),)
+    ))
+    diagnostic = tmp_path / "source-receipt.json"
+    result = seal_main([
+        "--capture-root", str(tmp_path / "original"),
+        "--upload-root", str(tmp_path / "upload"),
+        "--run-id", RUN, "--run-attempt", ATTEMPT,
+        "--head-sha", HEAD, "--diagnostic-out", str(diagnostic),
+    ])
+    assert result == 0
+    report = json.loads(diagnostic.read_text())
+    assert report["ready"] is True
+    assert report["source_artifact_upload_ready"] is True
+    assert report["promotion_authority"] is False
+    assert report["execution_authority"] is False
+    assert report["capture_seal_receipt"]["original_continuity_across_workers_certified"] is False
+    assert (tmp_path / "upload" / "replay-manifest.json").is_file()
+
+
+def test_original_workflow_diagnostic_upload_cannot_authorize_source() -> None:
+    workflow = Path(".github/workflows/continuous-paper.yml").read_text()
+    seal = workflow.index("- name: Seal frozen v3 original microstructure source")
+    diagnostic = workflow.index(
+        "- name: Upload v3 original capture preflight diagnostic"
+    )
+    original = workflow.index("- name: Upload frozen v3 original microstructure source")
+    assert seal < diagnostic < original
+    assert "--diagnostic-out v3-original-source-preflight.json" in workflow
+    assert "hashFiles('v3-original-source-preflight.json')" in workflow
+    assert "steps.seal_v3_original_source.outcome == 'success'" in workflow[original:original+350]
+    assert "continuous-paper-v3-source-preflight-" in workflow[diagnostic:original]
