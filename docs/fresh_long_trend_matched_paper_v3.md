@@ -72,3 +72,32 @@ lineage and exact manifest identity; implement full original market-gap
 continuity and independent terminal account sign/review across a genuine
 72-hour+ forward horizon, without time-selecting winners or rewriting
 historical source.
+
+## October 15: new local terminal whole-account parity guard
+
+The one-shot engine now **checkpoints both PAPER execution adapters**
+and signs a *local self-digest* over the checkpoint JSON only after the
+same exact source-record stream has been consumed by both lanes. Once
+both SQLite stores have CLOSED, a separate read-only module reopens
+each database with SQLite \`mode=ro&immutable=1\`, requires SQLite
+integrity and exact recomputed account \`state_id\`, original on-disk
+paired signed checkpoint parity, materialized positions and rolling
+equity peaks, and checks actual fill fees plus actual accrued funding
+cash against all original ledger rows. It independently reconciles
+cash = initial cash + realized gross − fees + funding, whole marked
+equity = cash + unrealized mark, and the original reported drawdown,
+open positions, realized and marked net against each real account.
+Both lanes must use the EXACT same initial capital. Any mismatch throws
+a diagnostic failure with **no economic verdict**.
+
+This is a **strictly local** cash-and-state integrity guard: neither a
+self-hash nor a read-only SQLite equality check authenticates GitHub,
+the venue, the market-data gap stream, external signing keys, original
+rank history or handoffs across real workers. Even if the trial shows
+a mathematically positive result, the module sets
+\`72h_forward_profitability_certified=false\`,
+\`study_promotable=false\` and \`execution_authority=false\`.
+A positive relative challenger advantage with both accounts losing
+is NOT a positive absolute strategy edge. Keep old torn v1/v2 sources
+quarantined and preserve all new failure snapshots.
+

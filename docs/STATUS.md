@@ -1,5 +1,18 @@
 # Cocomelon Project Status
 
+## October 15 — independent immutable v3 PAPER equity/account audit
+
+For new frozen LONG-trend v3 **one-shot offline** research, the runner now
+persists a local self-digested paired terminal checkpoint, closes both
+execution stores, then checks the exact original immutable SQLite accounts
+against that checkpoint and actual whole-account marked cash, fees,
+funding, realized PnL, positions and local drawdowns. Fail closed on
+mismatched SQLite account IDs, wrong recorded fees/funding or invented
+candidate-relative gains. Neither historical failed v1/v2 data nor
+an after-cost profitability/venue-source certificate is imported or
+claimed. See `docs/fresh_long_trend_matched_paper_v3.md`.
+
+
 > Read [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md) first. The original PAPER account has not proven positive after-cost expectancy and old v1/v2 paired research is quarantined.
 
 ## October 15 — predeclared independent LONG-trend matched PAPER trial foundation
