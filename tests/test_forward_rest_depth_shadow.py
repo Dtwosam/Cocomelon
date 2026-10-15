@@ -433,3 +433,63 @@ def test_attached_shadow_cancel_writes_incomplete_receipt_not_trading_state(
     assert report["receipt_sha256"] == hashlib.sha256(receipts).hexdigest()
     assert report["execution_authority"] is False
     assert report["paper_account_changed"] is False
+
+
+def test_first_http_429_opens_source_only_circuit_without_more_network() -> None:
+    class RateLimitedReader:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def try_shadow_l2_book(self, market: MarketId) -> tuple[bool, object | None]:
+            self.calls.append(market.wire_name)
+            raise InfoHttpError(429, "test rate limit")
+
+    async def run() -> tuple[list[dict[str, object]], int]:
+        reader = RateLimitedReader()
+        now_ns = time.monotonic_ns()
+        shadow = RestDepthShadow(
+            reader,
+            config=RestShadowConfig(enabled=True),
+            start_ns=now_ns,
+        )
+        first = await shadow.poll_one("BLUR", now_ns=now_ns)
+        second = await shadow.poll_one("BOME", now_ns=time.monotonic_ns())
+        third = await shadow.poll_one("CASHCAT", now_ns=time.monotonic_ns())
+        summary = shadow.summary(now_ns=time.monotonic_ns())
+        assert first["status"] == "http_error"
+        assert first["http_429"] is True
+        assert second["status"] == third["status"] == "rate_limit_circuit_open"
+        assert second["source_authority"] is False
+        assert summary["http_429_count"] == 1
+        assert summary["rate_limit_circuit_open"] is True
+        assert summary["rate_limit_circuit_skips"] == 2
+        assert summary["actual_http_requests"] == 1
+        assert summary["execution_authority"] is False
+        return [first, second, third], len(reader.calls)
+
+    receipts, calls = asyncio.run(run())
+    assert calls == 1
+    assert len(receipts) == 3
+
+
+def test_non_429_transport_error_does_not_claim_hard_rate_limit() -> None:
+    class FailingReader:
+        def try_shadow_l2_book(self, market: MarketId) -> tuple[bool, object | None]:
+            del market
+            raise InfoHttpError(502, "temporary")
+
+    async def run() -> dict[str, object]:
+        ns = time.monotonic_ns()
+        shadow = RestDepthShadow(
+            FailingReader(), config=RestShadowConfig(enabled=True),
+            start_ns=ns,
+        )
+        first = await shadow.poll_one("BLUR", now_ns=ns)
+        assert first["status"] == "http_error"
+        assert "http_429" not in first
+        return shadow.summary(now_ns=time.monotonic_ns())
+
+    summary = asyncio.run(run())
+    assert summary["http_errors"] == 1
+    assert summary["http_429_count"] == 0
+    assert summary["rate_limit_circuit_open"] is False
