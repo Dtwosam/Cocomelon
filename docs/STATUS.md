@@ -1,5 +1,10 @@
 # Cocomelon Project Status
 
+## October 15 — real v3 original PAPER source collection and handoff
+
+The ordinary PAPER record pump now optionally copies each actual normalized consumed event and gap into a bounded in-memory queue, with fsync performed by a separate `asyncio.to_thread` writer, no market REST/WS calls and no awaiting source I/O in the pipeline. The continuous-paper workflow enables this in genuine PAPER, writes the capture outside the large durable resume state, and, only **after a successful successor handoff**, seals the closed capture into replay manifest plus original JSONL source segments. An original artifact named `continuous-paper-v3-microstructure-<run>-<attempt>` is uploaded only when no row was dropped or unwritten and there are authentic post-Oct16 06:00 UTC L2 observations. A failure never blocks normal PAPER continuation and never produces an admissible source archive. Exact original GitHub artifact digest and independent venue/handoff completeness still require external verification. No strategy, risk or LIVE changes.
+
+
 ## October 15 — prevent posthoc v3 market cohort selection
 
 The frozen LONG-trend v3 replay source check refuses to construct PAPER portfolios if the caller-selected market set omits any market present in the original post-embargo normalized market feed, including extra L2 or market snapshots. This is a local original-source anti-cherry-picking gate; it does not independently verify the producer's contemporaneous full market list, GitHub source integrity, or exchange continuity. Independent after-cost success remains UNPROVEN; existing risk/order settings unchanged.
