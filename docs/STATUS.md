@@ -2,6 +2,25 @@
 
 > Read [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md) first. No profitable PAPER strategy has been independently certified; v2 remains quarantined after an original signed-account/witness checkpoint split.
 
+## October 15 — terminal receipt must bind actual original v2 DATA_GAP bytes
+
+The post-worker v2 terminal snapshot verifier now independently replays the
+**complete original received-gap JSONL witness** and requires its full
+row-chain, processed-record ordinal bounds, source timestamps, byte hash,
+count, and terminal digest to equal the signed v2 account checkpoint.
+Previously, a matching pair of SQLite account IDs alone could produce
+`terminal_source_account_snapshot_coherent` even if a valid extra
+post-checkpoint gap row had been appended. The terminal receipt now
+classifies these mismatches separately as
+`terminal_received_gap_witness_diverged`; missing/tampered original bytes
+and a re-signed but incorrect witness count cannot appear green. The source
+workflow prints witness parity and the original received-gap row count.
+
+This is a fail-closed evidence-integrity repair, not an account rollback,
+a source-gap waiver, exchange feed certification, a new v2 trial, or any
+claim of positive after-cost account performance. Historical failed
+archives remain quarantined. PAPER remains the only permitted execution.
+
 ## October 15 — fail closed before restoring a torn v2 research checkpoint
 
 The original frozen v2 actor can only resume from one matching signed

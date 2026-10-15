@@ -8,6 +8,11 @@ from pathlib import Path
 
 import pytest
 
+from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
+from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+    V2SourceGapWitness,
+    read_source_gap_witness,
+)
 from scripts import verify_trend_paired_terminal_snapshot as audit
 
 
@@ -187,9 +192,9 @@ def test_source_workflow_audits_before_archive_upload() -> None:
     assert "COCOMELON_EXECUTION_MODE: paper" in source
 
 
-def test_fresh_v2_terminal_parity_uses_only_v2_sqlite_and_signed_state(
+def _v2_fixture(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+) -> tuple[Path, Path]:
     root = _fixture(tmp_path, monkeypatch)
     old_folder = root / audit.ROOT
     v2_folder = root / "both-side-trend-paired-shadow-v2"
@@ -208,6 +213,11 @@ def test_fresh_v2_terminal_parity_uses_only_v2_sqlite_and_signed_state(
     signed_path = v2_folder / "paired-shadow-state.json"
     state = json.loads(signed_path.read_text())
     state["portfolio_shadow_candidate_id"] = frozen.candidate_id
+    V2SourceGapWitness(v2_folder, restoring=False)
+    state["v2_source_gap_event_witness"] = read_source_gap_witness(
+        v2_folder / "source-gap-record-witness.jsonl",
+        total_processed_records=10,
+    )
     state.pop("state_digest")
     state["state_digest"] = audit._state_digest(state)
     signed_path.write_text(json.dumps(state))
@@ -216,6 +226,13 @@ def test_fresh_v2_terminal_parity_uses_only_v2_sqlite_and_signed_state(
     summary["checkpoint"] = state
     summary_path.write_text(json.dumps(summary))
 
+    return root, v2_folder
+
+
+def test_fresh_v2_terminal_parity_uses_only_v2_sqlite_and_signed_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, v2_folder = _v2_fixture(tmp_path, monkeypatch)
     result = audit.verify_terminal_snapshot(
         root,
         root_name="both-side-trend-paired-shadow-v2",
@@ -225,6 +242,8 @@ def test_fresh_v2_terminal_parity_uses_only_v2_sqlite_and_signed_state(
     assert result["campaign_state_root"] == "both-side-trend-paired-shadow-v2"
     assert result["frozen_v2_candidate_identity_verified"] is True
     assert result["terminal_account_ids_match_signed_checkpoint"] is True
+    assert result["v2_original_received_gap_witness_matches_signed_checkpoint"] is True
+    assert result["v2_received_gap_event_count"] == 0
     assert result["forward_after_cost_edge_verified"] is False
     assert result["promotion_authority"] is False
 
@@ -241,6 +260,66 @@ def test_fresh_v2_terminal_parity_uses_only_v2_sqlite_and_signed_state(
     assert divergence["status"] == "terminal_account_checkpoint_diverged"
     assert divergence["terminal_account_ids_match_signed_checkpoint"] is False
     assert divergence["execution_authority"] is False
+
+
+@pytest.mark.parametrize("damage", [
+    "uncheckpointed_tail", "missing_witness", "modified_witness",
+    "forged_signed_receipt",
+])
+def test_v2_original_gap_receipt_cannot_be_stale_even_with_matching_accounts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, damage: str,
+) -> None:
+    root, folder = _v2_fixture(tmp_path, monkeypatch)
+    witness_path = folder / "source-gap-record-witness.jsonl"
+    signed_path = folder / "paired-shadow-state.json"
+    summary_path = root / "both-side-trend-paired-shadow-v2-summary.json"
+
+    if damage == "uncheckpointed_tail":
+        # This is a perfectly valid new original SHA-chained row, but it is
+        # NOT included in the old processed-record count or signed receipt.
+        witness = V2SourceGapWitness(folder, restoring=True)
+        witness.append(
+            ReplayRecord(
+                record_kind=SourceRecordKind.DATA_GAP,
+                available_at_ms=1000,
+                source="paired-terminal-test",
+                schema_version=1,
+                market="BTC",
+                exchange_time_ms=1000,
+                event_key="late-received-gap",
+                payload_json=json.dumps({"reason": "disconnect"}),
+                event_kind="data_gap",
+            ),
+            ordinal=11,
+        )
+    elif damage == "missing_witness":
+        witness_path.unlink()
+    elif damage == "modified_witness":
+        witness_path.write_bytes(b"{}\\n")
+    elif damage == "forged_signed_receipt":
+        signed = json.loads(signed_path.read_text())
+        signed["v2_source_gap_event_witness"]["witness_byte_count"] = 9
+        signed.pop("state_digest")
+        signed["state_digest"] = audit._state_digest(signed)
+        signed_path.write_text(json.dumps(signed))
+        summary = json.loads(summary_path.read_text())
+        summary["checkpoint"] = signed
+        summary_path.write_text(json.dumps(summary))
+
+    result = audit.verify_terminal_snapshot(
+        root,
+        root_name="both-side-trend-paired-shadow-v2",
+        summary_name="both-side-trend-paired-shadow-v2-summary.json",
+    )
+    assert result["status"] == "terminal_received_gap_witness_diverged"
+    assert result["v2_original_received_gap_witness_matches_signed_checkpoint"] is False
+    assert result["summary_checkpoint_matches_signed_state"] is True
+    assert result["signed_ledger_receipt_verified"] is True
+    assert result["terminal_account_ids_match_signed_checkpoint"] is False
+    assert result["original_mainnet_feed_authenticated"] is False
+    assert result["forward_after_cost_edge_verified"] is False
+    assert result["execution_authority"] is False
+    assert result["promotion_authority"] is False
 
 
 def test_v2_verifier_rejects_mixed_v1_summary_identity(

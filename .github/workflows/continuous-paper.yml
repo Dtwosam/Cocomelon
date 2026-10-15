@@ -1243,6 +1243,8 @@ jobs:
           print("## Clean v2 trend source-account parity (research only)")
           print("- terminal source status:", r["status"])
           print("- signed/SQLite account parity:", r["terminal_account_ids_match_signed_checkpoint"])
+          print("- original received-gap witness matches signed state:", r["v2_original_received_gap_witness_matches_signed_checkpoint"])
+          print("- original received-gap rows:", r["v2_received_gap_event_count"])
           print("- failed gate reasons:", r["reasons"])
           print("- v1 state imported: FALSE")
           print("- original feed completeness / after-cost profitability: UNPROVEN")

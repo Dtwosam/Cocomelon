@@ -20,6 +20,13 @@ from cocomelon.research.loss_context_portfolio_shadow_candidate import (
 from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
     both_side_trend_matched_shadow_v2_freeze,
 )
+from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+    FILE_NAME as V2_GAP_WITNESS_FILE,
+)
+from cocomelon.research.prospective_both_side_trend_paired_v2_gap_witness import (
+    V2SourceGapWitnessError,
+    read_source_gap_witness,
+)
 
 ROOT: Final = "both-side-trend-paired-shadow-v1"
 SUMMARY: Final = "both-side-trend-paired-shadow-summary.json"
@@ -49,6 +56,8 @@ def verify_terminal_snapshot(
         "signed_state_digest_verified": False,
         "signed_ledger_receipt_verified": False,
         "frozen_v2_candidate_identity_verified": False,
+        "v2_original_received_gap_witness_matches_signed_checkpoint": False,
+        "v2_received_gap_event_count": None,
         "summary_checkpoint_matches_signed_state": False,
         "terminal_account_ids_match_signed_checkpoint": False,
         "signed_record_count": None,
@@ -127,6 +136,36 @@ def verify_terminal_snapshot(
                 "published trend summary not equal to durable signed state"
             )
         result["summary_checkpoint_matches_signed_state"] = True
+        if root_name == "both-side-trend-paired-shadow-v2":
+            count = state.get("record_count")
+            try:
+                # The original actor has already ceased writing before the
+                # workflow checks terminal state. Replay every original
+                # received-gap envelope and compare the FULL signed receipt,
+                # not just the file's byte count, to reject intact but
+                # uncheckpointed witness tails.
+                witness = read_source_gap_witness(
+                    folder / V2_GAP_WITNESS_FILE,
+                    total_processed_records=count,  # type: ignore[arg-type]
+                )
+            except V2SourceGapWitnessError as exc:
+                result["status"] = "terminal_received_gap_witness_diverged"
+                result["reasons"] = [
+                    f"original_received_gap_witness_invalid: {exc}"
+                ]
+                return result
+            if witness != state.get("v2_source_gap_event_witness"):
+                result["status"] = "terminal_received_gap_witness_diverged"
+                result["reasons"] = [
+                    "original_received_gap_witness_differs_from_signed_state"
+                ]
+                return result
+            result[
+                "v2_original_received_gap_witness_matches_signed_checkpoint"
+            ] = True
+            result["v2_received_gap_event_count"] = witness[
+                "received_gap_record_count"
+            ]
         last = result["signed_last_record_ms"]
         if type(last) is not int or last < 0:
             raise TerminalResearchSnapshotError("invalid last signed event timestamp")
