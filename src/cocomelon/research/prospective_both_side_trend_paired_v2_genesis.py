@@ -17,15 +17,15 @@ from typing import Final, cast
 from cocomelon.research.loss_context_portfolio_shadow_candidate import (
     LossContextPortfolioShadowFreeze,
 )
-from cocomelon.research.v2_restore_integrity_preflight import (
-    V2RestorePreflightError,
-    verify_v2_restore_preflight,
-)
 from cocomelon.research.prospective_both_side_trend_paired_v2_freeze import (
     FORWARD_NOT_BEFORE_MS_V2,
     FROZEN_AT_MS_V2,
     TRIAL_ID_V2,
     both_side_trend_matched_shadow_v2_freeze,
+)
+from cocomelon.research.v2_restore_integrity_preflight import (
+    V2RestorePreflightError,
+    verify_v2_restore_preflight,
 )
 
 GENESIS_FILE_V2: Final = "v2-genesis.json"
