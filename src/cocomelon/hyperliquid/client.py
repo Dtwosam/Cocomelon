@@ -138,7 +138,9 @@ class InfoClient:
         if not isinstance(self._budget, RollingRateBudget):
             return False, None
         headroom = min(300, self._budget.limit // 3)
-        if not self._budget.try_acquire(2, reserve_remaining=headroom):
+        if not self._budget.try_acquire(
+            2, reserve_remaining=headroom, origin="shadow"
+        ):
             return False, None
         response = self._transport(
             self._endpoint,
@@ -148,6 +150,16 @@ class InfoClient:
         if not isinstance(response, (dict, list)):
             raise TransportError("shadow L2 requires JSON object or array")
         return True, response
+
+    def rest_budget_snapshot(self) -> dict[str, int | bool] | None:
+        """Local shared REST evidence, never a public-IP usage certificate."""
+        if not isinstance(self._budget, RollingRateBudget):
+            return None
+        report = self._budget.snapshot()
+        report["shadow_priority_reserve_weight"] = min(
+            300, self._budget.limit // 3
+        )
+        return report
 
     def candles(
         self,
