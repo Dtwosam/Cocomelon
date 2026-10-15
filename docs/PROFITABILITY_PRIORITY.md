@@ -1,5 +1,25 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 15 — true paired-account cash must match original v3 SQLite ledgers
+
+The fresh LONG-trend v3 **one-shot PAPER-only** comparison now publishes a
+local self-digested checkpoint and independently verifies both immutable
+original execution SQLite stores after the actor closes: complete account
+state IDs, recorded fees/funding, open positions, rolling equity peaks,
+realized gross/fees/funding cash identity, unrealized marked residual,
+and baseline-vs-candidate whole-account equity difference. Contradictions
+fail closed. This prevents hypothetical non-executed skips, forged relative
+deltas or a torn SQLite state from appearing as an economically valid v3
+replay.
+
+This is **local account arithmetic integrity only**. The genuine
+post-October-16 06:00 UTC market source, original venue gap coverage,
+external signed source/account continuity, sufficient 72h forward
+decision diversity, and positive absolute after-cost expectancy remain
+unproven. The v3 outcome must never be promoted or used to authorize
+live trades from a local replay or a self-digest alone.
+
+
 ## October 15 — new predeclared LONG-only matched-paper v3 experiment
 
 A fixed new future hypothesis is codified in
