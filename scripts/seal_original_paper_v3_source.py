@@ -7,7 +7,6 @@ Never manufacture fills, rank observations or missing market data.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 from collections.abc import Sequence
