@@ -1528,11 +1528,27 @@ class BaselineReplayPipeline:
         now_ms: int,
     ) -> tuple[JournalObservation, ...]:
         del record
-        observations = list(self._manage_book(book, now_ms))
+        stage_started = time.perf_counter()
+        try:
+            observations = list(self._manage_book(book, now_ms))
+        finally:
+            self._record_runtime_component("l2_book_manage_position", stage_started)
         if not self._funding_inconsistent and self._new_exposure_allowed(now_ms):
-            self._opening.on_book(book, now_ms)
-            for trace in self._opening.take_traces():
-                observations.extend(self._record_opening_trace(trace))
+            stage_started = time.perf_counter()
+            try:
+                self._opening.on_book(book, now_ms)
+            finally:
+                self._record_runtime_component(
+                    "l2_book_opening_on_book", stage_started,
+                )
+            stage_started = time.perf_counter()
+            try:
+                for trace in self._opening.take_traces():
+                    observations.extend(self._record_opening_trace(trace))
+            finally:
+                self._record_runtime_component(
+                    "l2_book_opening_traces", stage_started,
+                )
         return tuple(observations)
 
     def _profiled_due_funding(
@@ -1647,9 +1663,21 @@ class BaselineReplayPipeline:
             replay_record_funding_rate(record)
             observations.extend(self._profiled_due_funding(now_ms))
         elif record.event_kind == StreamKind.L2_BOOK.value:
-            book = replay_record_stream_event(record)
+            decode_started = time.perf_counter()
+            try:
+                book = replay_record_stream_event(record)
+            finally:
+                self._record_runtime_component(
+                    "l2_book_decode", decode_started,
+                )
             observations.extend(self._profiled_due_funding(now_ms))
-            observations.extend(self._handle_book(record, book, now_ms))
+            handler_started = time.perf_counter()
+            try:
+                observations.extend(self._handle_book(record, book, now_ms))
+            finally:
+                self._record_runtime_component(
+                    "l2_book_handler_total", handler_started,
+                )
             observations.extend(self._profiled_due_funding(now_ms))
         else:
             observations.extend(self._profiled_due_funding(now_ms))
