@@ -1,5 +1,33 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+
+## October 16 — original v3 ZIP must not wait behind SHORT rank sealing
+
+Follow-up audit of the merged #1279 YAML found an ordering gap:
+although its v3 source steps were moved before deferred economics, the
+actual fast exact successor dispatch still led into six heavyweight
+SHORT rank source/feature/context seal+upload tasks, compact decision
+fact export, and durable 2GB+ archive repacking **before** the v3
+original source step. In a real worker this again stranded the original
+recorder journal and independent failure diagnostic on the runner after
+the genuine successor had already been dispatched.
+
+The workflow now has two **mutually exclusive** research-source custody
+paths. After successful upload of the exact fast resume and authenticated
+fast successor dispatch, it immediately attempts to seal/upload the
+original v3 immutable ZIP and its separate negative diagnostic, BEFORE
+any optional rank research, decision learning, or durable repacking.
+Only if the fast handoff fails does it wait for the existing durable
+fallback archive/upload and actual fallback successor dispatch, then
+attempt the same two source artifacts. Both branches use the SAME
+original run/attempt artifact naming, strict sealer, bytes, checks,
+research refusal and nonpromotion flags, and cannot both run. No source
+seal precedes a successfully dispatched exact successor. Neither
+branch modifies market records, production checkpoint, strategy,
+fees, risk or LIVE-disabled policy. A negative source/diagnostic
+cannot qualify original continuous L2 or paired profitability.
+
+
 ## October 16 — independently verify PAPER recovery after every main merge
 
 At 10:49 UTC, ordinary push PAPER run #38889293128 completed GREEN but
