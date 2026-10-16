@@ -24,6 +24,33 @@ MAX_TRACKED_ORIGINAL_L2_STREAMS: Final = 512
 # Negative visibility threshold only; not a source-admission certificate.
 L2_COVERAGE_DROUGHT_MS: Final = 5 * 60 * 1000
 # Fixed vocabulary: source-provided reasons never become public diagnostic keys.
+# Negative-only fixed vocabulary; arbitrary source-provided event kinds and
+# market identifiers may not leak into status or certification receipts.
+ORIGINAL_CLOCK_REGRESSION_FAMILIES: Final = (
+    "data_gap",
+    "market_snapshot",
+    "funding_rate",
+    "candle",
+    "l2_book",
+    "trades",
+    "active_asset_ctx",
+    "other",
+)
+
+
+def _clock_regression_family(record: ReplayRecord) -> str:
+    if record.record_kind.value == "data_gap":
+        return "data_gap"
+    kind = record.event_kind
+    if (
+        record.record_kind.value == "normalized_event"
+        and type(kind) is str
+        and kind in ORIGINAL_CLOCK_REGRESSION_FAMILIES
+    ):
+        return kind
+    return "other"
+
+
 ORIGINAL_GAP_REASON_BUCKETS: Final = (
     "redundant_disconnect",
     "recovered",
@@ -194,6 +221,11 @@ class OriginalPaperMicrostructureCapture:
         self.max_original_clock_backward_ms = 0
         self.first_regression_cause: str | None = None
         self.first_regression_event_kind: str | None = None
+        self.first_regression_source_family: str | None = None
+        self.first_regression_age_at_offer_ms: int | None = None
+        self.regression_source_family_counts = {
+            family: 0 for family in ORIGINAL_CLOCK_REGRESSION_FAMILIES
+        }
         self.first_received_clock_regression: dict[str, object] | None = None
         # Event source+market clock tracking distinguishes delayed interleaving
         # across streams from regressions within one original L2 stream.
@@ -399,6 +431,8 @@ class OriginalPaperMicrostructureCapture:
         latest = max(prior_offered or 0, prior_paper or 0)
         if below_offered or below_paper:
             self.received_clock_regressions += 1
+            family = _clock_regression_family(record)
+            self.regression_source_family_counts[family] += 1
             if (
                 record.record_kind.value == "normalized_event"
                 and record.event_kind == "l2_book"
@@ -413,6 +447,13 @@ class OriginalPaperMicrostructureCapture:
                 latest - record.available_at_ms,
             )
             if self.first_received_clock_regression is None:
+                self.first_regression_source_family = family
+                # Local PAPER offer age is a diagnostic of deferral, not a
+                # replacement for original receive timestamps. Do not
+                # rewrite, sort or upgrade any original source rows.
+                self.first_regression_age_at_offer_ms = (
+                    utc_now_ms() - record.available_at_ms
+                )
                 self.first_regression_gap_boundary_kind = gap_boundary_kind
                 self.first_regression_cause = (
                     "both_prior_input_and_paper_clock"
@@ -517,6 +558,11 @@ class OriginalPaperMicrostructureCapture:
             "max_original_clock_backward_ms": self.max_original_clock_backward_ms,
             "first_regression_cause": self.first_regression_cause,
             "first_regression_event_kind": self.first_regression_event_kind,
+            "first_regression_source_family": self.first_regression_source_family,
+            "first_regression_age_at_offer_ms": self.first_regression_age_at_offer_ms,
+            "regression_source_family_counts": dict(
+                self.regression_source_family_counts
+            ),
             "l2_tracked_distinct_streams": len(
                 self._last_l2_received_ms_by_stream
             ),
@@ -689,6 +735,11 @@ class OriginalPaperMicrostructureCapture:
             "max_original_clock_backward_ms": self.max_original_clock_backward_ms,
             "first_regression_cause": self.first_regression_cause,
             "first_regression_event_kind": self.first_regression_event_kind,
+            "first_regression_source_family": self.first_regression_source_family,
+            "first_regression_age_at_offer_ms": self.first_regression_age_at_offer_ms,
+            "regression_source_family_counts": dict(
+                self.regression_source_family_counts
+            ),
             "l2_tracked_distinct_streams": len(
                 self._last_l2_received_ms_by_stream
             ),
