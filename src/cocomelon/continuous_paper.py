@@ -2578,6 +2578,22 @@ def _position_action_from_payload(raw: object) -> PositionAction:
         timestamp_ms=int(raw["timestamp_ms"]),
     )
 
+def _cadence_shadow_with_original_source_priority(
+    *,
+    original_v3_capture_requested: bool,
+    restore: Callable[[], CadenceShadowComparator],
+) -> tuple[CadenceShadowComparator | None, str | None]:
+    """Reserve PAPER hot loop for original source rather than optional cadence.
+
+    This is deliberately not a research success or a live-trading setting.
+    Do not restore or persist a huge research shadow alongside a strict
+    original v3 source capture. Normal non-v3 workers behave as before.
+    """
+    if original_v3_capture_requested:
+        return None, "cadence_research_disabled_for_original_v3_source_priority"
+    return restore(), None
+
+
 def _checkpoint_payload(
     pipeline: BaselineReplayPipeline,
     *,
@@ -10543,17 +10559,26 @@ async def run_continuous_paper_session(
             root / CADENCE_SHADOW_STATE_FILENAME
         )
         component_started = time.perf_counter()
-        cadence_shadow = _restore_cadence_shadow(
-            cadence_shadow_state_path,
-            selected,
-            replay_config=replay_config,
+        cadence_shadow, cadence_source_priority_reason = (
+            _cadence_shadow_with_original_source_priority(
+                original_v3_capture_requested=(
+                    os.environ.get("V3_CAPTURE_ORIGINAL_SOURCE") == "1"
+                ),
+                restore=lambda: _restore_cadence_shadow(
+                    cadence_shadow_state_path,
+                    selected,
+                    replay_config=replay_config,
+                ),
+            )
         )
         record_startup_component(
             "cadence_shadow_restore",
             component_started,
         )
         cadence_shadow_persisted_revision: int | None = (
-            0 if cadence_shadow.state_restored else None
+            0
+            if cadence_shadow is not None and cadence_shadow.state_restored
+            else None
         )
         record_startup_component(
             "pipeline_restore",
@@ -10621,6 +10646,7 @@ async def run_continuous_paper_session(
                 loss_context_paired_shadow_runtime
             ),
         )
+        pump.cadence_shadow_error = cadence_source_priority_reason
         pump.loss_context_paired_shadow_restore_error = (
             loss_context_paired_shadow_restore_error
         )

@@ -1,5 +1,24 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 16 — source-first PAPER mode excludes optional cadence shadow
+
+Real authenticated PAPER #38921086842 exposed over 200 one-second
+event-loop delays, a 3,864ms optional cadence shadow record-pump stall,
+and a 4,382ms optional cadence state snapshot. The strict original
+v3 72-hour source experiment remains blocked by real feed gaps, so
+optional cadence comparison must not consume the serialized original
+PAPER receipt path.
+
+When the *actual* worker explicitly sets
+`V3_CAPTURE_ORIGINAL_SOURCE=1`, its cadence research shadow is not
+restored or run. A named fail-closed research reason is emitted, not
+an empty success. The original market data and gap records, PAPER
+baseline strategy, fees, risk, positions, mandatory exact-state
+checkpoints and LIVE-off remain unchanged. Workers without original
+v3 source capture continue using the ordinary cadence observer.
+This is a source-protection priority decision, **not** an assertion
+of complete WebSocket L2 coverage or a positive 72-hour trading edge.
+
 
 ## October 16 — second speculative push stop path closed at PAPER heartbeat
 
