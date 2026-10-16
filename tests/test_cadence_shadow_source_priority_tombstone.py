@@ -59,7 +59,7 @@ def test_source_first_tombstone_never_contains_market_or_prior_evidence() -> Non
 
 def test_actual_v3_paper_checkpoint_writes_research_tombstone_once() -> None:
     source = Path("src/cocomelon/continuous_paper.py").read_text()
-    assert "cadence_source_priority_reason is not None" in source
+    assert "pump.cadence_shadow_error is not None" in source
     assert "cadence_shadow_persisted_revision != -1" in source
     assert "cadence_revision_to_persist = -1" in source
     assert "_cadence_shadow_discontinuity_payload()," in source
