@@ -182,6 +182,40 @@ def diagnose_original_paper_v3_capture(
             and type(terminal.get("l2_stream_clock_tracking_overflow")) is int
             else None
         ),
+        "original_source_offered_elapsed_ms": (
+            terminal.get("source_offered_elapsed_ms")
+            if terminal_matches and type(terminal.get("source_offered_elapsed_ms")) is int
+            else None
+        ),
+        "original_l2_selected_market_offered_book_count": (
+            terminal.get("l2_selected_market_offered_book_count")
+            if terminal_matches
+            and type(terminal.get("l2_selected_market_offered_book_count")) is int
+            else None
+        ),
+        "original_l2_selected_market_zero_book_count": (
+            terminal.get("l2_selected_market_zero_book_count")
+            if terminal_matches and type(terminal.get("l2_selected_market_zero_book_count")) is int
+            else None
+        ),
+        "original_l2_selected_market_min_offered_books": (
+            terminal.get("l2_selected_market_min_offered_books")
+            if terminal_matches
+            and type(terminal.get("l2_selected_market_min_offered_books")) is int
+            else None
+        ),
+        "original_l2_selected_market_max_observed_gap_ms": (
+            terminal.get("l2_selected_market_max_observed_gap_ms")
+            if terminal_matches
+            and type(terminal.get("l2_selected_market_max_observed_gap_ms")) is int
+            else None
+        ),
+        "original_l2_selected_market_over_5min_drought_count": (
+            terminal.get("l2_selected_market_over_5min_drought_count")
+            if terminal_matches
+            and type(terminal.get("l2_selected_market_over_5min_drought_count")) is int
+            else None
+        ),
         "original_gap_offered_count": (
             terminal.get("gap_offered_count")
             if terminal_matches and type(terminal.get("gap_offered_count")) is int

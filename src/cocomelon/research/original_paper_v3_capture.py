@@ -21,6 +21,8 @@ from cocomelon.util.time import utc_now_ms
 MAX_PENDING_RECORDS: Final = 16_384
 # Bounded negative stream-clock attribution; never source data or evidence.
 MAX_TRACKED_ORIGINAL_L2_STREAMS: Final = 512
+# Negative visibility threshold only; not a source-admission certificate.
+L2_COVERAGE_DROUGHT_MS: Final = 5 * 60 * 1000
 BATCH_SIZE: Final = 256
 # One shared limit with the closed original source ZIP sealer.
 MAX_SOURCE_ROWS: Final = 5_000_000
@@ -170,6 +172,7 @@ class OriginalPaperMicrostructureCapture:
         # the original research copy is NOT. Preserve the unmodified first-
         # received timestamp, and permanently disqualify a clamped input.
         self.last_offered_available_at_ms: int | None = None
+        self.first_offered_available_at_ms: int | None = None
         self.received_clock_regressions = 0
         # These separate cases diagnose source scheduling without changing
         # original input bytes, receipt order or PAPER's permissive clock.
@@ -194,6 +197,12 @@ class OriginalPaperMicrostructureCapture:
         self.l2_offer_age_over_15s_count = 0
         self.l2_offer_timestamp_future_count = 0
         self.l2_max_offer_age_ms = 0
+        # Only aggregate observations actually OFFERED to the recorder.
+        # Their presence never proves persistent source or venue continuity.
+        self._selected_l2_count: dict[str, int] = {}
+        self._selected_l2_first_ms: dict[str, int] = {}
+        self._selected_l2_last_ms: dict[str, int] = {}
+        self._selected_l2_largest_interior_gap_ms: dict[str, int] = {}
         # DATA_GAP.available_at_ms historically represents the gap's
         # start/end boundary, NOT necessarily the moment PAPER observed
         # the gap. These anonymous counters expose that distinction; no
@@ -219,6 +228,8 @@ class OriginalPaperMicrostructureCapture:
             self.failure = self.failure or "offer_after_close"
             return
         self.offered_count += 1
+        if self.first_offered_available_at_ms is None:
+            self.first_offered_available_at_ms = record.available_at_ms
         # The caller MUST pass the PAPER pipeline's previous timestamp,
         # including a restored previous-worker checkpoint. Comparing only
         # local offered rows would overlook a first-record regression.
@@ -265,6 +276,22 @@ class OriginalPaperMicrostructureCapture:
             self.l2_offer_age_over_15s_count += int(age_ms > 15_000)
             self.l2_offer_timestamp_future_count += int(age_ms < 0)
             self.l2_max_offer_age_ms = max(self.l2_max_offer_age_ms, age_ms)
+            if record.market in self.selected_markets:
+                last_selected = self._selected_l2_last_ms.get(record.market)
+                if last_selected is None:
+                    self._selected_l2_first_ms[record.market] = record.available_at_ms
+                else:
+                    interior_gap = max(0, record.available_at_ms - last_selected)
+                    self._selected_l2_largest_interior_gap_ms[record.market] = max(
+                        self._selected_l2_largest_interior_gap_ms.get(record.market, 0),
+                        interior_gap,
+                    )
+                self._selected_l2_last_ms[record.market] = max(
+                    last_selected or 0, record.available_at_ms
+                )
+                self._selected_l2_count[record.market] = (
+                    self._selected_l2_count.get(record.market, 0) + 1
+                )
             stream_id = (record.source, record.market, record.event_kind)
             prior_same_stream = self._last_l2_received_ms_by_stream.get(stream_id)
             within_l2_stream_regression = (
@@ -343,6 +370,44 @@ class OriginalPaperMicrostructureCapture:
             self.dropped_count += 1
             self.failure = "original_capture_queue_overflow"
 
+    def _negative_l2_coverage(self) -> dict[str, int]:
+        """Bounded offered-time L2 diagnostics, not sealed replay evidence.
+
+        Include initial and trailing silence so a single healthy startup
+        book cannot disguise a multi-hour feed drought. End at the last
+        OFFERED source timestamp, never at an inferred wall-clock deadline.
+        """
+        start = self.first_offered_available_at_ms
+        end = self.last_offered_available_at_ms
+        elapsed_ms = max(0, end - start) if start is not None and end is not None else 0
+        worst_gaps: list[int] = []
+        for market in self.selected_markets:
+            first = self._selected_l2_first_ms.get(market)
+            last = self._selected_l2_last_ms.get(market)
+            if first is None or last is None or start is None or end is None:
+                worst_gaps.append(elapsed_ms)
+                continue
+            worst_gaps.append(max(
+                max(0, first - start),
+                self._selected_l2_largest_interior_gap_ms.get(market, 0),
+                max(0, end - last),
+            ))
+        return {
+            "source_offered_elapsed_ms": elapsed_ms,
+            "l2_selected_market_offered_book_count": sum(self._selected_l2_count.values()),
+            "l2_selected_market_zero_book_count": sum(
+                market not in self._selected_l2_count for market in self.selected_markets
+            ),
+            "l2_selected_market_min_offered_books": min(
+                (self._selected_l2_count.get(market, 0) for market in self.selected_markets),
+                default=0,
+            ),
+            "l2_selected_market_max_observed_gap_ms": max(worst_gaps, default=0),
+            "l2_selected_market_over_5min_drought_count": sum(
+                gap > L2_COVERAGE_DROUGHT_MS for gap in worst_gaps
+            ),
+        }
+
     def live_diagnostic_snapshot(self) -> dict[str, object]:
         """Memory-only capture counters; NEVER a source or profit certificate."""
         return {
@@ -363,6 +428,7 @@ class OriginalPaperMicrostructureCapture:
             "source_journal_row_limit": MAX_SOURCE_ROWS,
             "remaining_persisted_row_budget": max(0, MAX_SOURCE_ROWS - self.record_count),
             "pending_queue_depth": self.queue.qsize(),
+            **self._negative_l2_coverage(),
             "dropped_count": self.dropped_count,
             "received_clock_regressions": self.received_clock_regressions,
             "regressions_vs_prior_offered": self.regressions_vs_prior_offered,
@@ -501,6 +567,7 @@ class OriginalPaperMicrostructureCapture:
             ),
             "offered_count": self.offered_count,
             "written_count": self.record_count,
+            **self._negative_l2_coverage(),
             # Pending/in-flight during a live heartbeat; an unacknowledged
             # batch on failure once the recorder is closed.
             "offered_not_written_or_dropped_count": max(
