@@ -680,6 +680,62 @@ def test_original_l2_receive_age_does_not_convert_future_timestamp_to_source(
     _seal(tmp_path)
 
 
+def test_original_gap_observation_time_is_not_historical_boundary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    from cocomelon.research import original_paper_v3_capture as capture_module
+
+    t = FORWARD_NOT_BEFORE_MS + 8_000
+    monkeypatch.setattr(capture_module, "utc_now_ms", lambda: t + 1_100)
+
+    def gap(available_ms: int, end: int | None, reason: str) -> ReplayRecord:
+        return ReplayRecord(
+            record_kind=SourceRecordKind.DATA_GAP,
+            available_at_ms=available_ms, source="hyperliquid-mainnet-ws",
+            schema_version=1, market=None, exchange_time_ms=None,
+            event_key=None, event_kind=None,
+            payload_json=json.dumps({
+                "stream_id": "l2Book:TEST", "started_ms": t - 1_000,
+                "ended_ms": end, "reason": reason,
+            }),
+        )
+
+    async def scenario() -> tuple[dict[str, object], dict[str, object]]:
+        recorder = OriginalPaperMicrostructureCapture(
+            tmp_path / "original", run_id=RUN, run_attempt=ATTEMPT,
+            head_sha=HEAD, selected_markets=("TEST",),
+            first_observed_ms=t - 3_000,
+            replay_config=BaselineReplayConfig(),
+        )
+        recorder.offer(_book(t, "before-gap"), paper_previous_at_ms=t)
+        recorder.offer(
+            gap(t - 49, None, "stale"),
+            paper_previous_at_ms=t,
+        )
+        recorder.offer(
+            gap(t - 20, t - 20, "recovered"),
+            paper_previous_at_ms=t,
+        )
+        return recorder.live_diagnostic_snapshot(), await recorder.close()
+
+    live, terminal = asyncio.run(scenario())
+    assert live["received_clock_regressions"] == 2
+    assert live["first_regression_event_kind"] == "data_gap"
+    assert live["first_regression_gap_boundary_kind"] == "open"
+    assert live["gap_offered_count"] == 2
+    assert live["gap_open_offered_count"] == 1
+    assert live["gap_closed_offered_count"] == 1
+    assert live["gap_boundary_age_over_1s_count"] == 2
+    assert live["gap_boundary_age_over_15s_count"] == 0
+    assert live["gap_boundary_timestamp_future_count"] == 0
+    assert live["gap_max_boundary_age_ms"] == 1_149
+    assert terminal["first_regression_gap_boundary_kind"] == "open"
+    assert terminal["complete"] is False
+    assert terminal["failure"] == "original_received_clock_regression"
+    with pytest.raises(OriginalV3CaptureSealError):
+        _seal(tmp_path)
+
+
 def test_record_pump_preserves_raw_input_for_capture_before_clock_clamp(
     tmp_path: Path,
 ) -> None:
