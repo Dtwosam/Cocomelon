@@ -5858,12 +5858,12 @@ def test_paper_checkpoint_v3_preserves_independent_global_and_asset_streams(
         selected_markets=(MarketId("", "BTC"), MarketId("", "ETH")),
     )
     assert payload["schema_version"] == 3
-    assert payload["known_gap_intervals"] == [[5, None]]
+    assert json.loads(json.dumps(payload))["known_gap_intervals"] == [[5, None]]
     assert json.loads(json.dumps(payload))["known_gap_intervals_by_stream"] == {
         "activeAssetCtx:BTC": [[10, 20]],
         "l2Book:ETH": [[30, None]],
     }
-    assert payload["known_global_gap_intervals_by_stream"] == {
+    assert json.loads(json.dumps(payload))["known_global_gap_intervals_by_stream"] == {
         "allMids": [[40, 50]],
         "unrecognizedTopic": [[40, None]],
     }
