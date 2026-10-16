@@ -268,6 +268,91 @@ def test_bounded_source_queue_overflow_permanently_blocks_research(
         _seal(tmp_path)
 
 
+def test_source_byte_budget_denies_during_recording_without_paper_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import cocomelon.research.original_paper_v3_capture as capture_module
+
+    # A single original record already exceeds the local test budget.
+    monkeypatch.setattr(capture_module, "MAX_SOURCE_BYTES", 1)
+    status = asyncio.run(_capture(
+        tmp_path / "original", (_book(FORWARD_NOT_BEFORE_MS + 1, "oversized"),),
+    ))
+    assert status["offered_count"] == 1
+    assert status["written_count"] == 0
+    assert status["written_source_journal_bytes"] == 0
+    assert status["source_journal_byte_limit"] == 1
+    assert status["failure"] == "original_capture_source_byte_budget_exceeded"
+    assert status["complete"] is False
+    with pytest.raises(OriginalV3CaptureSealError, match="lost rows"):
+        _seal(tmp_path)
+    assert not (tmp_path / "upload").exists()
+
+
+def test_source_row_budget_denies_during_recording_without_paper_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import cocomelon.research.original_paper_v3_capture as capture_module
+
+    monkeypatch.setattr(capture_module, "MAX_SOURCE_ROWS", 1)
+    status = asyncio.run(_capture(tmp_path / "original", (
+        _book(FORWARD_NOT_BEFORE_MS + 1, "first"),
+        _book(FORWARD_NOT_BEFORE_MS + 2, "second"),
+    )))
+    assert status["offered_count"] == 2
+    assert status["written_count"] <= 1
+    assert status["source_journal_row_limit"] == 1
+    assert status["failure"] == "original_capture_source_row_budget_exceeded"
+    assert status["complete"] is False
+    with pytest.raises(OriginalV3CaptureSealError, match="lost rows"):
+        _seal(tmp_path)
+
+
+def test_live_capture_budget_reports_only_persisted_bytes_and_no_authority(
+    tmp_path: Path,
+) -> None:
+    async def run() -> tuple[dict[str, object], dict[str, object]]:
+        recorder = OriginalPaperMicrostructureCapture(
+            tmp_path / "original", run_id=RUN, run_attempt=ATTEMPT,
+            head_sha=HEAD, selected_markets=("TEST",),
+            first_observed_ms=FORWARD_NOT_BEFORE_MS,
+            replay_config=BaselineReplayConfig(),
+        )
+        recorder.offer(_book(FORWARD_NOT_BEFORE_MS + 1, "persisted"))
+        terminal = await recorder.close()
+        return recorder.live_diagnostic_snapshot(), terminal
+
+    live, terminal = asyncio.run(run())
+    recorded = (tmp_path / "original" / "original-received-rows.jsonl").read_bytes()
+    assert live["written_count"] == terminal["written_count"] == 1
+    assert live["written_source_journal_bytes"] == len(recorded)
+    assert terminal["written_source_journal_bytes"] == len(recorded)
+    assert live["remaining_persisted_byte_budget"] == (
+        live["source_journal_byte_limit"] - len(recorded)
+    )
+    assert live["pending_queue_depth"] == 0
+    assert live["capture_admissible_from_heartbeat"] is False
+    assert live["source_integrity_certified"] is False
+    assert live["execution_authority"] is False
+    assert live["promotion_authority"] is False
+    assert _seal(tmp_path)["original_received_record_count"] == 1
+
+
+def test_original_terminal_byte_counter_mismatch_blocks_seal(
+    tmp_path: Path,
+) -> None:
+    assert asyncio.run(_capture(tmp_path / "original", (
+        _book(FORWARD_NOT_BEFORE_MS + 1, "correct-bytes"),
+    )))["complete"] is True
+    terminal = tmp_path / "original" / "original-capture-terminal.json"
+    recorded = json.loads(terminal.read_text())
+    recorded["written_source_journal_bytes"] += 1
+    terminal.write_text(json.dumps(recorded))
+    with pytest.raises(OriginalV3CaptureSealError, match="terminal count/end"):
+        _seal(tmp_path)
+    assert not (tmp_path / "upload").exists()
+
+
 def test_no_post_embargo_book_cannot_be_invented(
     tmp_path: Path,
 ) -> None:
