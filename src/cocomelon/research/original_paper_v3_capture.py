@@ -222,7 +222,7 @@ class OriginalPaperMicrostructureCapture:
             "promotion_authority": False,
         }
 
-    def _write_batch(self, rows: list[ReplayRecord]) -> None:
+    def _write_batch(self, rows: list[ReplayRecord]) -> int:
         # Check BEFORE durable writes, using the exact canonical bytes that
         # the post-handoff sealer will read. A worker must not spend hours
         # persisting an archive that can never pass the frozen ZIP budget.
@@ -244,7 +244,7 @@ class OriginalPaperMicrostructureCapture:
                 self._original_journal_sha256.update(encoded)
             stream.flush()
             os.fsync(stream.fileno())
-        self.record_bytes += batch_bytes
+        return batch_bytes
 
     async def _writer(self) -> None:
         while True:
@@ -257,8 +257,11 @@ class OriginalPaperMicrostructureCapture:
                     break
             try:
                 if self.failure is None:
-                    await asyncio.to_thread(self._write_batch, batch)
+                    written_bytes = await asyncio.to_thread(self._write_batch, batch)
+                    # Both counters become visible together on the event loop,
+                    # after the worker thread has durably fsynced its batch.
                     self.record_count += len(batch)
+                    self.record_bytes += written_bytes
                     self.last_available_at_ms = batch[-1].available_at_ms
             except OriginalCaptureBudgetExceeded as exc:
                 self.failure = self.failure or str(exc)
