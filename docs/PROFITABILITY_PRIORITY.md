@@ -1,6 +1,34 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
 
+## October 16 — independent PAPER recovery before optional learning artifacts
+
+In genuine worker #38909345855 (on previous `0d1cdab8`), the PAPER
+trader stopped after an actual upgrade signal (code 143). Its exact
+fast-resume archive was successfully uploaded but the fast successor
+dispatch step was reported as `conclusion=success` with no materialized
+successor visible, and the new v3 fast-path source steps were skipped.
+GitHub's `continue-on-error: true` can make an unsuccessful underlying
+step display a successful conclusion; the workflow correctly checks the
+separate `steps.fast_resume_dispatch.outcome`, so that fast-path
+research custody does not run on a failed handoff.
+
+At this point, mandatory durable fallback packing still followed
+optional preliminary v2 audit and three compact decision-learning export,
+upload and summary steps. These steps can consume runner time or fail,
+delaying the only remaining exact-state recovery path. The workflow now
+packs/uploads the authoritative durable PAPER account and attempts
+exact fallback successor dispatch before any optional v2/decision-learning
+work. If the fallback succeeds, immutable v3 source ZIP or negative
+diagnostic custody is also attempted before the optional exports.
+
+This reorders existing research steps ONLY. The frozen strategy, PAPER
+orders, execution, account-state bytes, fees, risks, source fail-closed
+admission, exact successor gating and LIVE-off remain unchanged. A
+GitHub green step does not independently certify a new successor or
+whole-account positive after-cost economics.
+
+
 ## October 16 — do not reset genuine PAPER observation for every main merge
 
 The genuine PAPER worker contains an upgrade watcher that previously
