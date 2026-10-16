@@ -311,3 +311,30 @@ A 72-hour *nominal manifest* span is deliberately NOT equivalent to
 independent chain/market/after-cost profit/execution/promotion flags remain
 FALSE even for a locally self-consistent chain. Original source ZIPs can
 only feed this preflight after separate exact-outer-ZIP and receipt checks.
+
+## October 16 — direct L2 first-received clock and PAPER offer-age attribution
+
+Authenticated recovered PAPER worker #38890963241 at 11:36 UTC was
+running on merged `0ae483ef`, with $9,741.22 total equity, -$258.78
+after-cost whole-account PnL on 259 closed trades, no open positions and
+LIVE disabled. Its original v3 recorder had 51,278 source offers,
+1,363 writes, 49,915 permanent drops, **781 raw-clock regressions**
+(186 behind the immediately preceding original offer, 781 behind
+PAPER's prior clock), and a 24,741ms maximum backwards jump. This
+source remains **invalid**; there is no 72h economic experiment result.
+
+The new prospective negative-only diagnostic now separates L2 receive
+timestamp regressions within the same original source+market+event-kind
+stream from those attributable to only cross-market/source interleaving.
+It preserves a bounded 512-stream high-water table (with saturation
+counter), and measures the age between each L2 record's ORIGINAL local
+received timestamp and when the genuine PAPER record pump offered it to
+the research writer: counts above 1s, 5s and 15s, future-dated receive
+timestamp count, and largest observed age. This can distinguish event
+loop backlog/late delivery from independent interleaving without making
+up a venue timestamp or copying raw keys/paths into the heartbeat.
+Original recorded bytes, timestamps, per-worker SHA and order, trading
+decision logic, fees, positions, risk, and outcome are untouched.
+A raw clock regression STILL permanently disqualifies the research
+archive. No operational status can grant market L2 completeness,
+after-cost positive paired equity or LIVE permission.
