@@ -1,5 +1,21 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 16 — source ZIP first after genuine PAPER successor handoff
+
+Previously, after queuing the exact successor, the worker completed many
+multi-GB state/chart/learning research steps BEFORE attempting to seal the
+original v3 prospective source ZIP. A long or failed deferred artifact task
+could consume the old worker's job budget while a closed authentic recorder
+remained only on the ephemeral runner. The workflow now moves the same four
+original source seal/upload/negative diagnosis steps directly after the
+fallback dispatch decision, ahead of ENA and every heavyweight deferred
+research step. No source is sealed before ordinary successor dispatch, and
+no failure diagnostics may substitute for an admissible exact original ZIP.
+
+No PAPER account, source row, trading strategy/risk, original source sealer
+requirements, positive-edge gate or LIVE order switch was changed.
+
+
 ## October 16 — original v3 source ZIP binds a declared predecessor (not a certified chain)
 
 Each genuine PAPER worker now passes its GitHub dispatch predecessor run ID

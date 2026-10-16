@@ -1677,6 +1677,66 @@ jobs:
           echo "successor_run_id=$successor_run_id" >> "$GITHUB_OUTPUT"
           echo "fallback exact successor dispatch receipt: $successor_run_id"
 
+      # Immediately AFTER the real successor handoff, seal/upload the
+      # ORIGINAL source before any expensive deferred research artifacts.
+      # A run timeout must not discard a completed prospective source or
+      # the independent nonqualifying recorder failure diagnostic.
+      - name: Seal frozen v3 original microstructure source
+        id: seal_v3_original_source
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') }}
+        continue-on-error: true
+        timeout-minutes: 18
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/seal_original_paper_v3_source.py \
+            --capture-root "$RUNNER_TEMP/v3-original-capture-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --upload-root "$RUNNER_TEMP/v3-original-source-upload" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --head-sha "$GITHUB_SHA"
+
+      - name: Upload frozen v3 original microstructure source
+        id: upload_v3_original_source
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.seal_v3_original_source.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-v3-microstructure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/v3-original-source-upload/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - name: Diagnose frozen v3 original capture after handoff
+        id: diagnose_v3_original_capture
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') }}
+        continue-on-error: true
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/diagnose_original_paper_v3_capture.py \
+            --capture-root "$RUNNER_TEMP/v3-original-capture-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --diagnostic-root "$RUNNER_TEMP" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --head-sha "$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/v3-original-capture-diagnostic.json" \
+            | tee /tmp/v3-original-capture-diagnostic.stdout.json
+
+      - name: Upload frozen v3 original capture diagnostic
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.diagnose_v3_original_capture.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-v3-source-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/v3-original-capture-diagnostic.json
+          if-no-files-found: error
+          retention-days: 90
+
       # Small, original-paper intervention receipt: count genuine
       # ENA opening decisions prevented, not hypothetical avoided PnL.
       - name: Upload fixed ENA paper quarantine decision receipt
@@ -2313,64 +2373,6 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           compression-level: 6
-
-      # Capture is entirely independent of the PAPER account; never let
-      # archive sealing delay the initial successor handoff.
-      - name: Seal frozen v3 original microstructure source
-        id: seal_v3_original_source
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') }}
-        continue-on-error: true
-        timeout-minutes: 18
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/seal_original_paper_v3_source.py \
-            --capture-root "$RUNNER_TEMP/v3-original-capture-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
-            --upload-root "$RUNNER_TEMP/v3-original-source-upload" \
-            --run-id "$GITHUB_RUN_ID" \
-            --run-attempt "$GITHUB_RUN_ATTEMPT" \
-            --head-sha "$GITHUB_SHA"
-
-      - name: Upload frozen v3 original microstructure source
-        id: upload_v3_original_source
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.seal_v3_original_source.outcome == 'success' }}
-        continue-on-error: true
-        timeout-minutes: 15
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-v3-microstructure-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/v3-original-source-upload/
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 0
-
-      - name: Diagnose frozen v3 original capture after handoff
-        id: diagnose_v3_original_capture
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') }}
-        continue-on-error: true
-        timeout-minutes: 2
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/diagnose_original_paper_v3_capture.py \
-            --capture-root "$RUNNER_TEMP/v3-original-capture-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
-            --diagnostic-root "$RUNNER_TEMP" \
-            --run-id "$GITHUB_RUN_ID" \
-            --run-attempt "$GITHUB_RUN_ATTEMPT" \
-            --head-sha "$GITHUB_SHA" \
-            --output "$RUNNER_TEMP/v3-original-capture-diagnostic.json" \
-            | tee /tmp/v3-original-capture-diagnostic.stdout.json
-
-      - name: Upload frozen v3 original capture diagnostic
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.diagnose_v3_original_capture.outcome == 'success' }}
-        continue-on-error: true
-        timeout-minutes: 5
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-v3-source-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/v3-original-capture-diagnostic.json
-          if-no-files-found: error
-          retention-days: 90
 
       - name: Rebuild correlation bucket priority audit after handoff
         id: deferred_correlation_priority_rebuild

@@ -250,3 +250,38 @@ def test_actual_paper_workflow_uploads_negative_v3_diagnostic_after_handoff() ->
     assert 'V3_CAPTURE_ORIGINAL_SOURCE: "1"' in workflow
     assert "original_paper_v3_capture.py" in workflow
     assert "live_orders_enabled: true" not in workflow
+
+def test_original_v3_seal_and_negative_diagnostic_precede_expensive_handoff_research() -> None:
+    workflow = Path(".github/workflows/continuous-paper.yml").read_text()
+    fast = workflow.index("- name: Queue exact successor from fast resume")
+    fallback = workflow.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    seal = workflow.index("- name: Seal frozen v3 original microstructure source")
+    upload = workflow.index("- name: Upload frozen v3 original microstructure source")
+    diagnose = workflow.index("- name: Diagnose frozen v3 original capture after handoff")
+    diagnostic_upload = workflow.index(
+        "- name: Upload frozen v3 original capture diagnostic"
+    )
+    deferred = workflow.index(
+        "- name: Audit all closed paper trades and recorded entry-to-exit charts"
+    )
+    large_rebuild = workflow.index(
+        "- name: Rebuild deferred full-stack markouts after handoff"
+    )
+    assert fast < fallback < seal < upload < diagnose < diagnostic_upload
+    assert diagnostic_upload < deferred < large_rebuild
+    assert "steps.seal_v3_original_source.outcome == 'success'" in (
+        workflow[seal:upload + 300]
+    )
+    assert "steps.diagnose_v3_original_capture.outcome == 'success'" in (
+        workflow[diagnose:diagnostic_upload + 300]
+    )
+    assert "always()" in workflow[seal:upload]
+    assert "continuous-paper-v3-microstructure-" in workflow[upload:diagnose]
+    assert "continuous-paper-v3-source-diagnostic-" in (
+        workflow[diagnostic_upload:deferred]
+    )
+    assert "live_orders_enabled: true" not in (
+        workflow[fallback:diagnostic_upload]
+    )
