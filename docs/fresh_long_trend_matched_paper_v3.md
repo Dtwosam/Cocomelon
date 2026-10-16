@@ -264,3 +264,24 @@ donate their data. The collector also reports offered rows not yet durably
 written or counted dropped. This includes in-flight writes during live status
 and becomes a residual on failed close. The failure does not certify or repair
 any original venue records, economics, worker continuity or LIVE orders.
+
+## October 16 — independent negative preflight for ordered v3 worker source links
+
+The new read-only `fresh_long_trend_source_chain.py` checks a chronological
+sequence of **already independently checked per-worker original GitHub ZIP
+receipts and matching pinned source manifests**. It refuses a missing or
+malformed worker linkage, duplicate worker ID/artifact/outer SHA/manifest,
+source clock overlap, a declared source-handoff gap greater than five minutes,
+a changed original PAPER strategy/risk/fee/feature/engine identity, or
+a source manifest with declared gaps. It allows an explicit first worker
+with a predecessor outside the studied slice, but records that predecessor
+as unauthenticated external dependency. All changes are offline and
+nonqualifying: this function does not browse GitHub, ingest exchange L2,
+authenticate a signed resume artifact, prove market-level coverage, or
+run either PAPER trading account.
+
+A 72-hour *nominal manifest* span is deliberately NOT equivalent to
+72 hours of observed continuous L2 on all selected markets. All the output's
+independent chain/market/after-cost profit/execution/promotion flags remain
+FALSE even for a locally self-consistent chain. Original source ZIPs can
+only feed this preflight after separate exact-outer-ZIP and receipt checks.
