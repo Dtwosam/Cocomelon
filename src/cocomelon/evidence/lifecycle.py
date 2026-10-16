@@ -287,7 +287,7 @@ def _record_gap_interval(
     ended_ms: int | None,
     sorted_so_far: bool,
 ) -> bool:
-    """Update source-specific gap coverage without O(history) on tail closes.
+    """Update source-specific gap coverage without O(history) on new tails.
 
     Return whether the list is sorted by the *same* comparator as
     _compact_gap_intervals. Out-of-order OPEN gaps are retained in their
@@ -296,6 +296,16 @@ def _record_gap_interval(
     """
     gap = (started_ms, ended_ms)
     if ended_ms is None:
+        # Strictly newer than the most recent sorted gap is necessarily
+        # absent from the entire list. Avoid the historical O(N) list
+        # membership test as source-gap witnesses accumulate. A duplicate,
+        # backdated or temporarily unordered OPEN gap still takes the
+        # original exact scan (and preserves un-compacted OPEN ordering).
+        if sorted_so_far and (
+            not intervals or started_ms > intervals[-1][0]
+        ):
+            intervals.append(gap)
+            return True
         if gap not in intervals:
             if sorted_so_far and intervals and started_ms < intervals[-1][0]:
                 sorted_so_far = False
