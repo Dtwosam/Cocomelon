@@ -107,7 +107,7 @@ def test_open_tail_close_merges_or_preserves_exact_last_coverage(
     monkeypatch.setattr(lifecycle, "_compact_gap_intervals", forbidden_compaction)
     for end, expected in [
         (250, [(100, 250)]),
-        (150, [(100, 200)]),
+        (195, [(100, 200)]),
     ]:
         state: list[tuple[int, int | None]] = [(100, 200), (190, None)]
         assert _record_gap_interval(
