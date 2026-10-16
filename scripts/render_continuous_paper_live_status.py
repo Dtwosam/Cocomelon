@@ -9576,6 +9576,22 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{reasons.get('recovered_after_rotation_witness', 'unavailable')}"
         ),
         (
+            "- closed source-gap L2 / other total historical ms: "
+            f"{raw.get('gap_closed_valid_l2_duration_ms_total', 'unavailable')} / "
+            f"{raw.get('gap_closed_valid_non_l2_duration_ms_total', 'unavailable')}"
+        ),
+        (
+            "- closed source-gap L2 / other maximum ms: "
+            f"{raw.get('gap_closed_l2_max_duration_ms', 'unavailable')} / "
+            f"{raw.get('gap_closed_non_l2_max_duration_ms', 'unavailable')}"
+        ),
+        (
+            "- closed source-gap L2 / other >=5s / invalid bound notices: "
+            f"{raw.get('gap_closed_l2_ge_5s_count', 'unavailable')} / "
+            f"{raw.get('gap_closed_non_l2_ge_5s_count', 'unavailable')} / "
+            f"{raw.get('gap_closed_invalid_bounds_count', 'unavailable')}"
+        ),
+        (
             "- source gap reasons funding / other: "
             f"{reasons.get('MAINNET_FUNDING_HISTORY_INFO_UNAVAILABLE', 'unavailable')} / "
             f"{reasons.get('other', 'unavailable')}"
