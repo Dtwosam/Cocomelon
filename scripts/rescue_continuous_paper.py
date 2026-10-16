@@ -396,11 +396,18 @@ def main() -> int:
         ),
     )
     if latest_status != "ready" or latest_source != source:
-        print(
-            "PAPER lease changed during independent recovery; "
-            f"current_state={latest_status}. No duplicate dispatch."
+        if latest_status in {"active", "queued_exact"}:
+            print(
+                "PAPER lease taken by another actual or queued exact worker; "
+                f"current_state={latest_status}. No duplicate dispatch."
+            )
+            return 0
+        # Missing/blocked/newer unverified worker is NOT a green recovery.
+        # It must appear as an operational failure for human diagnosis.
+        raise PaperRescueError(
+            "PAPER lease changed to unverifiable exact state before "
+            f"dispatch: {latest_status}; no stale-state rescue"
         )
-        return 0
 
     dispatch_path = f"repos/{repository}/actions/runs?event=workflow_dispatch&per_page=100"
     baseline = _collection(dispatch_path, "workflow_runs")
