@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from cocomelon.research.original_paper_v3_capture import (
+    ORIGINAL_GAP_REASON_BUCKETS,
     RECORD_FILE,
     STARTUP_FAILURE_FILE,
     TERMINAL_FILE,
@@ -214,6 +215,29 @@ def diagnose_original_paper_v3_capture(
             terminal.get("l2_selected_market_over_5min_drought_count")
             if terminal_matches
             and type(terminal.get("l2_selected_market_over_5min_drought_count")) is int
+            else None
+        ),
+        "original_gap_reason_counts": (
+            dict(terminal["gap_reason_counts"])
+            if terminal_matches
+            and isinstance(terminal.get("gap_reason_counts"), dict)
+            and set(terminal["gap_reason_counts"]) == set(ORIGINAL_GAP_REASON_BUCKETS)
+            and all(
+                type(value) is int and value >= 0
+                for value in terminal["gap_reason_counts"].values()
+            )
+            else None
+        ),
+        "original_gap_l2_stream_offered_count": (
+            terminal.get("gap_l2_stream_offered_count")
+            if terminal_matches
+            and type(terminal.get("gap_l2_stream_offered_count")) is int
+            else None
+        ),
+        "original_gap_non_l2_stream_offered_count": (
+            terminal.get("gap_non_l2_stream_offered_count")
+            if terminal_matches
+            and type(terminal.get("gap_non_l2_stream_offered_count")) is int
             else None
         ),
         "original_gap_offered_count": (
