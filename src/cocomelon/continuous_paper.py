@@ -10525,6 +10525,10 @@ async def run_continuous_paper_session(
                     selected_markets=tuple(m.canonical for m in selected),
                     first_observed_ms=started_at_ms,
                     replay_config=replay_config,
+                    predecessor_run_id=(os.environ.get("PREDECESSOR_RUN_ID") or None),
+                    predecessor_run_attempt=(
+                        os.environ.get("PREDECESSOR_RUN_ATTEMPT") or None
+                    ),
                 )
             except Exception as capture_init_exc:
                 # PAPER remains operational. A separate nonqualifying
