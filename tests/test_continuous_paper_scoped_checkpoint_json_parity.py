@@ -30,7 +30,7 @@ def _legacy_payload(gaps: _MutatingGaps) -> dict[str, object]:
     return {
         "schema_version": 3,
         "run_id": "continuous-paper",
-        "last_available_at_ms": 5_000,
+        "last_available_at_ms": 200_000,
         "selected_markets": ["TEST"],
         "open_lifecycles": [],
         "known_gap_intervals": [[5, None]],
@@ -49,7 +49,7 @@ def test_scoped_gap_tuples_emit_byte_identical_json_and_survive_restore(
     gaps = _MutatingGaps(8_000)
     payload = _checkpoint_payload(
         gaps,  # type: ignore[arg-type]
-        last_available_at_ms=5_000,
+        last_available_at_ms=200_000,
         selected_markets=(MarketId("", "TEST"),),
     )
     # The serializer, NOT Python container class, defines immutable
@@ -77,20 +77,20 @@ def test_scoped_gap_tuples_emit_byte_identical_json_and_survive_restore(
         _MutatingGaps(8_000).rows,
     )
     assert global_scoped == {"allMids": ((10, 20),)}
-    assert last_ms == 5_000
+    assert last_ms == 200_000
 
 
 def test_scoped_gap_tuples_are_snapshot_isolated_per_stream() -> None:
     gaps = _MutatingGaps(2)
     first = _checkpoint_payload(
         gaps,  # type: ignore[arg-type]
-        last_available_at_ms=5_000,
+        last_available_at_ms=200_000,
         selected_markets=(MarketId("", "TEST"),),
     )
     gaps.rows[0] = (200, 201)
     second = _checkpoint_payload(
         gaps,  # type: ignore[arg-type]
-        last_available_at_ms=5_000,
+        last_available_at_ms=200_000,
         selected_markets=(MarketId("", "TEST"),),
     )
     assert first["known_gap_intervals_by_stream"] != (
