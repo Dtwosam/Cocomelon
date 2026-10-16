@@ -119,6 +119,26 @@ def test_raw_clock_regression_status_never_claims_valid_original_feed() -> None:
     assert "source and after-cost profit certification: FALSE" in report
 
 
+def test_l2_offer_age_and_same_stream_diagnostics_remain_nonqualifying() -> None:
+    report = "\\n".join(_v3_live_capture_lines({
+        "enabled": True,
+        "failure": "original_received_clock_regression",
+        "l2_within_stream_clock_regressions": 4,
+        "l2_cross_stream_only_clock_regressions": 19,
+        "l2_offer_age_over_1s_count": 26,
+        "l2_offer_age_over_5s_count": 20,
+        "l2_offer_age_over_15s_count": 3,
+        "l2_offer_timestamp_future_count": 2,
+        "l2_max_offer_age_ms": 28000,
+        "l2_tracked_distinct_streams": 27,
+        "l2_stream_clock_tracking_overflow": 0,
+    }))
+    assert "4 / 19" in report
+    assert "26 / 20 / 3 / 2" in report
+    assert "28000 / 27 / 0" in report
+    assert "source and after-cost profit certification: FALSE" in report
+
+
 def test_missing_capture_is_unverified_in_older_worker_heartbeats() -> None:
     rendered = "\n".join(_v3_live_capture_lines(None))
     assert "not reported" in rendered

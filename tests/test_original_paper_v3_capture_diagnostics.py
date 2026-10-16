@@ -150,9 +150,17 @@ def test_negative_terminal_keeps_clock_cause_and_unacknowledged_offers(
         "max_original_clock_backward_ms": 120,
         "first_regression_cause": "both_prior_input_and_paper_clock",
         "first_regression_event_kind": "l2_book",
+        "l2_within_stream_clock_regressions": 5,
+        "l2_cross_stream_only_clock_regressions": 10,
+        "l2_offer_age_over_15s_count": 2,
+        "l2_max_offer_age_ms": 24000,
     }))
     report = _diagnose(tmp_path)
     assert report["original_offered_not_written_or_dropped_count"] == 1
+    assert report["original_l2_within_stream_clock_regressions"] == 5
+    assert report["original_l2_cross_stream_only_clock_regressions"] == 10
+    assert report["original_l2_offer_age_over_15s_count"] == 2
+    assert report["original_l2_max_offer_age_ms"] == 24000
     assert report["original_regressions_vs_prior_offered"] == 2
     assert report["original_regressions_vs_paper_clock"] == 1
     assert report["original_max_clock_backward_ms"] == 120
@@ -181,6 +189,10 @@ def test_foreign_terminal_never_exposes_original_clock_cause(
     assert report["original_regressions_vs_paper_clock"] is None
     assert report["original_max_clock_backward_ms"] is None
     assert report["original_offered_not_written_or_dropped_count"] is None
+    assert report["original_l2_within_stream_clock_regressions"] is None
+    assert report["original_l2_cross_stream_only_clock_regressions"] is None
+    assert report["original_l2_offer_age_over_15s_count"] is None
+    assert report["original_l2_max_offer_age_ms"] is None
     _assert_research_denied(report)
 
 

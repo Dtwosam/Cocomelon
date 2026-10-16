@@ -152,6 +152,36 @@ def diagnose_original_paper_v3_capture(
             )
             else None
         ),
+        "original_l2_within_stream_clock_regressions": (
+            terminal.get("l2_within_stream_clock_regressions")
+            if terminal_matches
+            and type(terminal.get("l2_within_stream_clock_regressions")) is int
+            else None
+        ),
+        "original_l2_cross_stream_only_clock_regressions": (
+            terminal.get("l2_cross_stream_only_clock_regressions")
+            if terminal_matches
+            and type(terminal.get("l2_cross_stream_only_clock_regressions")) is int
+            else None
+        ),
+        "original_l2_offer_age_over_15s_count": (
+            terminal.get("l2_offer_age_over_15s_count")
+            if terminal_matches
+            and type(terminal.get("l2_offer_age_over_15s_count")) is int
+            else None
+        ),
+        "original_l2_max_offer_age_ms": (
+            terminal.get("l2_max_offer_age_ms")
+            if terminal_matches
+            and type(terminal.get("l2_max_offer_age_ms")) is int
+            else None
+        ),
+        "original_l2_stream_clock_tracking_overflow": (
+            terminal.get("l2_stream_clock_tracking_overflow")
+            if terminal_matches
+            and type(terminal.get("l2_stream_clock_tracking_overflow")) is int
+            else None
+        ),
         "original_receive_clock_regressions": (
             terminal.get("original_received_clock_regressions")
             if terminal_matches else None
