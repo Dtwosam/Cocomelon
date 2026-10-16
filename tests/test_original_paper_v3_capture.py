@@ -462,14 +462,33 @@ def test_paper_workflow_seals_after_successor_without_lifting_trade_controls() -
     assert 'V3_CAPTURE_ORIGINAL_SOURCE: "1"' in workflow
     assert "seal_original_paper_v3_source.py" in workflow
     assert "original_paper_v3_capture.py" in workflow
-    s = workflow.index("- name: Queue exact successor from fast resume")
-    f = workflow.index("- name: Queue fallback exact successor continuous paper worker")
+    fast = workflow.index("- name: Queue exact successor from fast resume")
     seal = workflow.index("- name: Seal frozen v3 original microstructure source")
     upload = workflow.index("- name: Upload frozen v3 original microstructure source")
-    assert s < f < seal < upload
-    assert "steps.seal_v3_original_source.outcome == 'success'" in workflow[seal:upload+400]
-    assert "continuous-paper-v3-microstructure-" in workflow[upload:upload+500]
-    assert "live_orders: true" not in workflow[seal:upload]
+    fallback = workflow.index("- name: Queue fallback exact successor continuous paper worker")
+    fallback_seal = workflow.index(
+        "- name: Seal frozen v3 original microstructure source (fallback exact handoff)"
+    )
+    fallback_upload = workflow.index(
+        "- name: Upload frozen v3 original microstructure source (fallback exact handoff)"
+    )
+    assert fast < seal < upload < fallback < fallback_seal < fallback_upload
+    assert "steps.fast_resume_dispatch.outcome == 'success'" in workflow[seal:upload]
+    assert "steps.seal_v3_original_source.outcome == 'success'" in workflow[upload:fallback]
+    assert "steps.fast_resume_dispatch.outcome != 'success'" in (
+        workflow[fallback_seal:fallback_upload]
+    )
+    assert "steps.fallback_resume_dispatch.outcome == 'success'" in (
+        workflow[fallback_seal:fallback_upload]
+    )
+    assert "steps.seal_v3_original_source_fallback.outcome == 'success'" in (
+        workflow[fallback_upload:fallback_upload+500]
+    )
+    assert "continuous-paper-v3-microstructure-" in workflow[upload:upload+550]
+    assert "continuous-paper-v3-microstructure-" in workflow[
+        fallback_upload:fallback_upload+550
+    ]
+    assert "live_orders: true" not in workflow[fast:fallback_upload]
 
 
 def test_raw_original_clock_regression_never_becomes_clamped_replay_evidence(
