@@ -192,6 +192,9 @@ def test_foreign_terminal_never_exposes_original_clock_cause(
         "regressions_vs_paper_clock": 123,
         "max_original_clock_backward_ms": 123,
         "offered_not_written_or_dropped_count": 123,
+        "gap_offered_count": 999,
+        "gap_max_boundary_age_ms": 999,
+        "first_regression_gap_boundary_kind": "open",
     }))
     report = _diagnose(tmp_path)
     assert report["diagnostic_reason"] == "terminal_identity_mismatch"
@@ -203,6 +206,9 @@ def test_foreign_terminal_never_exposes_original_clock_cause(
     assert report["original_l2_cross_stream_only_clock_regressions"] is None
     assert report["original_l2_offer_age_over_15s_count"] is None
     assert report["original_l2_max_offer_age_ms"] is None
+    assert report["original_gap_offered_count"] is None
+    assert report["original_gap_max_boundary_age_ms"] is None
+    assert report["original_first_regression_gap_boundary_kind"] is None
     _assert_research_denied(report)
 
 
