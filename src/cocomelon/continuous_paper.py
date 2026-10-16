@@ -10508,7 +10508,7 @@ async def run_continuous_paper_session(
                     first_observed_ms=started_at_ms,
                     replay_config=replay_config,
                 )
-            except Exception as exc:
+            except Exception as capture_init_exc:
                 # PAPER remains operational. A separate nonqualifying
                 # GitHub artifact must explain recorder init failure; never
                 # manufacture an original journal or signed terminal state.
@@ -10521,7 +10521,7 @@ async def run_continuous_paper_session(
                                 run_id=run_id,
                                 run_attempt=attempt,
                                 head_sha=head_sha,
-                                error=exc,
+                                error=capture_init_exc,
                             ),
                             timeout=1.0,
                         )
