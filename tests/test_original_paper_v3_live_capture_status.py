@@ -86,6 +86,22 @@ def test_negative_live_status_renderer_never_credits_future_account() -> None:
     assert "source and after-cost profit certification: FALSE" in rendered
 
 
+def test_negative_status_shows_original_archive_budget_without_certification() -> None:
+    lines = _v3_live_capture_lines({
+        "enabled": True,
+        "written_count": 24,
+        "written_source_journal_bytes": 2048,
+        "source_journal_byte_limit": 4096,
+        "remaining_persisted_byte_budget": 2048,
+        "source_journal_row_limit": 200,
+        "remaining_persisted_row_budget": 176,
+    })
+    rendered = "\n".join(lines)
+    assert "2048 / 4096 / 2048" in rendered
+    assert "24 / 200 / 176" in rendered
+    assert "source and after-cost profit certification: FALSE" in rendered
+
+
 def test_missing_capture_is_unverified_in_older_worker_heartbeats() -> None:
     rendered = "\n".join(_v3_live_capture_lines(None))
     assert "not reported" in rendered

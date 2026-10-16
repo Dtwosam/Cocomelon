@@ -219,3 +219,18 @@ This is not proof that every venue event was captured, nor a signed
 cross-worker ordering chain. Those independent gates and the 72h
 net-after-fee/funding whole-account screen remain mandatory and unproven.
 
+
+## October 16 — proactive ORIGINAL recorder byte/row budget refusal
+
+The prospective original PAPER collector now shares the source sealer's strict
+480 MiB original-journal byte ceiling and 5,000,000-row ceiling. Before each
+async fsynced batch, the writer counts the exact canonical original JSONL bytes
+and refuses an over-budget batch, marking the run irreversibly nonqualifying.
+The untouched PAPER trading pipeline and account continue. Authenticated
+operational heartbeats expose only **persisted** source bytes/rows and remaining
+archive budget, distinct from pending queue rows; post-handoff terminal bytes
+must reconcile with the original journal before source sealing. A missing,
+dropped, over-budget or incompletely closed recorder never creates a
+qualifying v3 original ZIP. These counters are not proof of original venue
+completeness, multi-worker receipt continuity or prospective profitability.
+No strategy or risk change and no LIVE authority.

@@ -9509,6 +9509,18 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{raw.get('pending_queue_depth', 'unavailable')} / "
             f"{raw.get('received_clock_regressions', 'unavailable')}"
         ),
+        (
+            "- persisted original journal bytes / cap / remaining: "
+            f"{raw.get('written_source_journal_bytes', 'unavailable')} / "
+            f"{raw.get('source_journal_byte_limit', 'unavailable')} / "
+            f"{raw.get('remaining_persisted_byte_budget', 'unavailable')}"
+        ),
+        (
+            "- persisted original rows / cap / remaining: "
+            f"{raw.get('written_count', 'unavailable')} / "
+            f"{raw.get('source_journal_row_limit', 'unavailable')} / "
+            f"{raw.get('remaining_persisted_row_budget', 'unavailable')}"
+        ),
         f"- last original written receive ms: {raw.get('last_written_available_at_ms')}",
         "- source and after-cost profit certification: FALSE (live telemetry only)",
         "",
