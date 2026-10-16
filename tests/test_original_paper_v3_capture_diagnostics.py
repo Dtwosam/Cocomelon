@@ -154,6 +154,11 @@ def test_negative_terminal_keeps_clock_cause_and_unacknowledged_offers(
         "l2_cross_stream_only_clock_regressions": 10,
         "l2_offer_age_over_15s_count": 2,
         "l2_max_offer_age_ms": 24000,
+        "gap_offered_count": 7,
+        "gap_open_offered_count": 3,
+        "gap_closed_offered_count": 4,
+        "gap_max_boundary_age_ms": 16000,
+        "first_regression_gap_boundary_kind": "closed",
     }))
     report = _diagnose(tmp_path)
     assert report["original_offered_not_written_or_dropped_count"] == 1
@@ -161,6 +166,11 @@ def test_negative_terminal_keeps_clock_cause_and_unacknowledged_offers(
     assert report["original_l2_cross_stream_only_clock_regressions"] == 10
     assert report["original_l2_offer_age_over_15s_count"] == 2
     assert report["original_l2_max_offer_age_ms"] == 24000
+    assert report["original_gap_offered_count"] == 7
+    assert report["original_gap_open_offered_count"] == 3
+    assert report["original_gap_closed_offered_count"] == 4
+    assert report["original_gap_max_boundary_age_ms"] == 16000
+    assert report["original_first_regression_gap_boundary_kind"] == "closed"
     assert report["original_regressions_vs_prior_offered"] == 2
     assert report["original_regressions_vs_paper_clock"] == 1
     assert report["original_max_clock_backward_ms"] == 120
