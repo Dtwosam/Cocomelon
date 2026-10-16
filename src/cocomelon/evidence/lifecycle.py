@@ -1422,26 +1422,38 @@ class BaselineReplayPipeline:
         # Gap provenance is immutable during this synchronous close. Build
         # its potentially large per-market compacted union only once and
         # give the identical receipt to the journal and research sink.
-        known_gap_intervals = self.known_gap_intervals_for_market(market)
-        assembled = assemble_trade_journal_entry(
-            TradeLifecycleInput(
-                feature_snapshot_id=lifecycle.feature_snapshot_id,
-                opening_plan=opening_plan,
-                opening_attempt=opening_attempt,
-                exit_plans=tuple(lifecycle.exit_plans.values()),
-                exit_attempts=tuple(lifecycle.exit_attempts.values()),
-                fills=tuple(lifecycle.fills.values()),
-                position_actions=actions,
-                funding_accruals=tuple(lifecycle.funding.values()),
-                equity_before=lifecycle.equity_before,
-                equity_after=self._execution.account.equity,
-                exit_reason=exit_reason,
-                mark_observations=tuple(lifecycle.marks.values()),
-                known_gap_intervals=known_gap_intervals,
-                evidence_class=self._evidence_class,
-                replay_run_id=self._run_id,
+        stage_started = time.perf_counter()
+        try:
+            known_gap_intervals = self.known_gap_intervals_for_market(market)
+        finally:
+            self._record_runtime_component(
+                "position_close_gap_union", stage_started,
             )
-        )
+        stage_started = time.perf_counter()
+        try:
+            assembled = assemble_trade_journal_entry(
+                TradeLifecycleInput(
+                    feature_snapshot_id=lifecycle.feature_snapshot_id,
+                    opening_plan=opening_plan,
+                    opening_attempt=opening_attempt,
+                    exit_plans=tuple(lifecycle.exit_plans.values()),
+                    exit_attempts=tuple(lifecycle.exit_attempts.values()),
+                    fills=tuple(lifecycle.fills.values()),
+                    position_actions=actions,
+                    funding_accruals=tuple(lifecycle.funding.values()),
+                    equity_before=lifecycle.equity_before,
+                    equity_after=self._execution.account.equity,
+                    exit_reason=exit_reason,
+                    mark_observations=tuple(lifecycle.marks.values()),
+                    known_gap_intervals=known_gap_intervals,
+                    evidence_class=self._evidence_class,
+                    replay_run_id=self._run_id,
+                )
+            )
+        finally:
+            self._record_runtime_component(
+                "position_close_journal_assemble", stage_started,
+            )
         if isinstance(assembled, JournalInconsistency) or not isinstance(
             assembled,
             TradeJournalEntry,
@@ -1453,15 +1465,27 @@ class BaselineReplayPipeline:
             )
             raise ReplayInvariantError(f"journal lifecycle inconsistent: {detail}")
         if self._closed_lifecycle_sink is not None:
-            self._closed_lifecycle_sink.record(
-                assembled,
-                tuple(lifecycle.marks.values()),
-                known_gap_intervals,
-            )
+            stage_started = time.perf_counter()
+            try:
+                self._closed_lifecycle_sink.record(
+                    assembled,
+                    tuple(lifecycle.marks.values()),
+                    known_gap_intervals,
+                )
+            finally:
+                self._record_runtime_component(
+                    "position_close_path_sink", stage_started,
+                )
         if self._position_research_observer is not None:
-            self._position_research_observer.record_closed_trade(
-                assembled
-            )
+            stage_started = time.perf_counter()
+            try:
+                self._position_research_observer.record_closed_trade(
+                    assembled
+                )
+            finally:
+                self._record_runtime_component(
+                    "position_close_research_sink", stage_started,
+                )
         self._completed[assembled.trade_id] = assembled
         del self._lifecycles[market.canonical]
 
@@ -1487,31 +1511,43 @@ class BaselineReplayPipeline:
         instrument = _instrument(snapshot, self._config.execution)
         micro = calculate_microstructure_features(book, as_of_ms=now_ms)
         if self._position_research_observer is not None:
-            self._position_research_observer.observe_book(
-                self._execution.account.positions,
-                instrument,
-                book,
-                reference_price=micro.mid_px,
-                now_ms=now_ms,
-            )
+            stage_started = time.perf_counter()
+            try:
+                self._position_research_observer.observe_book(
+                    self._execution.account.positions,
+                    instrument,
+                    book,
+                    reference_price=micro.mid_px,
+                    now_ms=now_ms,
+                )
+            finally:
+                self._record_runtime_component(
+                    "l2_position_research_observer", stage_started,
+                )
         mark_event = self._latest_mark.get(position.market.canonical)
         decision = self._latest_strategy(position.market)
         action_timestamp = now_ms if mark_event is None else _receive_ms(mark_event)
         if action_timestamp < position.updated_at_ms:
             action_timestamp = now_ms
-        management = self._execution.manage_position(
-            position.market,
-            instrument,
-            mark_event,
-            book,
-            strategy_decision=decision,
-            strategy_fresh=self._strategy_fresh(decision, action_timestamp),
-            critical_health=not self._execution.health.healthy_for_new_exposure,
-            explicit_reduction_quantity=None,
-            reference_price=micro.mid_px,
-            timestamp_ms=action_timestamp,
-            attempt_timestamp_ms=now_ms,
-        )
+        stage_started = time.perf_counter()
+        try:
+            management = self._execution.manage_position(
+                position.market,
+                instrument,
+                mark_event,
+                book,
+                strategy_decision=decision,
+                strategy_fresh=self._strategy_fresh(decision, action_timestamp),
+                critical_health=not self._execution.health.healthy_for_new_exposure,
+                explicit_reduction_quantity=None,
+                reference_price=micro.mid_px,
+                timestamp_ms=action_timestamp,
+                attempt_timestamp_ms=now_ms,
+            )
+        finally:
+            self._record_runtime_component(
+                "l2_position_execution_management", stage_started,
+            )
         self._append_management_to_lifecycle(management)
         observations = list(self._record_management(management))
         if not any(

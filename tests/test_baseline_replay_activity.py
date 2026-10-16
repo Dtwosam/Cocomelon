@@ -317,6 +317,23 @@ def test_baseline_pipeline_reports_fill_and_open_position_before_trade_closes(tm
             value >= 0
             for value in runtime_components.values()
         )
+
+        # A second genuine book manages the position opened by the first
+        # book; its profiled sub-stages cannot change prior fill economics.
+        second = _record(
+            kind="l2_book",
+            available_at_ms=OPEN_BOOK_MS + 1_000,
+            exchange_time_ms=OPEN_BOOK_MS + 1_000,
+            payload=json.loads(_book().payload_json),
+        )
+        pipeline.on_record(second, second.available_at_ms)
+        managed_runtime = pipeline.runtime_max_ms_by_component
+        assert "l2_book_manage_position" in managed_runtime
+        assert "l2_position_execution_management" in managed_runtime
+        assert all(
+            type(value) is int and value >= 0
+            for value in managed_runtime.values()
+        )
     finally:
         execution.close()
         facts.close()
