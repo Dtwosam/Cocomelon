@@ -9536,6 +9536,24 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{raw.get('first_regression_event_kind') or 'none observed'} / "
             f"{raw.get('max_original_clock_backward_ms', 'unavailable')}"
         ),
+        (
+            "- original L2 within-stream / cross-stream-only clock regressions: "
+            f"{raw.get('l2_within_stream_clock_regressions', 'unavailable')} / "
+            f"{raw.get('l2_cross_stream_only_clock_regressions', 'unavailable')}"
+        ),
+        (
+            "- original L2 age at PAPER offer >1s / >5s / >15s / future: "
+            f"{raw.get('l2_offer_age_over_1s_count', 'unavailable')} / "
+            f"{raw.get('l2_offer_age_over_5s_count', 'unavailable')} / "
+            f"{raw.get('l2_offer_age_over_15s_count', 'unavailable')} / "
+            f"{raw.get('l2_offer_timestamp_future_count', 'unavailable')}"
+        ),
+        (
+            "- original L2 max source-to-offer age ms / tracked streams / cap overflows: "
+            f"{raw.get('l2_max_offer_age_ms', 'unavailable')} / "
+            f"{raw.get('l2_tracked_distinct_streams', 'unavailable')} / "
+            f"{raw.get('l2_stream_clock_tracking_overflow', 'unavailable')}"
+        ),
         f"- last original written receive ms: {raw.get('last_written_available_at_ms')}",
         "- source and after-cost profit certification: FALSE (live telemetry only)",
         "",
