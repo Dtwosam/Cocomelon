@@ -455,6 +455,69 @@ def test_first_record_older_than_restored_paper_checkpoint_fails_source(
         _seal(tmp_path)
 
 
+def test_receipt_clock_diagnostic_separates_late_prior_input_from_paper(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> tuple[dict[str, object], dict[str, object]]:
+        recorder = OriginalPaperMicrostructureCapture(
+            tmp_path / "original", run_id=RUN, run_attempt=ATTEMPT,
+            head_sha=HEAD, selected_markets=("TEST",),
+            first_observed_ms=FORWARD_NOT_BEFORE_MS - 10_000,
+            replay_config=BaselineReplayConfig(),
+        )
+        recorder.offer(
+            _book(FORWARD_NOT_BEFORE_MS + 30, "initial"),
+            paper_previous_at_ms=FORWARD_NOT_BEFORE_MS + 5,
+        )
+        recorder.offer(
+            _book(FORWARD_NOT_BEFORE_MS + 28, "late-prior-input"),
+            paper_previous_at_ms=FORWARD_NOT_BEFORE_MS + 20,
+        )
+        return recorder.live_diagnostic_snapshot(), await recorder.close()
+
+    live, terminal = asyncio.run(scenario())
+    assert live["received_clock_regressions"] == 1
+    assert live["regressions_vs_prior_offered"] == 1
+    assert live["regressions_vs_paper_clock"] == 0
+    assert live["first_regression_cause"] == "prior_input_clock"
+    assert live["first_regression_event_kind"] == "l2_book"
+    assert live["max_original_clock_backward_ms"] == 2
+    assert live["failure"] == "original_received_clock_regression"
+    assert live["source_integrity_certified"] is False
+    assert terminal["first_regression_cause"] == "prior_input_clock"
+    assert terminal["complete"] is False
+    with pytest.raises(OriginalV3CaptureSealError, match="lost rows"):
+        _seal(tmp_path)
+
+
+def test_receipt_clock_diagnostic_identifies_restored_paper_clock_without_laundering(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> tuple[dict[str, object], dict[str, object]]:
+        recorder = OriginalPaperMicrostructureCapture(
+            tmp_path / "original", run_id=RUN, run_attempt=ATTEMPT,
+            head_sha=HEAD, selected_markets=("TEST",),
+            first_observed_ms=FORWARD_NOT_BEFORE_MS - 10_000,
+            replay_config=BaselineReplayConfig(),
+        )
+        recorder.offer(
+            _book(FORWARD_NOT_BEFORE_MS + 6, "restored-pipeline-behind"),
+            paper_previous_at_ms=FORWARD_NOT_BEFORE_MS + 100,
+        )
+        return recorder.live_diagnostic_snapshot(), await recorder.close()
+
+    live, terminal = asyncio.run(scenario())
+    assert live["received_clock_regressions"] == 1
+    assert live["regressions_vs_prior_offered"] == 0
+    assert live["regressions_vs_paper_clock"] == 1
+    assert live["first_regression_cause"] == "paper_previous_clock"
+    assert live["first_regression_event_kind"] == "l2_book"
+    assert live["max_original_clock_backward_ms"] == 94
+    assert terminal["complete"] is False
+    assert terminal["first_regression_cause"] == "paper_previous_clock"
+    assert terminal["paper_monotonic_clock_adjustment_not_used_as_source"] is True
+
+
 def test_record_pump_preserves_raw_input_for_capture_before_clock_clamp(
     tmp_path: Path,
 ) -> None:
