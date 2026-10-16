@@ -139,6 +139,25 @@ def test_l2_offer_age_and_same_stream_diagnostics_remain_nonqualifying() -> None
     assert "source and after-cost profit certification: FALSE" in report
 
 
+def test_source_gap_boundary_latency_is_negative_diagnostic_only() -> None:
+    report = "\\n".join(_v3_live_capture_lines({
+        "enabled": True,
+        "failure": "original_received_clock_regression",
+        "gap_offered_count": 21,
+        "gap_open_offered_count": 10,
+        "gap_closed_offered_count": 11,
+        "gap_boundary_age_over_1s_count": 8,
+        "gap_boundary_age_over_15s_count": 2,
+        "gap_boundary_timestamp_future_count": 0,
+        "gap_max_boundary_age_ms": 16009,
+        "first_regression_gap_boundary_kind": "closed",
+    }))
+    assert "21 / 10 / 11" in report
+    assert "8 / 2 / 0" in report
+    assert "16009 / closed" in report
+    assert "source and after-cost profit certification: FALSE" in report
+
+
 def test_missing_capture_is_unverified_in_older_worker_heartbeats() -> None:
     rendered = "\n".join(_v3_live_capture_lines(None))
     assert "not reported" in rendered
