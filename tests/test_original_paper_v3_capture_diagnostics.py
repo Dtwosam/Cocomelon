@@ -311,11 +311,21 @@ def test_original_v3_fast_source_custody_precedes_all_optional_archive_work() ->
     )
     assert (
         fast < remove_fast_archive < seal < upload < diagnose < diagnostic_upload
-        < rank < durable < fallback < fallback_seal
-        < fallback_upload < fallback_diagnose < fallback_diag_upload < deferred
+        < durable < fallback < fallback_seal
+        < fallback_upload < fallback_diagnose < fallback_diag_upload < rank
+        < deferred
     )
     assert "steps.fast_resume_dispatch.outcome == 'success'" in (
         workflow[seal:upload]
+    )
+    # Historical rank and chart research is optional and must not block
+    # restoring or dispatching the exact fallback PAPER account.
+    assert "short_rank_seal" not in workflow[durable:fallback]
+    assert "rank_market_context_seal" not in workflow[durable:fallback]
+    assert "short_rank" not in workflow[fallback:fallback_seal]
+    assert (
+        workflow.index("- name: Upload original SHORT rank market context seal")
+        > fallback_diag_upload
     )
     assert "steps.fast_resume_dispatch.outcome == 'success'" in (
         workflow[diagnose:diagnostic_upload]

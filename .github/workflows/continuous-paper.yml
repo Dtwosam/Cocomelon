@@ -1494,94 +1494,6 @@ jobs:
             echo "- early dispatch: requested, receipt remains subject to independent verification" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Seal original first-seen SHORT rank source after worker exit
-        id: short_rank_seal
-        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/seal_paper_short_rank_archive.py \
-            --state-root "$STATE_ROOT" \
-            --output-dir /tmp/continuous-paper-short-rank-seal \
-            --worker-run-id "$GITHUB_RUN_ID" \
-            --worker-run-attempt "$GITHUB_RUN_ATTEMPT" \
-            --worker-head-sha "$GITHUB_SHA" \
-            --restored-from-run-id "${{ inputs.source_run_id || '' }}" \
-            --restored-from-run-attempt "${{ inputs.source_run_attempt || '' }}" \
-            | tee /tmp/continuous-paper-short-rank-seal-result.json
-
-      - name: Upload original first-seen SHORT rank seal and failure receipt
-        id: short_rank_seal_upload
-        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
-        continue-on-error: true
-        timeout-minutes: 10
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-first-seen-short-rank-${{ github.run_id }}-${{ github.run_attempt }}
-          path: /tmp/continuous-paper-short-rank-seal/
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 0
-
-      - name: Seal entire original SHORT rank input features after paper exit
-        timeout-minutes: 18
-        id: full_rank_feature_seal
-        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/seal_paper_short_rank_full_features.py \
-            --state-root "$STATE_ROOT" \
-            --output-dir /tmp/continuous-paper-full-rank-feature-seal \
-            --worker-run-id "$GITHUB_RUN_ID" \
-            --worker-run-attempt "$GITHUB_RUN_ATTEMPT" \
-            --worker-head-sha "$GITHUB_SHA" \
-            | tee /tmp/continuous-paper-full-rank-feature-seal-result.json
-
-      - name: Upload original SHORT rank full-input seal or rejection
-        id: full_rank_feature_seal_upload
-        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
-        continue-on-error: true
-        timeout-minutes: 12
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-first-seen-short-rank-full-inputs-${{ github.run_id }}-${{ github.run_attempt }}
-          path: /tmp/continuous-paper-full-rank-feature-seal/
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 0
-
-      - name: Seal original SHORT rank market context after paper exit
-        timeout-minutes: 12
-        id: rank_market_context_seal
-        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/seal_paper_short_rank_market_context.py \
-            --state-root "$STATE_ROOT" \
-            --output-dir /tmp/continuous-paper-short-rank-market-context-seal \
-            --worker-run-id "$GITHUB_RUN_ID" \
-            --worker-run-attempt "$GITHUB_RUN_ATTEMPT" \
-            --worker-head-sha "$GITHUB_SHA" \
-            | tee /tmp/continuous-paper-short-rank-market-context-seal-result.json
-
-      - name: Upload original SHORT rank market context seal or rejection
-        id: rank_market_context_seal_upload
-        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
-        continue-on-error: true
-        timeout-minutes: 12
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-first-seen-short-rank-market-context-${{ github.run_id }}-${{ github.run_attempt }}
-          path: /tmp/continuous-paper-short-rank-market-context-seal/
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 0
-
       - name: Export compact continuous decision facts
         id: decision_fact_export
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
@@ -1812,6 +1724,97 @@ jobs:
       # Only authenticated after-handoff research files needed by the
       # separate 5m/15m exact LONG-trend evaluations; never package the
       # multi-GB account DB, market tapes, or open-position state here.
+      # Optional rank-source archival MUST NOT delay the exact durable
+      # fallback PAPER state upload or the actual successor dispatch.
+      # Both fast/fallback v3 custody branches have already executed.
+      - name: Seal original first-seen SHORT rank source after worker exit
+        id: short_rank_seal
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/seal_paper_short_rank_archive.py \
+            --state-root "$STATE_ROOT" \
+            --output-dir /tmp/continuous-paper-short-rank-seal \
+            --worker-run-id "$GITHUB_RUN_ID" \
+            --worker-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --worker-head-sha "$GITHUB_SHA" \
+            --restored-from-run-id "${{ inputs.source_run_id || '' }}" \
+            --restored-from-run-attempt "${{ inputs.source_run_attempt || '' }}" \
+            | tee /tmp/continuous-paper-short-rank-seal-result.json
+
+      - name: Upload original first-seen SHORT rank seal and failure receipt
+        id: short_rank_seal_upload
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        continue-on-error: true
+        timeout-minutes: 10
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-first-seen-short-rank-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/continuous-paper-short-rank-seal/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - name: Seal entire original SHORT rank input features after paper exit
+        timeout-minutes: 18
+        id: full_rank_feature_seal
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/seal_paper_short_rank_full_features.py \
+            --state-root "$STATE_ROOT" \
+            --output-dir /tmp/continuous-paper-full-rank-feature-seal \
+            --worker-run-id "$GITHUB_RUN_ID" \
+            --worker-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --worker-head-sha "$GITHUB_SHA" \
+            | tee /tmp/continuous-paper-full-rank-feature-seal-result.json
+
+      - name: Upload original SHORT rank full-input seal or rejection
+        id: full_rank_feature_seal_upload
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        continue-on-error: true
+        timeout-minutes: 12
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-first-seen-short-rank-full-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/continuous-paper-full-rank-feature-seal/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - name: Seal original SHORT rank market context after paper exit
+        timeout-minutes: 12
+        id: rank_market_context_seal
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/seal_paper_short_rank_market_context.py \
+            --state-root "$STATE_ROOT" \
+            --output-dir /tmp/continuous-paper-short-rank-market-context-seal \
+            --worker-run-id "$GITHUB_RUN_ID" \
+            --worker-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --worker-head-sha "$GITHUB_SHA" \
+            | tee /tmp/continuous-paper-short-rank-market-context-seal-result.json
+
+      - name: Upload original SHORT rank market context seal or rejection
+        id: rank_market_context_seal_upload
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        continue-on-error: true
+        timeout-minutes: 12
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-first-seen-short-rank-market-context-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/continuous-paper-short-rank-market-context-seal/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
       - name: Audit all closed paper trades and recorded entry-to-exit charts
         id: deferred_all_trade_chart_audit
         if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') && hashFiles('continuous-paper-state/session-summary.json') != '' }}

@@ -373,11 +373,14 @@ def test_real_worker_seals_context_after_full_inputs_before_learning() -> None:
     seal = source.index("- name: Seal original SHORT rank market context after paper exit")
     upload = source.index("- name: Upload original SHORT rank market context seal or rejection")
     learning = source.index("- name: Export compact continuous decision facts")
-    assert before < seal < upload < learning
+    fallback = source.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    assert learning < fallback < before < seal < upload
     assert "scripts/seal_paper_short_rank_market_context.py" in source
     assert source.count("scripts/seal_paper_short_rank_market_context.py") >= 3
-    assert "compression-level: 0" in source[upload:learning]
-    assert "if-no-files-found: error" in source[upload:learning]
+    assert "compression-level: 0" in source[upload:upload+850]
+    assert "if-no-files-found: error" in source[upload:upload+850]
 
 
 def _github_source_context(

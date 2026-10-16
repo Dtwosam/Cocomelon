@@ -202,9 +202,12 @@ def test_workflow_seals_rank_only_after_worker_exit_with_nonblocking_upload() ->
         "- name: Upload original first-seen SHORT rank seal and failure receipt"
     )
     facts = source.index("- name: Export compact continuous decision facts")
-    assert end < seal < publish < facts
+    fallback = source.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    assert end < facts < fallback < seal < publish
     assert "continue-on-error: true" in source[seal:publish]
-    assert "if-no-files-found: error" in source[publish:facts]
+    assert "if-no-files-found: error" in source[publish:publish+480]
     assert "scripts/seal_paper_short_rank_archive.py" in source
     assert (
         "continuous-paper-first-seen-short-rank-${{ github.run_id }}-"
