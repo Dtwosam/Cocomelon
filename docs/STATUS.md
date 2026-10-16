@@ -1,5 +1,17 @@
 # Cocomelon Project Status
 
+## October 16 — live v3 source-recorder health displayed fail-closed
+
+Authenticated operational PAPER status now reports live original v3
+recorder activation or failed initialization, offered/written/dropped
+original rows, queue backlog, original receive-clock regressions and
+writer failure class. The renderer labels it as **nonqualifying** even
+when all observed counters are zero: the source/archive is not an
+externally verified exchange feed nor proof of positive account PnL.
+No extra telemetry disk read or trading-event awaits were introduced.
+The prior #38842093623 missing original capture is still unusable.
+
+
 ## October 16 — diagnose missing original v3 capture, never heal it
 
 The former genuine worker #38842093623 post-worker v3 source seal
