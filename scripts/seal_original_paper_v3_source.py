@@ -27,14 +27,14 @@ from cocomelon.research.fresh_long_trend_forward_pair import (
     FORWARD_NOT_BEFORE_MS,
 )
 from cocomelon.research.original_paper_v3_capture import (
+    MAX_SOURCE_BYTES,
+    MAX_SOURCE_ROWS,
     RECORD_FILE,
     TERMINAL_FILE,
 )
 
-MAX_SOURCE_ROWS = 5_000_000
 MAX_SEGMENT_ROWS = 30_000
 MAX_SEGMENT_BYTES = 16 * 1024 * 1024
-MAX_SOURCE_BYTES = 480 * 1024 * 1024
 
 
 class OriginalV3CaptureSealError(RuntimeError):
@@ -268,6 +268,7 @@ def seal_original_paper_v3_source(
         if (
             first is None or last is None
             or original_rows != terminal["written_count"]
+            or source_bytes != terminal.get("written_source_journal_bytes")
             or last != terminal.get("last_written_available_at_ms")
         ):
             raise OriginalV3CaptureSealError(
