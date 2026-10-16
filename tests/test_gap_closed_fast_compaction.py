@@ -137,3 +137,46 @@ def test_close_an_earlier_open_gap_keeps_independent_later_open() -> None:
     )
     assert intervals == [(100, 150), (200, 350), (300, None)]
     # The later open is still unverified; it must not be silently healed.
+
+
+def test_chronological_open_with_large_history_skips_full_membership_scan() -> None:
+    class NoMembershipScan(list[tuple[int, int | None]]):
+        def __contains__(self, item: object) -> bool:
+            raise AssertionError(
+                "chronological fresh OPEN gap performed O(history) membership scan"
+            )
+
+    intervals = NoMembershipScan(
+        (index * 100, index * 100 + 20)
+        for index in range(250_000)
+    )
+    start = 25_000_100
+    assert _record_gap_interval(
+        intervals, started_ms=start, ended_ms=None, sorted_so_far=True,
+    )
+    assert len(intervals) == 250_001
+    assert intervals[-1] == (start, None)
+
+
+def test_open_duplicate_and_out_of_order_still_match_old_gap_membership() -> None:
+    history: list[tuple[int, int | None]] = [
+        (100, 150), (200, None), (300, None)
+    ]
+    actual = list(history)
+    original = list(history)
+    chronological = True
+    for start in (300, 200, 250, 250, 350, 300, 400):
+        _historical_update(original, start, None)
+        chronological = _record_gap_interval(
+            actual, started_ms=start, ended_ms=None,
+            sorted_so_far=chronological,
+        )
+        assert actual == original
+    assert chronological is False
+    _historical_update(original, 200, 360)
+    chronological = _record_gap_interval(
+        actual, started_ms=200, ended_ms=360,
+        sorted_so_far=chronological,
+    )
+    assert chronological is True
+    assert actual == original
