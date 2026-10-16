@@ -1433,21 +1433,21 @@ class BaselineReplayPipeline:
         try:
             assembled = assemble_trade_journal_entry(
                 TradeLifecycleInput(
-                feature_snapshot_id=lifecycle.feature_snapshot_id,
-                opening_plan=opening_plan,
-                opening_attempt=opening_attempt,
-                exit_plans=tuple(lifecycle.exit_plans.values()),
-                exit_attempts=tuple(lifecycle.exit_attempts.values()),
-                fills=tuple(lifecycle.fills.values()),
-                position_actions=actions,
-                funding_accruals=tuple(lifecycle.funding.values()),
-                equity_before=lifecycle.equity_before,
-                equity_after=self._execution.account.equity,
-                exit_reason=exit_reason,
-                mark_observations=tuple(lifecycle.marks.values()),
-                known_gap_intervals=known_gap_intervals,
-                evidence_class=self._evidence_class,
-                replay_run_id=self._run_id,
+                    feature_snapshot_id=lifecycle.feature_snapshot_id,
+                    opening_plan=opening_plan,
+                    opening_attempt=opening_attempt,
+                    exit_plans=tuple(lifecycle.exit_plans.values()),
+                    exit_attempts=tuple(lifecycle.exit_attempts.values()),
+                    fills=tuple(lifecycle.fills.values()),
+                    position_actions=actions,
+                    funding_accruals=tuple(lifecycle.funding.values()),
+                    equity_before=lifecycle.equity_before,
+                    equity_after=self._execution.account.equity,
+                    exit_reason=exit_reason,
+                    mark_observations=tuple(lifecycle.marks.values()),
+                    known_gap_intervals=known_gap_intervals,
+                    evidence_class=self._evidence_class,
+                    replay_run_id=self._run_id,
                 )
             )
         finally:
