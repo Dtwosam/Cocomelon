@@ -608,6 +608,39 @@ def test_ordinary_main_merge_does_not_interrupt_paper_source_capture() -> None:
     assert "live_orders_enabled: true" not in worker
 
 
+def test_heartbeat_reader_cannot_trigger_speculative_main_upgrade_by_default() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    step = workflow.split(
+        "- name: Run continuous paper trader", 1,
+    )[1].split("- name: Measure durable continuous paper state", 1)[0]
+    assert "PAPER_ROLL_ON_MAIN_PUSH: ${{ vars.PAPER_ROLL_ON_MAIN_PUSH || 'false' }}" in step
+    handler = step.split("while IFS= read -r line; do", 1)[1]
+    gate = handler.index(
+        'if [ "${PAPER_ROLL_ON_MAIN_PUSH:-false}" = "true" ]; then'
+    )
+    fetch = handler.index("git fetch --quiet --depth=1 origin main", gate)
+    changed = handler.index("changed_runtime=", fetch)
+    stop = handler.index("touch /tmp/continuous-paper-upgrade-requested", changed)
+    guard_end = handler.index(
+        '                fi\\n                if printf \'%s\\n\' "$heartbeat" \\',
+        stop,
+    )
+    render = handler.index("python scripts/render_continuous_paper_live_status.py")
+    issue = handler.index('gh issue edit "$LIVE_STATUS_ISSUE"')
+    assert gate < fetch < changed < stop < guard_end < render < issue
+    # There are no other unconditional stop-file writes in the heartbeat
+    # handler: only explicit upgrade opt-in can stop healthy PAPER here.
+    assert handler[:render].count(
+        "touch /tmp/continuous-paper-upgrade-requested"
+    ) == 1
+    assert "git fetch --quiet --depth=1 origin main" not in (
+        handler[guard_end:render]
+    )
+    assert "watch_for_session_overrun" in step
+    assert "--duration-seconds 14400" in step
+    assert "COCOMELON_EXECUTION_MODE: live" not in step
+
+
 def test_upgrade_handoff_is_not_a_successful_research_source() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     fallback_at = source.index(
@@ -770,7 +803,7 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
     )
     assert "src/cocomelon/strategies" in source
     assert "touch /tmp/continuous-paper-upgrade-requested" in source
-    assert "new continuous-paper runtime code detected on main" in source
+    assert "opted-in main runtime change detected" in source
 
 
 def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
