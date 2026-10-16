@@ -645,6 +645,41 @@ def test_continuous_paper_worker_is_hard_locked_to_paper() -> None:
     assert "transfer" not in source
 
 
+def test_paper_fifo_reader_rate_limits_failed_git_and_github_heartbeat() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    reader_at = workflow.index('last_status_publish=0')
+    reader_end = workflow.index('done < "$output_fifo"', reader_at)
+    reader = workflow[reader_at:reader_end]
+    time_at = reader.index('now="$(date +%s)"')
+    check_at = reader.index('if (( now - last_status_publish < 60 )); then')
+    attempt_at = reader.index('last_status_publish="$now"')
+    fetch_at = reader.index('if timeout 8s git fetch --quiet --depth=1 origin main; then')
+    diff_at = reader.index('git diff --name-only "$GITHUB_SHA" FETCH_HEAD --')
+    failure_at = reader.index(
+        'timed out fetching main for optional paper heartbeat upgrade check'
+    )
+    render_at = reader.index('python scripts/render_continuous_paper_live_status.py')
+    publish_at = reader.index('if timeout 12s gh issue edit "$LIVE_STATUS_ISSUE"')
+    assert time_at < check_at < attempt_at < fetch_at < diff_at
+    assert diff_at < failure_at < render_at < publish_at
+    # Previously only a SUCCESSFUL issue edit advanced this clock. When
+    # GitHub failed, every subsequent producer heartbeat reissued network
+    # requests in the synchronous FIFO reader, risking backpressure.
+    assert reader.count('last_status_publish="$now"') == 1
+    assert reader.count("timeout 8s git fetch") == 1
+    assert reader.count("timeout 12s gh issue edit") == 1
+    assert 'if [ -n "$changed_runtime" ]; then' in reader[
+        diff_at:failure_at
+    ]
+    assert "watch_for_newer_runtime_run" in workflow
+    assert "request_runtime_handoff" in workflow
+    assert 'touch /tmp/continuous-paper-upgrade-requested' in reader[
+        diff_at:failure_at
+    ]
+    assert "gh issue edit" not in reader[time_at:attempt_at]
+    assert 'live_orders: true' not in reader
+
+
 def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "--stop-file /tmp/continuous-paper-upgrade-requested" in source
