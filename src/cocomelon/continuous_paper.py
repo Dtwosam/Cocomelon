@@ -803,6 +803,11 @@ class _ContinuousTradePathSink:
     def __init__(self, store: ContinuousPaperTradePathStore) -> None:
         self._store = store
         self.error: str | None = None
+        # Ephemeral, exact source-record prefix; never authoritative
+        # persisted account state or reconstructed market observations.
+        self._checkpointed_path_records: dict[
+            str, tuple[ReplayRecord, ...]
+        ] = {}
 
     def _capture_error(self, exc: Exception) -> None:
         if self.error is None:
@@ -851,13 +856,31 @@ class _ContinuousTradePathSink:
     ) -> None:
         for path in open_paths:
             try:
+                current = path.mark_observations
+                previous = self._checkpointed_path_records.get(
+                    path.opening_plan_id
+                )
+                # A verified exact prefix means old marks were already
+                # checked and durably appended by this sink. Forward only
+                # genuinely new records; never infer an append from length
+                # or event key alone. Rewrites, truncations and worker
+                # restarts fall back to full historical validation.
+                offered = current
+                if (
+                    previous is not None
+                    and len(current) >= len(previous)
+                    and current[:len(previous)] == previous
+                ):
+                    offered = current[len(previous):]
                 self._store.checkpoint_open_path(
                     opening_plan_id=path.opening_plan_id,
                     market=path.market,
                     opened_at_ms=path.opened_at_ms,
-                    mark_observations=path.mark_observations,
+                    mark_observations=offered,
                     venue_max_leverage=path.venue_max_leverage,
                 )
+                # A failed store checkpoint must NEVER advance the prefix.
+                self._checkpointed_path_records[path.opening_plan_id] = current
             except Exception as exc:
                 self._capture_error(exc)
 
@@ -868,11 +891,15 @@ class _ContinuousTradePathSink:
         known_gap_intervals: Sequence[tuple[int, int | None]],
     ) -> bool:
         try:
-            return self._store.finalize_trade(
+            recorded = self._store.finalize_trade(
                 trade,
                 mark_observations,
                 known_gap_intervals,
             )
+            self._checkpointed_path_records.pop(
+                trade.opening_plan_id, None
+            )
+            return recorded
         except Exception as exc:
             self._capture_error(exc)
             return False
