@@ -589,6 +589,8 @@ def test_recovery_runs_on_every_main_merge_but_keeps_exclusive_lease() -> None:
     assert "COCOMELON_EXECUTION_MODE: paper" in watchdog
     assert "gh\", \"workflow\", \"run\"" in script
     assert "latest_status != \"ready\" or latest_source != source" in script
+    assert 'latest_status in {"active", "queued_exact"}' in script
+    assert "PAPER lease changed to unverifiable exact state" in script
     assert "previously_seen_ids=prior_ids" in script
     assert "no NEW successor run" in script
 
