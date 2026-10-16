@@ -59,12 +59,16 @@ def _book(at: int, key: str) -> ReplayRecord:
 async def _capture(
     root: Path, rows: tuple[ReplayRecord, ...], *,
     config: BaselineReplayConfig | None = None,
+    predecessor_run_id: str | None = None,
+    predecessor_run_attempt: str | None = None,
 ) -> dict[str, object]:
     recorder = OriginalPaperMicrostructureCapture(
         root, run_id=RUN, run_attempt=ATTEMPT, head_sha=HEAD,
         selected_markets=("TEST",),
         first_observed_ms=FORWARD_NOT_BEFORE_MS - 120_000,
             replay_config=config or BaselineReplayConfig(),
+        predecessor_run_id=predecessor_run_id,
+        predecessor_run_attempt=predecessor_run_attempt,
     )
     for row in rows:
         recorder.offer(row)
@@ -109,6 +113,20 @@ def test_exact_original_source_is_sealed_from_received_paper_records(
     )
     assert manifest["manifest"]["gap_refs"] == []
     assert manifest["manifest"]["start_ms"] == FORWARD_NOT_BEFORE_MS - 1
+    handoff = json.loads(
+        (tmp_path / "upload" / "source-handoff-receipt.json").read_text()
+    )
+    assert handoff["worker_run_id"] == RUN
+    assert handoff["worker_run_attempt"] == ATTEMPT
+    assert handoff["worker_head_sha"] == HEAD
+    assert handoff["declared_predecessor_run_id"] is None
+    assert handoff["original_record_count"] == 3
+    assert handoff["original_journal_sha256"] == capture[
+        "original_received_journal_sha256"
+    ]
+    assert handoff["original_resume_chain_independently_verified"] is False
+    assert handoff["original_exchange_feed_continuity_verified"] is False
+    assert handoff["promotion_authority"] is False
 
 
 def _sealed_replay_manifest(upload: Path) -> ReplayManifest:
@@ -199,6 +217,62 @@ def test_original_ordinal_absence_duplication_and_forgery_fail_closed(
     )
     with pytest.raises(OriginalV3ReceiptOrderError):
         restore_original_v3_received_order(source, forged, independently_loaded)
+
+
+def test_future_original_source_declared_predecessor_is_still_unverified(
+    tmp_path: Path,
+) -> None:
+    status = asyncio.run(_capture(
+        tmp_path / "original",
+        (_book(FORWARD_NOT_BEFORE_MS + 1, "linked"),),
+        predecessor_run_id="998877",
+        predecessor_run_attempt="2",
+    ))
+    assert status["declared_predecessor_run_id"] == "998877"
+    assert status["declared_predecessor_run_attempt"] == "2"
+    assert status["predecessor_state_restore_independently_authenticated"] is False
+    receipt = _seal(tmp_path)
+    handoff = json.loads(
+        (tmp_path / "upload" / "source-handoff-receipt.json").read_text()
+    )
+    assert receipt["declared_predecessor_run_id"] == "998877"
+    assert handoff["declared_predecessor_run_attempt"] == "2"
+    assert handoff["original_resume_chain_independently_verified"] is False
+    assert handoff["original_exchange_feed_continuity_verified"] is False
+
+
+@pytest.mark.parametrize("pred_id,pred_attempt", [
+    (None, "1"), ("9988", None), ("not-a-run", "1"),
+    (RUN, "1"), ("0", "1"), ("9988", "0"),
+])
+def test_invalid_original_predecessor_pair_denied_before_capture(
+    tmp_path: Path, pred_id: str | None, pred_attempt: str | None,
+) -> None:
+    with pytest.raises(ValueError, match="predecessor declaration invalid"):
+        asyncio.run(_capture(
+            tmp_path / "invalid",
+            (_book(FORWARD_NOT_BEFORE_MS + 1, "never-collected"),),
+            predecessor_run_id=pred_id,
+            predecessor_run_attempt=pred_attempt,
+        ))
+    assert not (tmp_path / "invalid").exists()
+
+
+def test_original_predecessor_terminal_tamper_blocks_source_seal(
+    tmp_path: Path,
+) -> None:
+    assert asyncio.run(_capture(
+        tmp_path / "original",
+        (_book(FORWARD_NOT_BEFORE_MS + 1, "genuine"),),
+        predecessor_run_id="998877",
+        predecessor_run_attempt="2",
+    ))["complete"] is True
+    terminal = tmp_path / "original" / "original-capture-terminal.json"
+    payload = json.loads(terminal.read_text())
+    payload["predecessor_state_restore_independently_authenticated"] = True
+    terminal.write_text(json.dumps(payload))
+    with pytest.raises(OriginalV3CaptureSealError, match="predecessor identity"):
+        _seal(tmp_path)
 
 
 def test_original_journal_same_millisecond_swap_cannot_change_sealed_order(

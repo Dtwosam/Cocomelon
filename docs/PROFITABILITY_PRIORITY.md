@@ -1,5 +1,32 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 16 — original v3 source ZIP binds a declared predecessor (not a certified chain)
+
+Each genuine PAPER worker now passes its GitHub dispatch predecessor run ID
+and attempt, if supplied, to the separate original research source recorder.
+The pair must be complete, numeric, positive, and must not point at the
+current run. A malformed predecessor affects only the research recorder,
+never the normal PAPER positions, risk or graceful handoff.
+
+At close, the worker's SHA- and row-reconciled original market-data ZIP now
+also contains `source-handoff-receipt.json` naming the current
+run/attempt/head, the exact declared predecessor run/attempt (or explicit
+nulls), original journal writer SHA, source record count, timestamp window,
+and original startup market cohort. Offline GitHub source checking requires
+this exact ZIP member and rejects inconsistent worker identity, segment
+population/times, omitted L2 source markets, forged source/venue continuity
+authority flags and malformed predecessor declarations. The whole GitHub
+artifact ZIP digest is still mandatory. Older source ZIPs lacking this
+member remain unqualified; do not backfill history.
+
+**Declaration is not independent handoff proof.** GitHub workflow input,
+predecessor resume ZIP, state IDs, gap witness, signed account continuity,
+72-hour actual common-market observation and both absolute-positive
+after-cost PAPER accounts must be separately authenticated. The
+fixed LONG-trend-only research rule, live PAPER positions, sizing,
+execution costs and LIVE-disabled boundary are unchanged.
+
+
 ## October 16 — v3 recorder failure visible during genuine PAPER, not only after handoff
 
 The ordinary authenticated operational PAPER heartbeat now includes an
