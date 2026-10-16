@@ -1,5 +1,28 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 16 — do not hide why original v3 source capture is absent
+
+Completed real PAPER worker #38842093623 reached the post-handoff v3 source
+sealer, but the sealer rejected it with
+`OriginalV3CaptureSealError: no CLOSED original worker capture`; GitHub
+uploaded **no** qualifying v3 source ZIP. The original recorder startup
+was previously wrapped in a silent fail-open PAPER-only handler, making
+an incomplete forward capture indistinguishable from no recording attempt.
+
+The startup path now emits a minimal worker-ID/attempt/head-bound,
+exception-**class**-only negative marker (no private paths), and the
+post-worker workflow always attempts to publish an additional strictly
+nonqualifying `continuous-paper-v3-source-diagnostic-<run>-<attempt>`
+artifact after genuine handoff. It distinguishes missing capture root,
+startup exception, missing terminal, terminal identity mismatch,
+queue overflow, receive-clock regression, disk write failure, and a
+locally complete receipt requiring independent verification. Counts of
+offered/written/dropped source records remain visible. This cannot make
+historical missing v3 records appear, waive gaps, change the frozen LONG
+hypothesis, or certify a positive after-cost trial. It never blocks
+ordinary PAPER and cannot enable LIVE orders.
+
+
 ## October 15 — original PAPER receipt ordering is NOT canonical replay sorting
 
 A source ZIP partitioned by `events/date/kind/market` discards global
