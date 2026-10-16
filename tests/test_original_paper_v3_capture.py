@@ -728,7 +728,9 @@ def test_original_gap_observation_time_is_not_historical_boundary(
     assert live["gap_boundary_age_over_1s_count"] == 2
     assert live["gap_boundary_age_over_15s_count"] == 0
     assert live["gap_boundary_timestamp_future_count"] == 0
-    assert live["gap_max_boundary_age_ms"] == 1_149
+    # Diagnostic age is still measured from the exact historical gap start,
+    # not from a synthetic record availability timestamp.
+    assert live["gap_max_boundary_age_ms"] == 2_100
     assert terminal["first_regression_gap_boundary_kind"] == "open"
     assert terminal["complete"] is False
     assert terminal["failure"] == "original_received_clock_regression"
