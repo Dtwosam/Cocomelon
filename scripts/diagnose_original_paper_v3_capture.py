@@ -254,6 +254,41 @@ def diagnose_original_paper_v3_capture(
             )
             else None
         ),
+        "original_l2_selected_gap_offered_notice_count": (
+            terminal.get("l2_selected_gap_offered_notice_count")
+            if terminal_matches
+            and type(terminal.get("l2_selected_gap_offered_notice_count")) is int
+            and 0 <= terminal["l2_selected_gap_offered_notice_count"]
+            else None
+        ),
+        "original_l2_unselected_gap_offered_notice_count": (
+            terminal.get("l2_unselected_gap_offered_notice_count")
+            if terminal_matches
+            and type(terminal.get("l2_unselected_gap_offered_notice_count")) is int
+            and 0 <= terminal["l2_unselected_gap_offered_notice_count"]
+            else None
+        ),
+        "original_l2_selected_gap_affected_market_count": (
+            terminal.get("l2_selected_gap_affected_market_count")
+            if terminal_matches
+            and type(terminal.get("l2_selected_gap_affected_market_count")) is int
+            and 0 <= terminal["l2_selected_gap_affected_market_count"]
+            else None
+        ),
+        "original_l2_selected_gap_peak_market_notice_count": (
+            terminal.get("l2_selected_gap_peak_market_notice_count")
+            if terminal_matches
+            and type(terminal.get("l2_selected_gap_peak_market_notice_count")) is int
+            and 0 <= terminal["l2_selected_gap_peak_market_notice_count"]
+            else None
+        ),
+        "original_l2_selected_gap_top3_share_bps": (
+            terminal.get("l2_selected_gap_top3_share_bps")
+            if terminal_matches
+            and type(terminal.get("l2_selected_gap_top3_share_bps")) is int
+            and 0 <= terminal["l2_selected_gap_top3_share_bps"] <= 10_000
+            else None
+        ),
         "original_gap_l2_stream_offered_count": (
             terminal.get("gap_l2_stream_offered_count")
             if terminal_matches
