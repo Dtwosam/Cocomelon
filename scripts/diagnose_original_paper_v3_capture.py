@@ -13,11 +13,11 @@ from typing import Any
 
 from cocomelon.research.original_paper_v3_capture import (
     RECORD_FILE,
+    STARTUP_FAILURE_FILE,
     TERMINAL_FILE,
 )
 
 DIAG_SCHEMA = "original-v3-paper-capture-failure-diagnostic-v1"
-STARTUP_FAILURE_FILE = "v3-original-capture-init-failure.json"
 
 
 def _json_object(path: Path) -> dict[str, Any] | None:
