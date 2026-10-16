@@ -265,7 +265,7 @@ def test_worker_full_rank_input_export_is_after_original_rank_seal_and_handoff(
     fallback = workflow.index(
         "- name: Queue fallback exact successor continuous paper worker"
     )
-    assert retired < learning < fallback < rank < full < full_upload
+    assert retired < fallback < learning < rank < full < full_upload
     assert "continue-on-error: true" in workflow[full:full_upload]
     assert "if-no-files-found: error" in workflow[full_upload:full_upload+500]
     assert "scripts/seal_paper_short_rank_full_features.py" in workflow
