@@ -376,7 +376,7 @@ def test_real_worker_seals_context_after_full_inputs_before_learning() -> None:
     fallback = source.index(
         "- name: Queue fallback exact successor continuous paper worker"
     )
-    assert learning < fallback < before < seal < upload
+    assert fallback < learning < before < seal < upload
     assert "scripts/seal_paper_short_rank_market_context.py" in source
     assert source.count("scripts/seal_paper_short_rank_market_context.py") >= 3
     assert "compression-level: 0" in source[upload:upload+850]
