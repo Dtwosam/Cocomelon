@@ -305,6 +305,13 @@ def test_baseline_pipeline_reports_fill_and_open_position_before_trade_closes(tm
             "epoch_opening_stage",
             "epoch_process_total",
             "funding_reconcile",
+            # Every genuine L2 book must identify the internal phase
+            # that is delaying the PAPER event loop, even with no position.
+            "l2_book_decode",
+            "l2_book_handler_total",
+            "l2_book_manage_position",
+            "l2_book_opening_on_book",
+            "l2_book_opening_traces",
         } <= set(runtime_components)
         assert all(
             value >= 0
