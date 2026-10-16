@@ -417,7 +417,6 @@ class OriginalPaperMicrostructureCapture:
             "original_selected_markets": len(self.selected_markets),
             "offered_count": self.offered_count,
             "written_count": self.record_count,
-            **self._negative_l2_coverage(),
             # Pending/in-flight during a live heartbeat; an unacknowledged
             # batch on failure once the recorder is closed.
             "offered_not_written_or_dropped_count": max(
@@ -568,6 +567,7 @@ class OriginalPaperMicrostructureCapture:
             ),
             "offered_count": self.offered_count,
             "written_count": self.record_count,
+            **self._negative_l2_coverage(),
             # Pending/in-flight during a live heartbeat; an unacknowledged
             # batch on failure once the recorder is closed.
             "offered_not_written_or_dropped_count": max(
