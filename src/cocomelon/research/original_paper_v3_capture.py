@@ -149,6 +149,13 @@ class OriginalPaperMicrostructureCapture:
         # received timestamp, and permanently disqualify a clamped input.
         self.last_offered_available_at_ms: int | None = None
         self.received_clock_regressions = 0
+        # These separate cases diagnose source scheduling without changing
+        # original input bytes, receipt order or PAPER's permissive clock.
+        self.regressions_vs_prior_offered = 0
+        self.regressions_vs_paper_clock = 0
+        self.max_original_clock_backward_ms = 0
+        self.first_regression_cause: str | None = None
+        self.first_regression_event_kind: str | None = None
         self.first_received_clock_regression: dict[str, object] | None = None
         self.failure: str | None = None
         self.closed = False
@@ -166,13 +173,42 @@ class OriginalPaperMicrostructureCapture:
         # The caller MUST pass the PAPER pipeline's previous timestamp,
         # including a restored previous-worker checkpoint. Comparing only
         # local offered rows would overlook a first-record regression.
-        latest = max(
-            self.last_offered_available_at_ms or 0,
-            paper_previous_at_ms or 0,
+        prior_offered = self.last_offered_available_at_ms
+        prior_paper = paper_previous_at_ms
+        below_offered = (
+            prior_offered is not None and record.available_at_ms < prior_offered
         )
-        if record.available_at_ms < latest:
+        below_paper = (
+            prior_paper is not None and record.available_at_ms < prior_paper
+        )
+        latest = max(prior_offered or 0, prior_paper or 0)
+        if below_offered or below_paper:
             self.received_clock_regressions += 1
+            self.regressions_vs_prior_offered += int(below_offered)
+            self.regressions_vs_paper_clock += int(below_paper)
+            self.max_original_clock_backward_ms = max(
+                self.max_original_clock_backward_ms,
+                latest - record.available_at_ms,
+            )
             if self.first_received_clock_regression is None:
+                self.first_regression_cause = (
+                    "both_prior_input_and_paper_clock"
+                    if below_offered and below_paper
+                    else "prior_input_clock"
+                    if below_offered
+                    else "paper_previous_clock"
+                )
+                # Fixed vocabulary avoids embedding opaque event keys, raw
+                # source payloads, private paths or secrets in the heartbeat.
+                self.first_regression_event_kind = (
+                    record.event_kind
+                    if record.event_kind in (
+                        "l2_book", "trades", "candle", "active_asset_ctx"
+                    )
+                    else "data_gap"
+                    if record.record_kind.value == "data_gap"
+                    else "other"
+                )
                 self.first_received_clock_regression = {
                     "original_available_at_ms": record.available_at_ms,
                     "prior_original_or_paper_available_at_ms": latest,
@@ -208,6 +244,11 @@ class OriginalPaperMicrostructureCapture:
             "pending_queue_depth": self.queue.qsize(),
             "dropped_count": self.dropped_count,
             "received_clock_regressions": self.received_clock_regressions,
+            "regressions_vs_prior_offered": self.regressions_vs_prior_offered,
+            "regressions_vs_paper_clock": self.regressions_vs_paper_clock,
+            "max_original_clock_backward_ms": self.max_original_clock_backward_ms,
+            "first_regression_cause": self.first_regression_cause,
+            "first_regression_event_kind": self.first_regression_event_kind,
             "last_written_available_at_ms": self.last_available_at_ms,
             "failure": self.failure,
             "closed": self.closed,
@@ -314,6 +355,11 @@ class OriginalPaperMicrostructureCapture:
             "original_received_clock_regressions": (
                 self.received_clock_regressions
             ),
+            "regressions_vs_prior_offered": self.regressions_vs_prior_offered,
+            "regressions_vs_paper_clock": self.regressions_vs_paper_clock,
+            "max_original_clock_backward_ms": self.max_original_clock_backward_ms,
+            "first_regression_cause": self.first_regression_cause,
+            "first_regression_event_kind": self.first_regression_event_kind,
             "first_original_received_clock_regression": (
                 self.first_received_clock_regression
             ),
