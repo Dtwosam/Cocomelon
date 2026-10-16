@@ -75,6 +75,24 @@ def _fixture(tmp_path: Path) -> dict[str, object]:
             }),
         )
         archive.writestr("microstructure/" + FILE, SOURCE_BYTES)
+        archive.writestr("source-handoff-receipt.json", json.dumps({
+            "schema": "v3-original-paper-source-worker-link-v1",
+            "worker_run_id": str(RUN_ID),
+            "worker_run_attempt": "1",
+            "worker_head_sha": HEAD,
+            "declared_predecessor_run_id": None,
+            "declared_predecessor_run_attempt": None,
+            "original_journal_sha256": hashlib.sha256(SOURCE_BYTES).hexdigest(),
+            "original_record_count": 1,
+            "original_first_available_at_ms": manifest.start_ms,
+            "original_last_available_at_ms": manifest.end_ms,
+            "original_selected_markets_at_worker_start": ["TEST"],
+            "original_resume_chain_independently_verified": False,
+            "original_exchange_feed_continuity_verified": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+        }))
     run = {
         "id": RUN_ID,
         "run_attempt": 1,
@@ -139,6 +157,8 @@ def test_exact_original_zip_and_git_metadata_are_read_only_and_unpromotable(
     assert receipt["run_head_sha"] == HEAD
     assert receipt["manifest_id"] == kw["expected_manifest_id"]
     assert receipt["original_zip_bytes_match_supplied_github_digest"] is True
+    assert receipt["original_worker_link_receipt_matches_run"] is True
+    assert receipt["declared_predecessor_run_id"] is None
     for flag in (
         "independently_fetched_github_metadata_proven",
         "original_exchange_event_completeness_proven",
@@ -149,6 +169,79 @@ def test_exact_original_zip_and_git_metadata_are_read_only_and_unpromotable(
     ):
         assert receipt[flag] is False
     assert source_zip.read_bytes() == before
+
+
+def _rewrite_source_handoff(
+    kw: dict[str, object], changes: dict[str, object] | None,
+    *, remove: bool = False,
+) -> None:
+    path = kw["source_zip"]
+    artifact = kw["artifact_metadata"]
+    assert isinstance(path, Path) and isinstance(artifact, dict)
+    with zipfile.ZipFile(path) as old:
+        files = {name: old.read(name) for name in old.namelist()}
+    if remove:
+        files.pop("source-handoff-receipt.json")
+    else:
+        assert changes is not None
+        handoff = json.loads(files["source-handoff-receipt.json"])
+        handoff.update(changes)
+        files["source-handoff-receipt.json"] = json.dumps(
+            handoff, sort_keys=True,
+        ).encode()
+    replacement = path.with_suffix(".repacked.zip")
+    with zipfile.ZipFile(replacement, "w") as archive:
+        for name, data in files.items():
+            archive.writestr(name, data)
+    replacement.replace(path)
+    artifact["size_in_bytes"] = path.stat().st_size
+    artifact["digest"] = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("worker_run_id", "999999"), ("worker_run_attempt", "2"),
+    ("worker_head_sha", "b" * 40),
+    ("declared_predecessor_run_id", "1234"),
+    ("original_record_count", 8),
+    ("original_first_available_at_ms", FORWARD_NOT_BEFORE_MS + 3000),
+    ("original_last_available_at_ms", FORWARD_NOT_BEFORE_MS + 3000),
+    ("original_journal_sha256", "invalid"),
+    ("original_selected_markets_at_worker_start", ["ONLY-HINDSIGHT"]),
+    ("original_resume_chain_independently_verified", True),
+    ("original_exchange_feed_continuity_verified", True),
+    ("promotion_authority", True),
+])
+def test_repacked_original_handoff_forgery_denied_before_account(
+    tmp_path: Path, field: str, value: object,
+) -> None:
+    kw = _fixture(tmp_path)
+    _rewrite_source_handoff(kw, {field: value})
+    with pytest.raises(OriginalV3GitHubSourceError):
+        verify_original_v3_github_zip_source(**kw)
+
+
+def test_missing_handoff_member_denied_even_with_rewritten_artifact_digest(
+    tmp_path: Path,
+) -> None:
+    kw = _fixture(tmp_path)
+    _rewrite_source_handoff(kw, None, remove=True)
+    with pytest.raises(OriginalV3GitHubSourceError, match="ZIP members"):
+        verify_original_v3_github_zip_source(**kw)
+
+
+def test_declared_original_predecessor_preserved_without_execution_claim(
+    tmp_path: Path,
+) -> None:
+    kw = _fixture(tmp_path)
+    _rewrite_source_handoff(kw, {
+        "declared_predecessor_run_id": "998877",
+        "declared_predecessor_run_attempt": "2",
+    })
+    receipt = verify_original_v3_github_zip_source(**kw)
+    assert receipt["declared_predecessor_run_id"] == "998877"
+    assert receipt["declared_predecessor_run_attempt"] == "2"
+    assert receipt["signed_cross_worker_handoff_proven"] is False
+    assert receipt["promotion_authority"] is False
 
 
 @pytest.mark.parametrize("change", [
