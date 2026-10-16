@@ -9,6 +9,7 @@ import pytest
 from scripts.rescue_continuous_paper import (
     PaperRescueError,
     choose_exact_source,
+    find_new_exact_successor,
     verify_active_heartbeat,
 )
 
@@ -509,3 +510,86 @@ def test_active_worker_identity_cannot_be_boolean() -> None:
             run_started_at="2026-10-09T21:20:00Z",
             now=datetime(2026, 10, 9, 21, 30, tzinfo=UTC),
         )
+
+
+def test_exact_successor_receipt_must_be_new_and_from_correct_predecessor() -> None:
+    candidate = run(101, event="workflow_dispatch", status="queued")
+    candidate["display_title"] = "Continuous Paper · 100"
+    assert find_new_exact_successor(
+        [candidate], repository=REPOSITORY, source_run_id=100,
+        previously_seen_ids=frozenset(),
+    ) == 101
+    assert find_new_exact_successor(
+        [candidate], repository=REPOSITORY, source_run_id=100,
+        previously_seen_ids=frozenset({101}),
+    ) is None
+    wrong_predecessor = dict(candidate)
+    wrong_predecessor["display_title"] = "Continuous Paper · 99"
+    assert find_new_exact_successor(
+        [wrong_predecessor], repository=REPOSITORY, source_run_id=100,
+        previously_seen_ids=frozenset(),
+    ) is None
+
+
+@pytest.mark.parametrize("tamper", [
+    "wrong_repository", "wrong_branch", "push", "wrong_workflow",
+    "older_run", "fake_run_id",
+])
+def test_fake_materialized_successor_cannot_certify_dispatch(
+    tamper: str,
+) -> None:
+    candidate = run(101, event="workflow_dispatch")
+    candidate["display_title"] = "Continuous Paper · 100"
+    if tamper == "wrong_repository":
+        candidate["head_repository"] = {"full_name": "other/trader"}
+    elif tamper == "wrong_branch":
+        candidate["head_branch"] = "research-branch"
+    elif tamper == "push":
+        candidate["event"] = "push"
+    elif tamper == "wrong_workflow":
+        candidate["path"] = ".github/workflows/other.yml"
+    elif tamper == "older_run":
+        candidate["id"] = 100
+    else:
+        candidate["id"] = True
+    if tamper in {"older_run", "fake_run_id"}:
+        with pytest.raises(PaperRescueError, match="invalid"):
+            find_new_exact_successor(
+                [candidate], repository=REPOSITORY, source_run_id=100,
+                previously_seen_ids=frozenset(),
+            )
+    else:
+        assert find_new_exact_successor(
+            [candidate], repository=REPOSITORY, source_run_id=100,
+            previously_seen_ids=frozenset(),
+        ) is None
+
+
+def test_duplicate_new_exact_dispatch_is_not_a_success_receipt() -> None:
+    first = run(101, event="workflow_dispatch")
+    first["display_title"] = "Continuous Paper · 100"
+    second = run(102, event="workflow_dispatch")
+    second["display_title"] = "Continuous Paper · 100"
+    with pytest.raises(PaperRescueError, match="multiple"):
+        find_new_exact_successor(
+            [first, second], repository=REPOSITORY,
+            source_run_id=100, previously_seen_ids=frozenset(),
+        )
+
+
+def test_recovery_runs_on_every_main_merge_but_keeps_exclusive_lease() -> None:
+    from pathlib import Path
+
+    watchdog = Path(".github/workflows/independent-paper-recovery.yml").read_text()
+    script = Path("scripts/rescue_continuous_paper.py").read_text()
+    push = watchdog.split("  push:", 1)[1].split("  workflow_dispatch:", 1)[0]
+    assert "branches: [main]" in push
+    assert "paths:" not in push
+    assert "group: independent-paper-rescue" in watchdog
+    assert "COCOMELON_EXECUTION_MODE: paper" in watchdog
+    assert "gh\", \"workflow\", \"run\"" in script
+    assert "latest_status != \"ready\" or latest_source != source" in script
+    assert "previously_seen_ids=prior_ids" in script
+    assert "no NEW successor run" in script
+
+
