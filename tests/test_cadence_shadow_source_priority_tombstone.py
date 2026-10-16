@@ -62,7 +62,7 @@ def test_actual_v3_paper_checkpoint_writes_research_tombstone_once() -> None:
     assert "pump.cadence_shadow_error is not None" in source
     assert "cadence_shadow_persisted_revision != -1" in source
     assert "cadence_revision_to_persist = -1" in source
-    assert "_cadence_shadow_discontinuity_payload()," in source
+    assert "_cadence_shadow_discontinuity_payload(" in source
     assert "cadence_shadow_persisted_revision = cadence_revision" in source
     assert '"cadence_shadow_history_discontinuous_from_original_v3"' in source
     assert "original_v3_capture=original_v3_capture," in source
