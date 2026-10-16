@@ -83,7 +83,7 @@ def test_late_regression_cannot_shrink_negative_l2_coverage(
     assert terminal["l2_selected_market_over_5min_drought_count"] == 2
     assert terminal["original_received_clock_regressions"] == 1
     assert terminal["complete"] is False
-    assert terminal["source_integrity_certified"] is False
+    assert terminal["external_market_completeness_authenticated"] is False
     assert terminal["promotion_authority"] is False
 
 
