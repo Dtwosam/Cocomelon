@@ -2342,6 +2342,34 @@ jobs:
           retention-days: 90
           compression-level: 0
 
+      - name: Diagnose frozen v3 original capture after handoff
+        id: diagnose_v3_original_capture
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && (steps.fast_resume_dispatch.outcome == 'success' || steps.fallback_resume_dispatch.outcome == 'success') }}
+        continue-on-error: true
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/diagnose_original_paper_v3_capture.py \
+            --capture-root "$RUNNER_TEMP/v3-original-capture-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --diagnostic-root "$RUNNER_TEMP" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --head-sha "$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/v3-original-capture-diagnostic.json" \
+            | tee /tmp/v3-original-capture-diagnostic.stdout.json
+
+      - name: Upload frozen v3 original capture diagnostic
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.diagnose_v3_original_capture.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-v3-source-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/v3-original-capture-diagnostic.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Rebuild correlation bucket priority audit after handoff
         id: deferred_correlation_priority_rebuild
         if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.deferred_full_stack_markout_rebuild.outcome == 'success' && hashFiles('continuous-paper-state/prospective-full-stack-forward-markout-summary.json') != '' }}
