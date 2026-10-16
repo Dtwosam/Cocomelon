@@ -266,11 +266,11 @@ def test_actual_paper_workflow_uploads_negative_v3_diagnostic_after_handoff() ->
 def test_original_v3_fast_source_custody_precedes_all_optional_archive_work() -> None:
     workflow = Path(".github/workflows/continuous-paper.yml").read_text()
     fast = workflow.index("- name: Queue exact successor from fast resume")
-    seal = workflow.index("- name: Seal frozen v3 original microstructure source\\n")
-    upload = workflow.index("- name: Upload frozen v3 original microstructure source\\n")
+    seal = workflow.index("- name: Seal frozen v3 original microstructure source\n")
+    upload = workflow.index("- name: Upload frozen v3 original microstructure source\n")
     diagnose = workflow.index("- name: Diagnose frozen v3 original capture after handoff")
     diagnostic_upload = workflow.index(
-        "- name: Upload frozen v3 original capture diagnostic\\n"
+        "- name: Upload frozen v3 original capture diagnostic\n"
     )
     rank = workflow.index("- name: Seal original first-seen SHORT rank source")
     durable = workflow.index("- name: Pack durable continuous paper state")
