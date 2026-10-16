@@ -251,3 +251,16 @@ maximum backward delta, without copying event keys, payload or paths into
 operational status. Failure remains irreversible for the present worker,
 and **no valid missing original source is repaired by these counters**.
 Do not replay this worker as a successful v3 economic sample.
+
+## October 16 — original v3 terminal clock diagnostics survive handoff
+
+After a genuine PAPER worker stops, its separate nonqualifying original source
+diagnostic now publishes the first fixed-vocabulary event-clock regression
+cause, whitelisted event kind, maximum backward milliseconds, and the separate
+original-source versus PAPER-clock regression totals **only for a terminal
+whose run, attempt, and SHA match the requesting GitHub worker**. Missing
+legacy fields remain unavailable; foreign or malformed terminals do not
+donate their data. The collector also reports offered rows not yet durably
+written or counted dropped. This includes in-flight writes during live status
+and becomes a residual on failed close. The failure does not certify or repair
+any original venue records, economics, worker continuity or LIVE orders.
