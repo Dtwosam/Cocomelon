@@ -9521,6 +9521,17 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{raw.get('source_journal_row_limit', 'unavailable')} / "
             f"{raw.get('remaining_persisted_row_budget', 'unavailable')}"
         ),
+        (
+            "- raw-clock regressions versus prior original / PAPER clock: "
+            f"{raw.get('regressions_vs_prior_offered', 'unavailable')} / "
+            f"{raw.get('regressions_vs_paper_clock', 'unavailable')}"
+        ),
+        (
+            "- first raw-clock regression cause / event kind / largest backward ms: "
+            f"{raw.get('first_regression_cause') or 'none observed'} / "
+            f"{raw.get('first_regression_event_kind') or 'none observed'} / "
+            f"{raw.get('max_original_clock_backward_ms', 'unavailable')}"
+        ),
         f"- last original written receive ms: {raw.get('last_written_available_at_ms')}",
         "- source and after-cost profit certification: FALSE (live telemetry only)",
         "",

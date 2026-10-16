@@ -102,6 +102,22 @@ def test_negative_status_shows_original_archive_budget_without_certification() -
     assert "source and after-cost profit certification: FALSE" in rendered
 
 
+def test_raw_clock_regression_status_never_claims_valid_original_feed() -> None:
+    report = "\n".join(_v3_live_capture_lines({
+        "enabled": True,
+        "failure": "original_received_clock_regression",
+        "received_clock_regressions": 3,
+        "regressions_vs_prior_offered": 3,
+        "regressions_vs_paper_clock": 2,
+        "first_regression_cause": "both_prior_input_and_paper_clock",
+        "first_regression_event_kind": "l2_book",
+        "max_original_clock_backward_ms": 41,
+    }))
+    assert "3 / 2" in report
+    assert "both_prior_input_and_paper_clock / l2_book / 41" in report
+    assert "source and after-cost profit certification: FALSE" in report
+
+
 def test_missing_capture_is_unverified_in_older_worker_heartbeats() -> None:
     rendered = "\n".join(_v3_live_capture_lines(None))
     assert "not reported" in rendered
