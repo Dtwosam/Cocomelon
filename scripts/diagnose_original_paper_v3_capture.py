@@ -110,6 +110,48 @@ def diagnose_original_paper_v3_capture(
         "original_dropped_count": (
             terminal.get("dropped_count") if terminal_matches else None
         ),
+        "original_offered_not_written_or_dropped_count": (
+            terminal.get("offered_not_written_or_dropped_count")
+            if terminal_matches
+            and type(terminal.get("offered_not_written_or_dropped_count")) is int
+            else None
+        ),
+        "original_regressions_vs_prior_offered": (
+            terminal.get("regressions_vs_prior_offered")
+            if terminal_matches
+            and type(terminal.get("regressions_vs_prior_offered")) is int
+            else None
+        ),
+        "original_regressions_vs_paper_clock": (
+            terminal.get("regressions_vs_paper_clock")
+            if terminal_matches
+            and type(terminal.get("regressions_vs_paper_clock")) is int
+            else None
+        ),
+        "original_max_clock_backward_ms": (
+            terminal.get("max_original_clock_backward_ms")
+            if terminal_matches
+            and type(terminal.get("max_original_clock_backward_ms")) is int
+            else None
+        ),
+        "original_first_regression_cause": (
+            terminal.get("first_regression_cause")
+            if terminal_matches
+            and terminal.get("first_regression_cause") in (
+                "prior_input_clock", "paper_previous_clock",
+                "both_prior_input_and_paper_clock",
+            )
+            else None
+        ),
+        "original_first_regression_event_kind": (
+            terminal.get("first_regression_event_kind")
+            if terminal_matches
+            and terminal.get("first_regression_event_kind") in (
+                "l2_book", "trades", "candle", "active_asset_ctx",
+                "data_gap", "other",
+            )
+            else None
+        ),
         "original_receive_clock_regressions": (
             terminal.get("original_received_clock_regressions")
             if terminal_matches else None
