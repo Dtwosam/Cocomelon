@@ -1,6 +1,31 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
 
+## October 16 — do not kill healthy PAPER from the heartbeat publisher
+
+The main-push session-continuity safeguard merged in #1288 gated
+`watch_for_newer_runtime_run` behind
+`PAPER_ROLL_ON_MAIN_PUSH=false` by default, but a second independent
+upgrade path was still running **inside the heartbeat reader**. Every
+minute it fetched `main`, diffed runtime files, and unconditionally
+touched `/tmp/continuous-paper-upgrade-requested` on any code change.
+This silently bypassed the safeguard, interrupted short-lived genuine
+PAPER workers, and repeatedly destroyed prospective original L2 source
+continuity. The pushed workflow guard-only run was not the cause; the
+still-running older worker's own heartbeat reader was.
+
+The hidden heartbeat upgrade check now honors the **same explicit
+opt-in at worker startup** as the background watcher. When disabled,
+heartbeats still render and publish normally without Git fetch/diff or
+upgrade request. Normal safety/session-overrun stops, the 4h exact
+checkpoint successor, strict source rejection, fee/risk/execution
+policy and LIVE-disabled switch remain untouched. A just-merged fix
+is NOT proof of deployment; an actual later worker must remain alive
+across the NEXT unrelated main merge before declaring the churn
+fixed. Earlier source breaks remain irrecoverable.
+
+
+
 ## October 16 — independent PAPER recovery before optional learning artifacts
 
 In genuine worker #38909345855 (on previous `0d1cdab8`), the PAPER
