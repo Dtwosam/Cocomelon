@@ -2581,7 +2581,11 @@ def _checkpoint_payload(
     *,
     last_available_at_ms: int,
     selected_markets: tuple[MarketId, ...],
+    stage_timings_ms: dict[str, int] | None = None,
 ) -> dict[str, object]:
+    # Negative-only phase durations. Keep the authoritative checkpoint
+    # payload schema/bytes and all source gap intervals exactly unchanged.
+    started = time.perf_counter()
     checkpoints = []
     for item in pipeline.open_lifecycle_checkpoints:
         checkpoints.append(
@@ -2600,24 +2604,46 @@ def _checkpoint_payload(
                 ],
             }
         )
+    if stage_timings_ms is not None:
+        stage_timings_ms["checkpoint_open_lifecycles"] = max(
+            0, int((time.perf_counter() - started) * 1000),
+        )
+    started = time.perf_counter()
+    unscoped = [
+        [started_ms, ended_ms]
+        for started_ms, ended_ms in pipeline.unscoped_gap_intervals
+    ]
+    if stage_timings_ms is not None:
+        stage_timings_ms["checkpoint_unscoped_gaps"] = max(
+            0, int((time.perf_counter() - started) * 1000),
+        )
+    started = time.perf_counter()
+    scoped = {
+        stream_id: [[start, end] for start, end in intervals]
+        for stream_id, intervals in pipeline.known_gap_intervals_by_stream.items()
+    }
+    if stage_timings_ms is not None:
+        stage_timings_ms["checkpoint_scoped_gaps"] = max(
+            0, int((time.perf_counter() - started) * 1000),
+        )
+    started = time.perf_counter()
+    global_scoped = {
+        stream_id: [[start, end] for start, end in intervals]
+        for stream_id, intervals in pipeline.known_global_gap_intervals_by_stream.items()
+    }
+    if stage_timings_ms is not None:
+        stage_timings_ms["checkpoint_global_gaps"] = max(
+            0, int((time.perf_counter() - started) * 1000),
+        )
     return {
         "schema_version": 3,
         "run_id": RUN_ID,
         "last_available_at_ms": last_available_at_ms,
         "selected_markets": [market.canonical for market in selected_markets],
         "open_lifecycles": checkpoints,
-        "known_gap_intervals": [
-            [started_ms, ended_ms]
-            for started_ms, ended_ms in pipeline.unscoped_gap_intervals
-        ],
-        "known_gap_intervals_by_stream": {
-            stream_id: [[start, end] for start, end in intervals]
-            for stream_id, intervals in pipeline.known_gap_intervals_by_stream.items()
-        },
-        "known_global_gap_intervals_by_stream": {
-            stream_id: [[start, end] for start, end in intervals]
-            for stream_id, intervals in pipeline.known_global_gap_intervals_by_stream.items()
-        },
+        "known_gap_intervals": unscoped,
+        "known_gap_intervals_by_stream": scoped,
+        "known_global_gap_intervals_by_stream": global_scoped,
         "execution_mode": "paper",
         "live_orders": False,
     }
@@ -10774,6 +10800,7 @@ async def run_continuous_paper_session(
                     pipeline.open_lifecycle_mark_paths
                 ),
             )
+            pipeline_stage_ms: dict[str, int] = {}
             payloads: list[tuple[Path, object]] = [
                 (
                     root / PROSPECTIVE_TREND_OUTSIDE_TOP10_STATE_FILENAME,
@@ -10791,6 +10818,7 @@ async def run_continuous_paper_session(
                             pipeline,
                             last_available_at_ms=pump.last_available_at_ms,
                             selected_markets=selected,
+                            stage_timings_ms=pipeline_stage_ms,
                         ),
                     ),
                 ),
@@ -10802,6 +10830,11 @@ async def run_continuous_paper_session(
                     ),
                 ),
             ]
+            for section, elapsed_ms in pipeline_stage_ms.items():
+                pump.checkpoint_snapshot_max_ms_by_component[section] = max(
+                    pump.checkpoint_snapshot_max_ms_by_component.get(section, 0),
+                    elapsed_ms,
+                )
             cadence_revision_to_persist: int | None = None
             if pump.cadence_shadow is not None:
                 cadence_revision = pump.cadence_shadow.state_revision
