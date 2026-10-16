@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import time
-from heapq import merge
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
+from heapq import merge
 from typing import Protocol
 
 from cocomelon.domain.candle_intervals import CANDLE_INTERVAL_MS
