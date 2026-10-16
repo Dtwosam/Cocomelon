@@ -19,6 +19,9 @@ from cocomelon.evidence.contracts import BaselineReplayConfig
 
 MAX_PENDING_RECORDS: Final = 16_384
 BATCH_SIZE: Final = 256
+# One shared limit with the closed original source ZIP sealer.
+MAX_SOURCE_ROWS: Final = 5_000_000
+MAX_SOURCE_BYTES: Final = 480 * 1024 * 1024
 RECORD_FILE: Final = "original-received-rows.jsonl"
 TERMINAL_FILE: Final = "original-capture-terminal.json"
 READY_SCHEMA: Final = "fresh-v3-original-paper-async-receipt-v1"
@@ -82,6 +85,10 @@ def _replay_payload(row: ReplayRecord) -> dict[str, object]:
     }
 
 
+class OriginalCaptureBudgetExceeded(RuntimeError):
+    """Original prospective source is irreversibly above its seal limit."""
+
+
 class OriginalPaperMicrostructureCapture:
     """Bounded write-ahead journal, independent from the trading event loop."""
 
@@ -129,6 +136,7 @@ class OriginalPaperMicrostructureCapture:
             maxsize=MAX_PENDING_RECORDS
         )
         self.record_count = 0
+        self.record_bytes = 0
         self.offered_count = 0
         self.dropped_count = 0
         self.last_available_at_ms: int | None = None
@@ -192,6 +200,11 @@ class OriginalPaperMicrostructureCapture:
             "original_selected_markets": len(self.selected_markets),
             "offered_count": self.offered_count,
             "written_count": self.record_count,
+            "written_source_journal_bytes": self.record_bytes,
+            "source_journal_byte_limit": MAX_SOURCE_BYTES,
+            "remaining_persisted_byte_budget": max(0, MAX_SOURCE_BYTES - self.record_bytes),
+            "source_journal_row_limit": MAX_SOURCE_ROWS,
+            "remaining_persisted_row_budget": max(0, MAX_SOURCE_ROWS - self.record_count),
             "pending_queue_depth": self.queue.qsize(),
             "dropped_count": self.dropped_count,
             "received_clock_regressions": self.received_clock_regressions,
@@ -210,15 +223,28 @@ class OriginalPaperMicrostructureCapture:
         }
 
     def _write_batch(self, rows: list[ReplayRecord]) -> None:
+        # Check BEFORE durable writes, using the exact canonical bytes that
+        # the post-handoff sealer will read. A worker must not spend hours
+        # persisting an archive that can never pass the frozen ZIP budget.
+        encoded_rows = [_canonical_json(_replay_payload(row)) for row in rows]
+        batch_bytes = sum(len(encoded) for encoded in encoded_rows)
+        if self.record_count + len(rows) > MAX_SOURCE_ROWS:
+            raise OriginalCaptureBudgetExceeded(
+                "original_capture_source_row_budget_exceeded"
+            )
+        if self.record_bytes + batch_bytes > MAX_SOURCE_BYTES:
+            raise OriginalCaptureBudgetExceeded(
+                "original_capture_source_byte_budget_exceeded"
+            )
         with (self.root / RECORD_FILE).open("ab") as stream:
-            for row in rows:
-                encoded = _canonical_json(_replay_payload(row))
+            for encoded in encoded_rows:
                 written = stream.write(encoded)
                 if written != len(encoded):
                     raise OSError("short original source journal write")
                 self._original_journal_sha256.update(encoded)
             stream.flush()
             os.fsync(stream.fileno())
+        self.record_bytes += batch_bytes
 
     async def _writer(self) -> None:
         while True:
@@ -234,8 +260,10 @@ class OriginalPaperMicrostructureCapture:
                     await asyncio.to_thread(self._write_batch, batch)
                     self.record_count += len(batch)
                     self.last_available_at_ms = batch[-1].available_at_ms
+            except OriginalCaptureBudgetExceeded as exc:
+                self.failure = self.failure or str(exc)
             except Exception as exc:
-                self.failure = f"write_failed:{type(exc).__name__}"
+                self.failure = self.failure or f"write_failed:{type(exc).__name__}"
             finally:
                 for _ in batch:
                     self.queue.task_done()
@@ -269,6 +297,9 @@ class OriginalPaperMicrostructureCapture:
             ),
             "offered_count": self.offered_count,
             "written_count": self.record_count,
+            "written_source_journal_bytes": self.record_bytes,
+            "source_journal_byte_limit": MAX_SOURCE_BYTES,
+            "source_journal_row_limit": MAX_SOURCE_ROWS,
             "original_received_journal_sha256": (
                 self._original_journal_sha256.hexdigest()
             ),
