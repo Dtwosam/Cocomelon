@@ -15,6 +15,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import quote
 
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import ReplayManifest
@@ -24,6 +25,7 @@ from cocomelon.evidence.lifecycle import DecisionEpochEngine
 MAX_ORIGINAL_ZIP_BYTES = 512 * 1024 * 1024
 MAX_SINGLE_SEGMENT_BYTES = 128 * 1024 * 1024
 ZIP_MANIFEST = "replay-manifest.json"
+SOURCE_HANDOFF = "source-handoff-receipt.json"
 SOURCE_PREFIX = "microstructure/"
 WORKFLOW_PATH = ".github/workflows/continuous-paper.yml"
 REQUIRED_UPLOAD_STEP = "Upload frozen v3 original microstructure source"
@@ -193,7 +195,7 @@ def verify_original_v3_github_zip_source(
 
     if not recording_root.is_dir() or recording_root.is_symlink():
         raise OriginalV3GitHubSourceError("original recorder source root invalid")
-    allowed = {ZIP_MANIFEST}
+    allowed = {ZIP_MANIFEST, SOURCE_HANDOFF}
     allowed.update(SOURCE_PREFIX + seg.relative_path for seg in manifest.segments)
     total_unpacked = 0
     try:
@@ -237,6 +239,87 @@ def verify_original_v3_github_zip_source(
                 raise OriginalV3GitHubSourceError(
                     "ZIP original manifest differs from independently pinned value"
                 )
+            try:
+                handoff_object: object = json.loads(z.read(SOURCE_HANDOFF))
+            except (UnicodeError, ValueError) as exc:
+                raise OriginalV3GitHubSourceError(
+                    "original source handoff receipt invalid"
+                ) from exc
+            handoff = _map(handoff_object, "original source handoff")
+            predecessor_id = handoff.get("declared_predecessor_run_id")
+            predecessor_attempt = handoff.get("declared_predecessor_run_attempt")
+            original_markets = handoff.get(
+                "original_selected_markets_at_worker_start"
+            )
+            if (
+                set(handoff) != {
+                    "schema", "worker_run_id", "worker_run_attempt",
+                    "worker_head_sha", "declared_predecessor_run_id",
+                    "declared_predecessor_run_attempt",
+                    "original_journal_sha256", "original_record_count",
+                    "original_first_available_at_ms",
+                    "original_last_available_at_ms",
+                    "original_selected_markets_at_worker_start",
+                    "original_resume_chain_independently_verified",
+                    "original_exchange_feed_continuity_verified",
+                    "research_only", "execution_authority",
+                    "promotion_authority",
+                }
+                or handoff["schema"]
+                != "v3-original-paper-source-worker-link-v1"
+                or handoff["worker_run_id"] != str(run_id)
+                or handoff["worker_run_attempt"] != str(attempt)
+                or handoff["worker_head_sha"] != head
+                or type(handoff["original_record_count"]) is not int
+                or handoff["original_record_count"]
+                != sum(seg.row_count for seg in manifest.segments)
+                or handoff["original_first_available_at_ms"] != manifest.start_ms
+                or handoff["original_last_available_at_ms"] != manifest.end_ms
+                or not isinstance(original_markets, list)
+                or not original_markets
+                or not all(type(m) is str and m for m in original_markets)
+                or original_markets != sorted(set(original_markets))
+                or (predecessor_id is None) != (predecessor_attempt is None)
+                or handoff["original_resume_chain_independently_verified"]
+                is not False
+                or handoff["original_exchange_feed_continuity_verified"]
+                is not False
+                or handoff["research_only"] is not True
+                or handoff["execution_authority"] is not False
+                or handoff["promotion_authority"] is not False
+            ):
+                raise OriginalV3GitHubSourceError(
+                    "original source handoff identity or continuity claim invalid"
+                )
+            _sha(handoff.get("original_journal_sha256"), "original journal SHA")
+            if predecessor_id is not None and (
+                type(predecessor_id) is not str
+                or not predecessor_id.isdecimal()
+                or int(predecessor_id) <= 0
+                or predecessor_id == str(run_id)
+                or type(predecessor_attempt) is not str
+                or not predecessor_attempt.isdecimal()
+                or int(predecessor_attempt) <= 0
+            ):
+                raise OriginalV3GitHubSourceError(
+                    "original source predecessor hint invalid"
+                )
+            # A self-consistent forged declared market cohort must not
+            # exclude any original recorded L2 segment, even when the caller
+            # rewrites its supplied outer artifact metadata.
+            encoded_markets = {
+                quote(m, safe="-_.") for m in original_markets
+            }
+            if any(
+                len(parts := seg.relative_path.split("/")) >= 5
+                and parts[0] == "events"
+                and parts[2] == "l2_book"
+                and parts[3] not in encoded_markets
+                for seg in manifest.segments
+            ):
+                raise OriginalV3GitHubSourceError(
+                    "original handoff omits market with observed L2"
+                )
             for segment in manifest.segments:
                 file = recording_root / segment.relative_path
                 if not file.is_file() or file.is_symlink():
@@ -276,6 +359,9 @@ def verify_original_v3_github_zip_source(
         "original_zip_sha256": actual_zip_sha,
         "manifest_id": manifest.manifest_id,
         "original_segment_count": len(manifest.segments),
+        "declared_predecessor_run_id": predecessor_id,
+        "declared_predecessor_run_attempt": predecessor_attempt,
+        "original_worker_link_receipt_matches_run": True,
         "source_records_not_changed_by_audit": True,
         "original_zip_bytes_match_supplied_github_digest": True,
         "supplied_github_run_job_artifact_identity_crosschecked": True,
