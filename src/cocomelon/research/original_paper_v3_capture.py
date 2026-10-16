@@ -258,6 +258,12 @@ class OriginalPaperMicrostructureCapture:
         }
         self.gap_l2_stream_offered_count = 0
         self.gap_non_l2_stream_offered_count = 0
+        # Bounded by immutable selected markets. Only aggregate concentration
+        # is exported: never expose an L2 stream ID from arbitrary gap text.
+        self._selected_l2_gap_notice_counts = {
+            market: 0 for market in self.selected_markets
+        }
+        self._unselected_l2_gap_notice_count = 0
         self.gap_closed_valid_l2_duration_ms_total = 0
         self.gap_closed_valid_non_l2_duration_ms_total = 0
         self.gap_closed_l2_max_duration_ms = 0
@@ -333,6 +339,12 @@ class OriginalPaperMicrostructureCapture:
             )
             if is_l2_gap:
                 self.gap_l2_stream_offered_count += 1
+                assert isinstance(stream_id, str)
+                market_name = stream_id[len("l2Book:"):]
+                if market_name in self._selected_l2_gap_notice_counts:
+                    self._selected_l2_gap_notice_counts[market_name] += 1
+                else:
+                    self._unselected_l2_gap_notice_count += 1
             else:
                 self.gap_non_l2_stream_offered_count += 1
             if isinstance(gap_payload, dict):
@@ -530,6 +542,30 @@ class OriginalPaperMicrostructureCapture:
             ),
         }
 
+    def _negative_l2_gap_concentration(self) -> dict[str, int]:
+        """Bounded offered gap concentration, never an L2 quality certificate.
+
+        This exposes only aggregate distribution for the frozen market set.
+        Unselected or malformed L2 stream IDs cannot grow the in-memory map.
+        """
+        counts = sorted(self._selected_l2_gap_notice_counts.values(), reverse=True)
+        total = sum(counts)
+        return {
+            "l2_selected_gap_offered_notice_count": total,
+            "l2_unselected_gap_offered_notice_count": (
+                self._unselected_l2_gap_notice_count
+            ),
+            "l2_selected_gap_affected_market_count": sum(
+                count > 0 for count in counts
+            ),
+            "l2_selected_gap_peak_market_notice_count": max(
+                counts, default=0
+            ),
+            "l2_selected_gap_top3_share_bps": (
+                (10_000 * sum(counts[:3])) // total if total else 0
+            ),
+        }
+
     def live_diagnostic_snapshot(self) -> dict[str, object]:
         """Memory-only capture counters; NEVER a source or profit certificate."""
         return {
@@ -551,6 +587,7 @@ class OriginalPaperMicrostructureCapture:
             "remaining_persisted_row_budget": max(0, MAX_SOURCE_ROWS - self.record_count),
             "pending_queue_depth": self.queue.qsize(),
             **self._negative_l2_coverage(),
+            **self._negative_l2_gap_concentration(),
             "dropped_count": self.dropped_count,
             "received_clock_regressions": self.received_clock_regressions,
             "regressions_vs_prior_offered": self.regressions_vs_prior_offered,
@@ -711,6 +748,7 @@ class OriginalPaperMicrostructureCapture:
             "offered_count": self.offered_count,
             "written_count": self.record_count,
             **self._negative_l2_coverage(),
+            **self._negative_l2_gap_concentration(),
             # Pending/in-flight during a live heartbeat; an unacknowledged
             # batch on failure once the recorder is closed.
             "offered_not_written_or_dropped_count": max(
