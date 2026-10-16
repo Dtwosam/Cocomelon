@@ -594,6 +594,73 @@ def test_receipt_clock_diagnostic_identifies_restored_paper_clock_without_launde
     assert terminal["paper_monotonic_clock_adjustment_not_used_as_source"] is True
 
 
+def test_original_l2_clock_attribution_keeps_per_stream_highwater_and_lag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    from cocomelon.research import original_paper_v3_capture as capture_module
+
+    t = FORWARD_NOT_BEFORE_MS + 1_000
+    monkeypatch.setattr(capture_module, "utc_now_ms", lambda: t + 20_000)
+
+    async def run() -> tuple[dict[str, object], dict[str, object]]:
+        capture = OriginalPaperMicrostructureCapture(
+            tmp_path / "original",
+            run_id=RUN, run_attempt=ATTEMPT, head_sha=HEAD,
+            selected_markets=("TEST", "OTHER"),
+            first_observed_ms=t - 1000, replay_config=BaselineReplayConfig(),
+        )
+        capture.offer(_book(t, "source-A"), paper_previous_at_ms=t-10)
+        capture.offer(
+            replace(_book(t-1, "other-market"), market="OTHER"),
+            paper_previous_at_ms=t+10,
+        )
+        capture.offer(_book(t-2, "within-market-regression"), paper_previous_at_ms=t+10)
+        capture.offer(_book(t-1, "still-behind-market-highwater"), paper_previous_at_ms=t+10)
+        return capture.live_diagnostic_snapshot(), await capture.close()
+
+    live, terminal = asyncio.run(run())
+    assert live["l2_offer_age_observations"] == 4
+    assert live["l2_offer_age_over_1s_count"] == 4
+    assert live["l2_offer_age_over_5s_count"] == 4
+    assert live["l2_offer_age_over_15s_count"] == 4
+    assert live["l2_offer_timestamp_future_count"] == 0
+    assert live["l2_max_offer_age_ms"] == 20_002
+    assert live["l2_tracked_distinct_streams"] == 2
+    assert live["l2_stream_clock_tracking_overflow"] == 0
+    assert live["l2_cross_stream_only_clock_regressions"] == 1
+    assert live["l2_within_stream_clock_regressions"] == 2
+    assert live["received_clock_regressions"] == 3
+    assert terminal["l2_within_stream_clock_regressions"] == 2
+    assert terminal["l2_cross_stream_only_clock_regressions"] == 1
+    assert terminal["complete"] is False
+    assert terminal["failure"] == "original_received_clock_regression"
+    with pytest.raises(OriginalV3CaptureSealError):
+        _seal(tmp_path)
+
+
+def test_original_l2_receive_age_does_not_convert_future_timestamp_to_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    from cocomelon.research import original_paper_v3_capture as capture_module
+
+    t = FORWARD_NOT_BEFORE_MS + 500
+    monkeypatch.setattr(capture_module, "utc_now_ms", lambda: t - 100)
+    async def run() -> dict[str, object]:
+        capture = OriginalPaperMicrostructureCapture(
+            tmp_path / "original",
+            run_id=RUN, run_attempt=ATTEMPT, head_sha=HEAD,
+            selected_markets=("TEST",),
+            first_observed_ms=t - 200, replay_config=BaselineReplayConfig(),
+        )
+        capture.offer(_book(t, "future-l2"))
+        return await capture.close()
+    result = asyncio.run(run())
+    assert result["l2_offer_timestamp_future_count"] == 1
+    assert result["l2_max_offer_age_ms"] == 0
+    assert result["complete"] is True
+    _seal(tmp_path)
+
+
 def test_record_pump_preserves_raw_input_for_capture_before_clock_clamp(
     tmp_path: Path,
 ) -> None:
