@@ -266,6 +266,7 @@ def test_actual_paper_workflow_uploads_negative_v3_diagnostic_after_handoff() ->
 def test_original_v3_fast_source_custody_precedes_all_optional_archive_work() -> None:
     workflow = Path(".github/workflows/continuous-paper.yml").read_text()
     fast = workflow.index("- name: Queue exact successor from fast resume")
+    remove_fast_archive = workflow.index("- name: Remove local fast resume archive")
     seal = workflow.index("- name: Seal frozen v3 original microstructure source\n")
     upload = workflow.index("- name: Upload frozen v3 original microstructure source\n")
     diagnose = workflow.index("- name: Diagnose frozen v3 original capture after handoff")
@@ -293,7 +294,7 @@ def test_original_v3_fast_source_custody_precedes_all_optional_archive_work() ->
         "- name: Audit all closed paper trades and recorded entry-to-exit charts"
     )
     assert (
-        fast < seal < upload < diagnose < diagnostic_upload
+        fast < remove_fast_archive < seal < upload < diagnose < diagnostic_upload
         < rank < durable < fallback < fallback_seal
         < fallback_upload < fallback_diagnose < fallback_diag_upload < deferred
     )
