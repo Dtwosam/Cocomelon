@@ -16,8 +16,11 @@ from typing import Final
 
 from cocomelon.domain.replay import ReplayRecord
 from cocomelon.evidence.contracts import BaselineReplayConfig
+from cocomelon.util.time import utc_now_ms
 
 MAX_PENDING_RECORDS: Final = 16_384
+# Bounded negative stream-clock attribution; never source data or evidence.
+MAX_TRACKED_ORIGINAL_L2_STREAMS: Final = 512
 BATCH_SIZE: Final = 256
 # One shared limit with the closed original source ZIP sealer.
 MAX_SOURCE_ROWS: Final = 5_000_000
@@ -176,6 +179,21 @@ class OriginalPaperMicrostructureCapture:
         self.first_regression_cause: str | None = None
         self.first_regression_event_kind: str | None = None
         self.first_received_clock_regression: dict[str, object] | None = None
+        # Event source+market clock tracking distinguishes delayed interleaving
+        # across streams from regressions within one original L2 stream.
+        # Only bounded aggregate counts appear in diagnostics, never raw keys.
+        self._last_l2_received_ms_by_stream: dict[
+            tuple[str, str, str], int
+        ] = {}
+        self.l2_stream_clock_tracking_overflow = 0
+        self.l2_within_stream_clock_regressions = 0
+        self.l2_cross_stream_only_clock_regressions = 0
+        self.l2_offer_age_observations = 0
+        self.l2_offer_age_over_1s_count = 0
+        self.l2_offer_age_over_5s_count = 0
+        self.l2_offer_age_over_15s_count = 0
+        self.l2_offer_timestamp_future_count = 0
+        self.l2_max_offer_age_ms = 0
         self.failure: str | None = None
         self.closed = False
         self._task = asyncio.create_task(self._writer())
@@ -194,6 +212,40 @@ class OriginalPaperMicrostructureCapture:
         # local offered rows would overlook a first-record regression.
         prior_offered = self.last_offered_available_at_ms
         prior_paper = paper_previous_at_ms
+        within_l2_stream_regression = False
+        if (
+            record.record_kind.value == "normalized_event"
+            and record.event_kind == "l2_book"
+            and record.market is not None
+        ):
+            # L2 receive timestamps are local observed times, not exchange
+            # book times. The age at PAPER offer detects event-loop/backlog
+            # delays without ever altering the recorded original timestamp.
+            age_ms = utc_now_ms() - record.available_at_ms
+            self.l2_offer_age_observations += 1
+            self.l2_offer_age_over_1s_count += int(age_ms > 1_000)
+            self.l2_offer_age_over_5s_count += int(age_ms > 5_000)
+            self.l2_offer_age_over_15s_count += int(age_ms > 15_000)
+            self.l2_offer_timestamp_future_count += int(age_ms < 0)
+            self.l2_max_offer_age_ms = max(self.l2_max_offer_age_ms, age_ms)
+            stream_id = (record.source, record.market, record.event_kind)
+            prior_same_stream = self._last_l2_received_ms_by_stream.get(stream_id)
+            within_l2_stream_regression = (
+                prior_same_stream is not None
+                and record.available_at_ms < prior_same_stream
+            )
+            if within_l2_stream_regression:
+                self.l2_within_stream_clock_regressions += 1
+            if (
+                prior_same_stream is not None
+                or len(self._last_l2_received_ms_by_stream)
+                < MAX_TRACKED_ORIGINAL_L2_STREAMS
+            ):
+                self._last_l2_received_ms_by_stream[stream_id] = (
+                    record.available_at_ms
+                )
+            else:
+                self.l2_stream_clock_tracking_overflow += 1
         below_offered = (
             prior_offered is not None and record.available_at_ms < prior_offered
         )
@@ -203,6 +255,13 @@ class OriginalPaperMicrostructureCapture:
         latest = max(prior_offered or 0, prior_paper or 0)
         if below_offered or below_paper:
             self.received_clock_regressions += 1
+            if (
+                record.record_kind.value == "normalized_event"
+                and record.event_kind == "l2_book"
+                and below_offered
+                and not within_l2_stream_regression
+            ):
+                self.l2_cross_stream_only_clock_regressions += 1
             self.regressions_vs_prior_offered += int(below_offered)
             self.regressions_vs_paper_clock += int(below_paper)
             self.max_original_clock_backward_ms = max(
@@ -273,6 +332,26 @@ class OriginalPaperMicrostructureCapture:
             "max_original_clock_backward_ms": self.max_original_clock_backward_ms,
             "first_regression_cause": self.first_regression_cause,
             "first_regression_event_kind": self.first_regression_event_kind,
+            "l2_tracked_distinct_streams": len(
+                self._last_l2_received_ms_by_stream
+            ),
+            "l2_stream_clock_tracking_overflow": (
+                self.l2_stream_clock_tracking_overflow
+            ),
+            "l2_within_stream_clock_regressions": (
+                self.l2_within_stream_clock_regressions
+            ),
+            "l2_cross_stream_only_clock_regressions": (
+                self.l2_cross_stream_only_clock_regressions
+            ),
+            "l2_offer_age_observations": self.l2_offer_age_observations,
+            "l2_offer_age_over_1s_count": self.l2_offer_age_over_1s_count,
+            "l2_offer_age_over_5s_count": self.l2_offer_age_over_5s_count,
+            "l2_offer_age_over_15s_count": self.l2_offer_age_over_15s_count,
+            "l2_offer_timestamp_future_count": (
+                self.l2_offer_timestamp_future_count
+            ),
+            "l2_max_offer_age_ms": self.l2_max_offer_age_ms,
             "last_written_available_at_ms": self.last_available_at_ms,
             "failure": self.failure,
             "closed": self.closed,
@@ -392,6 +471,26 @@ class OriginalPaperMicrostructureCapture:
             "max_original_clock_backward_ms": self.max_original_clock_backward_ms,
             "first_regression_cause": self.first_regression_cause,
             "first_regression_event_kind": self.first_regression_event_kind,
+            "l2_tracked_distinct_streams": len(
+                self._last_l2_received_ms_by_stream
+            ),
+            "l2_stream_clock_tracking_overflow": (
+                self.l2_stream_clock_tracking_overflow
+            ),
+            "l2_within_stream_clock_regressions": (
+                self.l2_within_stream_clock_regressions
+            ),
+            "l2_cross_stream_only_clock_regressions": (
+                self.l2_cross_stream_only_clock_regressions
+            ),
+            "l2_offer_age_observations": self.l2_offer_age_observations,
+            "l2_offer_age_over_1s_count": self.l2_offer_age_over_1s_count,
+            "l2_offer_age_over_5s_count": self.l2_offer_age_over_5s_count,
+            "l2_offer_age_over_15s_count": self.l2_offer_age_over_15s_count,
+            "l2_offer_timestamp_future_count": (
+                self.l2_offer_timestamp_future_count
+            ),
+            "l2_max_offer_age_ms": self.l2_max_offer_age_ms,
             "first_original_received_clock_regression": (
                 self.first_received_clock_regression
             ),
