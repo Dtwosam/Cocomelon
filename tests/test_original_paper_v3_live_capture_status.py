@@ -97,6 +97,7 @@ def test_negative_status_shows_original_archive_budget_without_certification() -
         "remaining_persisted_row_budget": 176,
     })
     rendered = "\n".join(lines)
+    assert "not yet written or counted dropped" in rendered
     assert "2048 / 4096 / 2048" in rendered
     assert "24 / 200 / 176" in rendered
     assert "source and after-cost profit certification: FALSE" in rendered

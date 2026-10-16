@@ -9510,6 +9510,10 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{raw.get('received_clock_regressions', 'unavailable')}"
         ),
         (
+            "- offered not yet written or counted dropped (pending/in-flight included): "
+            f"{raw.get('offered_not_written_or_dropped_count', 'unavailable')}"
+        ),
+        (
             "- persisted original journal bytes / cap / remaining: "
             f"{raw.get('written_source_journal_bytes', 'unavailable')} / "
             f"{raw.get('source_journal_byte_limit', 'unavailable')} / "

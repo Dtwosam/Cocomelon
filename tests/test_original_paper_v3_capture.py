@@ -330,6 +330,8 @@ def test_live_capture_budget_reports_only_persisted_bytes_and_no_authority(
     assert live["remaining_persisted_byte_budget"] == (
         live["source_journal_byte_limit"] - len(recorded)
     )
+    assert live["offered_not_written_or_dropped_count"] == 0
+    assert terminal["offered_not_written_or_dropped_count"] == 0
     assert live["pending_queue_depth"] == 0
     assert live["capture_admissible_from_heartbeat"] is False
     assert live["source_integrity_certified"] is False

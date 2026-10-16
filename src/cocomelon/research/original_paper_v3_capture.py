@@ -236,6 +236,11 @@ class OriginalPaperMicrostructureCapture:
             "original_selected_markets": len(self.selected_markets),
             "offered_count": self.offered_count,
             "written_count": self.record_count,
+            # Pending/in-flight during a live heartbeat; an unacknowledged
+            # batch on failure once the recorder is closed.
+            "offered_not_written_or_dropped_count": max(
+                0, self.offered_count - self.record_count - self.dropped_count
+            ),
             "written_source_journal_bytes": self.record_bytes,
             "source_journal_byte_limit": MAX_SOURCE_BYTES,
             "remaining_persisted_byte_budget": max(0, MAX_SOURCE_BYTES - self.record_bytes),
@@ -341,6 +346,11 @@ class OriginalPaperMicrostructureCapture:
             ),
             "offered_count": self.offered_count,
             "written_count": self.record_count,
+            # Pending/in-flight during a live heartbeat; an unacknowledged
+            # batch on failure once the recorder is closed.
+            "offered_not_written_or_dropped_count": max(
+                0, self.offered_count - self.record_count - self.dropped_count
+            ),
             "written_source_journal_bytes": self.record_bytes,
             "source_journal_byte_limit": MAX_SOURCE_BYTES,
             "source_journal_row_limit": MAX_SOURCE_ROWS,
