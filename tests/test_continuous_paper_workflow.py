@@ -582,6 +582,32 @@ def test_continuous_paper_upgrade_watchdog_does_not_require_heartbeat() -> None:
     assert "trap cleanup_runtime_processes EXIT" in source
 
 
+def test_ordinary_main_merge_does_not_interrupt_paper_source_capture() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    start = source.index("- name: Run continuous paper trader")
+    end = source.index("- name: Measure durable continuous paper state", start)
+    worker = source[start:end]
+    assert "V3_CAPTURE_ORIGINAL_SOURCE: \"1\"" in worker
+    assert (
+        "PAPER_ROLL_ON_MAIN_PUSH: ${{ vars.PAPER_ROLL_ON_MAIN_PUSH || 'false' }}"
+        in worker
+    )
+    assert 'if [ "${PAPER_ROLL_ON_MAIN_PUSH:-false}" = "true" ]; then' in worker
+    opt_in = worker.index('if [ "${PAPER_ROLL_ON_MAIN_PUSH:-false}" = "true" ]; then')
+    watcher = worker.index('watch_for_newer_runtime_run "$trader_pid" &')
+    opt_out = worker.index("preserving PAPER source continuity", watcher)
+    overrun = worker.index('watch_for_session_overrun "$trader_pid" &')
+    assert opt_in < watcher < opt_out < overrun
+    assert "upgrade_watch_pid=$!" in worker[opt_in:opt_out]
+    assert "--duration-seconds 14400" in worker
+    assert "sleep 15300" in worker
+    assert "request_runtime_handoff" in worker
+    assert "kill -TERM" in worker
+    assert "kill -KILL" in worker
+    assert "PAPER_ROLL_ON_MAIN_PUSH: true" not in worker
+    assert "live_orders_enabled: true" not in worker
+
+
 def test_upgrade_handoff_is_not_a_successful_research_source() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     fallback_at = source.index(
