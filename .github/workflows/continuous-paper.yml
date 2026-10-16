@@ -917,6 +917,10 @@ jobs:
         if: ${{ steps.guard.outputs.skip != 'true' }}
         env:
           V3_CAPTURE_ORIGINAL_SOURCE: "1"
+          # Ordinary main pushes are guard-only during a healthy worker.
+          # The next four-hour exact-state handoff naturally deploys main;
+          # urgent upgrades require explicit per-worker opt-in at startup.
+          PAPER_ROLL_ON_MAIN_PUSH: ${{ vars.PAPER_ROLL_ON_MAIN_PUSH || 'false' }}
         run: |
           set -euo pipefail
           last_status_publish=0
@@ -1068,8 +1072,15 @@ jobs:
             > "$output_fifo" &
           trader_pid=$!
 
-          watch_for_newer_runtime_run "$trader_pid" &
-          upgrade_watch_pid=$!
+          if [ "${PAPER_ROLL_ON_MAIN_PUSH:-false}" = "true" ]; then
+            # Opt-in safety override only. Without it, frequent research
+            # merges would continuously stop healthy PAPER and destroy
+            # contiguous original market-source observation windows.
+            watch_for_newer_runtime_run "$trader_pid" &
+            upgrade_watch_pid=$!
+          else
+            echo "::notice::main-push upgrade watcher disabled; preserving PAPER source continuity until normal exact-state session handoff"
+          fi
           watch_for_session_overrun "$trader_pid" &
           overrun_watch_pid=$!
 
