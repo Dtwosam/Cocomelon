@@ -2478,7 +2478,13 @@ def _record_from_stream(event: StreamEvent) -> ReplayRecord:
     )
 
 
-def _record_from_gap(gap: DataGap) -> ReplayRecord:
+def _record_from_gap(
+    gap: DataGap, *, observed_at_ms: int | None = None,
+) -> ReplayRecord:
+    if observed_at_ms is not None and (
+        type(observed_at_ms) is not int or observed_at_ms < 0
+    ):
+        raise ValueError("gap observation time must be nonnegative integer")
     payload = {
         "stream_id": gap.stream_id,
         "started_ms": gap.started_ms,
@@ -2487,10 +2493,14 @@ def _record_from_gap(gap: DataGap) -> ReplayRecord:
     }
     return ReplayRecord(
         record_kind=SourceRecordKind.DATA_GAP,
-        # A recovered gap is only known on its closing observation.
-        # Replaying it at the original start would leak future coverage.
+        # A gap's historical start/end are coverage boundaries, not the
+        # time its notice was accepted into the PAPER record pump. Live
+        # ingress uses the actual serialized observation time; the exact
+        # historical boundaries stay untouched in the original payload.
+        # Legacy offline callers retain explicit boundary semantics.
         available_at_ms=(
-            gap.started_ms if gap.ended_ms is None else gap.ended_ms
+            observed_at_ms if observed_at_ms is not None
+            else gap.started_ms if gap.ended_ms is None else gap.ended_ms
         ),
         source=gap.source,
         schema_version=gap.schema_version,
@@ -4993,13 +5003,19 @@ class _RecordPump:
 
     async def process(
         self,
-        record: ReplayRecord,
+        record: ReplayRecord | DataGap,
         *,
         evaluate_decisions: bool = True,
     ) -> None:
         loop = asyncio.get_running_loop()
         lock_wait_started = loop.time()
         async with self._lock:
+            # Timestamp a gap only AFTER serialized ingress. DataGap carries
+            # historical boundaries, not a source receive timestamp. A
+            # timestamp captured before waiting for the lock can regress
+            # behind other accepted live records.
+            if isinstance(record, DataGap):
+                record = _record_from_gap(record, observed_at_ms=utc_now_ms())
             lock_acquired = loop.time()
             lock_wait_ms = max(
                 0,
@@ -10684,8 +10700,7 @@ async def run_continuous_paper_session(
                         raise
                     failed_at_ms = utc_now_ms()
                     await pump.process(
-                        _record_from_gap(
-                            DataGap(
+                        DataGap(
                                 stream_id=(
                                     "fundingHistory:"
                                     + position.market.canonical
@@ -10695,7 +10710,6 @@ async def run_continuous_paper_session(
                                 reason="MAINNET_FUNDING_HISTORY_INFO_UNAVAILABLE",
                                 source="hyperliquid-mainnet-info",
                             )
-                        )
                     )
                     # A skipped response is NEVER a zero funding accrual;
                     # only validated actual funding_rate events can accrue.
@@ -11232,7 +11246,7 @@ async def run_continuous_paper_session(
                 await restored_named_gap_recovery.accept_recorded_event(
                     event,
                     observed_at_ms=utc_now_ms(),
-                    gap_sink=lambda gap: pump.process(_record_from_gap(gap)),
+                    gap_sink=lambda gap: pump.process(gap),
                     witness_sink=lambda witness, gap, checkpoint_ms: (
                         asyncio.to_thread(
                             append_restored_named_gap_witness,
@@ -11251,7 +11265,7 @@ async def run_continuous_paper_session(
                     await rotation_observer.accept_recorded_event(
                         event,
                         observed_at_ms=utc_now_ms(),
-                        gap_sink=lambda gap: pump.process(_record_from_gap(gap)),
+                        gap_sink=lambda gap: pump.process(gap),
                         witness_sink=lambda witness, gap, checkpoint_ms: (
                             asyncio.to_thread(
                                 append_in_session_rotation_gap_witness,
@@ -11265,7 +11279,7 @@ async def run_continuous_paper_session(
 
             async def gap_sink(gap: DataGap) -> None:
                 if gap_gate.is_set():
-                    await pump.process(_record_from_gap(gap))
+                    await pump.process(gap)
 
             mux = RedundantStreamMux(
                 event_sink=event_sink,

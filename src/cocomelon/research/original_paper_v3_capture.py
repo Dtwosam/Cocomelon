@@ -245,15 +245,23 @@ class OriginalPaperMicrostructureCapture:
                 gap_payload = json.loads(record.payload_json)
             except (ValueError, TypeError):
                 gap_payload = None
+            # The timestamp on a live gap receipt is its actual PAPER
+            # observation time. Gap payload starts/ends remain historical
+            # coverage boundaries; do not lose their original age evidence.
+            boundary_ms = record.available_at_ms
             if isinstance(gap_payload, dict):
+                raw_start = gap_payload.get("started_ms")
                 raw_end = gap_payload.get("ended_ms")
                 if raw_end is None:
                     gap_boundary_kind = "open"
                     self.gap_open_offered_count += 1
+                    if type(raw_start) is int:
+                        boundary_ms = raw_start
                 elif type(raw_end) is int:
                     gap_boundary_kind = "closed"
                     self.gap_closed_offered_count += 1
-            gap_age_ms = utc_now_ms() - record.available_at_ms
+                    boundary_ms = raw_end
+            gap_age_ms = utc_now_ms() - boundary_ms
             self.gap_boundary_age_over_1s_count += int(gap_age_ms > 1_000)
             self.gap_boundary_age_over_15s_count += int(gap_age_ms > 15_000)
             self.gap_boundary_timestamp_future_count += int(gap_age_ms < 0)
