@@ -189,7 +189,8 @@ def diagnose_original_paper_v3_capture(
         ),
         "original_l2_selected_market_offered_book_count": (
             terminal.get("l2_selected_market_offered_book_count")
-            if terminal_matches and type(terminal.get("l2_selected_market_offered_book_count")) is int
+            if terminal_matches
+            and type(terminal.get("l2_selected_market_offered_book_count")) is int
             else None
         ),
         "original_l2_selected_market_zero_book_count": (
@@ -199,17 +200,20 @@ def diagnose_original_paper_v3_capture(
         ),
         "original_l2_selected_market_min_offered_books": (
             terminal.get("l2_selected_market_min_offered_books")
-            if terminal_matches and type(terminal.get("l2_selected_market_min_offered_books")) is int
+            if terminal_matches
+            and type(terminal.get("l2_selected_market_min_offered_books")) is int
             else None
         ),
         "original_l2_selected_market_max_observed_gap_ms": (
             terminal.get("l2_selected_market_max_observed_gap_ms")
-            if terminal_matches and type(terminal.get("l2_selected_market_max_observed_gap_ms")) is int
+            if terminal_matches
+            and type(terminal.get("l2_selected_market_max_observed_gap_ms")) is int
             else None
         ),
         "original_l2_selected_market_over_5min_drought_count": (
             terminal.get("l2_selected_market_over_5min_drought_count")
-            if terminal_matches and type(terminal.get("l2_selected_market_over_5min_drought_count")) is int
+            if terminal_matches
+            and type(terminal.get("l2_selected_market_over_5min_drought_count")) is int
             else None
         ),
         "original_gap_offered_count": (
