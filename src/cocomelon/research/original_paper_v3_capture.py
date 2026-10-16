@@ -182,6 +182,10 @@ class OriginalPaperMicrostructureCapture:
         # received timestamp, and permanently disqualify a clamped input.
         self.last_offered_available_at_ms: int | None = None
         self.first_offered_available_at_ms: int | None = None
+        # Receive-order last clock is needed for fail-closed regressions;
+        # maximum raw OFFERED timestamp is a separate coverage horizon.
+        # Otherwise a late backdated row can hide months of L2 drought.
+        self._max_offered_available_at_ms: int | None = None
         self.received_clock_regressions = 0
         # These separate cases diagnose source scheduling without changing
         # original input bytes, receipt order or PAPER's permissive clock.
@@ -222,6 +226,13 @@ class OriginalPaperMicrostructureCapture:
         }
         self.gap_l2_stream_offered_count = 0
         self.gap_non_l2_stream_offered_count = 0
+        self.gap_closed_valid_l2_duration_ms_total = 0
+        self.gap_closed_valid_non_l2_duration_ms_total = 0
+        self.gap_closed_l2_max_duration_ms = 0
+        self.gap_closed_non_l2_max_duration_ms = 0
+        self.gap_closed_l2_ge_5s_count = 0
+        self.gap_closed_non_l2_ge_5s_count = 0
+        self.gap_closed_invalid_bounds_count = 0
         self.gap_open_offered_count = 0
         self.gap_closed_offered_count = 0
         self.gap_boundary_age_over_1s_count = 0
@@ -244,6 +255,11 @@ class OriginalPaperMicrostructureCapture:
         self.offered_count += 1
         if self.first_offered_available_at_ms is None:
             self.first_offered_available_at_ms = record.available_at_ms
+        if (
+            self._max_offered_available_at_ms is None
+            or record.available_at_ms > self._max_offered_available_at_ms
+        ):
+            self._max_offered_available_at_ms = record.available_at_ms
         # The caller MUST pass the PAPER pipeline's previous timestamp,
         # including a restored previous-worker checkpoint. Comparing only
         # local offered rows would overlook a first-record regression.
@@ -280,7 +296,10 @@ class OriginalPaperMicrostructureCapture:
                 gap_payload.get("stream_id") if isinstance(gap_payload, dict)
                 else None
             )
-            if type(stream_id) is str and stream_id.startswith("l2Book:"):
+            is_l2_gap = (
+                type(stream_id) is str and stream_id.startswith("l2Book:")
+            )
+            if is_l2_gap:
                 self.gap_l2_stream_offered_count += 1
             else:
                 self.gap_non_l2_stream_offered_count += 1
@@ -296,6 +315,24 @@ class OriginalPaperMicrostructureCapture:
                     gap_boundary_kind = "closed"
                     self.gap_closed_offered_count += 1
                     boundary_ms = raw_end
+                    if type(raw_start) is int and 0 <= raw_start <= raw_end:
+                        duration = raw_end - raw_start
+                        if is_l2_gap:
+                            self.gap_closed_valid_l2_duration_ms_total += duration
+                            self.gap_closed_l2_max_duration_ms = max(
+                                self.gap_closed_l2_max_duration_ms, duration
+                            )
+                            self.gap_closed_l2_ge_5s_count += int(duration >= 5_000)
+                        else:
+                            self.gap_closed_valid_non_l2_duration_ms_total += duration
+                            self.gap_closed_non_l2_max_duration_ms = max(
+                                self.gap_closed_non_l2_max_duration_ms, duration
+                            )
+                            self.gap_closed_non_l2_ge_5s_count += int(
+                                duration >= 5_000
+                            )
+                    else:
+                        self.gap_closed_invalid_bounds_count += 1
             gap_age_ms = utc_now_ms() - boundary_ms
             self.gap_boundary_age_over_1s_count += int(gap_age_ms > 1_000)
             self.gap_boundary_age_over_15s_count += int(gap_age_ms > 15_000)
@@ -417,11 +454,12 @@ class OriginalPaperMicrostructureCapture:
         """Bounded offered-time L2 diagnostics, not sealed replay evidence.
 
         Include initial and trailing silence so a single healthy startup
-        book cannot disguise a multi-hour feed drought. End at the last
-        OFFERED source timestamp, never at an inferred wall-clock deadline.
+        book cannot disguise a multi-hour feed drought. End at the maximum
+        genuinely OFFERED source timestamp, never at a guessed wall clock
+        deadline; a later backdated observation must not shrink that window.
         """
         start = self.first_offered_available_at_ms
-        end = self.last_offered_available_at_ms
+        end = self._max_offered_available_at_ms
         elapsed_ms = max(0, end - start) if start is not None and end is not None else 0
         worst_gaps: list[int] = []
         for market in self.selected_markets:
@@ -503,6 +541,19 @@ class OriginalPaperMicrostructureCapture:
             "gap_reason_counts": dict(self.gap_reason_counts),
             "gap_l2_stream_offered_count": self.gap_l2_stream_offered_count,
             "gap_non_l2_stream_offered_count": self.gap_non_l2_stream_offered_count,
+            "gap_closed_valid_l2_duration_ms_total": (
+                self.gap_closed_valid_l2_duration_ms_total
+            ),
+            "gap_closed_valid_non_l2_duration_ms_total": (
+                self.gap_closed_valid_non_l2_duration_ms_total
+            ),
+            "gap_closed_l2_max_duration_ms": self.gap_closed_l2_max_duration_ms,
+            "gap_closed_non_l2_max_duration_ms": (
+                self.gap_closed_non_l2_max_duration_ms
+            ),
+            "gap_closed_l2_ge_5s_count": self.gap_closed_l2_ge_5s_count,
+            "gap_closed_non_l2_ge_5s_count": self.gap_closed_non_l2_ge_5s_count,
+            "gap_closed_invalid_bounds_count": self.gap_closed_invalid_bounds_count,
             "gap_open_offered_count": self.gap_open_offered_count,
             "gap_closed_offered_count": self.gap_closed_offered_count,
             "gap_boundary_age_over_1s_count": (
@@ -662,6 +713,19 @@ class OriginalPaperMicrostructureCapture:
             "gap_reason_counts": dict(self.gap_reason_counts),
             "gap_l2_stream_offered_count": self.gap_l2_stream_offered_count,
             "gap_non_l2_stream_offered_count": self.gap_non_l2_stream_offered_count,
+            "gap_closed_valid_l2_duration_ms_total": (
+                self.gap_closed_valid_l2_duration_ms_total
+            ),
+            "gap_closed_valid_non_l2_duration_ms_total": (
+                self.gap_closed_valid_non_l2_duration_ms_total
+            ),
+            "gap_closed_l2_max_duration_ms": self.gap_closed_l2_max_duration_ms,
+            "gap_closed_non_l2_max_duration_ms": (
+                self.gap_closed_non_l2_max_duration_ms
+            ),
+            "gap_closed_l2_ge_5s_count": self.gap_closed_l2_ge_5s_count,
+            "gap_closed_non_l2_ge_5s_count": self.gap_closed_non_l2_ge_5s_count,
+            "gap_closed_invalid_bounds_count": self.gap_closed_invalid_bounds_count,
             "gap_open_offered_count": self.gap_open_offered_count,
             "gap_closed_offered_count": self.gap_closed_offered_count,
             "gap_boundary_age_over_1s_count": (
