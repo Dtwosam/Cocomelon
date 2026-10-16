@@ -5,7 +5,7 @@ import asyncio
 import json
 from pathlib import Path
 
-from cocomelon.continuous_paper import _RecordPump, _record_from_gap
+from cocomelon.continuous_paper import _record_from_gap, _RecordPump
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.stream import DataGap
 from cocomelon.evidence.contracts import BaselineReplayConfig
