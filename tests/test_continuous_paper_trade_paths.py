@@ -6,9 +6,11 @@ from pathlib import Path
 
 import pytest
 
+from cocomelon.continuous_paper import _ContinuousTradePathSink
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
+from cocomelon.evidence.lifecycle import OpenLifecycleMarkPath
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathError,
@@ -305,4 +307,150 @@ def test_trade_path_rejects_mark_outside_lifecycle() -> None:
             _trade(),
             (_mark(2_001, "101", "mark-late"),),
             (),
+        )
+
+
+def _open_lifecycle_path(
+    *records: ReplayRecord,
+    plan_id: str = "plan-open",
+) -> OpenLifecycleMarkPath:
+    return OpenLifecycleMarkPath(
+        market=MARKET,
+        opening_plan_id=plan_id,
+        opened_at_ms=1_000,
+        venue_max_leverage=Decimal("20"),
+        mark_observations=records,
+    )
+
+
+def test_sink_incremental_checkpoint_is_exactly_same_durable_path(
+    tmp_path: Path,
+) -> None:
+    class TrackingStore(ContinuousPaperTradePathStore):
+        def __init__(self, root: Path) -> None:
+            super().__init__(root)
+            self.forwarded: list[tuple[str | None, ...]] = []
+
+        def checkpoint_open_path(
+            self,
+            *,
+            opening_plan_id: str,
+            market: MarketId,
+            opened_at_ms: int,
+            mark_observations: tuple[ReplayRecord, ...],
+            venue_max_leverage: Decimal | None = None,
+        ) -> int:
+            self.forwarded.append(
+                tuple(row.event_key for row in mark_observations)
+            )
+            return super().checkpoint_open_path(
+                opening_plan_id=opening_plan_id,
+                market=market,
+                opened_at_ms=opened_at_ms,
+                mark_observations=mark_observations,
+                venue_max_leverage=venue_max_leverage,
+            )
+
+    actual = TrackingStore(tmp_path / "optimized")
+    baseline = ContinuousPaperTradePathStore(tmp_path / "baseline")
+    sink = _ContinuousTradePathSink(actual)
+    r1 = _record(1_200, "101", "one")
+    r2 = _record(1_500, "103", "two")
+    r3 = _record(1_800, "102", "three")
+
+    sequences = (
+        (r1, r2),
+        (r1, r2),
+        (r1, r2, r3),
+        # Identical data reordered is NOT an append-only prefix; it must
+        # be reconciled via the full validated durable-store path.
+        (r2, r1, r3),
+        (r2, r1, r3),
+    )
+    for records in sequences:
+        sink.checkpoint((_open_lifecycle_path(*records),))
+        baseline.checkpoint_open_path(
+            opening_plan_id="plan-open",
+            market=MARKET,
+            opened_at_ms=1_000,
+            mark_observations=records,
+            venue_max_leverage=Decimal("20"),
+        )
+        assert actual._open_path("plan-open").read_bytes() == (
+            baseline._open_path("plan-open").read_bytes()
+        )
+    assert actual.forwarded == [
+        ("one", "two"),
+        (),
+        ("three",),
+        ("two", "one", "three"),
+        (),
+    ]
+    assert sink.error is None
+
+    close = (_record(1_900, "102", "close"),)
+    assert sink.record(_trade(), close, ((1_700, 1_710),)) is True
+    assert baseline.finalize_trade(_trade(), close, ((1_700, 1_710),))
+    assert actual.iter_payloads() == baseline.iter_payloads()
+    assert actual.open_path_count == baseline.open_path_count == 0
+    assert sink._checkpointed_path_records == {}
+
+
+def test_append_only_cache_never_suppresses_rewritten_source_conflicts(
+    tmp_path: Path,
+) -> None:
+    store = ContinuousPaperTradePathStore(tmp_path / "store")
+    sink = _ContinuousTradePathSink(store)
+    first = _record(1_200, "101", "mark-one")
+    second = _record(1_500, "102", "mark-two")
+    sink.checkpoint((_open_lifecycle_path(first),))
+    original_bytes = store._open_path("plan-open").read_bytes()
+    # Same identity but different observed value: no allowed prefix
+    # shortcut. The existing authoritative conflict check must still fire.
+    rewritten = _record(1_200, "110", "mark-one")
+    sink.checkpoint((_open_lifecycle_path(rewritten),))
+    assert "conflicting trade path mark event" in str(sink.error)
+    assert store._open_path("plan-open").read_bytes() == original_bytes
+    assert sink._checkpointed_path_records["plan-open"] == (first,)
+
+    # An error cannot mutate the saved prefix or suppress later received
+    # marks. The following clean tail must still persist exactly.
+    sink.checkpoint((_open_lifecycle_path(first, second),))
+    assert sink._checkpointed_path_records["plan-open"] == (
+        first, second,
+    )
+    assert [m.event_key for m in store._load_open("plan-open")[1]] == [
+        "mark-one", "mark-two",
+    ]
+
+
+def test_zero_new_marks_still_validate_trade_path_identity(
+    tmp_path: Path,
+) -> None:
+    store = ContinuousPaperTradePathStore(tmp_path / "store")
+    assert store.checkpoint_open_path(
+        opening_plan_id="plan-open",
+        market=MARKET,
+        opened_at_ms=1_000,
+        mark_observations=(),
+        venue_max_leverage=Decimal("20"),
+    ) == 0
+    original_bytes = store._open_path("plan-open").read_bytes()
+    assert store.checkpoint_open_path(
+        opening_plan_id="plan-open",
+        market=MARKET,
+        opened_at_ms=1_000,
+        mark_observations=(),
+        venue_max_leverage=Decimal("20"),
+    ) == 0
+    assert store._open_path("plan-open").read_bytes() == original_bytes
+    with pytest.raises(
+        ContinuousPaperTradePathError, match="OPEN_IDENTITY_MISMATCH"
+    ):
+        store.checkpoint_open_path(
+            opening_plan_id="plan-open",
+            market=MARKET,
+            opened_at_ms=999,
+            mark_observations=(),
+            venue_max_leverage=Decimal("20"),
         )
