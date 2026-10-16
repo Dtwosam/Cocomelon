@@ -10,8 +10,8 @@ from cocomelon.continuous_paper import _ContinuousTradePathSink
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
-from cocomelon.evidence.lifecycle import OpenLifecycleMarkPath
 from cocomelon.domain.strategy import Direction
+from cocomelon.evidence.lifecycle import OpenLifecycleMarkPath
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathError,
     ContinuousPaperTradePathMark,
