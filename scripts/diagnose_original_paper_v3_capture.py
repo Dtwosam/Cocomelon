@@ -242,13 +242,15 @@ def diagnose_original_paper_v3_capture(
         ),
         "original_gap_closed_valid_l2_duration_ms_total": (
             terminal.get("gap_closed_valid_l2_duration_ms_total")
-            if terminal_matches and type(terminal.get("gap_closed_valid_l2_duration_ms_total")) is int
+            if terminal_matches
+            and type(terminal.get("gap_closed_valid_l2_duration_ms_total")) is int
             and terminal.get("gap_closed_valid_l2_duration_ms_total") >= 0
             else None
         ),
         "original_gap_closed_valid_non_l2_duration_ms_total": (
             terminal.get("gap_closed_valid_non_l2_duration_ms_total")
-            if terminal_matches and type(terminal.get("gap_closed_valid_non_l2_duration_ms_total")) is int
+            if terminal_matches
+            and type(terminal.get("gap_closed_valid_non_l2_duration_ms_total")) is int
             and terminal.get("gap_closed_valid_non_l2_duration_ms_total") >= 0
             else None
         ),
