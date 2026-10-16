@@ -9482,6 +9482,39 @@ def _local_rest_budget_lines(raw: object) -> list[str]:
     return lines
 
 
+def _v3_live_capture_lines(raw: object) -> list[str]:
+    """Display source-capture *negative telemetry*, never a readiness gate."""
+    lines = [
+        "",
+        "### Original v3 research source capture (nonqualifying)",
+        "",
+    ]
+    if not isinstance(raw, dict):
+        return lines + [
+            "- capture: not reported by this worker",
+            "- source integrity / forward profitability: NOT VERIFIED",
+            "",
+        ]
+    return lines + [
+        f"- capture enabled: {str(raw.get('enabled') is True).lower()}",
+        f"- capture failure: {raw.get('failure') or 'none observed yet'}",
+        (
+            "- offered / original written / dropped: "
+            f"{raw.get('offered_count', 'unavailable')} / "
+            f"{raw.get('written_count', 'unavailable')} / "
+            f"{raw.get('dropped_count', 'unavailable')}"
+        ),
+        (
+            "- queue pending / receive-clock regressions: "
+            f"{raw.get('pending_queue_depth', 'unavailable')} / "
+            f"{raw.get('received_clock_regressions', 'unavailable')}"
+        ),
+        f"- last original written receive ms: {raw.get('last_written_available_at_ms')}",
+        "- source and after-cost profit certification: FALSE (live telemetry only)",
+        "",
+    ]
+
+
 def _render_operational_live_status(
     payload: Mapping[str, Any],
     *,
@@ -9901,6 +9934,7 @@ def _render_operational_live_status(
             )
         ),
         "",
+        *_v3_live_capture_lines(payload.get("v3_original_paper_source_capture")),
         "### Open positions",
         "",
     ]

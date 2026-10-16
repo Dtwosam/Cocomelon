@@ -8618,6 +8618,24 @@ def _operational_live_status_payload(
         "kind": "continuous-paper-heartbeat",
         "heartbeat_scope": "operational",
         "timestamp_ms": timestamp_ms,
+        "v3_original_paper_source_capture": (
+            pump.original_v3_capture.live_diagnostic_snapshot()
+            if pump.original_v3_capture is not None
+            else {
+                "enabled": False,
+                "failure": (
+                    "recorder_startup_failed"
+                    if os.environ.get("V3_CAPTURE_ORIGINAL_SOURCE") == "1"
+                    else "capture_not_requested"
+                ),
+                "capture_admissible_from_heartbeat": False,
+                "source_integrity_certified": False,
+                "after_cost_profitability_verified": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+            }
+        ),
         # In-process InfoClient rolling weights only. No egress public-IP
         # scope or execution authority is asserted by this observation.
         "local_public_rest_budget": local_rest_budget,

@@ -183,6 +183,32 @@ class OriginalPaperMicrostructureCapture:
             self.dropped_count += 1
             self.failure = "original_capture_queue_overflow"
 
+    def live_diagnostic_snapshot(self) -> dict[str, object]:
+        """Memory-only capture counters; NEVER a source or profit certificate."""
+        return {
+            "schema": "v3-original-capture-live-negative-telemetry-v1",
+            "enabled": True,
+            "first_observed_ms": self.first_observed_ms,
+            "original_selected_markets": len(self.selected_markets),
+            "offered_count": self.offered_count,
+            "written_count": self.record_count,
+            "pending_queue_depth": self.queue.qsize(),
+            "dropped_count": self.dropped_count,
+            "received_clock_regressions": self.received_clock_regressions,
+            "last_written_available_at_ms": self.last_available_at_ms,
+            "failure": self.failure,
+            "closed": self.closed,
+            "local_live_snapshot_not_terminal_proof": True,
+            "capture_admissible_from_heartbeat": False,
+            "source_integrity_certified": False,
+            "original_venue_feed_complete": False,
+            "after_cost_profitability_verified": False,
+            "paper_only": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+        }
+
     def _write_batch(self, rows: list[ReplayRecord]) -> None:
         with (self.root / RECORD_FILE).open("ab") as stream:
             for row in rows:

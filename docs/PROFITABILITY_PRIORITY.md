@@ -1,5 +1,25 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 16 — v3 recorder failure visible during genuine PAPER, not only after handoff
+
+The ordinary authenticated operational PAPER heartbeat now includes an
+in-memory `v3_original_paper_source_capture` diagnostic: whether the
+collector actually initialized, original records offered/written/dropped,
+queue depth, first-received clock regressions, last original write time,
+and writer failure class. The issue renderer labels this as
+**nonqualifying source telemetry**. Failed recorder initialization
+appears as `recorder_startup_failed`, not an assumption that all rows
+have been captured. This helps detect source loss before a four-hour
+handoff rather than waiting for a missing-ZIP seal failure.
+
+The capture snapshot is read-only, O(1), without disk I/O, network or
+changes to PAPER market handling. Every snapshot, even an apparent zero
+drop count, explicitly has source integrity, forward after-fee/funding
+profit and promotion/execution authority FALSE. An external original
+ZIP SHA, clean L2/gap evidence, cross-worker continuity and 72h matched
+paper economics are still mandatory. LIVE disabled.
+
+
 ## October 16 — do not hide why original v3 source capture is absent
 
 Completed real PAPER worker #38842093623 reached the post-handoff v3 source
