@@ -128,6 +128,7 @@ on:
       - "src/cocomelon/research/original_paper_v3_capture.py"
       - "src/cocomelon/research/fresh_long_trend_receipt_order.py"
       - "scripts/seal_original_paper_v3_source.py"
+      - "scripts/diagnose_original_paper_v3_capture.py"
       - "src/cocomelon/research/paper_ena_quarantine.py"
       - "src/cocomelon/research/outcome_learning.py"
       - "src/cocomelon/research/prospective_allowed_residual.py"
