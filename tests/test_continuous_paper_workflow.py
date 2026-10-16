@@ -608,6 +608,40 @@ def test_ordinary_main_merge_does_not_interrupt_paper_source_capture() -> None:
     assert "live_orders_enabled: true" not in worker
 
 
+def test_heartbeat_publisher_never_upgrades_normal_paper_on_main_push() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    start = source.index("- name: Run continuous paper trader")
+    end = source.index("- name: Measure durable continuous paper state", start)
+    worker = source[start:end]
+    # There are two independent ways the old workflow could stop a PAPER
+    # trader on ANY new main commit: the opt-in background watcher AND a
+    # hidden git-fetch/code-diff in the heartbeat reader. Both must obey
+    # the same frozen-at-worker-start flag.
+    enabled = 'if [ "${PAPER_ROLL_ON_MAIN_PUSH:-false}" = "true" ]; then'
+    assert worker.count(enabled) == 2
+    background = worker.index('watch_for_newer_runtime_run "$trader_pid" &')
+    reader = worker.index('heartbeat="${line#COCOMELON_PAPER_HEARTBEAT }"')
+    guard = worker.index(enabled, reader)
+    fetch = worker.index("git fetch --quiet --depth=1 origin main", reader)
+    diff = worker.index("git diff --name-only", reader)
+    stop = worker.index(
+        "touch /tmp/continuous-paper-upgrade-requested", reader
+    )
+    close = worker.index("                fi\\n", stop)
+    render = worker.index(
+        "| python scripts/render_continuous_paper_live_status.py", reader
+    )
+    publish = worker.index('gh issue edit "$LIVE_STATUS_ISSUE"', render)
+    assert background < reader < guard < fetch < diff < stop < close
+    assert close < render < publish
+    assert "PAPER_ROLL_ON_MAIN_PUSH: true" not in worker
+    # Original four-hour cutoff, rollback/safety stop and LIVE-off remain.
+    assert "--duration-seconds 14400" in worker
+    assert "watch_for_session_overrun" in worker
+    assert "kill -TERM" in worker
+    assert "live_orders_enabled: true" not in worker
+
+
 def test_upgrade_handoff_is_not_a_successful_research_source() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     fallback_at = source.index(
