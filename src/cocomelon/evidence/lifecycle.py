@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from heapq import merge
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -278,6 +279,47 @@ def _compact_gap_intervals(
         )
     )
     return compacted
+
+
+def _compact_sorted_gap_sources(
+    sources: Sequence[Sequence[tuple[int, int | None]]],
+) -> tuple[tuple[int, int | None], ...]:
+    """Exact gap union from individually sorted immutable source streams.
+
+    Each per-stream list comes from _record_gap_interval (or exact-state
+    restore) and must be sorted by the _compact_gap_intervals comparator.
+    If a late OPEN witness made a stream temporarily unordered, the
+    market caller must use the historical full-sort fallback instead.
+    """
+    closed_sources = (
+        ((start, end) for start, end in source if end is not None)
+        for source in sources
+    )
+    compacted_closed: list[tuple[int, int]] = []
+    for start, end in merge(*closed_sources):
+        if (
+            not compacted_closed
+            or start > compacted_closed[-1][1]
+        ):
+            compacted_closed.append((start, end))
+        else:
+            previous_start, previous_end = compacted_closed[-1]
+            compacted_closed[-1] = (previous_start, max(previous_end, end))
+
+    open_sources = (
+        ((start, None) for start, end in source if end is None)
+        for source in sources
+    )
+    open_intervals = merge(*open_sources, key=lambda item: item[0])
+    return tuple(merge(
+        compacted_closed,
+        open_intervals,
+        key=lambda item: (
+            item[0],
+            item[1] is None,
+            -1 if item[1] is None else item[1],
+        ),
+    ))
 
 
 def _record_gap_interval(
@@ -911,13 +953,29 @@ class BaselineReplayPipeline:
     def known_gap_intervals_for_market(
         self, market: MarketId,
     ) -> tuple[tuple[int, int | None], ...]:
-        relevant = list(self._gap_intervals)
-        for intervals in self._global_gap_intervals_by_stream.values():
-            relevant.extend(intervals)
+        # Trade close must carry *all* exact historical source-gap debt.
+        # Ordinarily every individual per-stream list is already compacted
+        # and sorted, so merge them without materializing one huge list and
+        # sorting the entire history again. Unknown or shared streams still
+        # invalidate all markets, exactly as before.
+        sources: list[Sequence[tuple[int, int | None]]] = [
+            self._gap_intervals,
+        ]
+        unordered = False
+        for stream_id, intervals in self._global_gap_intervals_by_stream.items():
+            sources.append(intervals)
+            unordered |= stream_id in self._gap_unordered_stream_ids
         for stream_id, intervals in self._gap_intervals_by_stream.items():
             if _gap_stream_matches_market(stream_id, market):
-                relevant.extend(intervals)
-        return tuple(_compact_gap_intervals(relevant))
+                sources.append(intervals)
+                unordered |= stream_id in self._gap_unordered_stream_ids
+        if unordered:
+            # Out-of-order OPEN gaps are kept exactly, not overwritten or
+            # assumed already sorted. Retain original full-sort behavior.
+            return tuple(_compact_gap_intervals([
+                interval for source in sources for interval in source
+            ]))
+        return _compact_sorted_gap_sources(sources)
 
     def restore_gap_intervals(
         self,
