@@ -23,6 +23,15 @@ MAX_PENDING_RECORDS: Final = 16_384
 MAX_TRACKED_ORIGINAL_L2_STREAMS: Final = 512
 # Negative visibility threshold only; not a source-admission certificate.
 L2_COVERAGE_DROUGHT_MS: Final = 5 * 60 * 1000
+# Fixed vocabulary: source-provided reasons never become public diagnostic keys.
+ORIGINAL_GAP_REASON_BUCKETS: Final = (
+    "redundant_disconnect",
+    "recovered",
+    "recovered_after_handoff_witness",
+    "recovered_after_rotation_witness",
+    "MAINNET_FUNDING_HISTORY_INFO_UNAVAILABLE",
+    "other",
+)
 BATCH_SIZE: Final = 256
 # One shared limit with the closed original source ZIP sealer.
 MAX_SOURCE_ROWS: Final = 5_000_000
@@ -208,6 +217,11 @@ class OriginalPaperMicrostructureCapture:
         # the gap. These anonymous counters expose that distinction; no
         # source time or existing PAPER event is modified or qualified.
         self.gap_offered_count = 0
+        self.gap_reason_counts = {
+            reason: 0 for reason in ORIGINAL_GAP_REASON_BUCKETS
+        }
+        self.gap_l2_stream_offered_count = 0
+        self.gap_non_l2_stream_offered_count = 0
         self.gap_open_offered_count = 0
         self.gap_closed_offered_count = 0
         self.gap_boundary_age_over_1s_count = 0
@@ -249,6 +263,27 @@ class OriginalPaperMicrostructureCapture:
             # observation time. Gap payload starts/ends remain historical
             # coverage boundaries; do not lose their original age evidence.
             boundary_ms = record.available_at_ms
+            # Continue bounded diagnostics after permanent recorder failure.
+            # Never put opaque stream IDs or arbitrary reasons in status.
+            source_reason = (
+                gap_payload.get("reason") if isinstance(gap_payload, dict)
+                else None
+            )
+            reason_bucket = (
+                source_reason
+                if type(source_reason) is str
+                and source_reason in ORIGINAL_GAP_REASON_BUCKETS
+                else "other"
+            )
+            self.gap_reason_counts[reason_bucket] += 1
+            stream_id = (
+                gap_payload.get("stream_id") if isinstance(gap_payload, dict)
+                else None
+            )
+            if type(stream_id) is str and stream_id.startswith("l2Book:"):
+                self.gap_l2_stream_offered_count += 1
+            else:
+                self.gap_non_l2_stream_offered_count += 1
             if isinstance(gap_payload, dict):
                 raw_start = gap_payload.get("started_ms")
                 raw_end = gap_payload.get("ended_ms")
@@ -465,6 +500,9 @@ class OriginalPaperMicrostructureCapture:
             ),
             "l2_max_offer_age_ms": self.l2_max_offer_age_ms,
             "gap_offered_count": self.gap_offered_count,
+            "gap_reason_counts": dict(self.gap_reason_counts),
+            "gap_l2_stream_offered_count": self.gap_l2_stream_offered_count,
+            "gap_non_l2_stream_offered_count": self.gap_non_l2_stream_offered_count,
             "gap_open_offered_count": self.gap_open_offered_count,
             "gap_closed_offered_count": self.gap_closed_offered_count,
             "gap_boundary_age_over_1s_count": (
@@ -621,6 +659,9 @@ class OriginalPaperMicrostructureCapture:
             ),
             "l2_max_offer_age_ms": self.l2_max_offer_age_ms,
             "gap_offered_count": self.gap_offered_count,
+            "gap_reason_counts": dict(self.gap_reason_counts),
+            "gap_l2_stream_offered_count": self.gap_l2_stream_offered_count,
+            "gap_non_l2_stream_offered_count": self.gap_non_l2_stream_offered_count,
             "gap_open_offered_count": self.gap_open_offered_count,
             "gap_closed_offered_count": self.gap_closed_offered_count,
             "gap_boundary_age_over_1s_count": (

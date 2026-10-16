@@ -348,15 +348,21 @@ and same-L2-stream clock regressions were **zero**. This rules out
 the hypothesis that the initial failure necessarily required a multi-
 second L2 backlog.
 
-In the existing PAPER contract, `_record_from_gap` sets
-`ReplayRecord.available_at_ms` to the DATA_GAP start (for OPEN) or
-end (for CLOSED). These are **historical source coverage boundaries**,
-not an independently measured instant of first receipt by the PAPER
-record pump. A stale-gap witness can therefore reach PAPER after other
-market events with a boundary timestamp earlier than those events.
-The research recorder still rejects any source receive-clock regression:
-do not reinterpret a historical boundary as actual observed-first time
-or silently substitute the PAPER clamped clock.
+In genuine workers **before** merged PR #1293, `_record_from_gap`
+sets `ReplayRecord.available_at_ms` to the DATA_GAP start (for OPEN)
+or end (for CLOSED). Those are historical coverage boundaries, not
+first-receipt timestamps. The resulting delayed notification could
+therefore regress behind later received market events.
+
+From PR #1293 onward, **newly started** PAPER workers construct each live
+gap record inside the serialized record-pump lock using its actual
+observation time. The original `started_ms` and `ended_ms` stay unchanged
+in the original immutable gap payload; old source artifacts are NEVER
+rewritten, and offline boundary-time callers retain their old semantics.
+The research recorder still rejects true receive-clock regressions
+(including reordered L2), while any genuine source DATA_GAP still
+disqualifies the frozen v3 zero-gap trial. Receipt-time correction is
+not a venue-completeness claim or permission to erase a gap.
 
 The next negative-only diagnostic separates original DATA_GAP OPEN
 versus CLOSED offers, counts their original boundary age at the
