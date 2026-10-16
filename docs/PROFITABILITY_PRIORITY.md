@@ -1,6 +1,42 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
 
+## October 16 — bounded CPU work for ordinary original PAPER data-gap events
+
+Authenticated PAPER worker #38890963241 at its Oct 16, 11:47 UTC
+heartbeat reported a 3,874ms slowest record pump, 3,873ms specifically
+inside `pipeline_on_record` for a `data_gap` event. Its event loop lag
+reached 8.33s, repeatedly near context refresh; the pipeline checkpoint
+state was already ~58MB. These are real observed delays, but not proof
+that each clock regression was caused by data-gap compaction.
+
+The baseline pipeline previously scanned the ENTIRE named per-stream
+gap history for every closed interval (linear membership/index checks)
+and then sorted/recompacted the entire history (O(N log N)), even when
+the gap was strictly chronological or was merely closing the last open
+gap on its own source. This grows unexpectedly expensive as identical
+original gap evidence accumulates over days of PAPER source reconnects.
+
+New `_record_gap_interval` keeps the same exact interval-list semantics
+and validation: a chronological complete gap appends or extends the
+last closed interval in constant time; a closure of the most recent
+named open gap likewise replaces/merges only the last closed interval.
+Any backdated, overlapping older, or temporarily unordered gap still
+runs the ORIGINAL historical exact compaction. A per-source ephemeral
+flag remembers unordered OPEN gap append order until an old-style
+CLOSED compaction restores the sorted invariant; it never drops,
+synthesizes, extends into unknown, or claims recovery of an actual
+source gap. Exhaustive seeded old-vs-new state comparisons exercise
+30,000 mixed open/close/backdated records; a large-history test
+forbids full compaction on the chronological fast path.
+
+No change to PAPER strategy, fills, funding, risk, order sizing,
+continuity gating, source archive ZIP bytes or LIVE state. This
+optimizes gap bookkeeping only; the frozen 72h original-L2 and both
+accounts net-positive gates remain independent and unproven.
+
+
+
 ## October 16 — original v3 ZIP must not wait behind SHORT rank sealing
 
 Follow-up audit of the merged #1279 YAML found an ordering gap:
