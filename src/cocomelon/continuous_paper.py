@@ -499,12 +499,21 @@ CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"
 CADENCE_SHADOW_SOURCE_PRIORITY_DISCONTINUITY = (
     "disabled_original_v3_source_priority"
 )
+CADENCE_SHADOW_RUNTIME_FAILURE_DISCONTINUITY = (
+    "disabled_after_cadence_runtime_failure"
+)
 
 
-def _cadence_shadow_discontinuity_payload() -> dict[str, object]:
+def _cadence_shadow_discontinuity_payload(
+    *, runtime_failure: bool = False,
+) -> dict[str, object]:
     return {
         "schema_version": 0,
-        "continuity_status": CADENCE_SHADOW_SOURCE_PRIORITY_DISCONTINUITY,
+        "continuity_status": (
+            CADENCE_SHADOW_RUNTIME_FAILURE_DISCONTINUITY
+            if runtime_failure
+            else CADENCE_SHADOW_SOURCE_PRIORITY_DISCONTINUITY
+        ),
         "research_only": True,
         "shadow_only": True,
         "execution_authority": False,
@@ -2874,14 +2883,21 @@ def _restore_cadence_shadow(
         if (
             isinstance(raw, dict)
             and raw.get("continuity_status")
-            == CADENCE_SHADOW_SOURCE_PRIORITY_DISCONTINUITY
+            in {
+                CADENCE_SHADOW_SOURCE_PRIORITY_DISCONTINUITY,
+                CADENCE_SHADOW_RUNTIME_FAILURE_DISCONTINUITY,
+            }
         ):
-            # This is a deliberately persisted research discontinuity,
-            # NOT an old complete cadence shadow to resume. Non-v3
-            # research may restart from zero but must expose its break.
-            raise ValueError(
+            # Explicit research discontinuity, never a complete
+            # historical cadence shadow. Subsequent research may restart
+            # from zero but cannot silently link the skipped period.
+            reason = (
                 "cadence_shadow_history_discontinuous_from_original_v3"
+                if raw["continuity_status"]
+                == CADENCE_SHADOW_SOURCE_PRIORITY_DISCONTINUITY
+                else "cadence_shadow_history_discontinuous_after_runtime_failure"
             )
+            raise ValueError(reason)
         shadow.restore_state(raw)
         shadow.reconcile_markets(selected_markets)
     except Exception as exc:
@@ -10924,16 +10940,21 @@ async def run_continuous_paper_session(
                 else:
                     pump.checkpoint_cadence_state_skips += 1
             elif (
-                cadence_source_priority_reason is not None
+                pump.cadence_shadow_error is not None
                 and cadence_shadow_persisted_revision != -1
             ):
-                # Replace a formerly valid optional research checkpoint
-                # exactly once. Handoff must never carry stale cadence
-                # history as apparently continuous after v3 source-first
-                # sessions skipped observing market events.
+                # Both deliberate v3 source priority and mid-session
+                # optional observer failure cause a missing observation
+                # window. Replace the previous cadence state exactly
+                # once, so a later worker cannot treat old research as
+                # an uninterrupted source-backed comparison.
                 payloads.append((
                     cadence_shadow_state_path,
-                    _cadence_shadow_discontinuity_payload(),
+                    _cadence_shadow_discontinuity_payload(
+                        runtime_failure=(
+                            cadence_source_priority_reason is None
+                        ),
+                    ),
                 ))
                 cadence_revision_to_persist = -1
             if profit_lock_execution_shadow.shadow is not None:
