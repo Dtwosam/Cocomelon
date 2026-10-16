@@ -575,6 +575,14 @@ class ContinuousPaperTradePathStore:
                         temporary.unlink()
                 header = expected_header
 
+        if header is not None and not mark_observations and path.is_file():
+            # Identity and any legacy-header upgrade are already verified.
+            # The existing cache was previously checked and merged. No
+            # received marks means no durable write and no need to re-sort
+            # the entire growing mark history on the PAPER event loop.
+            self._open_cache[opening_plan_id] = (header, existing_marks)
+            return 0
+
         current_marks = _merge_marks(
             tuple(existing_marks)
             + tuple(
