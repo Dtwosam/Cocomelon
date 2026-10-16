@@ -1390,6 +1390,11 @@ jobs:
           echo "successor_run_id=$successor_run_id" >> "$GITHUB_OUTPUT"
           echo "exact successor dispatch receipt: $successor_run_id"
 
+      - name: Remove local fast resume archive
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        shell: bash
+        run: rm -f continuous-paper-resume.tar.zst
+
       # FAST exact successor already has an immutable uploaded resume ZIP.
       # Seal and upload the ORIGINAL v3 source IMMEDIATELY, before SHORT
       # rank feature sealing, durable state repacking, or other research.
@@ -1449,11 +1454,6 @@ jobs:
           path: ${{ runner.temp }}/v3-original-capture-diagnostic.json
           if-no-files-found: error
           retention-days: 90
-
-      - name: Remove local fast resume archive
-        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
-        shell: bash
-        run: rm -f continuous-paper-resume.tar.zst
 
       # Read-only early review happens ONLY after exact-state successor
       # dispatch has succeeded. It is not a prerequisite for paper custody,
