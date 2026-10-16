@@ -494,6 +494,24 @@ CHECKPOINT_FILENAME = "runtime-state.json"
 SUMMARY_FILENAME = "session-summary.json"
 CADENCE_SHADOW_FILENAME = "cadence-shadow-summary.json"
 CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"
+# Optional research continuity marker only; never included in PAPER account
+# checkpoint or original source and never used to grant execution authority.
+CADENCE_SHADOW_SOURCE_PRIORITY_DISCONTINUITY = (
+    "disabled_original_v3_source_priority"
+)
+
+
+def _cadence_shadow_discontinuity_payload() -> dict[str, object]:
+    return {
+        "schema_version": 0,
+        "continuity_status": CADENCE_SHADOW_SOURCE_PRIORITY_DISCONTINUITY,
+        "research_only": True,
+        "shadow_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "continuity_authenticated": False,
+    }
+
 # Optional research cannot repeatedly block the genuine PAPER source pump.
 MAX_OPTIONAL_CADENCE_OBSERVE_MS = 1_000
 PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME = (
@@ -2853,6 +2871,17 @@ def _restore_cadence_shadow(
         return shadow
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
+        if (
+            isinstance(raw, dict)
+            and raw.get("continuity_status")
+            == CADENCE_SHADOW_SOURCE_PRIORITY_DISCONTINUITY
+        ):
+            # This is a deliberately persisted research discontinuity,
+            # NOT an old complete cadence shadow to resume. Non-v3
+            # research may restart from zero but must expose its break.
+            raise ValueError(
+                "cadence_shadow_history_discontinuous_from_original_v3"
+            )
         shadow.restore_state(raw)
         shadow.reconcile_markets(selected_markets)
     except Exception as exc:
@@ -10894,6 +10923,19 @@ async def run_continuous_paper_session(
                     pump.checkpoint_cadence_state_serializations += 1
                 else:
                     pump.checkpoint_cadence_state_skips += 1
+            elif (
+                cadence_source_priority_reason is not None
+                and cadence_shadow_persisted_revision != -1
+            ):
+                # Replace a formerly valid optional research checkpoint
+                # exactly once. Handoff must never carry stale cadence
+                # history as apparently continuous after v3 source-first
+                # sessions skipped observing market events.
+                payloads.append((
+                    cadence_shadow_state_path,
+                    _cadence_shadow_discontinuity_payload(),
+                ))
+                cadence_revision_to_persist = -1
             if profit_lock_execution_shadow.shadow is not None:
                 payloads.append(
                     (
