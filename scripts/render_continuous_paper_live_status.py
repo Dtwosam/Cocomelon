@@ -9495,6 +9495,9 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             "- source integrity / forward profitability: NOT VERIFIED",
             "",
         ]
+    reasons = raw.get("gap_reason_counts")
+    if not isinstance(reasons, dict):
+        reasons = {}
     return lines + [
         f"- capture enabled: {str(raw.get('enabled') is True).lower()}",
         f"- capture failure: {raw.get('failure') or 'none observed yet'}",
@@ -9559,6 +9562,23 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{raw.get('gap_offered_count', 'unavailable')} / "
             f"{raw.get('gap_open_offered_count', 'unavailable')} / "
             f"{raw.get('gap_closed_offered_count', 'unavailable')}"
+        ),
+        (
+            "- source gap L2 / other stream notices: "
+            f"{raw.get('gap_l2_stream_offered_count', 'unavailable')} / "
+            f"{raw.get('gap_non_l2_stream_offered_count', 'unavailable')}"
+        ),
+        (
+            "- source gap reasons disconnect / recovered / handoff / rotation: "
+            f"{reasons.get('redundant_disconnect', 'unavailable')} / "
+            f"{reasons.get('recovered', 'unavailable')} / "
+            f"{reasons.get('recovered_after_handoff_witness', 'unavailable')} / "
+            f"{reasons.get('recovered_after_rotation_witness', 'unavailable')}"
+        ),
+        (
+            "- source gap reasons funding / other: "
+            f"{reasons.get('MAINNET_FUNDING_HISTORY_INFO_UNAVAILABLE', 'unavailable')} / "
+            f"{reasons.get('other', 'unavailable')}"
         ),
         (
             "- source gap boundary age at PAPER offer >1s / >15s / future: "
