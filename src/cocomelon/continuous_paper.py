@@ -259,6 +259,7 @@ from cocomelon.research.opportunity_inventory_witness import (
 )
 from cocomelon.research.original_paper_v3_capture import (
     OriginalPaperMicrostructureCapture,
+    persist_original_capture_startup_failure,
 )
 from cocomelon.research.original_stop_book_evidence import (
     OriginalStopBookCapture,
@@ -10507,9 +10508,25 @@ async def run_continuous_paper_session(
                     first_observed_ms=started_at_ms,
                     replay_config=replay_config,
                 )
-            except Exception:
-                # A failed capture remains ineligible: post-handoff sealer
-                # will find no clean terminal receipt and will not upload.
+            except Exception as capture_init_exc:
+                # PAPER remains operational. A separate nonqualifying
+                # GitHub artifact must explain recorder init failure; never
+                # manufacture an original journal or signed terminal state.
+                if runner_temp and run_id and attempt and head_sha:
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.to_thread(
+                                persist_original_capture_startup_failure,
+                                Path(runner_temp),
+                                run_id=run_id,
+                                run_attempt=attempt,
+                                head_sha=head_sha,
+                                error=capture_init_exc,
+                            ),
+                            timeout=1.0,
+                        )
+                    except Exception:
+                        pass
                 original_v3_capture = None
         pump = _RecordPump(
             pipeline,

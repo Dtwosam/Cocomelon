@@ -22,6 +22,7 @@ BATCH_SIZE: Final = 256
 RECORD_FILE: Final = "original-received-rows.jsonl"
 TERMINAL_FILE: Final = "original-capture-terminal.json"
 READY_SCHEMA: Final = "fresh-v3-original-paper-async-receipt-v1"
+STARTUP_FAILURE_FILE: Final = "v3-original-capture-init-failure.json"
 
 
 def _canonical_json(data: object) -> bytes:
@@ -42,6 +43,29 @@ def _atomic_json(path: Path, value: object) -> None:
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def persist_original_capture_startup_failure(
+    diagnostic_root: Path, *,
+    run_id: str, run_attempt: str, head_sha: str, error: Exception,
+) -> None:
+    """Best-effort, local, nonqualifying cause of recorder startup denial.
+
+    Only preserve the exception class, never private paths, API secrets,
+    original source content or a fabricated terminal recording.
+    """
+    _atomic_json(diagnostic_root / STARTUP_FAILURE_FILE, {
+        "schema": "v3-original-paper-recorder-init-failed-v1",
+        "run_id": run_id,
+        "run_attempt": run_attempt,
+        "head_sha": head_sha,
+        "exception_class": type(error).__name__,
+        "original_capture_started": False,
+        "source_admissible": False,
+        "paper_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+    })
 
 
 def _replay_payload(row: ReplayRecord) -> dict[str, object]:
