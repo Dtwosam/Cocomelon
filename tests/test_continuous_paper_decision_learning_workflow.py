@@ -14,10 +14,10 @@ def test_paper_worker_publishes_decision_learning_without_opening_dependency() -
     upload_at = source.index(
         "- name: Upload compact continuous decision learning source"
     )
-    durable_at = source.index(
-        "- name: Pack durable continuous paper state"
+    summary_at = source.index(
+        "- name: Render compact decision learning handoff summary"
     )
-    upload = source[upload_at:durable_at]
+    upload = source[upload_at:summary_at]
 
     assert "id: decision_learning_upload" in upload
     assert "steps.decision_fact_export.outcome == 'success'" in upload
@@ -50,13 +50,21 @@ def test_decision_learning_upload_stays_off_critical_handoff_path() -> None:
     durable_pack_at = source.index(
         "- name: Pack durable continuous paper state"
     )
+    fallback_at = source.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    fallback_diagnostic_at = source.index(
+        "- name: Upload frozen v3 original capture diagnostic (fallback exact handoff)"
+    )
 
     assert (
         fast_dispatch_at
+        < durable_pack_at
+        < fallback_at
+        < fallback_diagnostic_at
         < decision_export_at
         < decision_upload_at
         < decision_summary_at
-        < durable_pack_at
     )
 
 
@@ -130,10 +138,10 @@ def test_decision_learning_handoff_summary_exposes_population_and_upload() -> No
     summary_at = source.index(
         "- name: Render compact decision learning handoff summary"
     )
-    durable_at = source.index(
-        "- name: Pack durable continuous paper state"
+    next_upload_at = source.index(
+        "- name: Upload fixed ENA paper quarantine decision receipt"
     )
-    summary = source[summary_at:durable_at]
+    summary = source[summary_at:next_upload_at]
 
     assert "learning-decisions-summary.json" in summary
     assert "DECISION_SOURCE_UPLOAD_OUTCOME" in summary
