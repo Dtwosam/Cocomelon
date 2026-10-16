@@ -1,6 +1,30 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
 
+## October 16 — optional SHORT archive no longer delays durable fallback
+
+Authentic PAPER worker #38899067717 on merged #1283 finished its
+trading step with an upgrade stop and could not use the fast-dispatch
+source-custody branch. The existing fallback dispatch waited while it
+sealed and uploaded original SHORT rank first-seen, full-feature,
+market-context and learning data. Those SIX rank-source steps do not
+authorize or modify the PAPER account or mandatory state restore;
+their artifact uploads can consume substantial wall time while no
+successor is trading.
+
+Now the same genuine PAPER job, AFTER any successful fast handoff,
+runs the existing compact decision-fact step, immutable durable
+account archive pack/upload, exact fallback successor dispatch,
+and the mutually exclusive fallback original v3 capture custody
+**before** the optional original SHORT rank seal/upload tasks.
+Exact account checkpoint bytes, guard, fast dispatch, durable archive
+packing implementation, fallback dispatch predicate, source seal and
+research promotion authority are unchanged. Rank/learning research
+still uploads after the mandatory handoff. An archive rejected by
+the exact source validator still cannot bootstrap a trader, and
+no source/cost maturity or LIVE permission is inferred.
+
+
 ## October 16 — constant-time newest OPEN gap witness
 
 PR #1284 eliminated O(N log N) re-compaction for chronological CLOSED
