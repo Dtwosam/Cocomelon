@@ -280,6 +280,69 @@ def _compact_gap_intervals(
     return compacted
 
 
+def _record_gap_interval(
+    intervals: list[tuple[int, int | None]],
+    *,
+    started_ms: int,
+    ended_ms: int | None,
+    sorted_so_far: bool,
+) -> bool:
+    """Update source-specific gap coverage without O(history) on tail closes.
+
+    Return whether the list is sorted by the *same* comparator as
+    _compact_gap_intervals. Out-of-order OPEN gaps are retained in their
+    original un-compacted order until the next CLOSED gap, matching the
+    historical runtime and persisted contract exactly.
+    """
+    gap = (started_ms, ended_ms)
+    if ended_ms is None:
+        if gap not in intervals:
+            if sorted_so_far and intervals and started_ms < intervals[-1][0]:
+                sorted_so_far = False
+            intervals.append(gap)
+        return sorted_so_far
+
+    # The closed-gap protocol validates start/end before this helper.
+    # Already compacted CLOSED intervals never overlap in sorted state.
+    # A later gap can only append to or extend the last closed interval;
+    # no earlier intervals must be scanned or re-sorted in that case.
+    if sorted_so_far and intervals:
+        last_start, last_end = intervals[-1]
+        if last_end is not None and started_ms >= last_start:
+            if started_ms > last_end:
+                intervals.append(gap)
+            else:
+                intervals[-1] = (last_start, max(last_end, ended_ms))
+            return True
+        # Frequent normal case: a named gap opened and later closed with
+        # exactly the same start. The close replaces that OPEN interval.
+        # An immediately preceding CLOSED interval is the only candidate
+        # requiring coalescence (when this list is known sorted).
+        if (last_start, last_end) == (started_ms, None) and (
+            len(intervals) == 1 or intervals[-2][1] is not None
+        ):
+            if len(intervals) > 1:
+                prev_start, prev_end = intervals[-2]
+                assert prev_end is not None
+                if prev_end >= started_ms:
+                    intervals[-2:] = [
+                        (prev_start, max(prev_end, ended_ms))
+                    ]
+                    return True
+            intervals[-1] = gap
+            return True
+
+    # Any overlapping, old-timestamp or unsorted open interval remains
+    # subject to the original exact gap-closure/compaction policy.
+    open_gap = (started_ms, None)
+    if open_gap in intervals:
+        intervals[intervals.index(open_gap)] = gap
+    elif gap not in intervals:
+        intervals.append(gap)
+    intervals[:] = _compact_gap_intervals(intervals)
+    return True
+
+
 
 def _market_wire_name_for_gap_stream(stream_id: str) -> str | None:
     """Parse only unambiguous per-asset feed topics.
@@ -387,6 +450,10 @@ class BaselineReplayPipeline:
         self._gap_intervals_by_stream: dict[
             str, list[tuple[int, int | None]]
         ] = {}
+        # Ephemeral only: a prior out-of-order OPEN gap may temporarily
+        # leave a source list unsorted until the next CLOSED compaction.
+        # Never confuse it with already durably persisted gap evidence.
+        self._gap_unordered_stream_ids: set[str] = set()
         # Unrecognized/shared streams are global for chart coverage, but
         # recoveries must only close the exact source that actually recovered.
         # Legacy unattributed checkpoints above stay permanently uncertain.
@@ -877,6 +944,8 @@ class BaselineReplayPipeline:
                 validated.append((started_ms, ended_ms))
             restored[stream_id] = _compact_gap_intervals(validated)
         self._gap_intervals_by_stream = restored
+        # _compact_gap_intervals validated and sorted every restored stream.
+        self._gap_unordered_stream_ids.clear()
 
     def restore_global_gap_intervals_by_stream(
         self, gaps: dict[str, tuple[tuple[int, int | None], ...]],
@@ -902,6 +971,7 @@ class BaselineReplayPipeline:
                 validated.append((started_ms, ended_ms))
             restored[stream_id] = _compact_gap_intervals(validated)
         self._global_gap_intervals_by_stream = restored
+        self._gap_unordered_stream_ids.clear()
 
     def _new_exposure_allowed(self, timestamp_ms: int) -> bool:
         cutoff_ms = self._new_exposure_cutoff_ms
@@ -1503,23 +1573,22 @@ class BaselineReplayPipeline:
                 intervals = self._global_gap_intervals_by_stream.setdefault(
                     stream_id, [],
                 )
-            interval = (started_raw, ended_raw)
-            if ended_raw is None:
-                if started_raw < 0:
-                    raise ReplayInvariantError("data-gap start must be nonnegative")
-                if interval not in intervals:
-                    intervals.append(interval)
+            if started_raw < 0:
+                raise ReplayInvariantError("data-gap start must be nonnegative")
+            if ended_raw is not None and ended_raw < started_raw:
+                raise ReplayInvariantError(
+                    "data-gap ended_ms must be >= started_ms"
+                )
+            sorted_after = _record_gap_interval(
+                intervals,
+                started_ms=started_raw,
+                ended_ms=ended_raw,
+                sorted_so_far=stream_id not in self._gap_unordered_stream_ids,
+            )
+            if sorted_after:
+                self._gap_unordered_stream_ids.discard(stream_id)
             else:
-                if started_raw < 0 or ended_raw < started_raw:
-                    raise ReplayInvariantError(
-                        "data-gap ended_ms must be >= started_ms"
-                    )
-                open_interval = (started_raw, None)
-                if open_interval in intervals:
-                    intervals[intervals.index(open_interval)] = interval
-                elif interval not in intervals:
-                    intervals.append(interval)
-                intervals[:] = _compact_gap_intervals(intervals)
+                self._gap_unordered_stream_ids.add(stream_id)
 
         if evaluate_decisions:
             decision_engine_started = time.perf_counter()
