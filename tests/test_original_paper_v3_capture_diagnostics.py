@@ -130,6 +130,60 @@ def test_original_incomplete_terminal_and_record_counts_remain_visible(
     _assert_research_denied(report)
 
 
+def test_negative_terminal_keeps_clock_cause_and_unacknowledged_offers(
+    tmp_path: Path,
+) -> None:
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    (capture / RECORD_FILE).write_bytes(b'{"original":true}\\n')
+    (capture / TERMINAL_FILE).write_text(json.dumps({
+        "run_id": RUN, "run_attempt": ATTEMPT, "head_sha": HEAD,
+        "complete": False,
+        "failure": "original_received_clock_regression",
+        "offered_count": 9,
+        "written_count": 6,
+        "dropped_count": 2,
+        "offered_not_written_or_dropped_count": 1,
+        "original_received_clock_regressions": 2,
+        "regressions_vs_prior_offered": 2,
+        "regressions_vs_paper_clock": 1,
+        "max_original_clock_backward_ms": 120,
+        "first_regression_cause": "both_prior_input_and_paper_clock",
+        "first_regression_event_kind": "l2_book",
+    }))
+    report = _diagnose(tmp_path)
+    assert report["original_offered_not_written_or_dropped_count"] == 1
+    assert report["original_regressions_vs_prior_offered"] == 2
+    assert report["original_regressions_vs_paper_clock"] == 1
+    assert report["original_max_clock_backward_ms"] == 120
+    assert report["original_first_regression_cause"] == (
+        "both_prior_input_and_paper_clock"
+    )
+    assert report["original_first_regression_event_kind"] == "l2_book"
+    _assert_research_denied(report)
+
+
+def test_foreign_terminal_never_exposes_original_clock_cause(
+    tmp_path: Path,
+) -> None:
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    (capture / TERMINAL_FILE).write_text(json.dumps({
+        "run_id": "9999999999", "run_attempt": ATTEMPT, "head_sha": HEAD,
+        "first_regression_cause": "paper_previous_clock",
+        "regressions_vs_paper_clock": 123,
+        "max_original_clock_backward_ms": 123,
+        "offered_not_written_or_dropped_count": 123,
+    }))
+    report = _diagnose(tmp_path)
+    assert report["diagnostic_reason"] == "terminal_identity_mismatch"
+    assert report["original_first_regression_cause"] is None
+    assert report["original_regressions_vs_paper_clock"] is None
+    assert report["original_max_clock_backward_ms"] is None
+    assert report["original_offered_not_written_or_dropped_count"] is None
+    _assert_research_denied(report)
+
+
 def test_matching_terminal_without_original_journal_stays_blocked(
     tmp_path: Path,
 ) -> None:
