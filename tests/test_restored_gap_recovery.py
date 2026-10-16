@@ -561,7 +561,7 @@ def test_paper_runtime_witnesses_both_supervisor_rotation_paths() -> None:
         "await rotation_observer.accept_recorded_event(", recorded
     )
     assert recorded < rotated
-    assert "gap_sink=lambda gap: pump.process(_record_from_gap(gap))" in (
+    assert "gap_sink=lambda gap: pump.process(gap)" in (
         source[rotated:rotated + 300]
     )
 
