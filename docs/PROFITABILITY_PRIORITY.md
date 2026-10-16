@@ -1,6 +1,24 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
 
+## October 16 — constant-time newest OPEN gap witness
+
+PR #1284 eliminated O(N log N) re-compaction for chronological CLOSED
+source gaps, but the opening half of the same source-gap path still
+used `if gap not in intervals`, scanning all historical gap records
+even for an obviously newer unique first open. The follow-up fast path
+compares the new original gap's start with the largest known sorted
+tail timestamp. Only a **strictly newer** open interval can append
+without searching history; equal, duplicate, backdated, temporarily
+unsorted and legacy-source conditions retain exactly the previous
+membership scan and original temporal coverage semantics. A
+250,000-interval adversarial test forbids any historical membership scan
+on chronological OPEN events and compares the old/new results under
+duplicates, out-of-order events and later closure. Nothing about
+the source evidence, closing gap time, raw order, account decisions,
+fee model, funding, LIVE mode or economic gates changes.
+
+
 ## October 16 — bounded CPU work for ordinary original PAPER data-gap events
 
 Authenticated PAPER worker #38890963241 at its Oct 16, 11:47 UTC
