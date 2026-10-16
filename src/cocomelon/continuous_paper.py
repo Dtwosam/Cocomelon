@@ -494,6 +494,8 @@ CHECKPOINT_FILENAME = "runtime-state.json"
 SUMMARY_FILENAME = "session-summary.json"
 CADENCE_SHADOW_FILENAME = "cadence-shadow-summary.json"
 CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"
+# Optional research cannot repeatedly block the genuine PAPER source pump.
+MAX_OPTIONAL_CADENCE_OBSERVE_MS = 1_000
 PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME = (
     "profit-lock-execution-shadow-state.json"
 )
@@ -5170,6 +5172,20 @@ class _RecordPump:
                         f"{type(exc).__name__}: {exc}"
                     )
                     self.cadence_shadow = None
+                else:
+                    # One slow optional study cannot repeatedly hold the
+                    # serialized original feed for seconds. This only trips
+                    # AFTER the actual operation, never changes current
+                    # PAPER decisions or a source timestamp, and marks the
+                    # optional comparison unavailable for the full session.
+                    elapsed_ms = max(
+                        0, int((loop.time() - component_started) * 1000),
+                    )
+                    if elapsed_ms >= MAX_OPTIONAL_CADENCE_OBSERVE_MS:
+                        self.cadence_shadow_error = (
+                            "research_cadence_observer_exceeded_latency_budget"
+                        )
+                        self.cadence_shadow = None
             finish_component("cadence_shadow", component_started)
 
             component_started = loop.time()
