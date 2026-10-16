@@ -9614,6 +9614,20 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{raw.get('gap_closed_invalid_bounds_count', 'unavailable')}"
         ),
         (
+            "- original selected-market L2 gap notices / outside selection: "
+            f"{raw.get('l2_selected_gap_offered_notice_count', 'unavailable')} / "
+            f"{raw.get('l2_unselected_gap_offered_notice_count', 'unavailable')}"
+        ),
+        (
+            "- original selected-market L2 gap affected markets / peak notices: "
+            f"{raw.get('l2_selected_gap_affected_market_count', 'unavailable')} / "
+            f"{raw.get('l2_selected_gap_peak_market_notice_count', 'unavailable')}"
+        ),
+        (
+            "- original selected-market L2 gap top-three share (bps): "
+            f"{raw.get('l2_selected_gap_top3_share_bps', 'unavailable')}"
+        ),
+        (
             "- source gap reasons funding / other: "
             f"{reasons.get('MAINNET_FUNDING_HISTORY_INFO_UNAVAILABLE', 'unavailable')} / "
             f"{reasons.get('other', 'unavailable')}"
