@@ -1,5 +1,33 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 16 — independently verify PAPER recovery after every main merge
+
+At 10:49 UTC, ordinary push PAPER run #38889293128 completed GREEN but
+skipped its trader; the newest visible genuine workflow_dispatch worker
+#38888335505 had completed its trader, successfully uploaded its exact
+fast resume archive and logged exact successor dispatch SUCCESS, without
+a subsequently visible started successor in the GitHub workflow-run
+listing. The last authenticated Issue #469 PAPER heartbeat remained
+10:10 UTC. A green guard-only push or successful dispatch API call
+must NEVER be counted as an active PAPER trader.
+
+Independent paper rescue therefore runs on every main-branch push, as
+well as its existing ten-minute independent cron, while preserving the
+separate `independent-paper-rescue` concurrency lease and original
+strict fast-resume archive verification. Just before requesting a
+successor it rechecks all genuine workflow jobs/artifacts, and refuses
+dispatch if the lease has changed. It then requires a genuinely *new*
+GitHub workflow_dispatch run bound to the exact predecessor to
+materialize; a stale previously-known guard-only workflow with the
+same title is not a successful receipt. If GitHub never creates a
+new run, the watchdog fails visibly instead of reporting trading
+continuity. Even a materialized dispatch remains unauthenticated until
+the successor actually restores, trades, and publishes its heartbeat.
+
+Never use a stale PAPER heartbeat as dispatch authority, resurrect a
+previous older account state, or switch on LIVE because of this watchdog.
+
+
 ## October 16 — the ORIGINAL recorder terminal must precede optional post-PAPER reporting
 
 Genuine worker #38879693481 (build `c3009b40`) uploaded independent
