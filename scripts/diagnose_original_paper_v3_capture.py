@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from cocomelon.research.original_paper_v3_capture import (
+    ORIGINAL_CLOCK_REGRESSION_FAMILIES,
     ORIGINAL_GAP_REASON_BUCKETS,
     RECORD_FILE,
     STARTUP_FAILURE_FILE,
@@ -215,6 +216,31 @@ def diagnose_original_paper_v3_capture(
             terminal.get("l2_selected_market_over_5min_drought_count")
             if terminal_matches
             and type(terminal.get("l2_selected_market_over_5min_drought_count")) is int
+            else None
+        ),
+        "original_regression_source_family_counts": (
+            dict(terminal["regression_source_family_counts"])
+            if terminal_matches
+            and isinstance(terminal.get("regression_source_family_counts"), dict)
+            and set(terminal["regression_source_family_counts"])
+            == set(ORIGINAL_CLOCK_REGRESSION_FAMILIES)
+            and all(
+                type(value) is int and value >= 0
+                for value in terminal["regression_source_family_counts"].values()
+            )
+            else None
+        ),
+        "original_first_regression_source_family": (
+            terminal.get("first_regression_source_family")
+            if terminal_matches
+            and terminal.get("first_regression_source_family")
+            in ORIGINAL_CLOCK_REGRESSION_FAMILIES
+            else None
+        ),
+        "original_first_regression_age_at_offer_ms": (
+            terminal.get("first_regression_age_at_offer_ms")
+            if terminal_matches
+            and type(terminal.get("first_regression_age_at_offer_ms")) is int
             else None
         ),
         "original_gap_reason_counts": (
