@@ -194,6 +194,18 @@ class OriginalPaperMicrostructureCapture:
         self.l2_offer_age_over_15s_count = 0
         self.l2_offer_timestamp_future_count = 0
         self.l2_max_offer_age_ms = 0
+        # DATA_GAP.available_at_ms historically represents the gap's
+        # start/end boundary, NOT necessarily the moment PAPER observed
+        # the gap. These anonymous counters expose that distinction; no
+        # source time or existing PAPER event is modified or qualified.
+        self.gap_offered_count = 0
+        self.gap_open_offered_count = 0
+        self.gap_closed_offered_count = 0
+        self.gap_boundary_age_over_1s_count = 0
+        self.gap_boundary_age_over_15s_count = 0
+        self.gap_boundary_timestamp_future_count = 0
+        self.gap_max_boundary_age_ms = 0
+        self.first_regression_gap_boundary_kind: str | None = None
         self.failure: str | None = None
         self.closed = False
         self._task = asyncio.create_task(self._writer())
@@ -212,6 +224,31 @@ class OriginalPaperMicrostructureCapture:
         # local offered rows would overlook a first-record regression.
         prior_offered = self.last_offered_available_at_ms
         prior_paper = paper_previous_at_ms
+        gap_boundary_kind: str | None = None
+        if record.record_kind.value == "data_gap":
+            # Gap payload bounds are not immutable arrival receipts:
+            # (start, end) may be established before the gap is emitted.
+            # Record only bounded aggregate age and open/closed classes.
+            self.gap_offered_count += 1
+            try:
+                gap_payload = json.loads(record.payload_json)
+            except (ValueError, TypeError):
+                gap_payload = None
+            if isinstance(gap_payload, dict):
+                raw_end = gap_payload.get("ended_ms")
+                if raw_end is None:
+                    gap_boundary_kind = "open"
+                    self.gap_open_offered_count += 1
+                elif type(raw_end) is int:
+                    gap_boundary_kind = "closed"
+                    self.gap_closed_offered_count += 1
+            gap_age_ms = utc_now_ms() - record.available_at_ms
+            self.gap_boundary_age_over_1s_count += int(gap_age_ms > 1_000)
+            self.gap_boundary_age_over_15s_count += int(gap_age_ms > 15_000)
+            self.gap_boundary_timestamp_future_count += int(gap_age_ms < 0)
+            self.gap_max_boundary_age_ms = max(
+                self.gap_max_boundary_age_ms, gap_age_ms
+            )
         within_l2_stream_regression = False
         if (
             record.record_kind.value == "normalized_event"
@@ -269,6 +306,7 @@ class OriginalPaperMicrostructureCapture:
                 latest - record.available_at_ms,
             )
             if self.first_received_clock_regression is None:
+                self.first_regression_gap_boundary_kind = gap_boundary_kind
                 self.first_regression_cause = (
                     "both_prior_input_and_paper_clock"
                     if below_offered and below_paper
@@ -352,6 +390,22 @@ class OriginalPaperMicrostructureCapture:
                 self.l2_offer_timestamp_future_count
             ),
             "l2_max_offer_age_ms": self.l2_max_offer_age_ms,
+            "gap_offered_count": self.gap_offered_count,
+            "gap_open_offered_count": self.gap_open_offered_count,
+            "gap_closed_offered_count": self.gap_closed_offered_count,
+            "gap_boundary_age_over_1s_count": (
+                self.gap_boundary_age_over_1s_count
+            ),
+            "gap_boundary_age_over_15s_count": (
+                self.gap_boundary_age_over_15s_count
+            ),
+            "gap_boundary_timestamp_future_count": (
+                self.gap_boundary_timestamp_future_count
+            ),
+            "gap_max_boundary_age_ms": self.gap_max_boundary_age_ms,
+            "first_regression_gap_boundary_kind": (
+                self.first_regression_gap_boundary_kind
+            ),
             "last_written_available_at_ms": self.last_available_at_ms,
             "failure": self.failure,
             "closed": self.closed,
@@ -491,6 +545,22 @@ class OriginalPaperMicrostructureCapture:
                 self.l2_offer_timestamp_future_count
             ),
             "l2_max_offer_age_ms": self.l2_max_offer_age_ms,
+            "gap_offered_count": self.gap_offered_count,
+            "gap_open_offered_count": self.gap_open_offered_count,
+            "gap_closed_offered_count": self.gap_closed_offered_count,
+            "gap_boundary_age_over_1s_count": (
+                self.gap_boundary_age_over_1s_count
+            ),
+            "gap_boundary_age_over_15s_count": (
+                self.gap_boundary_age_over_15s_count
+            ),
+            "gap_boundary_timestamp_future_count": (
+                self.gap_boundary_timestamp_future_count
+            ),
+            "gap_max_boundary_age_ms": self.gap_max_boundary_age_ms,
+            "first_regression_gap_boundary_kind": (
+                self.first_regression_gap_boundary_kind
+            ),
             "first_original_received_clock_regression": (
                 self.first_received_clock_regression
             ),
