@@ -234,3 +234,20 @@ dropped, over-budget or incompletely closed recorder never creates a
 qualifying v3 original ZIP. These counters are not proof of original venue
 completeness, multi-worker receipt continuity or prospective profitability.
 No strategy or risk change and no LIVE authority.
+
+## October 16 — preserve raw-clock anomaly classifications, not false replay time
+
+On authenticated PAPER #38882371037 at 10:03 UTC, the original-v3
+recorder was active but already permanently failed source integrity:
+10,784 original offers, 3,542 writes, 7,241 drops and 55
+raw receive-clock regressions. The existing PAPER record pump may clamp
+late-arriving normalized event timestamps for operational continuity; that
+clock cannot be reinterpreted as true original first-received research
+evidence. The follow-on research-only diagnostic distinguishes raw timestamps
+older than the preceding source offer from timestamps older than the
+existing PAPER pipeline clock (including a restored predecessor checkpoint).
+It reports fixed-vocabulary first failure classification, event kind and
+maximum backward delta, without copying event keys, payload or paths into
+operational status. Failure remains irreversible for the present worker,
+and **no valid missing original source is repaired by these counters**.
+Do not replay this worker as a successful v3 economic sample.
