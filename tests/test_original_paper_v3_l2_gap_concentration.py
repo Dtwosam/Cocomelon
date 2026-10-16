@@ -74,8 +74,9 @@ def test_selected_l2_gap_concentration_and_unknown_stream_exclusion(
         assert result["l2_selected_gap_top3_share_bps"] == 10_000
         assert result["gap_l2_stream_offered_count"] == 9
         assert result["gap_non_l2_stream_offered_count"] == 1
-        assert result["source_integrity_certified"] is False
         assert result["promotion_authority"] is False
+    assert snapshot["source_integrity_certified"] is False
+    assert terminal["external_market_completeness_authenticated"] is False
     # Never reflect an unselected or untrusted stream ID as a status key.
     assert "UNSELECTED-SOURCE-KEY" not in json.dumps(snapshot)
     assert "UNSELECTED-SOURCE-KEY" not in json.dumps(terminal)
