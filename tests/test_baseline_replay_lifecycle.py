@@ -631,6 +631,69 @@ def test_position_research_observer_receives_marks_books_and_close(
     facts.close()
 
 
+def test_close_snapshots_exact_market_gap_provenance_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[tuple[tuple[int, int | None], ...]] = []
+
+    class Sink:
+        def record(
+            self,
+            trade: TradeJournalEntry,
+            mark_observations: tuple[ReplayRecord, ...],
+            known_gap_intervals: tuple[tuple[int, int | None], ...],
+        ) -> bool:
+            assert trade.market == MARKET
+            assert mark_observations
+            captured.append(tuple(known_gap_intervals))
+            return True
+
+    pipeline, execution, facts = _pipeline(
+        tmp_path, suffix="one-exact-gap-union-at-close",
+        closed_lifecycle_sink=Sink(),
+    )
+    _run_records(pipeline, (
+        _snapshot_record(),
+        _trigger_record(),
+        _book(OPEN_BOOK_MS, bid="99.9", ask="100.1"),
+    ))
+    # Simulate a source-specific restored gap that is relevant to the
+    # opened trade and a distinct unrelated market gap. The receipt must
+    # be identical in journal and optional close research sink.
+    started = OPEN_BOOK_MS + 5
+    pipeline.restore_gap_intervals_by_stream({
+        "l2Book:BTC": ((started, started + 75),),
+        "l2Book:ETH": ((started + 10, started + 200),),
+    })
+    pipeline.restore_global_gap_intervals_by_stream({
+        "allMids": ((started + 130, started + 180),),
+    })
+    exact = pipeline.known_gap_intervals_for_market
+    calls: list[MarketId] = []
+
+    def observed(market: MarketId) -> tuple[tuple[int, int | None], ...]:
+        calls.append(market)
+        return exact(market)
+
+    monkeypatch.setattr(pipeline, "known_gap_intervals_for_market", observed)
+    _run_records(pipeline, (
+        _asset_ctx(ORACLE_MS, mark="100", oracle="100"),
+        _funding(),
+        _asset_ctx(STOP_MARK_MS, mark="94", oracle="94"),
+        _book(CLOSE_BOOK_MS, bid="93.9", ask="94.0"),
+    ))
+    assert len(pipeline.finalize(CLOSE_BOOK_MS)) == 1
+    assert calls == [MARKET]
+    assert captured == [exact(MARKET)]
+    assert captured[0] == (
+        (started, started + 75),
+        (started + 130, started + 180),
+    )
+    assert (started + 10, started + 200) not in captured[0]
+    execution.close()
+    facts.close()
+
+
 def test_closed_lifecycle_sink_receives_full_mark_path(
     tmp_path: Path,
 ) -> None:
