@@ -622,9 +622,9 @@ def test_heartbeat_reader_cannot_trigger_speculative_main_upgrade_by_default() -
     changed = handler.index("changed_runtime=", fetch)
     stop = handler.index("touch /tmp/continuous-paper-upgrade-requested", changed)
     guard_end = handler.index(
-        '                fi\\n                if printf \'%s\\n\' "$heartbeat" \\',
-        stop,
+        'if printf', stop,
     )
+    assert '                fi\n                if printf' in handler[stop:guard_end + 16]
     render = handler.index("python scripts/render_continuous_paper_live_status.py")
     issue = handler.index('gh issue edit "$LIVE_STATUS_ISSUE"')
     assert gate < fetch < changed < stop < guard_end < render < issue
