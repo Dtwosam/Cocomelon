@@ -2663,10 +2663,14 @@ def _checkpoint_payload(
             0, int((time.perf_counter() - started) * 1000),
         )
     started = time.perf_counter()
-    scoped = {
-        stream_id: [[start, end] for start, end in intervals]
-        for stream_id, intervals in pipeline.known_gap_intervals_by_stream.items()
-    }
+    # The lineage property already freezes each stream into immutable
+    # tuples. CPython's JSON encoder serializes these tuples as exactly the
+    # same nested arrays as fresh lists. Do NOT allocate another list for
+    # every historical gap on the event loop: original source workers
+    # accumulate many real gap witnesses and each mandatory checkpoint
+    # otherwise holds the receipt loop unnecessarily. The disk JSON schema,
+    # ordering, gap boundaries and restore contract stay identical.
+    scoped = pipeline.known_gap_intervals_by_stream
     if stage_timings_ms is not None:
         stage_timings_ms["checkpoint_scoped_gaps"] = max(
             0, int((time.perf_counter() - started) * 1000),

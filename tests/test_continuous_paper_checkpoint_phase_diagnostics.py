@@ -32,7 +32,7 @@ def test_checkpoint_phase_telemetry_preserves_exact_payload_and_gap_lineage() ->
         observed, sort_keys=True,
     )
     assert observed["known_gap_intervals"] == [[5, None], [10, 25]]
-    assert observed["known_gap_intervals_by_stream"] == {
+    assert json.loads(json.dumps(observed))["known_gap_intervals_by_stream"] == {
         "l2Book:TEST": [[100, None], [200, 220]],
     }
     assert observed["known_global_gap_intervals_by_stream"] == {
