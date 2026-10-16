@@ -9498,6 +9498,9 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
     reasons = raw.get("gap_reason_counts")
     if not isinstance(reasons, dict):
         reasons = {}
+    clock_families = raw.get("regression_source_family_counts")
+    if not isinstance(clock_families, dict):
+        clock_families = {}
     return lines + [
         f"- capture enabled: {str(raw.get('enabled') is True).lower()}",
         f"- capture failure: {raw.get('failure') or 'none observed yet'}",
@@ -9538,6 +9541,25 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{raw.get('first_regression_cause') or 'none observed'} / "
             f"{raw.get('first_regression_event_kind') or 'none observed'} / "
             f"{raw.get('max_original_clock_backward_ms', 'unavailable')}"
+        ),
+        (
+            "- first original regression source family / original age at offer ms: "
+            f"{raw.get('first_regression_source_family') or 'none observed'} / "
+            f"{raw.get('first_regression_age_at_offer_ms', 'unavailable')}"
+        ),
+        (
+            "- original regressions market-snapshot / funding / candle: "
+            f"{clock_families.get('market_snapshot', 'unavailable')} / "
+            f"{clock_families.get('funding_rate', 'unavailable')} / "
+            f"{clock_families.get('candle', 'unavailable')}"
+        ),
+        (
+            "- original regressions L2 / trade / asset-ctx / gap / other: "
+            f"{clock_families.get('l2_book', 'unavailable')} / "
+            f"{clock_families.get('trades', 'unavailable')} / "
+            f"{clock_families.get('active_asset_ctx', 'unavailable')} / "
+            f"{clock_families.get('data_gap', 'unavailable')} / "
+            f"{clock_families.get('other', 'unavailable')}"
         ),
         (
             "- original L2 within-stream / cross-stream-only clock regressions: "
