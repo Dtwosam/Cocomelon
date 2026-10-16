@@ -10,6 +10,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -199,6 +200,43 @@ def choose_exact_source(
     return "no_source", None
 
 
+def find_new_exact_successor(
+    runs: list[dict[str, Any]],
+    *,
+    repository: str,
+    source_run_id: int,
+    previously_seen_ids: frozenset[int],
+) -> int | None:
+    """Confirm dispatch materialized, not that its trader has run.
+
+    An old or guard-skipped run with the same title is NOT a new receipt.
+    Only a newly seen GitHub workflow_dispatch for this exact predecessor
+    can explain this invocation's accepted dispatch response.
+    """
+    if type(source_run_id) is not int or source_run_id <= 0:
+        raise PaperRescueError("invalid exact paper predecessor run ID")
+    matches = []
+    for run in runs:
+        if not isinstance(run, dict):
+            raise PaperRescueError("malformed exact successor run listing")
+        run_id = run.get("id")
+        if (
+            run.get("display_title") == f"Continuous Paper · {source_run_id}"
+            and run.get("event") == "workflow_dispatch"
+            and run.get("path") == WORKFLOW_PATH
+            and run.get("head_branch") == "main"
+            and (run.get("head_repository") or {}).get("full_name")
+            == repository
+        ):
+            if type(run_id) is not int or run_id <= source_run_id:
+                raise PaperRescueError("invalid materialized exact successor ID")
+            if run_id not in previously_seen_ids:
+                matches.append(run_id)
+    if len(matches) > 1:
+        raise PaperRescueError("multiple new exact successor dispatches detected")
+    return matches[0] if matches else None
+
+
 def verify_active_heartbeat(
     body: object,
     *,
@@ -338,6 +376,45 @@ def main() -> int:
         # continuity cannot be proved from exact artifacts.
         raise PaperRescueError(f"Paper trader unverified; recovery {status}")
     run_id, attempt = source
+    # Close the observation-to-dispatch race before mutating GitHub. A
+    # scheduled watchdog and a just-published exact dispatch must never
+    # both take ownership of the same PAPER snapshot.
+    latest_runs = _collection(
+        f"repos/{repository}/actions/workflows/continuous-paper.yml/runs?per_page=100",
+        "workflow_runs",
+    )
+    latest_status, latest_source = choose_exact_source(
+        latest_runs,
+        repository=repository,
+        get_jobs=lambda candidate: _collection(
+            f"repos/{repository}/actions/runs/{candidate}/jobs?per_page=100",
+            "jobs",
+        ),
+        get_artifacts=lambda candidate: _collection(
+            f"repos/{repository}/actions/runs/{candidate}/artifacts?per_page=100",
+            "artifacts",
+        ),
+    )
+    if latest_status != "ready" or latest_source != source:
+        if latest_status in {"active", "queued_exact"}:
+            print(
+                "PAPER lease taken by another actual or queued exact worker; "
+                f"current_state={latest_status}. No duplicate dispatch."
+            )
+            return 0
+        # Missing/blocked/newer unverified worker is NOT a green recovery.
+        # It must appear as an operational failure for human diagnosis.
+        raise PaperRescueError(
+            "PAPER lease changed to unverifiable exact state before "
+            f"dispatch: {latest_status}; no stale-state rescue"
+        )
+
+    dispatch_path = f"repos/{repository}/actions/runs?event=workflow_dispatch&per_page=100"
+    baseline = _collection(dispatch_path, "workflow_runs")
+    prior_ids = frozenset(
+        row["id"] for row in baseline
+        if type(row.get("id")) is int
+    )
     subprocess.run(
         [
             "gh", "workflow", "run", "continuous-paper.yml", "--ref", "main",
@@ -347,12 +424,30 @@ def main() -> int:
         check=True,
         timeout=45,
     )
-    print(
-        f"Exact paper successor dispatch accepted: "
-        f"source_run_id={run_id} source_run_attempt={attempt}. "
-        "Confirm its actual trader step and heartbeat separately."
+    # A successful gh command is NOT evidence that GitHub created a new
+    # workflow run, much less that the trader actually restored its state.
+    for poll in range(12):
+        observed = _collection(dispatch_path, "workflow_runs")
+        successor = find_new_exact_successor(
+            observed,
+            repository=repository,
+            source_run_id=run_id,
+            previously_seen_ids=prior_ids,
+        )
+        if successor is not None:
+            print(
+                f"Exact PAPER dispatch materialized: run={successor}; "
+                f"source_run_id={run_id} source_run_attempt={attempt}. "
+                "Trader start, authenticated heartbeat, and continuity "
+                "are NOT YET VERIFIED."
+            )
+            return 0
+        if poll < 11:
+            time.sleep(5)
+    raise PaperRescueError(
+        "GitHub accepted exact PAPER dispatch but no NEW successor run "
+        "materialized during bounded verification; trading unverified"
     )
-    return 0
 
 
 if __name__ == "__main__":

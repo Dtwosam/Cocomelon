@@ -2,11 +2,11 @@ name: Independent Paper Recovery Watchdog
 run-name: Independent Paper Rescue · ${{ github.run_id }}
 
 on:
+  # Every code merge can stop the old PAPER worker. Independently check
+  # custody of the latest exact resume archive and recover if needed;
+  # skipped push guards do not prove trading continuity.
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/independent-paper-recovery.yml"
-      - "scripts/rescue_continuous_paper.py"
   workflow_dispatch:
   schedule:
     - cron: "3,13,23,33,43,53 * * * *"
