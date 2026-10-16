@@ -1,5 +1,29 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 16 — the ORIGINAL recorder terminal must precede optional post-PAPER reporting
+
+Genuine worker #38879693481 (build `c3009b40`) uploaded independent
+diagnostic `continuous-paper-v3-source-diagnostic-38879693481-1`: its
+recorder root and 13,905 original journal bytes were present, but it had
+no CLOSED terminal receipt. The worker had received an upgrade stop and
+continued into long post-exit research/packaging. The old implementation
+only attempted to close the original recorder at the very end of the
+entire PAPER coroutine, after many optional research writes, risking an
+interrupted recorder despite a successfully persisted trading account.
+
+The genuine PAPER loop now first cancels old streaming supervisors and
+flushes/persists the AUTHORITATIVE trade checkpoint, then gives the
+optional original research recorder a bounded 10s queue drain with a
+15s outer budget **before** discretionary report and paired-shadow
+finalization. Failure cannot block state restoration or invent source
+continuity. The original outer finally keeps its best-effort backup
+close, with an incomplete capture remaining disqualified.
+
+Historical missing original bytes and terminal receipts remain missing,
+the source collector still independently rejects clock regressions and
+drops, and no account profit/LIVE permission is inferred.
+
+
 ## October 16 — source ZIP first after genuine PAPER successor handoff
 
 Previously, after queuing the exact successor, the worker completed many

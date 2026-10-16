@@ -285,3 +285,29 @@ def test_original_v3_seal_and_negative_diagnostic_precede_expensive_handoff_rese
     assert "live_orders_enabled: true" not in (
         workflow[fallback:diagnostic_upload]
     )
+
+
+def test_original_v3_terminal_closes_right_after_authoritative_paper_checkpoint() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text()
+    # Only the *normal end of the actual continuous PAPER record loop*;
+    # research close never precedes the mandatory trading state checkpoint.
+    at = source.index("        await flush_opening_path_observe()")
+    checkpoint = source.index("        persist_checkpoint_sync()", at)
+    early_close = source.index(
+        "original_v3_capture.close(timeout_seconds=10.0)", checkpoint
+    )
+    budget = source.index("timeout=15.0", early_close)
+    discretionary = source.index(
+        'root / "paper-ena-quarantine-summary.json"', checkpoint
+    )
+    expensive_shadow = source.index(
+        "await loss_context_paired_shadow_runtime.checkpoint(", checkpoint
+    )
+    assert at < checkpoint < early_close < budget < discretionary
+    assert budget < expensive_shadow
+    assert "except Exception as original_close_exc:" in (
+        source[early_close:discretionary]
+    )
+    # The original final cleanup still provides best-effort retry and
+    # continues to refuse signing lost source rows after cancellation.
+    assert "await original_v3_capture.close()" in source[expensive_shadow:]
