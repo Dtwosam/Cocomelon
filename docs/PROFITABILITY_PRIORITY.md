@@ -1,6 +1,39 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
 
+## October 16 — do not reset genuine PAPER observation for every main merge
+
+The genuine PAPER worker contains an upgrade watcher that previously
+polled GitHub every 60 seconds and stopped the trade coroutine if
+**any** newer `main` push run had a different SHA, including a
+guard-only push whose trading step was skipped. Multiple normal
+research/CI merges therefore produced exit code 143 upgrade stops,
+missing or incomplete original v3 recorder archives, and increasingly
+short intervals with no verified market-source continuity. Green guard
+runs never proved successful state restoration or economic maturity.
+
+Normal `PAPER_ROLL_ON_MAIN_PUSH` now defaults to **false** at actual
+PAPER step startup. Ordinary commits remain on main and are deployed
+on the **existing natural four-hour exact account-state handoff**,
+without interrupting a healthy current PAPER worker early. The worker
+still enforces its existing 14,400-second trading-session limit and
+15,300-second hard overrun watchdog with bounded graceful/INT/TERM
+escalation, and the independently scheduled PAPER recovery watchdog
+continues to check for actual failed/hung/missing exact successors.
+The original market feed, PAPER strategy/risk/fee configuration,
+source-byte validity, evidence embargo and LIVE-off are unchanged.
+
+Emergency mid-session code upgrades remain an **explicit opt-in**
+repository variable `PAPER_ROLL_ON_MAIN_PUSH=true` for *newly started
+workers only*. The variable is read at worker startup; changing it
+later does NOT retroactively enable an upgrade for an already-running
+worker. The routine default deliberately prioritizes continuous
+source capture and non-overlap over minute-by-minute research code
+deployment. An unresponsive actual PAPER trader must still be
+recovered through its existing time-limit and independently verified
+account-state safeguards; stale heartbeat cannot authorize a trader.
+
+
 ## October 16 — optional SHORT archive no longer delays durable fallback
 
 Authentic PAPER worker #38899067717 on merged #1283 finished its
