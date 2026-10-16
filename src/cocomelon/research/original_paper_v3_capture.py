@@ -102,6 +102,8 @@ class OriginalPaperMicrostructureCapture:
         selected_markets: Sequence[str],
         first_observed_ms: int,
         replay_config: BaselineReplayConfig,
+        predecessor_run_id: str | None = None,
+        predecessor_run_attempt: str | None = None,
     ) -> None:
         if (
             not run_id.isdecimal() or not run_attempt.isdecimal()
@@ -112,6 +114,23 @@ class OriginalPaperMicrostructureCapture:
             or not all(isinstance(x, str) and x for x in selected_markets)
         ):
             raise ValueError("original paper recording worker identity invalid")
+        if (
+            (predecessor_run_id is None) != (predecessor_run_attempt is None)
+            or (
+                predecessor_run_id is not None
+                and (
+                    not predecessor_run_id.isdecimal()
+                    or not predecessor_run_attempt
+                    or not predecessor_run_attempt.isdecimal()
+                    or int(predecessor_run_id) <= 0
+                    or int(predecessor_run_attempt) <= 0
+                    or predecessor_run_id == run_id
+                )
+            )
+        ):
+            raise ValueError("original predecessor declaration invalid")
+        self.predecessor_run_id = predecessor_run_id
+        self.predecessor_run_attempt = predecessor_run_attempt
         self.root = root
         self.run_id = run_id
         self.run_attempt = run_attempt
@@ -331,6 +350,9 @@ class OriginalPaperMicrostructureCapture:
             "run_id": self.run_id,
             "run_attempt": self.run_attempt,
             "head_sha": self.head_sha,
+            "declared_predecessor_run_id": self.predecessor_run_id,
+            "declared_predecessor_run_attempt": self.predecessor_run_attempt,
+            "predecessor_state_restore_independently_authenticated": False,
             "first_observed_ms": self.first_observed_ms,
             "selected_markets_at_worker_start": list(self.selected_markets),
             "original_effective_replay_config_digest": self.replay_config_digest,
