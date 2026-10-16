@@ -367,6 +367,49 @@ def test_original_v3_fast_source_custody_precedes_all_optional_archive_work() ->
     assert "live_orders_enabled: true" not in workflow[fast:deferred]
 
 
+def test_paper_durable_fallback_never_waits_for_optional_decision_exports() -> None:
+    workflow = Path(".github/workflows/continuous-paper.yml").read_text()
+    fast = workflow.index("- name: Queue exact successor from fast resume")
+    original_fast = workflow.index("- name: Seal frozen v3 original microstructure source\n")
+    durable_pack = workflow.index("- name: Pack durable continuous paper state")
+    durable_upload = workflow.index("- name: Upload durable continuous paper state")
+    fallback = workflow.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    original_fallback = workflow.index(
+        "- name: Seal frozen v3 original microstructure source (fallback exact handoff)"
+    )
+    diag_fallback = workflow.index(
+        "- name: Upload frozen v3 original capture diagnostic (fallback exact handoff)"
+    )
+    early_audit = workflow.index(
+        "- name: Dispatch preliminary independent v2 audit after exact handoff"
+    )
+    decision_export = workflow.index("- name: Export compact continuous decision facts")
+    decision_upload = workflow.index("- name: Upload compact continuous decision learning source")
+    decision_summary = workflow.index("- name: Render compact decision learning handoff summary")
+    short_rank = workflow.index("- name: Seal original first-seen SHORT rank source")
+    assert (
+        fast < original_fast < durable_pack < durable_upload < fallback
+        < original_fallback < diag_fallback < early_audit
+        < decision_export < decision_upload < decision_summary < short_rank
+    )
+    # Actual dispatch must depend only on verified durable archive outcome,
+    # never the success of optional research exports.
+    assert "steps.fast_resume_dispatch.outcome != 'success'" in (
+        workflow[fallback:original_fallback]
+    )
+    assert "steps.durable_state_upload.outcome == 'success'" in (
+        workflow[fallback:original_fallback]
+    )
+    assert "decision_fact_export" not in workflow[durable_pack:diag_fallback]
+    assert "decision_learning_upload" not in workflow[durable_pack:diag_fallback]
+    assert "independent-fresh-trend-v2-source-audit.yml" not in (
+        workflow[durable_pack:diag_fallback]
+    )
+    assert "LIVE_ORDERS_ENABLED: true" not in workflow[fast:short_rank]
+
+
 def test_original_v3_terminal_closes_right_after_authoritative_paper_checkpoint() -> None:
     source = Path("src/cocomelon/continuous_paper.py").read_text()
     # Only the *normal end of the actual continuous PAPER record loop*;

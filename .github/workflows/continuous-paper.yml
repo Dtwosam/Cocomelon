@@ -1466,103 +1466,6 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      # Read-only early review happens ONLY after exact-state successor
-      # dispatch has succeeded. It is not a prerequisite for paper custody,
-      # and cannot upgrade an in-progress source to a completed worker.
-      - name: Dispatch preliminary independent v2 audit after exact handoff
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.paper_trader.outcome == 'success' && steps.v2_terminal_verifier.outcome == 'success' && steps.v2_source_archive_upload.outcome == 'success' && steps.fast_resume_dispatch.outcome == 'success' }}
-        continue-on-error: true
-        timeout-minutes: 2
-        shell: bash
-        run: |
-          set -euo pipefail
-          # The isolated archive was uploaded before this step. Never use a
-          # guard-only, latest run, or mutable source selection: pin the
-          # independent reviewer to THIS completed trader source/attempt.
-          echo "## Independently review exact terminal-archived v2 source" >> "$GITHUB_STEP_SUMMARY"
-          echo "- immutable source run / attempt: $GITHUB_RUN_ID / $GITHUB_RUN_ATTEMPT" >> "$GITHUB_STEP_SUMMARY"
-          echo "- worker completion: PRELIMINARY until GitHub worker completion is independently verified" >> "$GITHUB_STEP_SUMMARY"
-          echo "- 72-hour after-cost profitability / LIVE authority: UNVERIFIED / FALSE" >> "$GITHUB_STEP_SUMMARY"
-          dispatched=false
-          for attempt in 1 2 3 4; do
-            if gh workflow run independent-fresh-trend-v2-source-audit.yml \
-              --repo "$GITHUB_REPOSITORY" \
-              --ref main \
-              -f "source_run_id=$GITHUB_RUN_ID" \
-              -f "source_attempt=$GITHUB_RUN_ATTEMPT"; then
-              dispatched=true
-              break
-            fi
-            echo "::warning::independent v2 audit dispatch unavailable ($attempt/4)"
-            if [ "$attempt" -lt 4 ]; then
-              sleep 5
-            fi
-          done
-          if [ "$dispatched" != "true" ]; then
-            echo "::warning::early v2 audit dispatch unavailable; existing scheduled and completed-run auditors remain authoritative"
-            echo "- early dispatch: unavailable; scheduled audit remains" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "- early dispatch: requested, receipt remains subject to independent verification" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Export compact continuous decision facts
-        id: decision_fact_export
-        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s "$STATE_ROOT/facts.sqlite3"
-          cocomelon-continuous-paper-decision-export \
-            --facts "$STATE_ROOT/facts.sqlite3" \
-            --output-dir "$STATE_ROOT/learning-decisions" \
-            > "$STATE_ROOT/learning-decisions-summary.json"
-
-      - name: Upload compact continuous decision learning source
-        id: decision_learning_upload
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.decision_fact_export.outcome == 'success' && hashFiles('continuous-paper-state/learning-decisions/records/*.json') != '' && hashFiles('continuous-paper-state/learning-features/records/*.json') != '' }}
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: continuous-paper-decision-learning-source-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            continuous-paper-state/session-summary.json
-            continuous-paper-state/learning-features
-            continuous-paper-state/learning-decisions
-            continuous-paper-state/learning-decisions-summary.json
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 6
-
-      - name: Render compact decision learning handoff summary
-        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.decision_fact_export.outcome == 'success' && hashFiles('continuous-paper-state/learning-decisions-summary.json') != '' }}
-        env:
-          DECISION_SOURCE_UPLOAD_OUTCOME: ${{ steps.decision_learning_upload.outcome }}
-        run: |
-          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json
-          import os
-          from pathlib import Path
-
-          payload = json.loads(
-              Path(
-                  "continuous-paper-state/learning-decisions-summary.json"
-              ).read_text(encoding="utf-8")
-          )
-          print("## Continuous paper decision-learning handoff")
-          print(f"- selected decision facts: {payload['selected_facts']}")
-          print(f"- LONG decisions: {payload['long_decisions']}")
-          print(f"- SHORT decisions: {payload['short_decisions']}")
-          print(f"- NO_TRADE decisions: {payload['no_trade_decisions']}")
-          print(f"- decision state digest: {payload['state_digest']}")
-          print(
-              "- compact decision source upload: "
-              f"{os.environ['DECISION_SOURCE_UPLOAD_OUTCOME']}"
-          )
-          print("- research-only: true")
-          print("- execution enabled: false")
-          PY
-
       - name: Pack durable continuous paper state
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
         shell: bash
@@ -1718,6 +1621,106 @@ jobs:
           path: ${{ runner.temp }}/v3-original-capture-diagnostic.json
           if-no-files-found: error
           retention-days: 90
+
+      # Once the exact durable fallback is uploaded and its dispatch
+      # attempted, noncritical v2 reviews and learning exports can run.
+      # They must never hold up rescue or the original v3 diagnosis.
+      # Read-only early review happens ONLY after exact-state successor
+      # dispatch has succeeded. It is not a prerequisite for paper custody,
+      # and cannot upgrade an in-progress source to a completed worker.
+      - name: Dispatch preliminary independent v2 audit after exact handoff
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.paper_trader.outcome == 'success' && steps.v2_terminal_verifier.outcome == 'success' && steps.v2_source_archive_upload.outcome == 'success' && steps.fast_resume_dispatch.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The isolated archive was uploaded before this step. Never use a
+          # guard-only, latest run, or mutable source selection: pin the
+          # independent reviewer to THIS completed trader source/attempt.
+          echo "## Independently review exact terminal-archived v2 source" >> "$GITHUB_STEP_SUMMARY"
+          echo "- immutable source run / attempt: $GITHUB_RUN_ID / $GITHUB_RUN_ATTEMPT" >> "$GITHUB_STEP_SUMMARY"
+          echo "- worker completion: PRELIMINARY until GitHub worker completion is independently verified" >> "$GITHUB_STEP_SUMMARY"
+          echo "- 72-hour after-cost profitability / LIVE authority: UNVERIFIED / FALSE" >> "$GITHUB_STEP_SUMMARY"
+          dispatched=false
+          for attempt in 1 2 3 4; do
+            if gh workflow run independent-fresh-trend-v2-source-audit.yml \
+              --repo "$GITHUB_REPOSITORY" \
+              --ref main \
+              -f "source_run_id=$GITHUB_RUN_ID" \
+              -f "source_attempt=$GITHUB_RUN_ATTEMPT"; then
+              dispatched=true
+              break
+            fi
+            echo "::warning::independent v2 audit dispatch unavailable ($attempt/4)"
+            if [ "$attempt" -lt 4 ]; then
+              sleep 5
+            fi
+          done
+          if [ "$dispatched" != "true" ]; then
+            echo "::warning::early v2 audit dispatch unavailable; existing scheduled and completed-run auditors remain authoritative"
+            echo "- early dispatch: unavailable; scheduled audit remains" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- early dispatch: requested, receipt remains subject to independent verification" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Export compact continuous decision facts
+        id: decision_fact_export
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$STATE_ROOT/facts.sqlite3"
+          cocomelon-continuous-paper-decision-export \
+            --facts "$STATE_ROOT/facts.sqlite3" \
+            --output-dir "$STATE_ROOT/learning-decisions" \
+            > "$STATE_ROOT/learning-decisions-summary.json"
+
+      - name: Upload compact continuous decision learning source
+        id: decision_learning_upload
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.decision_fact_export.outcome == 'success' && hashFiles('continuous-paper-state/learning-decisions/records/*.json') != '' && hashFiles('continuous-paper-state/learning-features/records/*.json') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-decision-learning-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            continuous-paper-state/session-summary.json
+            continuous-paper-state/learning-features
+            continuous-paper-state/learning-decisions
+            continuous-paper-state/learning-decisions-summary.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Render compact decision learning handoff summary
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.decision_fact_export.outcome == 'success' && hashFiles('continuous-paper-state/learning-decisions-summary.json') != '' }}
+        env:
+          DECISION_SOURCE_UPLOAD_OUTCOME: ${{ steps.decision_learning_upload.outcome }}
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "continuous-paper-state/learning-decisions-summary.json"
+              ).read_text(encoding="utf-8")
+          )
+          print("## Continuous paper decision-learning handoff")
+          print(f"- selected decision facts: {payload['selected_facts']}")
+          print(f"- LONG decisions: {payload['long_decisions']}")
+          print(f"- SHORT decisions: {payload['short_decisions']}")
+          print(f"- NO_TRADE decisions: {payload['no_trade_decisions']}")
+          print(f"- decision state digest: {payload['state_digest']}")
+          print(
+              "- compact decision source upload: "
+              f"{os.environ['DECISION_SOURCE_UPLOAD_OUTCOME']}"
+          )
+          print("- research-only: true")
+          print("- execution enabled: false")
+          PY
 
       # Small, original-paper intervention receipt: count genuine
       # ENA opening decisions prevented, not hypothetical avoided PnL.

@@ -205,7 +205,7 @@ def test_workflow_seals_rank_only_after_worker_exit_with_nonblocking_upload() ->
     fallback = source.index(
         "- name: Queue fallback exact successor continuous paper worker"
     )
-    assert end < facts < fallback < seal < publish
+    assert end < fallback < facts < seal < publish
     assert "continue-on-error: true" in source[seal:publish]
     assert "if-no-files-found: error" in source[publish:publish+480]
     assert "scripts/seal_paper_short_rank_archive.py" in source

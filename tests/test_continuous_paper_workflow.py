@@ -362,10 +362,10 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
         < fast_upload_at
         < fast_dispatch_at
         < fast_cleanup_at
-        < decision_export_at
         < durable_pack_at
         < durable_upload_at
         < fallback_dispatch_at
+        < decision_export_at
         < deferred_markout_at
     )
     assert "run: rm -f continuous-paper-resume.tar.zst" in source
