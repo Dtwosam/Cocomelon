@@ -1,5 +1,20 @@
 # Cocomelon Project Status
 
+## October 16 — diagnose missing original v3 capture, never heal it
+
+The former genuine worker #38842093623 post-worker v3 source seal
+reported **no CLOSED original worker capture** and uploaded no qualified
+forward market microstructure source. A PAPER-only, best-effort startup
+failure receipt now preserves the exception class and exact worker
+identity rather than swallowing it invisibly. A separate post-handoff
+negative diagnostic upload reports recorder presence, source journal
+size, terminal identity, offered/written/dropped counts and timestamp
+regressions even when the normal v3 source sealer fails. Neither
+diagnostic nor local terminal completion ever grants source or profit
+certification. Ordinary PAPER, frozen v3 selection, risk and LIVE-off
+controls remain unchanged.
+
+
 ## October 15 — v3 restore exact original intra-millisecond event order
 
 The original paper capture has a truly ordered per-worker receipt journal,
