@@ -290,3 +290,24 @@ predecessor resume ZIP, state IDs, gap witness, signed account continuity,
 after-cost PAPER accounts must be separately authenticated. The
 fixed LONG-trend-only research rule, live PAPER positions, sizing,
 execution costs and LIVE-disabled boundary are unchanged.
+
+## October 16 — independent negative preflight for ordered v3 worker source links
+
+The new read-only `fresh_long_trend_source_chain.py` checks a chronological
+sequence of **already independently checked per-worker original GitHub ZIP
+receipts and matching pinned source manifests**. It refuses a missing or
+malformed worker linkage, duplicate worker ID/artifact/outer SHA/manifest,
+source clock overlap, a declared source-handoff gap greater than five minutes,
+a changed original PAPER strategy/risk/fee/feature/engine identity, or
+a source manifest with declared gaps. It allows an explicit first worker
+with a predecessor outside the studied slice, but records that predecessor
+as unauthenticated external dependency. All changes are offline and
+nonqualifying: this function does not browse GitHub, ingest exchange L2,
+authenticate a signed resume artifact, prove market-level coverage, or
+run either PAPER trading account.
+
+A 72-hour *nominal manifest* span is deliberately NOT equivalent to
+72 hours of observed continuous L2 on all selected markets. All the output's
+independent chain/market/after-cost profit/execution/promotion flags remain
+FALSE even for a locally self-consistent chain. Original source ZIPs can
+only feed this preflight after separate exact-outer-ZIP and receipt checks.
