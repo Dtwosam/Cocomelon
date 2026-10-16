@@ -1419,6 +1419,10 @@ class BaselineReplayPipeline:
             )
         )
         exit_reason = actions[-1].reason_codes[0] if actions else "POSITION_CLOSED"
+        # Gap provenance is immutable during this synchronous close. Build
+        # its potentially large per-market compacted union only once and
+        # give the identical receipt to the journal and research sink.
+        known_gap_intervals = self.known_gap_intervals_for_market(market)
         assembled = assemble_trade_journal_entry(
             TradeLifecycleInput(
                 feature_snapshot_id=lifecycle.feature_snapshot_id,
@@ -1433,7 +1437,7 @@ class BaselineReplayPipeline:
                 equity_after=self._execution.account.equity,
                 exit_reason=exit_reason,
                 mark_observations=tuple(lifecycle.marks.values()),
-                known_gap_intervals=self.known_gap_intervals_for_market(market),
+                known_gap_intervals=known_gap_intervals,
                 evidence_class=self._evidence_class,
                 replay_run_id=self._run_id,
             )
@@ -1452,7 +1456,7 @@ class BaselineReplayPipeline:
             self._closed_lifecycle_sink.record(
                 assembled,
                 tuple(lifecycle.marks.values()),
-                self.known_gap_intervals_for_market(market),
+                known_gap_intervals,
             )
         if self._position_research_observer is not None:
             self._position_research_observer.record_closed_trade(
