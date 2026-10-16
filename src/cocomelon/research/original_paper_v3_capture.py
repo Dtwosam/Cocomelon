@@ -345,7 +345,7 @@ class OriginalPaperMicrostructureCapture:
                 self.failure = self.failure or "drain_timeout"
             self._task.cancel()
             await asyncio.gather(self._task, return_exceptions=True)
-        status = {
+        status: dict[str, object] = {
             "schema": READY_SCHEMA,
             "run_id": self.run_id,
             "run_attempt": self.run_attempt,
