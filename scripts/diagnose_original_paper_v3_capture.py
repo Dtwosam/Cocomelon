@@ -182,6 +182,32 @@ def diagnose_original_paper_v3_capture(
             and type(terminal.get("l2_stream_clock_tracking_overflow")) is int
             else None
         ),
+        "original_gap_offered_count": (
+            terminal.get("gap_offered_count")
+            if terminal_matches and type(terminal.get("gap_offered_count")) is int
+            else None
+        ),
+        "original_gap_open_offered_count": (
+            terminal.get("gap_open_offered_count")
+            if terminal_matches and type(terminal.get("gap_open_offered_count")) is int
+            else None
+        ),
+        "original_gap_closed_offered_count": (
+            terminal.get("gap_closed_offered_count")
+            if terminal_matches and type(terminal.get("gap_closed_offered_count")) is int
+            else None
+        ),
+        "original_gap_max_boundary_age_ms": (
+            terminal.get("gap_max_boundary_age_ms")
+            if terminal_matches and type(terminal.get("gap_max_boundary_age_ms")) is int
+            else None
+        ),
+        "original_first_regression_gap_boundary_kind": (
+            terminal.get("first_regression_gap_boundary_kind")
+            if terminal_matches
+            and terminal.get("first_regression_gap_boundary_kind") in ("open", "closed")
+            else None
+        ),
         "original_receive_clock_regressions": (
             terminal.get("original_received_clock_regressions")
             if terminal_matches else None

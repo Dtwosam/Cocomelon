@@ -338,3 +338,32 @@ decision logic, fees, positions, risk, and outcome are untouched.
 A raw clock regression STILL permanently disqualifies the research
 archive. No operational status can grant market L2 completeness,
 after-cost positive paired equity or LIVE permission.
+
+## October 16 — historical gap boundary is NOT actual receipt time
+
+The genuine #38899067717 heartbeat reported 184 original-receive clock
+regressions with the first offending original `data_gap` only 49ms
+backwards, while L2 source-to-PAPER offer age peaked at **7ms**
+and same-L2-stream clock regressions were **zero**. This rules out
+the hypothesis that the initial failure necessarily required a multi-
+second L2 backlog.
+
+In the existing PAPER contract, `_record_from_gap` sets
+`ReplayRecord.available_at_ms` to the DATA_GAP start (for OPEN) or
+end (for CLOSED). These are **historical source coverage boundaries**,
+not an independently measured instant of first receipt by the PAPER
+record pump. A stale-gap witness can therefore reach PAPER after other
+market events with a boundary timestamp earlier than those events.
+The research recorder still rejects any source receive-clock regression:
+do not reinterpret a historical boundary as actual observed-first time
+or silently substitute the PAPER clamped clock.
+
+The next negative-only diagnostic separates original DATA_GAP OPEN
+versus CLOSED offers, counts their original boundary age at the
+actual PAPER offer (>1s, >15s, future-boundary), and reports the
+first failing gap stage without raw source identifiers or market payload.
+Terminal diagnostic fields are bound to exact originating run/attempt/SHA
+and otherwise remain unknown. **This measures where source-clock
+semantics differ; it does not reconstruct a missing exchange event,
+create original first-received evidence, complete the v3 source,
+validate 72h paired economics, or enable LIVE orders.**
