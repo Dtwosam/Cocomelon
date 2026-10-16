@@ -241,8 +241,8 @@ class OriginalPaperMicrostructureCapture:
                 or len(self._last_l2_received_ms_by_stream)
                 < MAX_TRACKED_ORIGINAL_L2_STREAMS
             ):
-                self._last_l2_received_ms_by_stream[stream_id] = (
-                    record.available_at_ms
+                self._last_l2_received_ms_by_stream[stream_id] = max(
+                    prior_same_stream or 0, record.available_at_ms
                 )
             else:
                 self.l2_stream_clock_tracking_overflow += 1
