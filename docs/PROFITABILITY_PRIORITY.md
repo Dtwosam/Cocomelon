@@ -1,6 +1,30 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
 
+## October 16 — second speculative push stop path closed at PAPER heartbeat
+
+Merged PR #1288 made the separate 60-second GitHub push watchdog
+explicit opt-in via `PAPER_ROLL_ON_MAIN_PUSH`, default false. Follow-up
+inspection found a second, independent path: the shell heartbeat reader
+still called `git fetch origin main` and checked its large runtime file
+list on EVERY real account heartbeat, then wrote
+`/tmp/continuous-paper-upgrade-requested` if any file differed. That
+stop file is also used by the normal PAPER coroutine and can end a
+healthy session even with the separate push watcher disabled.
+
+The reader now performs remote main fetch, runtime diff and stop-file
+write only in the SAME explicit opt-in block. The authenticated
+operational heartbeat renderer and Issue #469 publisher run OUTSIDE
+the opt-in block and therefore keep working during stable sessions.
+The four-hour natural term, four-hour-plus-15-minute overrun watchdog,
+exact after-trade checkpoint and independently leased PAPER successor
+are unchanged. This patch takes effect only in a genuine subsequent
+PAPER worker: merging into main does not retroactively alter already
+running versions. Incomplete source archives and failed multiworker
+receipt order remain inadmissible. LIVE stays disabled until signed
+72-hour matched post-cost account economics satisfy all gates.
+
+
 ## October 16 — independent PAPER recovery before optional learning artifacts
 
 In genuine worker #38909345855 (on previous `0d1cdab8`), the PAPER
