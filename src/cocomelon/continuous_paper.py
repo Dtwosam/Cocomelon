@@ -12036,6 +12036,24 @@ async def run_continuous_paper_session(
         await flush_opening_path_observe()
         await flush_background_checkpoint()
         persist_checkpoint_sync()
+        # ORIGINAL research source must close before costly final PAPER
+        # shadow/report accounting. Historical worker #38879693481 left a
+        # real original journal but no terminal receipt when upgrade cleanup
+        # was interrupted. The authoritative trading checkpoint above always
+        # takes precedence; this optional research drain has a hard bound.
+        if original_v3_capture is not None:
+            try:
+                await asyncio.wait_for(
+                    original_v3_capture.close(timeout_seconds=10.0),
+                    timeout=15.0,
+                )
+            except Exception as original_close_exc:
+                original_v3_capture.failure = (
+                    original_v3_capture.failure
+                    or "early_close_failed:" + type(original_close_exc).__name__
+                )
+                # Later finally retains the best-effort terminal retry.
+                # Neither source failure nor its diagnostic blocks PAPER.
         # The trading checkpoint and exact next-worker handoff remain
         # authoritative even when this optional hypothesis receipt fails.
         try:
