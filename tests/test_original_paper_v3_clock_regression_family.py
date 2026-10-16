@@ -106,7 +106,10 @@ def test_first_rest_snapshot_regression_and_following_l2_stay_disqualified(
     assert terminal["promotion_authority"] is False
     assert terminal["external_market_completeness_authenticated"] is False
     status = "\n".join(_v3_live_capture_lines(live))
-    assert "first original regression source family / original age at offer ms: market_snapshot / 9000" in status
+    assert (
+        "first original regression source family / original age at offer ms: "
+        "market_snapshot / 9000"
+    ) in status
     assert "original regressions market-snapshot / funding / candle: 1 / 0 / 0" in status
     assert "original regressions L2 / trade / asset-ctx / gap / other: 1 / 0 / 0 / 0 / 0" in status
     assert "source and after-cost profit certification: FALSE" in status
