@@ -56,10 +56,11 @@ def test_scoped_gap_tuples_emit_byte_identical_json_and_survive_restore(
     # checkpoint v3 bytes. No gaps are omitted or compacted.
     old = _legacy_payload(gaps)
     old["run_id"] = payload["run_id"]
-    canonical = lambda v: json.dumps(  # noqa: E731
-        v, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-        allow_nan=False,
-    )
+    def canonical(value: object) -> str:
+        return json.dumps(
+            value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+            allow_nan=False,
+        )
     assert canonical(payload) == canonical(old)
     saved = canonical(payload)
     # Mutation after snapshot cannot silently rewrite already captured gaps.
