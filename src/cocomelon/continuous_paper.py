@@ -2654,10 +2654,11 @@ def _checkpoint_payload(
             0, int((time.perf_counter() - started) * 1000),
         )
     started = time.perf_counter()
-    unscoped = [
-        [started_ms, ended_ms]
-        for started_ms, ended_ms in pipeline.unscoped_gap_intervals
-    ]
+    # The pipeline already returns immutable (start, end) tuples. The
+    # durable JSON encoder writes tuples as arrays with identical bytes.
+    # Avoid re-allocating one Python list per historical gap on the PAPER
+    # event loop; keep the exact original sequence and gap uncertainty.
+    unscoped = pipeline.unscoped_gap_intervals
     if stage_timings_ms is not None:
         stage_timings_ms["checkpoint_unscoped_gaps"] = max(
             0, int((time.perf_counter() - started) * 1000),
@@ -2676,10 +2677,10 @@ def _checkpoint_payload(
             0, int((time.perf_counter() - started) * 1000),
         )
     started = time.perf_counter()
-    global_scoped = {
-        stream_id: [[start, end] for start, end in intervals]
-        for stream_id, intervals in pipeline.known_global_gap_intervals_by_stream.items()
-    }
+    # Like the scoped lineage above, this property has already frozen
+    # each exact global/shared stream interval and ordered the stream keys.
+    # No second per-gap copy is needed for the identical on-disk JSON.
+    global_scoped = pipeline.known_global_gap_intervals_by_stream
     if stage_timings_ms is not None:
         stage_timings_ms["checkpoint_global_gaps"] = max(
             0, int((time.perf_counter() - started) * 1000),
