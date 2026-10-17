@@ -194,3 +194,55 @@ def test_stale_gap_open_cannot_bypass_uncommitted_anomaly_witness() -> None:
         assert seen[1].ended_ms is None
 
     asyncio.run(run())
+
+
+def test_same_original_out_of_order_redelivery_consumes_exact_pending_receipt() -> None:
+    async def run() -> None:
+        clock = [2_000]
+        accepted: list[str] = []
+        anomaly_attempts: list[DataGap] = []
+        persisted_gaps: list[DataGap] = []
+        fail_once = True
+
+        async def factory() -> object:
+            raise AssertionError("no venue network")
+
+        async def event_sink(event: StreamEvent) -> None:
+            accepted.append(event.event_key)
+
+        async def gap_sink(gap: DataGap) -> None:
+            nonlocal fail_once
+            if gap.reason == "out_of_order":
+                anomaly_attempts.append(gap)
+                if fail_once:
+                    fail_once = False
+                    raise OSError("one failed anomaly receipt")
+            persisted_gaps.append(gap)
+
+        supervisor = WebSocketSupervisor(
+            factory, ({"type": "l2Book", "coin": "BTC"},),
+            event_sink=event_sink, gap_sink=gap_sink,
+            clock_ms=lambda: clock[0],
+            utcnow=lambda: datetime(2026, 10, 17, tzinfo=UTC),
+            stale_after_ms=15_000,
+        )
+        await supervisor._dispatch(_book(2_000))
+        clock[0] = 3_000
+        with pytest.raises(RuntimeError, match="one failed anomaly receipt"):
+            await supervisor._dispatch(_book(1_500))
+        frozen = anomaly_attempts[0]
+        assert "l2Book:BTC" in supervisor._uncommitted_anomaly_event_keys
+
+        # Replay EXACTLY the failed anomalous venue row. The first retry
+        # commits its frozen receipt; it must not create a second anomaly.
+        clock[0] = 3_200
+        await supervisor._dispatch(_book(1_500))
+        assert anomaly_attempts == [frozen, frozen]
+        assert persisted_gaps == [frozen]
+        assert len(accepted) == 1
+        assert supervisor._last_exchange_time["l2Book:BTC"] == 2_000
+        assert supervisor._last_stream_message["l2Book:BTC"] == 3_200
+        assert not supervisor._uncommitted_anomaly_gaps
+        assert not supervisor._uncommitted_anomaly_event_keys
+
+    asyncio.run(run())
