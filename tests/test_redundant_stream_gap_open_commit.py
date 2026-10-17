@@ -2,14 +2,34 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 
-from cocomelon.domain.stream import DataGap, StreamEvent
+from cocomelon.domain.market import MarketId
+from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
-from tests.test_redundant_stream import _trade
 
 STREAM = "trades:BTC"
+BASE = datetime(2026, 10, 17, tzinfo=UTC)
+MARKET = MarketId("", "BTC")
+
+
+def _trade(tid: int, exchange_ms: int, received_ms: int) -> StreamEvent:
+    return StreamEvent(
+        kind=StreamKind.TRADE,
+        market=MARKET,
+        exchange_time_ms=exchange_ms,
+        receive_time=BASE + timedelta(milliseconds=received_ms),
+        schema_version=1,
+        source="hyperliquid-mainnet-ws",
+        event_key=f"trades:BTC:{exchange_ms}:{tid}",
+        payload={
+            "side": "B", "price": Decimal("100"), "size": Decimal("1"),
+            "hash": f"0x{tid}", "tid": tid, "users": ("a", "b"),
+        },
+    )
 
 
 def test_failed_open_must_be_retried_before_any_recovery_event() -> None:
