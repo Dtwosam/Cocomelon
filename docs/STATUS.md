@@ -2,6 +2,38 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — serialize actual redundant lane callbacks during durable handoff
+
+The original recorder remains disqualified, with live worker #39049949008
+at 18:39 UTC showing **48,795** gap notices, **141** adjacent original
+receive-clock regressions vs **1,284** against PAPER's accumulated clock,
+and **292,521** dropped original rows. Earlier independent L2 venue-clock
+checks did not identify a stale/future/regressing exchange-book cause.
+
+An additional concrete race was found in the two-lane `RedundantStreamMux`:
+both independent websocket tasks could concurrently call `on_event`
+and `on_gap`, including when an earlier original event was still
+awaiting its durable downstream sink. This allowed a later same-stream
+event or buffered standby failover delivery to race ahead, before
+`_last_emitted` and event-key state were committed. The mux now
+serializes whole event and gap ingress operations with a single
+asynchronous lock, including failover buffer drains and downstream sink
+completion. The actual event timestamps, original callback payloads,
+duplicate safeguards, and source gap semantics are all unchanged; no
+sorting, clamping, gap suppression, or artificial source certification.
+
+Deterministic async tests hold a sink open while a later same-stream
+callback arrives, race a primary disconnect against the in-flight
+delivery, and verify an actual failed durable sink cannot be bypassed
+by a concurrent lane switch. They assert exact event order, committed
+last event and unchanged gap proof. A single mux lock can introduce
+head-of-line waiting under a slow sink, so any runtime improvement is
+**not assumed**; future natural worker telemetry must assess both
+receive-clock reversals and event-loop/PAPER processing backpressure.
+All original failed rows and gap receipts remain failed; independent
+gap-free 72h source and positive-after-cost paired account evidence
+are still missing. LIVE trading remains disabled.
+
 ## October 17 — preserve distinct equal-receipt market context across WS lanes
 
 While investigating genuine original receive-clock reversals and dual-lane
