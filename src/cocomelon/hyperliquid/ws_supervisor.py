@@ -724,17 +724,18 @@ class WebSocketSupervisor:
             if is_l2:
                 self._l2_normalized_count += 1
                 self._last_l2_normalized_ms = now_ms
-            # Receive-time stream liveness is distinct from book-state
-            # freshness. Even an exact duplicate proves the subscription
-            # delivered a message now, so refresh the liveness clock before
-            # replay deduplication. Exchange-time freshness remains strict
-            # below and still drives stale-book gaps/eligibility.
-            self._last_stream_message[stream_id] = now_ms
+            # An exact duplicate is a real stream-liveness observation,
+            # but a NEW original event cannot refresh admitted liveness
+            # until its downstream sink acknowledges it. A failed source
+            # write must never mask a silent or stale stream.
             # A downstream source write must succeed before its event key
             # is committed to deduplication. A rejected/cancelled write is
             # uncertain, and a later genuine redelivery must be attempted,
             # not silently classified as already accepted.
             if event.event_key in self._recent_key_sets[stream_id]:
+                # Already accepted earlier: a real duplicate proves the
+                # upstream subscription is still sending messages.
+                self._last_stream_message[stream_id] = now_ms
                 self._duplicate_count += 1
                 if is_l2:
                     self._l2_duplicate_count += 1
@@ -758,6 +759,9 @@ class WebSocketSupervisor:
                         reason="out_of_order",
                     )
                 )
+                # A rejected/cancelled anomaly receipt cannot advance
+                # accepted stream liveness either.
+                self._last_stream_message[stream_id] = now_ms
                 continue
 
             # Check freshness against the original *current* payload,
@@ -765,7 +769,7 @@ class WebSocketSupervisor:
             candidate_anchor = (
                 exchange_time
                 if exchange_time is not None
-                else self._l2_freshness_anchor_ms(stream_id)
+                else self._last_exchange_time.get(stream_id, now_ms)
             )
             candidate_age = (
                 None if candidate_anchor is None else now_ms - candidate_anchor
@@ -794,6 +798,7 @@ class WebSocketSupervisor:
                 # This is at-least-once under uncertain downstream failures;
                 # only independent source receipts can certify a full archive.
                 self._remember(stream_id, event.event_key)
+                self._last_stream_message[stream_id] = now_ms
             finally:
                 if sink_started is not None:
                     self._l2_max_event_sink_await_ms = max(
