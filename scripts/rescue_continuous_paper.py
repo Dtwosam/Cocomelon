@@ -383,7 +383,7 @@ def _gh_json(resource: str) -> dict[str, Any]:
                 text=True,
                 timeout=45,
             )
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             if index == len(GH_API_RETRY_DELAYS_SECONDS) - 1:
                 # Independent public READ of the same authoritative GitHub
                 # REST endpoint. Missing/malformed evidence still fails closed.
