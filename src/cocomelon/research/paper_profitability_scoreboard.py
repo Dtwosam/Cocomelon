@@ -1129,7 +1129,7 @@ def _fixed_original_opening_week_economics(
     for side in ("long", "short"):
         whole_side = _metrics([trade for trade in trades if trade.side == side])
         side_rows = [
-            cast(dict[str, object], cell)
+            cell
             for row in windows
             for cell in cast(list[dict[str, object]], row["by_side_complete"])
             if cell["side"] == side
