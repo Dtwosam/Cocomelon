@@ -11,6 +11,8 @@ import os
 import re
 import subprocess
 import time
+import urllib.error
+import urllib.request
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -306,6 +308,66 @@ def verify_active_heartbeat(
     return "fresh"
 
 
+# This public repository can use a separate, unauthenticated REST read
+# if its GITHUB_TOKEN installation quota is temporarily exhausted.
+# The fallback cannot dispatch or modify any worker state.
+_PUBLIC_RESCUE_PATHS = re.compile(
+    r"^repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/(?:"
+    r"actions/workflows/continuous-paper\.yml/runs\?per_page=100"
+    r"|actions/runs\?event=workflow_dispatch&per_page=100"
+    r"|actions/runs/[1-9][0-9]*/(?:jobs|artifacts)\?per_page=100"
+    r"|issues/469)$"
+)
+_PUBLIC_RESPONSE_BYTE_LIMIT = 8 * 1024 * 1024
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self, request: urllib.request.Request, fp: Any, code: int,
+        msg: str, headers: Any, newurl: str,
+    ) -> None:
+        return None
+
+
+def _public_github_json(resource: str) -> dict[str, Any]:
+    """Independent public GitHub HTTPS read; never authority by itself."""
+    if _PUBLIC_RESCUE_PATHS.fullmatch(resource) is None:
+        raise PaperRescueError("public PAPER rescue API path not permitted")
+    request = urllib.request.Request(
+        "https://api.github.com/" + resource,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "Cocomelon-Paper-ReadOnly-Rescue",
+        },
+        method="GET",
+    )
+    try:
+        # HTTPS uses verified system roots. Redirects cannot substitute
+        # another endpoint for the pinned GitHub API origin.
+        with urllib.request.build_opener(_NoRedirect()).open(
+            request, timeout=20
+        ) as response:
+            if response.status != 200:
+                raise PaperRescueError(
+                    "public PAPER rescue API did not return HTTP 200"
+                )
+            raw = response.read(_PUBLIC_RESPONSE_BYTE_LIMIT + 1)
+    except (urllib.error.URLError, OSError) as exc:
+        raise PaperRescueError(
+            "public GitHub REST rescue read unavailable; "
+            "PAPER lease or dispatch outcome unverified"
+        ) from exc
+    if len(raw) > _PUBLIC_RESPONSE_BYTE_LIMIT:
+        raise PaperRescueError("public GitHub REST rescue response too large")
+    try:
+        data = json.loads(raw)
+    except (ValueError, UnicodeError) as exc:
+        raise PaperRescueError("public GitHub REST rescue JSON malformed") from exc
+    if not isinstance(data, dict):
+        raise PaperRescueError("public GitHub REST rescue returned a non-object")
+    return data
+
+
 def _gh_json(resource: str) -> dict[str, Any]:
     # A single gh CLI/HTTP hiccup is not evidence the worker disappeared.
     # Retry only transport/command failures, not malformed or unexpected
@@ -323,10 +385,16 @@ def _gh_json(resource: str) -> dict[str, Any]:
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             if index == len(GH_API_RETRY_DELAYS_SECONDS) - 1:
-                raise PaperRescueError(
-                    "GitHub control-plane API unavailable after bounded retries; "
-                    "PAPER lease or dispatch outcome unverified"
-                ) from exc
+                # Independent public READ of the same authoritative GitHub
+                # REST endpoint. Missing/malformed evidence still fails closed.
+                try:
+                    return _public_github_json(resource)
+                except PaperRescueError as public_error:
+                    raise PaperRescueError(
+                        "authenticated GitHub API and public REST reads "
+                        "unavailable; PAPER lease or dispatch outcome "
+                        "unverified"
+                    ) from public_error
             continue
         data = json.loads(result.stdout)
         if not isinstance(data, dict):
