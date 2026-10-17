@@ -550,7 +550,7 @@ def test_original_l2_temporal_index_keeps_exact_latest_execution_and_all_evidenc
     assert full["registrations"] == 3
     assert full["captured"] == 1
     assert full["missed_plan"] == 1
-    assert full["promotion_authority"] is False
+    assert full["execution_authority"] is False
 
     # Strictly one millisecond past the bound cannot capture a saved plan.
     other = _store(tmp_path / "after-bound")
