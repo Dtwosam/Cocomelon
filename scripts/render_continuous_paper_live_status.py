@@ -9554,6 +9554,12 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{raw.get('remaining_persisted_row_budget', 'unavailable')}"
         ),
         (
+            "- conditional 72h ORIGINAL row projection / 5M cap exceeded "
+            "(>=10min of actual offers; not qualification): "
+            f"{raw.get('estimated_72h_original_rows_at_observed_offer_rate', 'unavailable')} / "
+            f"{raw.get('estimated_72h_source_rows_exceed_fixed_limit', 'unavailable')}"
+        ),
+        (
             "- raw-clock regressions versus prior original / PAPER clock: "
             f"{raw.get('regressions_vs_prior_offered', 'unavailable')} / "
             f"{raw.get('regressions_vs_paper_clock', 'unavailable')}"
