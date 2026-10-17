@@ -150,6 +150,10 @@ class WebSocketSupervisor:
         self._last_exchange_time: dict[str, int] = {}
         self._last_stream_message: dict[str, int] = {}
         self._open_gaps: dict[str, DataGap] = {}
+        # A failed or cancelled downstream OPEN is NOT a durable original
+        # source-gap receipt. Keep the original object (and start) until
+        # a real sink success; later messages must retry it first.
+        self._uncommitted_open_gaps: set[str] = set()
         self._connected = False
         self._last_server_message_ms: int | None = None
         self._reconnect_count = 0
@@ -590,11 +594,22 @@ class WebSocketSupervisor:
             "systemic l2 subscription staleness after targeted recovery"
         )
 
+    async def _persist_uncommitted_open_gap(self, stream_id: str) -> None:
+        if stream_id not in self._uncommitted_open_gaps:
+            return
+        # Preserve exact previously observed stream/start/reason across
+        # retries. If a downstream write's outcome is uncertain, retry
+        # conservatively rather than asserting phantom source continuity.
+        gap = self._open_gaps[stream_id]
+        await self._emit_gap(gap)
+        self._uncommitted_open_gaps.remove(stream_id)
+
     async def _open_l2_stale_gaps_if_needed(
         self,
         now_ms: int,
     ) -> None:
         for stream_id in self._l2_stream_ids():
+            await self._persist_uncommitted_open_gap(stream_id)
             if stream_id in self._open_gaps:
                 continue
             anchor = self._l2_freshness_anchor_ms(stream_id)
@@ -611,7 +626,8 @@ class WebSocketSupervisor:
                 reason="stale",
             )
             self._open_gaps[stream_id] = gap
-            await self._emit_gap(gap)
+            self._uncommitted_open_gaps.add(stream_id)
+            await self._persist_uncommitted_open_gap(stream_id)
 
     async def _subscribe_all(self, connection: WsConnection) -> None:
         ordered = sorted(self._subscriptions, key=subscription_id)
@@ -647,6 +663,7 @@ class WebSocketSupervisor:
     async def _open_disconnect_gaps(self, now_ms: int) -> None:
         for subscription in self._subscriptions:
             stream_id = subscription_id(subscription)
+            await self._persist_uncommitted_open_gap(stream_id)
             if stream_id in self._open_gaps:
                 continue
             gap = DataGap(
@@ -656,9 +673,11 @@ class WebSocketSupervisor:
                 reason="disconnect",
             )
             self._open_gaps[stream_id] = gap
-            await self._gap_sink(gap)
+            self._uncommitted_open_gaps.add(stream_id)
+            await self._persist_uncommitted_open_gap(stream_id)
 
     async def _close_gap_if_needed(self, stream_id: str, now_ms: int) -> None:
+        await self._persist_uncommitted_open_gap(stream_id)
         gap = self._open_gaps.get(stream_id)
         if gap is None:
             return
@@ -687,6 +706,9 @@ class WebSocketSupervisor:
                 self._activity_hook("normalize_message", False)
         for event in events:
             stream_id = event_stream_id(event)
+            # No event/key, freshness or recovery proof may pass a missing
+            # original gap OPEN (including from an earlier cancelled task).
+            await self._persist_uncommitted_open_gap(stream_id)
             is_l2 = event.kind is StreamKind.L2_BOOK
             if is_l2:
                 self._l2_normalized_count += 1
