@@ -115,7 +115,7 @@ def test_exhausted_token_uses_exact_public_workflow_listing_without_mutation(
         }]}
 
     monkeypatch.setattr(rescue.subprocess, "run", failed_cli)
-    monkeypatch.setattr(rescue._public_github_json.__globals__["time"], "sleep", lambda _: None)
+    monkeypatch.setattr(rescue.time, "sleep", lambda _: None)
     monkeypatch.setattr(rescue, "_public_github_json", public_read)
     result = rescue._gh_json(resource)
     assert result["workflow_runs"][0]["id"] == 39049949008
@@ -136,7 +136,7 @@ def test_public_fallback_is_pinned_https_read_with_no_redirect(
     class PublicResponse:
         status = 200
 
-        def __enter__(self) -> "PublicResponse":
+        def __enter__(self) -> PublicResponse:
             return self
 
         def __exit__(self, *_args: object) -> None:
@@ -201,7 +201,7 @@ def test_public_rest_malformed_body_cannot_authorize_paper_rescue(
     class Response:
         status = 200
 
-        def __enter__(self) -> "Response":
+        def __enter__(self) -> Response:
             return self
 
         def __exit__(self, *_args: object) -> None:
