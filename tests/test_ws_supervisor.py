@@ -1673,6 +1673,7 @@ def test_l2_delivery_diagnostics_distinguish_book_gap_causes() -> None:
             "l2_duplicate_count": 0,
             "l2_out_of_order_count": 0,
             "l2_stale_on_receive_count": 0,
+            "uncommitted_source_gap_open_count": 0,
             "l2_fresh_accepted_count": 0,
             "l2_max_event_sink_await_ms": 0,
             "l2_last_normalized_age_ms": None,
@@ -1741,6 +1742,7 @@ def test_l2_delivery_diagnostics_distinguish_book_gap_causes() -> None:
         assert set(diag) == {
             "l2_normalized_count", "l2_duplicate_count",
             "l2_out_of_order_count", "l2_stale_on_receive_count",
+            "uncommitted_source_gap_open_count",
             "l2_fresh_accepted_count", "l2_max_event_sink_await_ms",
             "l2_last_normalized_age_ms", "l2_last_fresh_accepted_age_ms",
             "l2_unique_interval_samples", "l2_unique_interval_ge_stale_count",
