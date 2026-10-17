@@ -157,6 +157,10 @@ class WebSocketSupervisor:
         # A failed/cancelled recovery CLOSE must retain its original
         # witnessed end time. Never re-date a failed close on next delivery.
         self._uncommitted_recovered_gaps: dict[str, DataGap] = {}
+        # An anomaly receipt is original negative market evidence too.
+        # Failed/cancelled out-of-order writes may not vanish before new
+        # events or a disconnect/recovery handoff.
+        self._uncommitted_anomaly_gaps: dict[str, DataGap] = {}
         self._connected = False
         self._last_server_message_ms: int | None = None
         self._reconnect_count = 0
@@ -295,6 +299,9 @@ class WebSocketSupervisor:
             "uncommitted_source_gap_open_count": len(self._uncommitted_open_gaps),
             "uncommitted_source_gap_recovered_count": len(
                 self._uncommitted_recovered_gaps
+            ),
+            "uncommitted_source_gap_anomaly_count": len(
+                self._uncommitted_anomaly_gaps
             ),
             "l2_fresh_accepted_count": self._l2_fresh_accepted_count,
             "l2_max_event_sink_await_ms": self._l2_max_event_sink_await_ms,
@@ -622,6 +629,15 @@ class WebSocketSupervisor:
         self._uncommitted_recovered_gaps.pop(stream_id, None)
         self._open_gaps.pop(stream_id, None)
 
+    async def _persist_uncommitted_anomaly_gap(self, stream_id: str) -> None:
+        anomaly = self._uncommitted_anomaly_gaps.get(stream_id)
+        if anomaly is None:
+            return
+        # Retry the IDENTICAL original exchange-time anomaly witness.
+        # At-least-once retries are safer than erasing unknown gap debt.
+        await self._emit_gap(anomaly)
+        self._uncommitted_anomaly_gaps.pop(stream_id, None)
+
     async def _open_l2_stale_gaps_if_needed(
         self,
         now_ms: int,
@@ -631,6 +647,7 @@ class WebSocketSupervisor:
         for stream_id in self._l2_stream_ids():
             await self._persist_uncommitted_open_gap(stream_id)
             await self._persist_uncommitted_recovered_gap(stream_id)
+            await self._persist_uncommitted_anomaly_gap(stream_id)
             if stream_id in self._open_gaps:
                 continue
             # A not-yet-acknowledged original L2 event may prove that the
@@ -694,6 +711,7 @@ class WebSocketSupervisor:
             stream_id = subscription_id(subscription)
             await self._persist_uncommitted_open_gap(stream_id)
             await self._persist_uncommitted_recovered_gap(stream_id)
+            await self._persist_uncommitted_anomaly_gap(stream_id)
             if stream_id in self._open_gaps:
                 continue
             gap = DataGap(
@@ -709,6 +727,7 @@ class WebSocketSupervisor:
     async def _close_gap_if_needed(self, stream_id: str, now_ms: int) -> None:
         await self._persist_uncommitted_open_gap(stream_id)
         await self._persist_uncommitted_recovered_gap(stream_id)
+        await self._persist_uncommitted_anomaly_gap(stream_id)
         gap = self._open_gaps.get(stream_id)
         if gap is None:
             return
@@ -740,6 +759,7 @@ class WebSocketSupervisor:
             # original gap OPEN (including from an earlier cancelled task).
             await self._persist_uncommitted_open_gap(stream_id)
             await self._persist_uncommitted_recovered_gap(stream_id)
+            await self._persist_uncommitted_anomaly_gap(stream_id)
             is_l2 = event.kind is StreamKind.L2_BOOK
             if is_l2:
                 self._l2_normalized_count += 1
@@ -771,14 +791,13 @@ class WebSocketSupervisor:
                 self._anomaly_count += 1
                 if is_l2:
                     self._l2_out_of_order_count += 1
-                await self._emit_gap(
-                    DataGap(
-                        stream_id=stream_id,
-                        started_ms=exchange_time,
-                        ended_ms=previous_exchange_time,
-                        reason="out_of_order",
-                    )
+                self._uncommitted_anomaly_gaps[stream_id] = DataGap(
+                    stream_id=stream_id,
+                    started_ms=exchange_time,
+                    ended_ms=previous_exchange_time,
+                    reason="out_of_order",
                 )
+                await self._persist_uncommitted_anomaly_gap(stream_id)
                 # A rejected/cancelled anomaly receipt cannot advance
                 # accepted stream liveness either.
                 self._last_stream_message[stream_id] = now_ms
