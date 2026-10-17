@@ -161,6 +161,7 @@ class WebSocketSupervisor:
         # Failed/cancelled out-of-order writes may not vanish before new
         # events or a disconnect/recovery handoff.
         self._uncommitted_anomaly_gaps: dict[str, DataGap] = {}
+        self._uncommitted_anomaly_event_keys: dict[str, str] = {}
         self._connected = False
         self._last_server_message_ms: int | None = None
         self._reconnect_count = 0
@@ -637,6 +638,7 @@ class WebSocketSupervisor:
         # At-least-once retries are safer than erasing unknown gap debt.
         await self._emit_gap(anomaly)
         self._uncommitted_anomaly_gaps.pop(stream_id, None)
+        self._uncommitted_anomaly_event_keys.pop(stream_id, None)
 
     async def _open_l2_stale_gaps_if_needed(
         self,
@@ -759,7 +761,16 @@ class WebSocketSupervisor:
             # original gap OPEN (including from an earlier cancelled task).
             await self._persist_uncommitted_open_gap(stream_id)
             await self._persist_uncommitted_recovered_gap(stream_id)
+            pending_anomaly_key = self._uncommitted_anomaly_event_keys.get(
+                stream_id
+            )
             await self._persist_uncommitted_anomaly_gap(stream_id)
+            if pending_anomaly_key == event.event_key:
+                # This original anomalous event was already witnessed when
+                # its sink failed. The successful exact retry is its receipt:
+                # a redelivery must not emit the SAME negative gap twice.
+                self._last_stream_message[stream_id] = now_ms
+                continue
             is_l2 = event.kind is StreamKind.L2_BOOK
             if is_l2:
                 self._l2_normalized_count += 1
@@ -797,6 +808,7 @@ class WebSocketSupervisor:
                     ended_ms=previous_exchange_time,
                     reason="out_of_order",
                 )
+                self._uncommitted_anomaly_event_keys[stream_id] = event.event_key
                 await self._persist_uncommitted_anomaly_gap(stream_id)
                 # A rejected/cancelled anomaly receipt cannot advance
                 # accepted stream liveness either.
