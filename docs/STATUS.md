@@ -2,6 +2,42 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — bound optional L2 book registration work to causal time
+
+Authenticated PAPER worker #39034648254 has a **295 ms** observed peak
+inside optional `position_book_capacity_release_book` research, and
+original source remains disqualified by real gap notices and time
+regressions. The earlier per-market registration cache still checks
+each historical registration's disk record on every incoming L2 book.
+As history grows, expired research opportunities needlessly consume
+PAPER book-processing time.
+
+The optional capture now indexes the same immutable original registration
+files by `release_market` and **actual original opportunity timestamp**.
+On each actual book, it considers only opportunities within the exact
+execution protocol interval:
+`[book_receive_ms - latency_ms - 2 * max_book_age_ms, book_receive_ms]`.
+A staged plan must have used a book no later than opportunity +
+`max_book_age_ms`, and a final execution book must arrive no later than
+that plan + `latency_ms + max_book_age_ms`. Thus an opportunity outside
+this inclusive interval cannot produce a legal new evidence record for
+that book; all existing causal exchange-time, position, fee/config,
+staged-plan and timeout checks remain unchanged.
+
+The index is volatile, recomputed when the authoritative registration
+directory changes, and **does not advance a cursor**, so out-of-order
+original received books can still be evaluated. A full independent
+audit still rereads ALL historical original registration, pending and
+evidence files, including misses and corruption. Tests cover exact
+latest legal execution, one-ms-late denial, excluded expired/future
+registrations, full miss accounting and backdated later arrivals.
+
+This reduces avoidable optional hot-path checks; it does **not** claim
+a measured runtime speedup until a new genuine worker naturally adopts
+the change. No price/timestamp corrections, source gap healing, frozen
+trial reset, strategy/risk/fees/funding/fills, PAPER decisions or LIVE
+authorization.
+
 ## October 17 — distinguish failed v2 paired-account restore checks without recovery
 
 The genuine PAPER worker's optional v2 paired research actor currently

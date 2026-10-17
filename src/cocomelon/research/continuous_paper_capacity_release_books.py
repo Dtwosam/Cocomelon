@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from bisect import bisect_left, bisect_right
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -938,6 +939,12 @@ class CapacityReleaseBookStore:
         self._capture_registrations_by_market: dict[
             str, tuple[CapacityReleaseBookRegistration, ...]
         ] | None = None
+        # Volatile time index holds the same original registrations. This
+        # permits bounded hot L2 inspection without deleting older evidence.
+        self._capture_temporal_registrations_by_market: dict[
+            str, tuple[CapacityReleaseBookRegistration, ...]
+        ] = {}
+        self._capture_temporal_times_by_market: dict[str, tuple[int, ...]] = {}
         self._capture_registration_directory_stamp: tuple[int, int, int, int] | None = None
 
     @staticmethod
@@ -1059,13 +1066,55 @@ class CapacityReleaseBookStore:
                 by_market.setdefault(registration.release_market, []).append(
                     registration
                 )
-            # Atomic assignment: a corrupt new file cannot partially
-            # replace the previously complete market registry index.
+            # Construct the complete temporal index before installing any
+            # snapshot; a corrupt new JSON cannot be silently skipped.
+            temporal = {
+                key: tuple(sorted(
+                    items,
+                    key=lambda item: (
+                        item.opportunity_timestamp_ms, item.registration_id,
+                    ),
+                ))
+                for key, items in by_market.items()
+            }
+            temporal_times = {
+                key: tuple(
+                    item.opportunity_timestamp_ms for item in items
+                )
+                for key, items in temporal.items()
+            }
+            # Atomic same-callback refresh. The full on-disk audit still
+            # independently rereads ALL historical registrations.
             self._capture_registrations_by_market = {
                 key: tuple(items) for key, items in by_market.items()
             }
+            self._capture_temporal_registrations_by_market = temporal
+            self._capture_temporal_times_by_market = temporal_times
             self._capture_registration_directory_stamp = stamp
         return self._capture_registrations_by_market.get(market, ())
+
+    def _registrations_in_original_book_window(
+        self, market: str, observed_at_ms: int,
+    ) -> tuple[CapacityReleaseBookRegistration, ...]:
+        # The existing capture protocol permits first plan book no later
+        # than opportunity + max_age. Its execution book must be no later
+        # than first_plan + latency + max_age. Thus a registration outside
+        # [book - latency - 2*max_age, book] cannot ever create a *new*
+        # record at this observed original timestamp, even with a saved
+        # pending plan. Inclusive boundaries retain exact latency cases.
+        #
+        # This is evaluated per original book: never advance a cursor.
+        # Out-of-order receive timestamps therefore cannot lose history.
+        self._registrations_for_capture_market(market)
+        registrations = self._capture_temporal_registrations_by_market.get(
+            market, ()
+        )
+        times = self._capture_temporal_times_by_market.get(market, ())
+        lower = bisect_left(
+            times, observed_at_ms - self.latency_ms - 2 * self.max_book_age_ms
+        )
+        upper = bisect_right(times, observed_at_ms)
+        return registrations[lower:upper]
 
     def _matching_position(
         self,
@@ -1099,8 +1148,8 @@ class CapacityReleaseBookStore:
             return 0
         observed_at_ms = _received_ms(book)
         captured = 0
-        for registration in self._registrations_for_capture_market(
-            book.market.canonical
+        for registration in self._registrations_in_original_book_window(
+            book.market.canonical, observed_at_ms
         ):
             registration_id = registration.registration_id
             record_path = self._record_path(registration_id)

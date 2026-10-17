@@ -505,6 +505,100 @@ def test_hot_l2_registration_cache_is_market_scoped_and_invalidates(
     assert len(new_worker._registrations_for_capture_market("BTC")) == 3
 
 
+def test_original_l2_temporal_index_keeps_exact_latest_execution_and_all_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(tmp_path / "temporal")
+    expired = replace(
+        _registration(), opportunity_id="expired-before-limit",
+        opportunity_timestamp_ms=999,
+    )
+    edge = _registration()
+    future = replace(
+        _registration(), opportunity_id="future-after-book",
+        opportunity_timestamp_ms=3_251,
+    )
+    for registration in (expired, edge, future):
+        assert store.register(registration)
+
+    # Latest possible first plan: opportunity + 1,000. Final execution:
+    # plan + 250 latency + 1,000 max age = exactly 3,250.
+    assert store.capture(
+        positions=(_position(),), instrument=_instrument(),
+        book=_book(received_ms=2_000),
+        reference_price=Decimal("101"), now_ms=2_000,
+    ) == 0
+    assert [p.registration for p in store.iter_pending()] == [edge]
+
+    seen: list[str] = []
+    original_record_path = store._record_path
+
+    def record_path(registration_id: str) -> Path:
+        seen.append(registration_id)
+        return original_record_path(registration_id)
+
+    monkeypatch.setattr(store, "_record_path", record_path)
+    assert store.capture(
+        positions=(_position(),), instrument=_instrument(),
+        book=_book(received_ms=3_250),
+        reference_price=Decimal("101"), now_ms=3_250,
+    ) == 1
+    assert seen == [edge.registration_id]
+    assert store.iter_records()[0].registration == edge
+    assert len(store.iter_registrations()) == 3
+    full = store.summary(now_ms=3_251)
+    assert full["registrations"] == 3
+    assert full["captured"] == 1
+    assert full["missed_plan"] == 1
+    assert full["execution_authority"] is False
+
+    # Strictly one millisecond past the bound cannot capture a saved plan.
+    other = _store(tmp_path / "after-bound")
+    assert other.register(edge)
+    assert other.capture(
+        positions=(_position(),), instrument=_instrument(),
+        book=_book(received_ms=2_000),
+        reference_price=Decimal("101"), now_ms=2_000,
+    ) == 0
+    assert other.capture(
+        positions=(_position(),), instrument=_instrument(),
+        book=_book(received_ms=3_251),
+        reference_price=Decimal("101"), now_ms=3_251,
+    ) == 0
+    assert other.summary(now_ms=3_251)["missed_execution"] == 1
+
+
+def test_original_l2_temporal_index_does_not_assume_monotonic_book_times(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path / "backdated")
+    registration = replace(
+        _registration(), opportunity_id="backdated-eligible",
+        opportunity_timestamp_ms=4_000,
+    )
+    assert store.register(registration)
+    # A later historical book may precede an earlier one in the actual
+    # callback stream. Never advance a permanent cutoff cursor.
+    assert store.capture(
+        positions=(_position(),), instrument=_instrument(),
+        book=_book(received_ms=10_000),
+        reference_price=Decimal("101"), now_ms=10_000,
+    ) == 0
+    assert store.capture(
+        positions=(_position(),), instrument=_instrument(),
+        book=_book(received_ms=4_100),
+        reference_price=Decimal("101"), now_ms=4_100,
+    ) == 0
+    assert len(store.iter_pending()) == 1
+    assert store.capture(
+        positions=(_position(),), instrument=_instrument(),
+        book=_book(received_ms=4_400),
+        reference_price=Decimal("101"), now_ms=4_400,
+    ) == 1
+    assert store.iter_records()[0].registration == registration
+    assert store.summary(now_ms=4_400)["registrations"] == 1
+
+
 def test_hot_book_cache_cannot_hide_corrupt_registered_evidence_from_audit(
     tmp_path: Path,
 ) -> None:
