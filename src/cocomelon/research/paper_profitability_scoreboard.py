@@ -1049,11 +1049,41 @@ def _fixed_original_opening_week_economics(
     for start in starts:
         cohort = buckets.get(start, [])
         end = start + FIXED_OPENING_WEEK_MS
+        booked_week = _metrics(cohort)
+        # Unlike sparse by_side, this stable calendar matrix includes both
+        # directions even for zero-close weeks. Later closes never move
+        # earlier entry timestamps to a more attractive week.
+        complete_sides = [
+            {
+                "side": side,
+                **_metrics([trade for trade in cohort if trade.side == side]),
+            }
+            for side in ("long", "short")
+        ]
+        for key in ("trades", "wins", "losses"):
+            if sum(cast(int, cell[key]) for cell in complete_sides) != booked_week[key]:
+                raise PaperProfitabilityScoreboardError(
+                    f"original fixed-week side count failed reconciliation: {key}"
+                )
+        for key in (
+            "gross_realized_pnl", "fees", "funding_cash_pnl",
+            "net_pnl", "net_r", "booked_net_cash_reconciliation_residual",
+        ):
+            with localcontext(prec=96):
+                side_total = sum((
+                    _number(cell[key], "original weekly booked side cash")
+                    for cell in complete_sides
+                ), ZERO)
+            if side_total != _number(booked_week[key], "original weekly cash"):
+                raise PaperProfitabilityScoreboardError(
+                    f"original fixed-week side cash failed reconciliation: {key}"
+                )
         windows.append({
             "week_start_ms_utc": start,
             "week_end_exclusive_ms_utc": end,
-            "original_booked_week": _metrics(cohort),
+            "original_booked_week": booked_week,
             "by_side": _cohorts(cohort, ("side",)),
+            "by_side_complete": complete_sides,
             "by_lead_strategy": _cohorts(cohort, ("lead_strategy",)),
             # Open positions at the original handoff can ultimately change
             # the booked cash of an earlier entry week. Do not infer a mature
@@ -1094,6 +1124,34 @@ def _fixed_original_opening_week_economics(
             raise PaperProfitabilityScoreboardError(
                 f"original fixed-week journal cash failed reconciliation: {key}"
             )
+    # Reconcile each fixed direction over ALL weeks against the original
+    # journal, including unknown rank/chart closes and every losing trade.
+    for side in ("long", "short"):
+        whole_side = _metrics([trade for trade in trades if trade.side == side])
+        side_rows = [
+            cell
+            for row in windows
+            for cell in cast(list[dict[str, object]], row["by_side_complete"])
+            if cell["side"] == side
+        ]
+        for key in ("trades", "wins", "losses"):
+            if sum(cast(int, cell[key]) for cell in side_rows) != whole_side[key]:
+                raise PaperProfitabilityScoreboardError(
+                    f"fixed-week {side} total count failed reconciliation: {key}"
+                )
+        for key in (
+            "gross_realized_pnl", "fees", "funding_cash_pnl", "net_pnl", "net_r",
+            "booked_net_cash_reconciliation_residual",
+        ):
+            with localcontext(prec=96):
+                total = sum((
+                    _number(cell[key], "original weekly side")
+                    for cell in side_rows
+                ), ZERO)
+            if total != _number(whole_side[key], "whole original side"):
+                raise PaperProfitabilityScoreboardError(
+                    f"original fixed-week {side} cash failed reconciliation: {key}"
+                )
     return {
         "schema_version": 1,
         "definition": "entire_original_closed_journal_fixed_utc_monday_opening_weeks",
@@ -1105,6 +1163,8 @@ def _fixed_original_opening_week_economics(
         "all_original_closed_trade_counts_cash_and_net_r_reconciled": True,
         "time_assignment": "actual_original_entry_timestamp_not_exit_timestamp",
         "calendar_boundaries_never_rebalanced_by_future_closes": True,
+        "complete_long_short_side_matrix_week_and_whole_journal_reconciled": True,
+        "complete_side_matrix_includes_empty_direction_weeks": True,
         "closed_only_not_capital_matched_account_pnl": True,
         "unknown_or_open_handoff_cannot_prove_maturity": True,
         "does_not_reconstruct_an_online_entry_filter": True,

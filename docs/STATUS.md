@@ -2,6 +2,30 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — lock directional after-cost stability to immutable UTC entry weeks
+
+The existing whole-journal chronological trade-count quarters can move as new
+closes arrive; they are useful for retrospective fragility, not fixed forward
+time splits. The original closed-trade profitability scoreboard now also
+reports **both LONG and SHORT in every original Monday-anchored UTC opening
+week**, retaining zero-trade sides and empty intervening weeks. Each side/week
+includes actual booked net after fees and funding, profit factor, largest
+net-winner sensitivity, and all original closed trades regardless of missing
+rank or chart evidence. It reconciles cash, fees, funding, wins/losses and
+net-R first within each week and then independently across every week against
+the complete historical LONG and SHORT original journal. Appending a later
+winning close does not move an earlier opening into a more profitable period.
+The ordinary post-handoff compact stdout exposes the last eight weeks of
+both sides, while the immutable report JSON retains all original weeks.
+
+**Strict limits:** this is original *booked closes by entry week*, **not**
+capital-matched marked account equity, a newly funded challenger, an original
+gap-free 72h venue feed or forward strategy performance. A week cannot claim
+mature booked outcome with unknown source end or any open original position.
+The unchanged global close quartiles and losing trades are retained.
+No strategy, source clock, rank, fills, PAPER stops/risk/cost settings,
+frozen hypothesis, automatic promotion or LIVE execution changes.
+
 ## October 17 — prove or refute directional payoff robustness on original closes
 
 The authentic completed-worker #39001800329 entire-trade chart archive

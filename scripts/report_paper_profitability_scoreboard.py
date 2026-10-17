@@ -104,6 +104,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         for block in side_quarters
         for side in block["by_side"]
     ]
+    # Fixed UTC opening weeks do not move when later original closes arrive.
+    # Retain ALL weeks in the JSON report; bound only this stdout preview.
+    recent_side_week_rows = [
+        {
+            "week_start_ms_utc": week["week_start_ms_utc"],
+            "side": side["side"],
+            "original_closed_trades": side["trades"],
+            "booked_after_cost_net_pnl": side["net_pnl"],
+            "booked_after_cost_fees": side["fees"],
+            "booked_after_cost_funding": side["funding_cash_pnl"],
+            "booked_after_cost_profit_factor": side["booked_net_profit_factor"],
+            "booked_after_cost_without_largest_winner_arithmetic": side[
+                "booked_net_without_largest_winner_arithmetic"
+            ],
+            "week_mature_at_flat_original_handoff": week[
+                "week_original_booked_outcome_mature_at_handoff"
+            ],
+        }
+        for week in periods[-8:]
+        for side in week["by_side_complete"]
+    ]
     gap = report["original_chart_gap_witness_loss_attribution"]
     assert isinstance(gap, dict)
     gap_classes = gap["mutually_exclusive_evidence_classes"]
@@ -150,6 +171,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         "original_side_quartile_evidence_scope": (
             "original_completed_journal_historical_not_independent_"
             "forward_paper_accounts_or_strategy_promotion"
+        ),
+        "original_fixed_utc_opening_week_side_preview": recent_side_week_rows,
+        "original_fixed_utc_opening_week_side_total_weeks": len(periods),
+        "original_fixed_utc_opening_week_side_preview_omitted_weeks": max(
+            0, len(periods) - 8
+        ),
+        "original_fixed_utc_opening_week_side_full_cash_reconciled": weekly[
+            "complete_long_short_side_matrix_week_and_whole_journal_reconciled"
+        ],
+        "original_fixed_utc_opening_week_side_scope": (
+            "complete_original_booked_closes_fixed_entry_weeks_"
+            "not_marked_independent_accounts_or_promotable_forward_edge"
         ),
         "trades": overall["trades"],
         "original_closed_after_cost_profit_factor": overall[

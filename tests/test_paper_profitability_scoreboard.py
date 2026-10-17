@@ -450,6 +450,17 @@ def test_report_command_writes_separate_research_only_result(tmp_path: Path) -> 
     assert headline["original_side_quartile_evidence_scope"].endswith(
         "strategy_promotion"
     )
+    assert headline["original_fixed_utc_opening_week_side_full_cash_reconciled"]
+    assert headline["original_fixed_utc_opening_week_side_total_weeks"] == 1
+    assert headline["original_fixed_utc_opening_week_side_preview_omitted_weeks"] == 0
+    fixed_sides = headline["original_fixed_utc_opening_week_side_preview"]
+    assert [row["side"] for row in fixed_sides] == ["long", "short"]
+    assert sum(
+        Decimal(row["booked_after_cost_net_pnl"]) for row in fixed_sides
+    ) == Decimal("-13.9")
+    assert headline["original_fixed_utc_opening_week_side_scope"].endswith(
+        "promotable_forward_edge"
+    )
 
 
 def test_worker_publishes_scoreboard_only_after_full_journal_audit() -> None:
@@ -2783,6 +2794,95 @@ def test_fixed_original_opening_weeks_cannot_rebalance_earlier_losing_periods(
     assert b["weeks"][0]["week_original_booked_outcome_mature_at_handoff"] is False
     assert b["weeks"][2]["week_original_booked_outcome_mature_at_handoff"] is False
     assert b["calendar_boundaries_never_rebalanced_by_future_closes"] is True
+
+
+def test_fixed_original_opening_weeks_include_both_sides_and_empty_calendar_week(
+) -> None:
+    losing_short = _move_trade_to_original_open_time(
+        _trade(
+            1, side="short", market="A", strategy="trend",
+            gross="-10", entry_fee="1", exit_fee="1",
+        ),
+        _week_time(12, 1), closed_at_ms=_week_time(12, 2),
+    )
+    losing_long = _move_trade_to_original_open_time(
+        _trade(
+            2, side="long", market="B", strategy="breakout",
+            gross="-4", entry_fee="1", exit_fee="1",
+        ),
+        _week_time(26, 1), closed_at_ms=_week_time(26, 2),
+    )
+    largest_short = _move_trade_to_original_open_time(
+        _trade(
+            3, side="short", market="C", strategy="trend",
+            gross="116", entry_fee="1", exit_fee="1",
+        ),
+        _week_time(26, 2), closed_at_ms=_week_time(26, 3),
+    )
+    rows = [losing_short, losing_long, largest_short]
+    report = paper_profitability_scoreboard(_reconciled_audit_from_rows(rows))
+    matrix = report["original_fixed_utc_opening_week_economics"]
+    assert matrix[
+        "complete_long_short_side_matrix_week_and_whole_journal_reconciled"
+    ] is True
+    weeks = matrix["weeks"]
+    assert [week["week_start_ms_utc"] for week in weeks] == [
+        _week_time(12), _week_time(19), _week_time(26),
+    ]
+    assert all(
+        [cell["side"] for cell in week["by_side_complete"]] == ["long", "short"]
+        for week in weeks
+    )
+    assert [cell["trades"] for cell in weeks[0]["by_side_complete"]] == [0, 1]
+    assert [cell["net_pnl"] for cell in weeks[0]["by_side_complete"]] == [
+        "0", "-12",
+    ]
+    assert [cell["trades"] for cell in weeks[1]["by_side_complete"]] == [0, 0]
+    assert [cell["net_pnl"] for cell in weeks[2]["by_side_complete"]] == [
+        "-6", "114",
+    ]
+    assert weeks[2]["by_side_complete"][1][
+        "booked_net_without_largest_winner_arithmetic"
+    ] == "0"
+    assert sum(
+        Decimal(cell["net_pnl"])
+        for week in weeks
+        for cell in week["by_side_complete"]
+    ) == Decimal(report["overall"]["net_pnl"]) == Decimal("96")
+    assert all(
+        week["week_original_booked_outcome_mature_at_handoff"] is False
+        for week in weeks
+    )
+    assert matrix["forward_full_account_after_cost_expectancy_proven"] is False
+    assert matrix["promotion_authority"] is False
+
+
+def test_future_original_winner_cannot_move_earlier_week_side_losses() -> None:
+    losing_short = _move_trade_to_original_open_time(
+        _trade(
+            1, side="short", market="A", strategy="trend",
+            gross="-10", entry_fee="1", exit_fee="1",
+        ),
+        _week_time(12), closed_at_ms=_week_time(12, 1),
+    )
+    late_winner = _move_trade_to_original_open_time(
+        _trade(
+            2, side="short", market="B", strategy="trend",
+            gross="116", entry_fee="1", exit_fee="1",
+        ),
+        _week_time(26), closed_at_ms=_week_time(26, 1),
+    )
+    early = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows([losing_short])
+    )["original_fixed_utc_opening_week_economics"]["weeks"][0]
+    later = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows([losing_short, late_winner])
+    )["original_fixed_utc_opening_week_economics"]["weeks"][0]
+    assert early == later
+    assert early["by_side_complete"][1]["net_pnl"] == "-12"
+    assert early["by_side_complete"][1][
+        "booked_net_profit_factor"
+    ] == "0"
 
 
 def test_fixed_original_opening_week_maturity_requires_flat_original_handoff() -> None:
