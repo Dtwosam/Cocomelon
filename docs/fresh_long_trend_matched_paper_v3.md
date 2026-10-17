@@ -34,6 +34,29 @@ paper portfolio?
   `37150b47e701c3ab8c1af23808254f305b443862c90c040b0a49fe002a9a1d93`.
 - Original v1/v2 accounts and prior source-gap records: **excluded**.
 
+## Genuine L2 exchange-time admission
+
+Original PAPER `ReplayRecord.available_at_ms` is the received-time clock;
+it is **not** proof that the underlying exchange L2 book was fresh. Before
+the independent new baseline/challenger accounts are constructed, the v3
+source audit now checks every recorded `l2_book` in original warmup **and**
+forward observations. Each book must carry an actual exchange timestamp,
+which may lag its original received timestamp by **at most 15,000 ms** or
+lead it by **at most 1,000 ms** for bounded clock skew. For each market,
+original L2 exchange timestamps must never decrease in received order.
+Same-millisecond exchange timestamps are allowed; the original ordering
+is not rearranged and source clocks are never overwritten or clamped.
+
+The local report includes per-market maximum observed L2 source lag,
+maximum clock skew, and exact original L2 records verified. Every
+violation **fails before creation of either paired PAPER account**,
+even where the manifest claims 72 hours of otherwise dense L2 receives.
+The 15-second bound is conservative source-freshness screening, not a
+claim that the venue feed is independently authenticated. Gaps, unstable
+receive clocks, torn v1/v2 evidence and missing original 72-hour market
+coverage continue to fail closed. Strategy, fee, funding, mark and risk
+settings are unchanged; LIVE and automatic promotion remain disabled.
+
 ## The implemented one-shot offline research entry point
 
 `cocomelon.research.fresh_long_trend_forward_pair.run_digest_pinned_long_trend_matched_paper`
