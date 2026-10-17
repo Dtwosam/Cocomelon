@@ -608,12 +608,22 @@ class WebSocketSupervisor:
     async def _open_l2_stale_gaps_if_needed(
         self,
         now_ms: int,
+        *,
+        pending_exchange_anchor: tuple[str, int] | None = None,
     ) -> None:
         for stream_id in self._l2_stream_ids():
             await self._persist_uncommitted_open_gap(stream_id)
             if stream_id in self._open_gaps:
                 continue
-            anchor = self._l2_freshness_anchor_ms(stream_id)
+            # A not-yet-acknowledged original L2 event may prove that the
+            # *gap must OPEN*, but cannot commit source freshness/highwater
+            # until its real downstream event write succeeds.
+            anchor = (
+                pending_exchange_anchor[1]
+                if pending_exchange_anchor is not None
+                and pending_exchange_anchor[0] == stream_id
+                else self._l2_freshness_anchor_ms(stream_id)
+            )
             if (
                 anchor is None
                 or now_ms - anchor < self._stale_after_ms
@@ -750,6 +760,50 @@ class WebSocketSupervisor:
                 )
                 continue
 
+            # Check freshness against the original *current* payload,
+            # without committing its exchange clock before its sink ack.
+            candidate_anchor = (
+                exchange_time
+                if exchange_time is not None
+                else self._l2_freshness_anchor_ms(stream_id)
+            )
+            candidate_age = (
+                None if candidate_anchor is None else now_ms - candidate_anchor
+            )
+            l2_is_stale = bool(
+                is_l2
+                and candidate_age is not None
+                and (candidate_age < 0 or candidate_age >= self._stale_after_ms)
+            )
+            if l2_is_stale:
+                self._l2_stale_on_receive_count += 1
+                await self._open_l2_stale_gaps_if_needed(
+                    now_ms,
+                    pending_exchange_anchor=(
+                        (stream_id, exchange_time)
+                        if exchange_time is not None else None
+                    ),
+                )
+            # A recovered source must have delivered its normalized event
+            # downstream before the durable gap is declared healed. If the
+            # event sink fails, the open gap remains unresolved.
+            sink_started = perf_counter() if is_l2 else None
+            try:
+                await self._emit_event(event)
+                # No await between the acknowledged sink and dedup commit.
+                # This is at-least-once under uncertain downstream failures;
+                # only independent source receipts can certify a full archive.
+                self._remember(stream_id, event.event_key)
+            finally:
+                if sink_started is not None:
+                    self._l2_max_event_sink_await_ms = max(
+                        self._l2_max_event_sink_await_ms,
+                        max(0, int((perf_counter() - sink_started) * 1000)),
+                    )
+            # Advance all accepted-source exchange clocks and interval
+            # observations only after the original downstream sink returned.
+            # A failed/cancelled write must never poison the next genuine
+            # redelivery with a fabricated source highwater or fresh book.
             if is_l2:
                 # Pure source-only timing observation: duplicates/out-of-order
                 # never refresh the anchor; a later failed sink cannot turn
@@ -792,32 +846,6 @@ class WebSocketSupervisor:
                             self._l2_source_age_ge_5000_count += 1
             if exchange_time is not None:
                 self._last_exchange_time[stream_id] = exchange_time
-            l2_is_stale = (
-                event.kind is StreamKind.L2_BOOK
-                and self._l2_stream_is_stale(
-                    stream_id,
-                    now_ms=now_ms,
-                )
-            )
-            if l2_is_stale:
-                self._l2_stale_on_receive_count += 1
-                await self._open_l2_stale_gaps_if_needed(now_ms)
-            # A recovered source must have delivered its normalized event
-            # downstream before the durable gap is declared healed. If the
-            # event sink fails, the open gap remains unresolved.
-            sink_started = perf_counter() if is_l2 else None
-            try:
-                await self._emit_event(event)
-                # No await between the acknowledged sink and dedup commit.
-                # This is at-least-once under uncertain downstream failures;
-                # only independent source receipts can certify a full archive.
-                self._remember(stream_id, event.event_key)
-            finally:
-                if sink_started is not None:
-                    self._l2_max_event_sink_await_ms = max(
-                        self._l2_max_event_sink_await_ms,
-                        max(0, int((perf_counter() - sink_started) * 1000)),
-                    )
             if not l2_is_stale:
                 await self._close_gap_if_needed(
                     stream_id,
