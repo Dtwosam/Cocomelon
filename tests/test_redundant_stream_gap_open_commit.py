@@ -63,6 +63,7 @@ def test_failed_open_must_be_retried_before_any_recovery_event() -> None:
         assert len(gaps) == 0
         assert mux._aggregate_gap_starts[STREAM] == 2_100
         assert STREAM in mux._uncommitted_aggregate_gap_opens
+        assert mux.ingress_diagnostics()["uncommitted_aggregate_gap_open_count"] == 1
         assert events == [first.event_key]
         assert mux.ingress_diagnostics()["failed_calls"] == 1
 
@@ -76,6 +77,7 @@ def test_failed_open_must_be_retried_before_any_recovery_event() -> None:
         assert gaps[0].started_ms == 2_100
         assert events == [first.event_key]
         assert STREAM not in mux._uncommitted_aggregate_gap_opens
+        assert mux.ingress_diagnostics()["uncommitted_aggregate_gap_open_count"] == 0
 
         # Recovery only follows a real delivered original event, not an
         # optimistic marker or an unpersisted aggregate start.
@@ -126,6 +128,7 @@ def test_repeated_gap_write_failures_block_new_events_and_close_markers() -> Non
         assert STREAM in mux._uncommitted_aggregate_gap_opens
         assert mux.ingress_diagnostics()["failed_calls"] == 3
         assert mux.ingress_diagnostics()["completed_calls"] == 3
+        assert mux.ingress_diagnostics()["uncommitted_aggregate_gap_open_count"] == 1
 
         # Even if the recorder is repaired later, the original gap is
         # retried with its historical source start before accepting recovery.
@@ -176,6 +179,7 @@ def test_cancelled_open_write_remains_pending_until_exact_gap_is_durable() -> No
         # A cancelled async callback cannot erase a genuine source gap.
         await mux.on_event(0, _trade(2, 3_000, 500))
         assert gaps == [initial_attempt]
+        assert mux.ingress_diagnostics()["uncommitted_aggregate_gap_open_count"] == 0
         assert gaps[0].ended_ms is None
         assert STREAM not in mux._uncommitted_aggregate_gap_opens
         assert events == [first.event_key]
