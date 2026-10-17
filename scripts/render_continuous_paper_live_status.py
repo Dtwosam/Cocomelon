@@ -9975,6 +9975,11 @@ def _render_operational_live_status(
             f"{mux_ingress.get('max_lock_wait_ms', 'unavailable')} / "
             f"{mux_ingress.get('max_lock_hold_ms', 'unavailable')}"
         )
+        l2_lane_lines.append(
+            "- redundant WS mux uncommitted aggregate source-gap opens "
+            "(must block recovery): "
+            f"{mux_ingress.get('uncommitted_aggregate_gap_open_count', 'unavailable')}"
+        )
 
     pre_recovery_lane_lines: list[str] = []
     pre_recovery_health = recovery_trigger.get(
