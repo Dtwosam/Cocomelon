@@ -1061,7 +1061,7 @@ def _fixed_original_opening_week_economics(
             for side in ("long", "short")
         ]
         for key in ("trades", "wins", "losses"):
-            if sum(int(cell[key]) for cell in complete_sides) != booked_week[key]:
+            if sum(cast(int, cell[key]) for cell in complete_sides) != booked_week[key]:
                 raise PaperProfitabilityScoreboardError(
                     f"original fixed-week side count failed reconciliation: {key}"
                 )
@@ -1135,9 +1135,9 @@ def _fixed_original_opening_week_economics(
             if cell["side"] == side
         ]
         for key in ("trades", "wins", "losses"):
-            if sum(int(cell[key]) for cell in side_rows) != whole_side[key]:
+            if sum(cast(int, cell[key]) for cell in side_rows) != whole_side[key]:
                 raise PaperProfitabilityScoreboardError(
-                    f"original fixed-week {side} total count failed reconciliation: {key}"
+                    f"fixed-week {side} total count failed reconciliation: {key}"
                 )
         for key in (
             "gross_realized_pnl", "fees", "funding_cash_pnl", "net_pnl", "net_r",
