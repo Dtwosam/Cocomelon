@@ -9501,6 +9501,25 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
     clock_families = raw.get("regression_source_family_counts")
     if not isinstance(clock_families, dict):
         clock_families = {}
+    # Fixed family vocabulary only; no source-supplied event kind or market
+    # identifier is reflected in the public negative evidence heartbeat.
+    families = frozenset((
+        "data_gap", "market_snapshot", "funding_rate", "candle",
+        "l2_book", "trades", "active_asset_ctx", "other",
+    ))
+    raw_edges = raw.get("prior_offered_regression_edges")
+    edges: list[tuple[str, int]] = []
+    if isinstance(raw_edges, dict):
+        for edge, count in raw_edges.items():
+            if not isinstance(edge, str) or type(count) is not int or count < 0:
+                continue
+            split = edge.split(" -> ")
+            if len(split) == 2 and split[0] in families and split[1] in families:
+                edges.append((edge, count))
+    edges.sort(key=lambda pair: (-pair[1], pair[0]))
+    top_edges = ", ".join(
+        f"{edge}={count}" for edge, count in edges[:5]
+    ) or "none observed"
     return lines + [
         f"- capture enabled: {str(raw.get('enabled') is True).lower()}",
         f"- capture failure: {raw.get('failure') or 'none observed yet'}",
@@ -9547,6 +9566,17 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{raw.get('first_regression_source_family') or 'none observed'} / "
             f"{raw.get('first_regression_age_at_offer_ms', 'unavailable')}"
         ),
+        (
+            "- first source-family preceding original regression / max adjacent backward ms: "
+            f"{raw.get('first_regression_prior_family') or 'none observed'} / "
+            f"{raw.get('max_adjacent_original_backward_ms', 'unavailable')}"
+        ),
+        (
+            "- original adjacent family edge counts / prior-clock reconciled: "
+            f"{sum(count for _, count in edges)} / "
+            f"{str(raw.get('prior_offered_edge_counts_reconcile') is True).lower()}"
+        ),
+        "- original adjacent source-family regressions (top five): " + top_edges,
         (
             "- original regressions market-snapshot / funding / candle: "
             f"{clock_families.get('market_snapshot', 'unavailable')} / "
