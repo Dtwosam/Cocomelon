@@ -1,5 +1,7 @@
 # Cocomelon Project Status
 
+> Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
+
 ## October 17 — bounded immutable opening-plan lookups in optional PAPER observers
 
 Authenticated worker #39017978645 (head `78841822`) reported a 5,543ms
