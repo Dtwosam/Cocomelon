@@ -22,6 +22,9 @@ from cocomelon.research.prospective_both_side_trend_paired_v2_genesis import (
     V2GenesisError,
     prepare_v2_genesis,
 )
+from cocomelon.research.v2_restore_integrity_preflight import (
+    V2RestorePreflightError,
+)
 
 
 def _gap(timestamp: int) -> ReplayRecord:
@@ -106,8 +109,9 @@ def test_archived_witness_tail_beyond_signed_state_is_quarantined_at_startup(
     witness = _prepare_valid_stored_checkpoint(tmp_path)
     witness.append(_gap(200), ordinal=4)
     before = _original_bytes(tmp_path)
-    with pytest.raises(V2GenesisError, match="original signed restore parity"):
+    with pytest.raises(V2GenesisError, match="original signed restore parity") as error:
         _genesis(tmp_path)
+    assert "received_gap_witness_diverged" in str(error.value)
     assert _original_bytes(tmp_path) == before
     assert (tmp_path / FILE_NAME).read_bytes() == before[FILE_NAME]
 
@@ -123,8 +127,9 @@ def test_any_advanced_sqlite_account_is_quarantined_before_actor(
             (f"{lane}-advanced-unsignaled",),
         )
     before = _original_bytes(tmp_path)
-    with pytest.raises(V2GenesisError, match="original signed restore parity"):
+    with pytest.raises(V2GenesisError, match="original signed restore parity") as error:
         _genesis(tmp_path)
+    assert "sqlite_account_state_diverged" in str(error.value)
     assert _original_bytes(tmp_path) == before
 
 
@@ -134,8 +139,9 @@ def test_missing_original_witness_rejected_without_recreating_it(
     _prepare_valid_stored_checkpoint(tmp_path)
     (tmp_path / FILE_NAME).unlink()
     before = _original_bytes(tmp_path)
-    with pytest.raises(V2GenesisError, match="original signed restore parity"):
+    with pytest.raises(V2GenesisError, match="original signed restore parity") as error:
         _genesis(tmp_path)
+    assert "missing_received_gap_witness" in str(error.value)
     assert _original_bytes(tmp_path) == before
     assert not (tmp_path / FILE_NAME).exists()
 
@@ -147,8 +153,9 @@ def test_bad_sqlite_bytes_are_not_repaired_by_research_startup(
     db = tmp_path / "candidate-execution.sqlite3"
     db.write_bytes(b"not sqlite")
     original = _original_bytes(tmp_path)
-    with pytest.raises(V2GenesisError, match="original signed restore parity"):
+    with pytest.raises(V2GenesisError, match="original signed restore parity") as error:
         _genesis(tmp_path)
+    assert "sqlite_readonly_verification_failed" in str(error.value)
     assert _original_bytes(tmp_path) == original
 
 
@@ -162,3 +169,28 @@ def test_witness_byte_tampering_fails_despite_unchanged_file_length(
     with pytest.raises(V2GenesisError, match="original signed restore parity"):
         _genesis(tmp_path)
     assert _original_bytes(tmp_path) == original
+
+
+def test_unknown_v2_integrity_error_cannot_leak_checkpoint_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _prepare_valid_stored_checkpoint(tmp_path)
+    before = _original_bytes(tmp_path)
+
+    def poisoned_preflight(_root: Path, _signed: dict[str, object]) -> None:
+        raise V2RestorePreflightError(
+            "private error /home/runner/credentials/sensitive-state-id"
+        )
+
+    monkeypatch.setattr(
+        "cocomelon.research.prospective_both_side_trend_paired_v2_genesis."
+        "verify_v2_restore_preflight",
+        poisoned_preflight,
+    )
+    with pytest.raises(V2GenesisError, match="original signed restore parity") as error:
+        _genesis(tmp_path)
+    assert "unclassified_integrity_failure" in str(error.value)
+    assert "credentials" not in str(error.value)
+    assert error.value.__cause__ is None
+    assert error.value.__suppress_context__ is True
+    assert _original_bytes(tmp_path) == before

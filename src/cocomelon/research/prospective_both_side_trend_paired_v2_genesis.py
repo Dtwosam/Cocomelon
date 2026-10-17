@@ -37,6 +37,29 @@ SQLITE_STORE_FILES: Final = (
 )
 _SHA_CHARS: Final = frozenset("0123456789abcdef")
 
+# Only fixed, hardcoded failures from our read-only preflight may appear in
+# PAPER status. Unknown future exceptions must not leak raw paths, payloads,
+# private IDs or other bytes from a potentially corrupted checkpoint.
+_V2_RESTORE_PREFLIGHT_CAUSE_CODES: Final[Mapping[str, str]] = {
+    "v2 signed witness count invalid": "invalid_signed_count",
+    "v2 original account store missing": "missing_sqlite_store",
+    "v2 original account database could not be verified read-only": (
+        "sqlite_readonly_verification_failed"
+    ),
+    "v2 original account state ID invalid": "invalid_sqlite_state_id",
+    "v2 signed original gap receipt missing": "missing_signed_gap_receipt",
+    "v2 signed gap receipt not coherent": "incoherent_signed_gap_receipt",
+    "v2 original received gap witness missing": "missing_received_gap_witness",
+    "v2 original received gap witness differs from signed checkpoint": (
+        "received_gap_witness_diverged"
+    ),
+    "v2 signed account lane missing": "missing_signed_account_lane",
+    "v2 signed account identity invalid": "invalid_signed_account_id",
+    "v2 original account SQLite differs from signed checkpoint": (
+        "sqlite_account_state_diverged"
+    ),
+}
+
 
 class V2GenesisError(ValueError):
     """V2 paper account origin cannot be independently established."""
@@ -224,7 +247,15 @@ def prepare_v2_genesis(
         try:
             verify_v2_restore_preflight(root, signed)
         except V2RestorePreflightError as exc:
-            raise V2GenesisError("v2 original signed restore parity invalid") from exc
+            # The actor remains quarantined. Expose only allowlisted failure
+            # classes to the runtime; never replay, recreate or discard the
+            # original witness/account records to make preflight pass.
+            cause = _V2_RESTORE_PREFLIGHT_CAUSE_CODES.get(
+                str(exc), "unclassified_integrity_failure"
+            )
+            raise V2GenesisError(
+                f"v2 original signed restore parity invalid ({cause})"
+            ) from None
         # The actual actor will still recheck every original gap record,
         # review row and execution account while restoring this selection.
         return existing
