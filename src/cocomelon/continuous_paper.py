@@ -2014,6 +2014,7 @@ class _SupervisorGroup:
     ready_market_keys: tuple[set[str], ...]
     l2_exchange_age_ms_by_market: tuple[dict[str, int], ...] = ()
     l2_group_recovery_grace_ms_by_lane: tuple[int, ...] = ()
+    redundant_mux: RedundantStreamMux | None = None
 
     def stale_l2_market_keys(
         self,
@@ -2299,6 +2300,11 @@ def _supervisor_group_health_payload(
         "unhealthy_l2_market_count": len(unhealthy),
         "unhealthy_l2_markets": list(unhealthy),
         "lanes": lanes,
+        "redundant_mux_ingress": (
+            None
+            if group.redundant_mux is None
+            else group.redundant_mux.ingress_diagnostics()
+        ),
     }
 
 
@@ -11714,6 +11720,7 @@ async def run_continuous_paper_session(
                 forward_gaps=gap_gate,
                 required_market_keys=required_market_keys,
                 ready_market_keys=ready_market_keys,
+                redundant_mux=mux,
                 l2_exchange_age_ms_by_market=(
                     l2_exchange_age_ms_by_market
                 ),
