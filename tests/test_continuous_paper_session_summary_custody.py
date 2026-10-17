@@ -30,11 +30,19 @@ def test_successor_retires_old_summary_before_restored_checkpoint_load(
     )
     checkpoint = root / paper.CHECKPOINT_FILENAME
     checkpoint.write_bytes(b"immutable-exact-paper-account-checkpoint")
+    old_audit = root / "all-paper-trade-chart-audit.json"
+    old_scoreboard = root / "all-paper-profitability-scoreboard.json"
+    old_html = root / "all-paper-trade-charts.html"
+    for stale in (old_audit, old_scoreboard, old_html):
+        stale.write_text("predecessor-only", encoding="utf-8")
 
     def observe_checkpoint_load(path: Path) -> None:
         assert path == checkpoint
         assert path.read_bytes() == b"immutable-exact-paper-account-checkpoint"
         assert not predecessor_summary.exists()
+        assert not old_audit.exists()
+        assert not old_scoreboard.exists()
+        assert not old_html.exists()
         raise RuntimeError("controlled checkpoint-load stop")
 
     monkeypatch.setattr(paper, "_load_checkpoint", observe_checkpoint_load)
@@ -49,6 +57,8 @@ def test_successor_retires_old_summary_before_restored_checkpoint_load(
         ))
 
     assert not predecessor_summary.exists()
+    for stale in (old_audit, old_scoreboard, old_html):
+        assert not stale.exists()
     assert checkpoint.read_bytes() == b"immutable-exact-paper-account-checkpoint"
 
 
