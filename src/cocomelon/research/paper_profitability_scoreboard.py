@@ -450,10 +450,53 @@ def _metrics(trades: list[_Trade]) -> dict[str, object]:
     )
     gross_positive = [t for t in trades if t.gross > ZERO]
     flipped = [t for t in gross_positive if t.net <= ZERO]
+    # Use booked after-fee/funding NET dollars, not gross favorable moves.
+    # These are descriptive original closes; omitting a winner changes no
+    # independently executed account or its capital allocation.
+    winners = [t for t in trades if t.net > ZERO]
+    losers = [t for t in trades if t.net < ZERO]
+    winning_cash = sum((t.net for t in winners), ZERO)
+    losing_cash_abs = -sum((t.net for t in losers), ZERO)
+    average_win = winning_cash / len(winners) if winners else None
+    average_loss_abs = losing_cash_abs / len(losers) if losers else None
+    largest_winner = max(
+        winners, key=lambda t: (t.net, t.trade_id),
+        default=None,
+    )
     return {
         "trades": len(trades),
         "wins": sum(t.net > ZERO for t in trades),
         "losses": sum(t.net < ZERO for t in trades),
+        "booked_net_winning_cash": str(winning_cash),
+        "booked_net_losing_cash_abs": str(losing_cash_abs),
+        "booked_net_profit_factor": (
+            str(winning_cash / losing_cash_abs) if losers else None
+        ),
+        "booked_net_mean_winner_cash": (
+            str(average_win) if average_win is not None else None
+        ),
+        "booked_net_mean_loser_abs_cash": (
+            str(average_loss_abs) if average_loss_abs is not None else None
+        ),
+        "booked_net_break_even_win_fraction_at_observed_payoffs": (
+            str(average_loss_abs / (average_win + average_loss_abs))
+            if average_win is not None and average_loss_abs is not None
+            else None
+        ),
+        "booked_net_largest_winner_trade_id": (
+            largest_winner.trade_id if largest_winner is not None else None
+        ),
+        "booked_net_largest_winner_cash": (
+            str(largest_winner.net) if largest_winner is not None else None
+        ),
+        "booked_net_without_largest_winner_arithmetic": (
+            str(net - largest_winner.net)
+            if largest_winner is not None else None
+        ),
+        "booked_net_payoff_scope": (
+            "actual_original_closed_trades_only_not_marked_account_equity_"
+            "not_executable_counterfactual_not_predictive_win_rate"
+        ),
         "gross_realized_pnl": str(gross),
         "fees": str(fees),
         "funding_cash_pnl": str(funding),

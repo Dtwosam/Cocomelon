@@ -2,6 +2,24 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — expose actual closed-trade after-cost payoff and winner concentration
+
+The retrospective authenticated whole-original-journal scoreboard now reports
+the NET booked sum of winning and losing close cash, closed-trade profit
+factor, actual sample mean winning/losing net dollars, the break-even
+win fraction at those **observed historical payoffs**, and the arithmetic
+impact of deleting the single largest booked net winner. It counts every
+original closed trade including missing rank/chart evidence, uses recorded
+entry/exit fees and signed funding rather than gross markouts, and handles
+no-winner/no-loser/empty samples as undefined instead of infinity or an
+invented winning rate. The command's normal compact JSON output surfaces
+the measures for genuine post-handoff worker summaries; it cannot assert
+current marked account expectancy, replace trades, reconstruct a paired
+account, support strategy selection after observing outcomes, or promote
+LIVE. Frozen trial, source admission, strategy, paper execution and risk
+are unchanged. Only a subsequent authentic completed-worker scoreboard
+can report actual new numbers.
+
 ## October 17 — account for queued original-v3 rows after a hard source failure
 
 The strict original-v3 recorder fails permanently when even one source receive

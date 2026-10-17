@@ -125,6 +125,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
         "report": str(target),
         "trades": overall["trades"],
+        "original_closed_after_cost_profit_factor": overall[
+            "booked_net_profit_factor"
+        ],
+        "original_closed_after_cost_break_even_win_fraction_at_observed_payoffs": (
+            overall["booked_net_break_even_win_fraction_at_observed_payoffs"]
+        ),
+        "original_closed_after_cost_without_largest_winner_arithmetic": (
+            overall["booked_net_without_largest_winner_arithmetic"]
+        ),
+        "original_closed_after_cost_payoff_scope": overall[
+            "booked_net_payoff_scope"
+        ],
         "closed_net_pnl": overall["net_pnl"],
         "recorded_fees": overall["fees"],
         "recorded_funding_cash_pnl": overall["funding_cash_pnl"],
