@@ -1,5 +1,27 @@
 # Cocomelon Project Status
 
+> Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
+
+## October 17 — bounded immutable opening-plan lookups in optional PAPER observers
+
+Authenticated worker #39017978645 (head `78841822`) reported a 5,543ms
+L2 position-research callback and 4,839ms asset-context account-mark callback.
+The runtime already has separate per-observer stall attribution on the NEW
+merged head, but this older worker has not yet exercised it. An additional
+identified hot-path hazard is repeated SQLite load/JSON decode of the SAME
+immutable `paper_order_plans` record across nine optional research observers
+on each mark/book update.
+
+This contained change shares a worker-local 256-entry positive-only LRU among
+those optional study sinks. Cache misses and database errors still reach the
+original SQLite loader; missing rows are never cached. The original-stop
+source-evidence reader, authoritative PAPER execution/account store and all
+mandatory audit reads remain direct. A natural successor is required to
+measure actual stall improvement; faster processing does not repair already
+dropped v3 source rows or establish a 72-hour clean original feed. PAPER
+after-cost performance remains negative, source eligibility unproven and
+LIVE orders disabled.
+
 ## October 16 — live v3 source-recorder health displayed fail-closed
 
 Authenticated operational PAPER status now reports live original v3
