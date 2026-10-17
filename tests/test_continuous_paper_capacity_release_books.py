@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from cocomelon.domain.execution import (
     InstrumentExecutionSpec,
@@ -15,6 +18,7 @@ from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.execution.accounting import PaperPosition, PositionSide
 from cocomelon.research.continuous_paper_capacity_release_books import (
     CapacityReleaseBookCapture,
+    CapacityReleaseBookEvidenceError,
     CapacityReleaseBookRegistration,
     CapacityReleaseBookStore,
 )
@@ -426,3 +430,97 @@ def test_release_book_capture_ignores_non_capacity_rejections(
 
     assert store.iter_registrations() == ()
     assert capture.error is None
+
+
+def test_hot_l2_registration_cache_is_market_scoped_and_invalidates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "capacity-cache"
+    store = _store(root)
+    primary = _registration()
+    other_market = replace(
+        primary, opportunity_id="other-release", release_market="SOL",
+    )
+    assert store.register(primary)
+    assert store.register(other_market)
+
+    original = store.iter_registrations
+    loaded = [0]
+
+    def audited():
+        loaded[0] += 1
+        return original()
+
+    monkeypatch.setattr(store, "iter_registrations", audited)
+    assert store._registrations_for_capture_market("BTC") == (primary,)
+    assert store._registrations_for_capture_market("SOL") == (other_market,)
+    assert store._registrations_for_capture_market("ETH") == ()
+    assert loaded == [1]
+
+    # Repeated genuine book callbacks must not rescan every unrelated
+    # registration file. Candidate matching, staging and evidence remain
+    # identical to the existing exact latency causal protocol.
+    assert store.capture(
+        positions=(_position(),), instrument=_instrument(),
+        book=_book(received_ms=1_100),
+        reference_price=Decimal("101"), now_ms=1_100,
+    ) == 0
+    assert store.capture(
+        positions=(_position(),), instrument=_instrument(),
+        book=_book(received_ms=1_110),
+        reference_price=Decimal("101"), now_ms=1_110,
+    ) == 0
+    assert loaded == [1]
+    assert len(store.iter_pending()) == 1
+    assert store.capture(
+        positions=(_position(),), instrument=_instrument(),
+        book=_book(received_ms=1_360),
+        reference_price=Decimal("101"), now_ms=1_360,
+    ) == 1
+    assert loaded == [1]
+    assert len(store.iter_records()) == 1
+
+    # An in-process new registration MUST invalidate even on a coarse
+    # filesystem clock.
+    added = replace(primary, opportunity_id="later-release")
+    assert store.register(added)
+    assert store._registrations_for_capture_market("BTC") == (
+        *tuple(item for item in original() if item.release_market == "BTC"),
+    )
+    assert loaded == [2]
+
+    # Another exact-store writer publishing a separate atomic file is
+    # detected from the directory change, not an inferred market tick.
+    outside = _store(root)
+    outside.register(replace(primary, opportunity_id="external-release"))
+    assert len(store._registrations_for_capture_market("BTC")) == 3
+    assert loaded == [3]
+
+    # Sealing/summary always executes an independent full canonical
+    # on-disk read rather than trusting the live observer cache.
+    store.iter_registrations()
+    assert loaded == [4]
+    new_worker = _store(root)
+    assert len(new_worker.iter_registrations()) == 4
+    assert len(new_worker._registrations_for_capture_market("BTC")) == 3
+
+
+def test_hot_book_cache_cannot_hide_corrupt_registered_evidence_from_audit(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path / "bad-registration")
+    registration = _registration()
+    store.register(registration)
+    assert store._registrations_for_capture_market("BTC") == (registration,)
+    path = store._registration_path(registration.registration_id)
+    path.write_text("{not-canonical-JSON", encoding="utf-8")
+    # Full independent state review never trusts in-memory book lookup.
+    with pytest.raises(CapacityReleaseBookEvidenceError):
+        store.iter_registrations()
+    with pytest.raises(CapacityReleaseBookEvidenceError):
+        store.summary(now_ms=1_400)
+    # A worker handoff cannot inherit the volatile cache or claim this as
+    # a valid registration source.
+    replacement_store = _store(store.root)
+    with pytest.raises(CapacityReleaseBookEvidenceError):
+        replacement_store._registrations_for_capture_market("BTC")
