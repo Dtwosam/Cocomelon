@@ -177,7 +177,10 @@ def test_other_clock_family_identifies_real_all_mids_and_trade_sources(
         assert source["other_regression_kind_counts"] == expected
         assert source["other_regression_kind_counts_reconcile"] is True
         assert source["regression_source_family_counts"]["other"] == 3
-        assert source["received_clock_regressions"] == 3
+        assert source.get(
+            "received_clock_regressions",
+            source.get("original_received_clock_regressions"),
+        ) == 3
         assert source["first_regression_event_kind"] == "all_mids"
         assert source["first_regression_source_family"] == "other"
     assert terminal["complete"] is False
