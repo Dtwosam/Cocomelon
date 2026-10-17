@@ -2,6 +2,39 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — expose real original venue L2 timestamp failures after source quarantine
+
+The independent v3 admission gate added by #1321 rejects stale, future or
+backward exchange-time L2 books, but the old worker's only continuous
+observations were **PAPER-receive-to-processing age** and unrelated original
+cross-stream receipt-clock regressions. Those cannot tell whether the
+actual venue L2 exchange timestamp is old despite a fresh local callback.
+
+The nonblocking original v3 recorder now observes the untouched **original
+L2 exchange timestamp versus actual original receipt timestamp** for the
+fixed selected markets. It records, including AFTER permanent original
+source failure: missing L2 venue times, lag exceeding the same 15-second v3
+source threshold, future venue skew exceeding the same one-second threshold,
+within-market venue-clock regressions, largest observed lag/future skew,
+selected/unselected observation counts, and bounded selected-market clock
+highwaters. Equality and exact timing boundaries are allowed.
+These are independent of older PAPER-offer-age diagnostics. No opaque
+market identifiers, raw venue payloads or paths are exposed in heartbeat
+or terminal failure reporting, and no data clock is modified.
+The signed original recorder's queue, disk, row/byte limits and failure
+conditions remain unchanged; no new clock anomaly is allowed to certify
+the existing archive or trigger a PAPER trading change.
+
+The nonqualifying GitHub operational issue now shows those counts; the
+worker-terminal read-only diagnostic can report them only for the matching
+authenticated worker/run/attempt. Missing fields on older workers remain
+unknown, never zero-credit evidence. Tests cover both threshold boundaries,
+unknown venue timestamp, increasing receipt time with regressed original
+venue time, selected market bounds, and continued diagnosis after receipt
+regression. The new counters are **negative telemetry**, not qualifying
+original 72-hour source, independent exchange provenance, two fresh paired
+after-cost capital accounts, or a profitable trade edge. LIVE disabled.
+
 ## October 17 — audit original venue L2 clock separately from PAPER receipt
 
 Authentic original PAPER research is still disqualified: at 15:19 UTC
