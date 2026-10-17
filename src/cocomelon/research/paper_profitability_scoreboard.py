@@ -495,7 +495,7 @@ def _metrics(trades: list[_Trade]) -> dict[str, object]:
         ),
         "booked_net_payoff_scope": (
             "actual_original_closed_trades_only_not_marked_account_equity_"
-            "or_executable_counterfactual_or_predictive_win_rate"
+            "not_executable_counterfactual_not_predictive_win_rate"
         ),
         "gross_realized_pnl": str(gross),
         "fees": str(fees),
