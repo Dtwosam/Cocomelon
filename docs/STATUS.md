@@ -2,6 +2,42 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — measure both sides of WS ingress serialization
+
+After #1325, every original two-lane WebSocket callback awaits the
+same serial mux lock through downstream PAPER/source delivery. This protects
+shared event ordering and failover state, but could introduce head-of-line
+waiting when one original delivery takes time. The existing PAPER heartbeat
+reports 2.0s–7.9s event-loop wakeup delays and recurring 3s stale-book
+eligibility; lock contention and event-loop suspension are different
+mechanisms and must not be conflated.
+
+The mux now exposes bounded **volatile monotonic-time** counters: completed
+and failed ingress callbacks, calls which found the lock occupied, current
+and peak simultaneous ingress calls, greatest lock wait and greatest time
+held (including awaited sink and failover). The actual per-group mux object
+is retained alongside WS supervisor diagnostics and read into the
+operational heartbeat, including natural group replacements. No public
+source or market/event keys are exported. Missing counters on older worker
+versions stay unknown, not zero-credit; these counters do **not** promote
+a feed, authorize source-gap closure or prove a correct causal fix.
+
+Concurrency tests hold a real downstream callback pending to confirm
+contention is visible while it is happening, that counters reconcile
+after release, and that a failed sink increments failure counts without
+changing existing fail-closed source behavior. Supervisor-health and
+heartbeat tests verify integration and independent stale-L2 market
+readiness. The diagnostics add only process-monotonic sampling and no
+new blocking I/O, research replay, source clamping, risk logic, fills,
+stop changes or orders.
+
+Last checked worker #39049949008 at 18:57 UTC still runs pre-#1325
+`f53086a`, with **56,815** original source gap notices and **337,927**
+dropped research rows; source FAILED. New per-mux telemetry requires
+natural exact-state successor adoption. Positive after-cost independent
+matched accounts and valid original >72h zero-gap source remain missing.
+LIVE disabled.
+
 ## October 17 — serialize actual redundant lane callbacks during durable handoff
 
 The original recorder remains disqualified, with live worker #39049949008
