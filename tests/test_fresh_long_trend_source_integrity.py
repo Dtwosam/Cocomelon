@@ -307,8 +307,8 @@ def test_original_l2_exchange_clock_equality_is_not_falsely_rejected() -> None:
 def test_invalid_l2_exchange_clock_blocks_new_paper_accounts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from cocomelon.evidence.contracts import BaselineReplayConfig
     from cocomelon.domain.execution import PaperExecutionConfig
+    from cocomelon.evidence.contracts import BaselineReplayConfig
 
     class OriginalStub:
         def __init__(
