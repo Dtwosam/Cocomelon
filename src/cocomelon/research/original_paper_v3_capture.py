@@ -707,6 +707,14 @@ class OriginalPaperMicrostructureCapture:
                     self.record_count += len(batch)
                     self.record_bytes += written_bytes
                     self.last_available_at_ms = batch[-1].available_at_ms
+                else:
+                    # A regression or queue overflow can fail this recorder
+                    # while an earlier accepted batch is still in memory.
+                    # These rows were offered, but were never written. Count
+                    # them as lost instead of leaving a permanent unexplained
+                    # offered-minus-written-minus-dropped terminal delta.
+                    # The original source is still irrevocably disqualified.
+                    self.dropped_count += len(batch)
             except OriginalCaptureBudgetExceeded as exc:
                 self.failure = self.failure or str(exc)
             except Exception as exc:
