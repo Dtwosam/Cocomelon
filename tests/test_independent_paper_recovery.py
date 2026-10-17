@@ -595,3 +595,55 @@ def test_recovery_runs_on_every_main_merge_but_keeps_exclusive_lease() -> None:
     assert "no NEW successor run" in script
 
 
+
+
+def test_speculative_guard_pending_trader_is_not_an_active_paper_worker() -> None:
+    # Observed Oct 17: main push #39072496525 was stuck on the startup
+    # guard while restored exact #39071958397 genuinely ran the trader.
+    # A "pending" future trader step does not have a running lease.
+    speculative = paper_job("pending", None)
+    speculative[0]["steps"][0]["status"] = "pending"
+    assert choose(
+        [run(15, event="push", status="in_progress"), run(12)],
+        jobs_by_run={
+            15: speculative,
+            12: paper_job("in_progress", None),
+        },
+    ) == ("blocked", None)
+
+
+def test_unstarted_exact_handoff_is_held_without_claiming_a_trader() -> None:
+    # No second dispatch may overlap the exact predecessor's pending
+    # restoration, but no authenticated PAPER heartbeat is yet possible.
+    pending = paper_job("pending", None)
+    pending[0]["steps"][0]["status"] = "pending"
+    assert choose(
+        [run(15, event="workflow_dispatch", status="in_progress"), run(12)],
+        jobs_by_run={
+            15: pending,
+            12: paper_job("completed", "success"),
+        },
+        artifacts_by_run={12: exact_artifact(12)},
+    ) == ("queued_exact", None)
+
+
+def test_actual_trader_step_in_progress_still_requires_active_heartbeat() -> None:
+    # The only active classification is the trader step itself in progress,
+    # not the GitHub job being in progress in another earlier step.
+    assert choose(
+        [run(15, event="workflow_dispatch", status="in_progress")],
+        jobs_by_run={15: paper_job("in_progress", None)},
+    ) == ("active", (15, 1))
+
+
+def test_completed_unstarted_guard_does_not_borrow_old_paper_state() -> None:
+    assert choose(
+        [
+            run(15, event="push", status="completed", conclusion="failure"),
+            run(12, event="workflow_dispatch", status="in_progress"),
+        ],
+        jobs_by_run={
+            15: paper_job("pending", None),
+            12: paper_job("in_progress", None),
+        },
+    ) == ("blocked", None)
