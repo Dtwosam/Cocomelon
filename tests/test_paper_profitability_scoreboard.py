@@ -143,6 +143,90 @@ def _audit() -> dict[str, object]:
     }
 
 
+def test_actual_booked_net_payoff_factor_and_biggest_winner_stress() -> None:
+    rows = [
+        _trade(
+            1, side="long", market="BTC", strategy="trend",
+            gross="5", entry_fee="0.5", exit_fee="0.5",
+        ),
+        _trade(
+            2, side="short", market="ETH", strategy=None,
+            gross="-5", entry_fee="0.5", exit_fee="0.5",
+        ),
+        _trade(
+            3, side="short", market="SOL", strategy="breakout",
+            gross="1", entry_fee="0.5", exit_fee="0.5",
+        ),
+    ]
+    report = paper_profitability_scoreboard(_reconciled_audit_from_rows(rows))
+    overall = report["overall"]
+    assert overall["trades"] == 3
+    assert overall["wins"] == 1
+    assert overall["losses"] == 1
+    assert Decimal(overall["booked_net_winning_cash"]) == 4
+    assert Decimal(overall["booked_net_losing_cash_abs"]) == 6
+    assert Decimal(overall["booked_net_profit_factor"]) == Decimal(4) / 6
+    assert Decimal(overall["booked_net_mean_winner_cash"]) == 4
+    assert Decimal(overall["booked_net_mean_loser_abs_cash"]) == 6
+    assert Decimal(
+        overall["booked_net_break_even_win_fraction_at_observed_payoffs"]
+    ) == Decimal("0.6")
+    assert overall["booked_net_largest_winner_trade_id"] == "original-1"
+    assert Decimal(overall["booked_net_largest_winner_cash"]) == 4
+    assert Decimal(overall["net_pnl"]) == -2
+    assert Decimal(overall["booked_net_without_largest_winner_arithmetic"]) == -6
+    assert "not_executable_counterfactual" in overall["booked_net_payoff_scope"]
+    assert report["ready_for_strategy_promotion"] is False
+    assert sum(
+        Decimal(row["booked_net_winning_cash"])
+        for row in report["side_cohorts"]
+    ) == 4
+    assert sum(
+        Decimal(row["booked_net_losing_cash_abs"])
+        for row in report["market_cohorts"]
+    ) == 6
+
+
+@pytest.mark.parametrize(
+    ("gross", "expected_factor", "expected_leave_out"),
+    [
+        ("-3", "0", None),
+        ("3", None, "0"),
+        ("1", None, None),
+    ],
+)
+def test_booked_payoff_edge_cases_do_not_invent_observed_opposite_side(
+    gross: str, expected_factor: str | None, expected_leave_out: str | None,
+) -> None:
+    source = _reconciled_audit_from_rows([
+        _trade(
+            1, side="long", market="BTC", strategy=None,
+            gross=gross, entry_fee="0.5", exit_fee="0.5",
+        ),
+    ])
+    result = paper_profitability_scoreboard(source)
+    metrics = result["overall"]
+    assert metrics["booked_net_profit_factor"] == expected_factor
+    assert metrics["booked_net_break_even_win_fraction_at_observed_payoffs"] is None
+    assert metrics["booked_net_without_largest_winner_arithmetic"] == (
+        expected_leave_out
+    )
+    assert result["ready_for_strategy_promotion"] is False
+
+
+def test_empty_original_journal_has_no_invented_profit_factor_or_winner() -> None:
+    report = paper_profitability_scoreboard(_reconciled_audit_from_rows([]))
+    metrics = report["overall"]
+    assert metrics["booked_net_winning_cash"] == "0"
+    assert metrics["booked_net_losing_cash_abs"] == "0"
+    assert metrics["booked_net_profit_factor"] is None
+    assert metrics["booked_net_mean_winner_cash"] is None
+    assert metrics["booked_net_mean_loser_abs_cash"] is None
+    assert metrics["booked_net_break_even_win_fraction_at_observed_payoffs"] is None
+    assert metrics["booked_net_largest_winner_trade_id"] is None
+    assert metrics["booked_net_without_largest_winner_arithmetic"] is None
+
+
 def test_all_original_trades_and_net_losses_are_retained() -> None:
     source = _audit()
     report = paper_profitability_scoreboard(source)
