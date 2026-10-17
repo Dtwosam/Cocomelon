@@ -16,6 +16,10 @@ from cocomelon.domain.replay import ReplayManifest, ReplayRecord, SourceRecordKi
 
 ZERO_GAP_POLICY: Final = "reject_every_original_gap_in_entire_replayed_warmup_and_forward_window"
 MAX_FORWARD_L2_SILENCE_MS: Final = 5 * 60 * 1000
+# Genuine original exchange L2 timestamps must remain close to actual
+# PAPER receipt. These are independently checked, never clamped or repaired.
+MAX_ORIGINAL_L2_EXCHANGE_AGE_MS: Final = 15_000
+MAX_ORIGINAL_L2_EXCHANGE_FUTURE_SKEW_MS: Final = 1_000
 
 
 class FreshLongTrendSourceError(ValueError):
@@ -58,6 +62,13 @@ def audit_fresh_long_trend_original_records(
     # in the original forward recorder determine the universe to replay.
     all_forward_market_sources: set[str] = set()
     all_forward_l2_sources: set[str] = set()
+    # Verify venue L2 exchange clock independently from original PAPER
+    # availability, including original warmup books that can seed trading
+    # state. Forward-only validation would permit poisoned warmup state.
+    last_exchange_l2_by_market: dict[str, int] = {}
+    worst_l2_exchange_age_by_market: dict[str, int] = {}
+    max_future_l2_clock_skew_ms = 0
+    original_l2_exchange_clock_observations = 0
     digest = hashlib.sha256()
     last_available = -1
     for record in records:
@@ -74,6 +85,44 @@ def audit_fresh_long_trend_original_records(
             )
         if record.record_kind is not SourceRecordKind.NORMALIZED_EVENT:
             raise FreshLongTrendSourceError("unexpected source record kind")
+        if record.event_kind == "l2_book":
+            if (
+                record.market is None
+                or type(record.exchange_time_ms) is not int
+            ):
+                raise FreshLongTrendSourceError(
+                    "original L2 exchange clock absent"
+                )
+            # Neither a fresh receive time nor a canonical manifest may
+            # make a repeatedly replayed, stale or future-dated book fresh.
+            source_age_ms = (
+                record.available_at_ms - record.exchange_time_ms
+            )
+            if source_age_ms > MAX_ORIGINAL_L2_EXCHANGE_AGE_MS:
+                raise FreshLongTrendSourceError(
+                    "original L2 exchange clock stale beyond fifteen seconds"
+                )
+            if source_age_ms < -MAX_ORIGINAL_L2_EXCHANGE_FUTURE_SKEW_MS:
+                raise FreshLongTrendSourceError(
+                    "original L2 exchange clock future-dated"
+                )
+            previous_exchange = last_exchange_l2_by_market.get(record.market)
+            if (
+                previous_exchange is not None
+                and record.exchange_time_ms < previous_exchange
+            ):
+                raise FreshLongTrendSourceError(
+                    "original L2 exchange clock regressed within market"
+                )
+            last_exchange_l2_by_market[record.market] = record.exchange_time_ms
+            worst_l2_exchange_age_by_market[record.market] = max(
+                worst_l2_exchange_age_by_market.get(record.market, 0),
+                source_age_ms,
+            )
+            max_future_l2_clock_skew_ms = max(
+                max_future_l2_clock_skew_ms, -source_age_ms,
+            )
+            original_l2_exchange_clock_observations += 1
         if (
             record.market is not None
             and record.available_at_ms >= forward_not_before_ms
@@ -152,6 +201,23 @@ def audit_fresh_long_trend_original_records(
         "common_selected_market_l2_end_ms": common_end,
         "common_l2_forward_elapsed_ms": common_end - forward_not_before_ms,
         "maximum_allowed_original_l2_silence_ms": MAX_FORWARD_L2_SILENCE_MS,
+        "maximum_allowed_original_l2_exchange_age_ms": (
+            MAX_ORIGINAL_L2_EXCHANGE_AGE_MS
+        ),
+        "maximum_allowed_original_l2_future_skew_ms": (
+            MAX_ORIGINAL_L2_EXCHANGE_FUTURE_SKEW_MS
+        ),
+        "original_l2_exchange_clock_observation_count": (
+            original_l2_exchange_clock_observations
+        ),
+        "original_l2_exchange_age_max_ms_by_market": dict(
+            sorted(worst_l2_exchange_age_by_market.items())
+        ),
+        "original_l2_exchange_future_skew_max_ms": (
+            max_future_l2_clock_skew_ms
+        ),
+        "original_l2_exchange_clock_monotonic_per_market_verified": True,
+        "original_l2_exchange_clock_checked_in_warmup_and_forward": True,
         "every_market_has_initial_l2_and_no_observed_5min_drought": True,
         "recorded_source_gap_count": 0,
         "source_gap_policy": ZERO_GAP_POLICY,
