@@ -154,6 +154,9 @@ class WebSocketSupervisor:
         # source-gap receipt. Keep the original object (and start) until
         # a real sink success; later messages must retry it first.
         self._uncommitted_open_gaps: set[str] = set()
+        # A failed/cancelled recovery CLOSE must retain its original
+        # witnessed end time. Never re-date a failed close on next delivery.
+        self._uncommitted_recovered_gaps: dict[str, DataGap] = {}
         self._connected = False
         self._last_server_message_ms: int | None = None
         self._reconnect_count = 0
@@ -290,6 +293,9 @@ class WebSocketSupervisor:
             "l2_out_of_order_count": self._l2_out_of_order_count,
             "l2_stale_on_receive_count": self._l2_stale_on_receive_count,
             "uncommitted_source_gap_open_count": len(self._uncommitted_open_gaps),
+            "uncommitted_source_gap_recovered_count": len(
+                self._uncommitted_recovered_gaps
+            ),
             "l2_fresh_accepted_count": self._l2_fresh_accepted_count,
             "l2_max_event_sink_await_ms": self._l2_max_event_sink_await_ms,
             "l2_last_normalized_age_ms": received_age,
@@ -605,6 +611,17 @@ class WebSocketSupervisor:
         await self._emit_gap(gap)
         self._uncommitted_open_gaps.remove(stream_id)
 
+    async def _persist_uncommitted_recovered_gap(self, stream_id: str) -> None:
+        recovered = self._uncommitted_recovered_gaps.get(stream_id)
+        if recovered is None:
+            return
+        # At-least-once under an uncertain write. Reattempt the IDENTICAL
+        # original close and forbid any later original event/recovery until
+        # the real downstream sink acknowledges it.
+        await self._emit_gap(recovered)
+        self._uncommitted_recovered_gaps.pop(stream_id, None)
+        self._open_gaps.pop(stream_id, None)
+
     async def _open_l2_stale_gaps_if_needed(
         self,
         now_ms: int,
@@ -613,6 +630,7 @@ class WebSocketSupervisor:
     ) -> None:
         for stream_id in self._l2_stream_ids():
             await self._persist_uncommitted_open_gap(stream_id)
+            await self._persist_uncommitted_recovered_gap(stream_id)
             if stream_id in self._open_gaps:
                 continue
             # A not-yet-acknowledged original L2 event may prove that the
@@ -675,6 +693,7 @@ class WebSocketSupervisor:
         for subscription in self._subscriptions:
             stream_id = subscription_id(subscription)
             await self._persist_uncommitted_open_gap(stream_id)
+            await self._persist_uncommitted_recovered_gap(stream_id)
             if stream_id in self._open_gaps:
                 continue
             gap = DataGap(
@@ -689,19 +708,19 @@ class WebSocketSupervisor:
 
     async def _close_gap_if_needed(self, stream_id: str, now_ms: int) -> None:
         await self._persist_uncommitted_open_gap(stream_id)
+        await self._persist_uncommitted_recovered_gap(stream_id)
         gap = self._open_gaps.get(stream_id)
         if gap is None:
             return
-        await self._emit_gap(
-            DataGap(
-                stream_id=stream_id,
-                started_ms=gap.started_ms,
-                ended_ms=max(gap.started_ms, now_ms),
-                reason="recovered",
-            )
+        # The first accepted original market event is the actual recovery
+        # witness. Freeze its precise end timestamp BEFORE the sink await.
+        self._uncommitted_recovered_gaps[stream_id] = DataGap(
+            stream_id=stream_id,
+            started_ms=gap.started_ms,
+            ended_ms=max(gap.started_ms, now_ms),
+            reason="recovered",
         )
-        # A failed durable gap sink cannot silently erase unresolved lineage.
-        self._open_gaps.pop(stream_id, None)
+        await self._persist_uncommitted_recovered_gap(stream_id)
 
     async def _dispatch(self, raw: object) -> None:
         now_ms = self._clock_ms()
@@ -720,6 +739,7 @@ class WebSocketSupervisor:
             # No event/key, freshness or recovery proof may pass a missing
             # original gap OPEN (including from an earlier cancelled task).
             await self._persist_uncommitted_open_gap(stream_id)
+            await self._persist_uncommitted_recovered_gap(stream_id)
             is_l2 = event.kind is StreamKind.L2_BOOK
             if is_l2:
                 self._l2_normalized_count += 1
