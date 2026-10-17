@@ -115,7 +115,18 @@ def choose_exact_source(
         trader = _step(job, TRADER_STEP)
         if trader is None:
             return "blocked", None
-        if trader.get("status") in {"queued", "pending", "in_progress"}:
+        trader_status = trader.get("status")
+        if trader_status in {"queued", "pending"}:
+            # An in-progress speculative push can spend an hour in its
+            # GitHub API guard while all later trader steps show "pending".
+            # That is NOT an active trader and has no authenticated PAPER
+            # heartbeat. Refuse to dispatch while its lease is unresolved.
+            # A still-starting exact workflow_dispatch is separately held
+            # to prevent another copy of the same predecessor handoff.
+            if run.get("event") == "workflow_dispatch":
+                return "queued_exact", None
+            return "blocked", None
+        if trader_status == "in_progress":
             attempt = run.get("run_attempt")
             if (
                 isinstance(attempt, bool) or not isinstance(attempt, int)
@@ -123,7 +134,7 @@ def choose_exact_source(
             ):
                 raise PaperRescueError("invalid active paper run attempt")
             return "active", (run_id, attempt)
-        if trader.get("status") != "completed":
+        if trader_status != "completed":
             return "blocked", None
         if trader.get("conclusion") == "skipped":
             continue
