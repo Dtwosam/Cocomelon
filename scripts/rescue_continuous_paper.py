@@ -22,6 +22,10 @@ DURABLE_UPLOAD_STEP = "Upload durable continuous paper state"
 LIVE_STATUS_ISSUE = "469"
 HEARTBEAT_STALE_SECONDS = 15 * 60
 HEARTBEAT_FUTURE_ALLOWANCE_SECONDS = 120
+# Guard against brief GitHub Actions control-plane API errors without
+# guessing that a missing response means the active PAPER lease is free.
+# The independent watchdog runs every 10 minutes with a five-minute cap.
+GH_API_RETRY_DELAYS_SECONDS = (0, 2, 5, 10)
 
 
 class PaperRescueError(RuntimeError):
@@ -303,17 +307,32 @@ def verify_active_heartbeat(
 
 
 def _gh_json(resource: str) -> dict[str, Any]:
-    result = subprocess.run(
-        ["gh", "api", resource],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=45,
-    )
-    data = json.loads(result.stdout)
-    if not isinstance(data, dict):
-        raise PaperRescueError("GitHub API returned a non-object")
-    return data
+    # A single gh CLI/HTTP hiccup is not evidence the worker disappeared.
+    # Retry only transport/command failures, not malformed or unexpected
+    # data. Exhaustion fails closed and cannot grant a second worker lease.
+    for index, delay in enumerate(GH_API_RETRY_DELAYS_SECONDS):
+        if delay:
+            time.sleep(delay)
+        try:
+            result = subprocess.run(
+                ["gh", "api", resource],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=45,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            if index == len(GH_API_RETRY_DELAYS_SECONDS) - 1:
+                raise PaperRescueError(
+                    "GitHub control-plane API unavailable after bounded retries; "
+                    "PAPER lease or dispatch outcome unverified"
+                ) from exc
+            continue
+        data = json.loads(result.stdout)
+        if not isinstance(data, dict):
+            raise PaperRescueError("GitHub API returned a non-object")
+        return data
+    raise AssertionError("unreachable GitHub API retry exhaustion")
 
 
 def _collection(resource: str, name: str) -> list[dict[str, Any]]:
