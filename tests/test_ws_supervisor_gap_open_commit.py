@@ -62,7 +62,7 @@ def test_failed_disconnect_open_blocks_source_events_until_exact_retry() -> None
             clock_ms=lambda: now_ms[0],
             utcnow=lambda: datetime(2026, 10, 17, tzinfo=UTC),
         )
-        with pytest.raises(OSError, match="durable source gap unavailable"):
+        with pytest.raises(RuntimeError, match="durable source gap unavailable"):
             await supervisor._open_disconnect_gaps(2_000)
         assert len(gaps) == 0
         assert "trades:BTC" in supervisor._uncommitted_open_gaps
@@ -71,7 +71,7 @@ def test_failed_disconnect_open_blocks_source_events_until_exact_retry() -> None
             now_ms=3_000
         )["uncommitted_source_gap_open_count"] == 1
 
-        with pytest.raises(OSError, match="durable source gap unavailable"):
+        with pytest.raises(RuntimeError, match="durable source gap unavailable"):
             await supervisor._dispatch(_trade(1, 3_000))
         assert events == []
         assert not supervisor._recent_key_sets["trades:BTC"]
@@ -127,7 +127,7 @@ def test_failed_stale_l2_open_is_retried_at_same_threshold() -> None:
             stale_after_ms=1_000,
         )
         supervisor._last_stream_message["l2Book:BTC"] = 1_000
-        with pytest.raises(OSError, match="L2 stale OPEN rejected"):
+        with pytest.raises(RuntimeError, match="L2 stale OPEN rejected"):
             await supervisor._open_l2_stale_gaps_if_needed(2_500)
         assert supervisor._open_gaps["l2Book:BTC"].started_ms == 2_000
         assert supervisor.l2_delivery_diagnostics(
