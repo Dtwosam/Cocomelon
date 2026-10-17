@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -1077,6 +1077,39 @@ class _CompositeOpeningResearchObserver:
     ) -> None:
         for observer in self._observers:
             observer.record_opening_trace(trace)
+
+
+class _ResearchOpeningPlanCache:
+    """Bounded, worker-local lookup for immutable opening plans in optional research.
+
+    Execution and original-stop source auditing keep their direct SQLite reads.
+    The paper_order_plans table has immutable ID/payload semantics; this cache
+    only avoids repeatedly decoding the same positive rows for hot mark/book
+    callbacks. Missing rows and loader exceptions are never cached.
+    """
+
+    def __init__(
+        self,
+        loader: Callable[[str], PaperOrderPlan | None],
+        *,
+        max_entries: int = 256,
+    ) -> None:
+        if type(max_entries) is not int or max_entries <= 0:
+            raise ValueError("research opening plan cache bound must be positive")
+        self._loader = loader
+        self._max_entries = max_entries
+        self._found: OrderedDict[str, PaperOrderPlan] = OrderedDict()
+
+    def __call__(self, plan_id: str) -> PaperOrderPlan | None:
+        if plan_id in self._found:
+            self._found.move_to_end(plan_id)
+            return self._found[plan_id]
+        plan = self._loader(plan_id)
+        if plan is not None:
+            self._found[plan_id] = plan
+            if len(self._found) > self._max_entries:
+                self._found.popitem(last=False)
+        return plan
 
 
 # Fixed caller-position identities: no dynamic source or market keys, no
@@ -10124,6 +10157,9 @@ async def run_continuous_paper_session(
         opening_plan_loader=execution.store.load_plan,
         config=replay_config.execution,
     )
+    # Separate optional-study hot reads from authoritative execution and
+    # original-stop source custody. Only immutable positive plans are cached.
+    load_research_plan = _ResearchOpeningPlanCache(execution.store.load_plan)
     profit_lock_execution_shadow = (
         _ContinuousProfitLockExecutionShadowSink(
             _restore_profit_lock_execution_shadow(
@@ -10131,7 +10167,7 @@ async def run_continuous_paper_session(
                 replay_config.execution,
                 started_at_ms=started_at_ms,
             ),
-            opening_plan_loader=execution.store.load_plan,
+            opening_plan_loader=load_research_plan,
         )
     )
     # Freeze a fresh future-only exit experiment separately from the
@@ -10144,7 +10180,7 @@ async def run_continuous_paper_session(
                 started_at_ms=started_at_ms,
                 rules=(PROFIT_TARGET_1R_RULE,),
             ),
-            opening_plan_loader=execution.store.load_plan,
+            opening_plan_loader=load_research_plan,
         )
     )
     # A distinct frozen +1.5R horizon: never reset or mix +1R history.
@@ -10156,7 +10192,7 @@ async def run_continuous_paper_session(
                 started_at_ms=started_at_ms,
                 rules=(PROFIT_TARGET_1_5R_RULE,),
             ),
-            opening_plan_loader=execution.store.load_plan,
+            opening_plan_loader=load_research_plan,
         )
     )
     profit_trailing_shadow = (
@@ -10167,7 +10203,7 @@ async def run_continuous_paper_session(
                 started_at_ms=started_at_ms,
                 rules=(TRAILING_PROFIT_1R_RULE,),
             ),
-            opening_plan_loader=execution.store.load_plan,
+            opening_plan_loader=load_research_plan,
         )
     )
     net_reserved_trailing_shadow = (
@@ -10178,7 +10214,7 @@ async def run_continuous_paper_session(
                 started_at_ms=started_at_ms,
                 rules=(NET_RESERVED_TRAILING_RULE,),
             ),
-            opening_plan_loader=execution.store.load_plan,
+            opening_plan_loader=load_research_plan,
         )
     )
     early_reserved_trailing_shadow = (
@@ -10189,7 +10225,7 @@ async def run_continuous_paper_session(
                 started_at_ms=started_at_ms,
                 rules=(EARLY_RESERVED_TRAILING_RULE,),
             ),
-            opening_plan_loader=execution.store.load_plan,
+            opening_plan_loader=load_research_plan,
         )
     )
     delayed_entry_execution_shadow = (
@@ -10199,7 +10235,7 @@ async def run_continuous_paper_session(
                 replay_config.execution,
                 started_at_ms=started_at_ms,
             ),
-            opening_plan_loader=execution.store.load_plan,
+            opening_plan_loader=load_research_plan,
         )
     )
     delayed_entry_120s_execution_shadow = (
@@ -10211,7 +10247,7 @@ async def run_continuous_paper_session(
                 delay_ms=CHALLENGER_DELAY_MS,
                 max_observation_lag_ms=MAX_DELAY_OBSERVATION_LAG_MS,
             ),
-            opening_plan_loader=execution.store.load_plan,
+            opening_plan_loader=load_research_plan,
         )
     )
     entry_mid_markout_shadow = _ContinuousEntryMidMarkoutSink(
@@ -10219,7 +10255,7 @@ async def run_continuous_paper_session(
             root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
             started_at_ms=started_at_ms,
         ),
-        opening_plan_loader=execution.store.load_plan,
+        opening_plan_loader=load_research_plan,
     )
     drawdown_tracker = _restore_drawdown_tracker(
         root / DRAWDOWN_STATE_FILENAME,
