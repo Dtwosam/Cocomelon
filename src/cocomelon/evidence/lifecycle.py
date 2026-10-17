@@ -529,7 +529,18 @@ class BaselineReplayPipeline:
 
     @property
     def runtime_max_ms_by_component(self) -> dict[str, int]:
-        return dict(self._runtime_max_ms_by_component)
+        # Additional research-only attribution of slow position observers.
+        # These keys are fixed by the composite, bounded (10 x 3) and
+        # never influence replay, order management or evidence admission.
+        breakdown = getattr(
+            self._position_research_observer,
+            "max_ms_by_component",
+            None,
+        )
+        result = dict(self._runtime_max_ms_by_component)
+        if isinstance(breakdown, dict):
+            result.update(breakdown)
+        return result
 
     @property
     def funding_inconsistent(self) -> bool:
