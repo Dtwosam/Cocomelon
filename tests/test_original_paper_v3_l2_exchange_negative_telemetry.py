@@ -6,7 +6,13 @@ from pathlib import Path
 
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.evidence.contracts import BaselineReplayConfig
+from cocomelon.research.fresh_long_trend_source_integrity import (
+    MAX_ORIGINAL_L2_EXCHANGE_AGE_MS,
+    MAX_ORIGINAL_L2_EXCHANGE_FUTURE_SKEW_MS,
+)
 from cocomelon.research.original_paper_v3_capture import (
+    V3_L2_EXCHANGE_FUTURE_NEGATIVE_SCREEN_MS,
+    V3_L2_EXCHANGE_LAG_NEGATIVE_SCREEN_MS,
     OriginalPaperMicrostructureCapture,
 )
 from scripts.diagnose_original_paper_v3_capture import (
@@ -32,6 +38,14 @@ def _book(at: int, exchange: int | None, key: str, market: str = "TEST") -> Repl
         event_key=key,
         event_kind="l2_book",
         payload_json='{"bids":[],"asks":[]}',
+    )
+
+
+def test_live_screen_thresholds_match_independent_source_admission() -> None:
+    assert V3_L2_EXCHANGE_LAG_NEGATIVE_SCREEN_MS == MAX_ORIGINAL_L2_EXCHANGE_AGE_MS
+    assert (
+        V3_L2_EXCHANGE_FUTURE_NEGATIVE_SCREEN_MS
+        == MAX_ORIGINAL_L2_EXCHANGE_FUTURE_SKEW_MS
     )
 
 
