@@ -6059,6 +6059,17 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
             "InfoHttpError: Hyperliquid info HTTP 502: Bad Gateway"
         ),
         "l2_supervisor_health": {
+            "redundant_mux_ingress": {
+                "serialization_enabled": True,
+                "completed_calls": 1722,
+                "failed_calls": 2,
+                "contended_calls": 33,
+                "active_waiters": 1,
+                "peak_waiters": 3,
+                "max_lock_wait_ms": 981,
+                "max_lock_hold_ms": 1124,
+                "source_gap_or_paper_promotion_authority": False,
+            },
             "required_market_count": 20,
             "unhealthy_l2_market_count": 16,
             "unhealthy_l2_markets": [
@@ -6519,6 +6530,11 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         in rendered
     )
     assert "L2 lane 0 stale markets: AAVE, ADA" in rendered
+    assert (
+        "- redundant WS mux serialized ingress completed / failed / "
+        "contended / active / peak: 1722 / 2 / 33 / 1 / 3"
+    ) in rendered
+    assert "- redundant WS mux maximum lock wait / held ms: 981 / 1124" in rendered
     assert (
         "L2-age-observed=20, negative-age=16, "
         "age-min/max=-420/85ms, current-age-observed=20, "
