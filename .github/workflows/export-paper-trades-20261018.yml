@@ -1,0 +1,208 @@
+name: Read-only PAPER trade history export
+on:
+  push:
+    branches:
+      - reports/export-paper-trades-20261018
+    paths:
+      - .github/workflows/export-paper-trades-20261018.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Download immutable 280-close genuine PAPER journal archive
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 39049949008
+          name: continuous-paper-side-conditioned-timing-39049949008-1
+          github-token: ${{ github.token }}
+          repository: Dtwosam/Cocomelon
+          path: journal-input
+
+      - name: Download independent complete 277-close economic audit
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 39017978645
+          name: continuous-paper-all-trade-charts-39017978645-1
+          github-token: ${{ github.token }}
+          repository: Dtwosam/Cocomelon
+          path: audit-input
+
+      - name: Extract verified gross / fees / funding / net for every original close
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv
+          import json
+          import sqlite3
+          from datetime import UTC, datetime
+          from decimal import Decimal
+          from pathlib import Path
+
+          root = Path("journal-input")
+          journals = list(root.rglob("journal.sqlite3"))
+          assert len(journals) == 1, (
+              "Expected exactly one original journal in authenticated source artifact"
+          )
+          audit_paths = list(Path("audit-input").rglob("all-paper-trade-chart-audit.json"))
+          assert len(audit_paths) == 1, "Missing authenticated historical trade audit"
+          audit = json.loads(audit_paths[0].read_text(encoding="utf-8"))
+          historical = {t["trade_id"]: t for t in audit["trades"]}
+          assert len(historical) == 277
+          assert audit["total_journal_trades"] == 277
+
+          uri = "file:" + journals[0].resolve().as_posix() + "?mode=ro"
+          con = sqlite3.connect(uri, uri=True)
+          con.execute("PRAGMA query_only=ON")
+          rows = con.execute(
+              "SELECT trade_id, market, direction, opened_at_ms, "
+              "closed_at_ms, payload_json FROM journal_trades "
+              "ORDER BY closed_at_ms, trade_id"
+          ).fetchall()
+          con.close()
+          assert len(rows) == 280, (
+              "Historical checkpoint identity mismatch: exact 280-close source required"
+          )
+          assert len(set(row[0] for row in rows)) == 280
+
+          def utc(ms):
+              return datetime.fromtimestamp(ms / 1_000, tz=UTC).isoformat()
+
+          fields = [
+              "Trade #", "Market", "Side", "Opened UTC", "Closed UTC",
+              "Gross PnL before fees (USD)", "Entry fees (USD)",
+              "Exit fees (USD)", "Total fees (USD)",
+              "PnL after fees before funding (USD)", "Funding PnL (USD)",
+              "Net PnL after fees + funding (USD)",
+              "Entry price", "Exit price", "Filled quantity",
+              "Exit reason", "Trade ID", "Data quality",
+              "Source URL",
+          ]
+          out = []
+          total = {key: Decimal("0") for key in ("gross", "fees", "funding", "net")}
+          for ordinal, (tid, market, direction, opened, closed, encoded) in enumerate(rows, 1):
+              t = json.loads(encoded)
+              assert t["trade_id"] == tid
+              assert int(t["opened_at_ms"]) == opened
+              assert int(t["closed_at_ms"]) == closed
+              assert (t["market"] == market or (
+                  isinstance(t["market"], dict)
+                  and market.split(":")[-1] == t["market"].get("coin")
+              ))
+              gross = Decimal(str(t["gross_realized_pnl"]))
+              entry_fee = Decimal(str(t["entry_fees"]))
+              exit_fee = Decimal(str(t["exit_fees"]))
+              fees = entry_fee + exit_fee
+              funding = Decimal(str(t["funding_cash_pnl"]))
+              net = Decimal(str(t["net_pnl"]))
+              assert abs(gross - fees + funding - net) <= Decimal("1E-18")
+              assert gross.is_finite() and net.is_finite()
+              total["gross"] += gross
+              total["fees"] += fees
+              total["funding"] += funding
+              total["net"] += net
+              if ordinal <= 277:
+                  h = historical.pop(tid, None)
+                  assert h is not None, f"First 277 historical audit mismatched at {ordinal}"
+                  for key, expected in [
+                      ("gross_realized_pnl", gross),
+                      ("entry_fees", entry_fee),
+                      ("exit_fees", exit_fee),
+                      ("funding_cash_pnl", funding),
+                      ("net_pnl", net),
+                  ]:
+                      assert abs(Decimal(str(h[key])) - expected) < Decimal("1E-18"), (
+                          f"Cross-check failure for trade {ordinal}, field {key}"
+                      )
+              out.append([
+                  ordinal, market, str(direction).lower(), utc(opened), utc(closed),
+                  str(gross), str(entry_fee), str(exit_fee), str(fees),
+                  str(gross - fees), str(funding), str(net),
+                  str(t["entry_price"]), str(t["exit_price"]),
+                  str(t["filled_quantity"]), str(t["exit_reason"]), tid,
+                  "VERIFIED_BOOKED_JOURNAL",
+                  "https://github.com/Dtwosam/Cocomelon/actions/runs/39049949008",
+              ])
+
+          assert not historical, "An audited 277-close trade is absent in later journal"
+          assert abs(total["net"] - Decimal("-242.2753792114657476")) < Decimal("1E-12"), (
+              "280-close journal does not reconcile to predecessor signed account"
+          )
+
+          # The successor's independently authenticated Oct 17 23:27 UTC
+          # heartbeat reports the later 281st MON short close. It exposes
+          # net booked PnL only. Do NOT invent gross, fees, entry or exit.
+          latest_net = Decimal("-4.995978438649999999999999831")
+          out.append([
+              281, "MON", "short", "", "",
+              "", "", "", "", "", "", str(latest_net),
+              "", "", "", "OPPOSITE_FRESH_THESIS", "",
+              "HEARTBEAT_NET_ONLY_GROSS_AND_FEES_UNAVAILABLE",
+              "https://github.com/Dtwosam/Cocomelon/issues/469",
+          ])
+          target = Path("exported")
+          target.mkdir()
+          with (target / "cocomelon-all-281-paper-trades.csv").open(
+              "w", newline="", encoding="utf-8-sig"
+          ) as handle:
+              writer = csv.writer(handle)
+              writer.writerow(fields)
+              writer.writerows(out)
+          (target / "cocomelon-paper-trades-evidence-summary.json").write_text(
+              json.dumps({
+                  "account_mode": "PAPER",
+                  "observed_total_closed_trades": 281,
+                  "fully_booked_trade_rows": 280,
+                  "verified_277_audit_parity": True,
+                  "net_only_heartbeat_rows": 1,
+                  "total_280_gross_pnl": str(total["gross"]),
+                  "total_280_fees": str(total["fees"]),
+                  "total_280_funding_pnl": str(total["funding"]),
+                  "total_280_net_pnl": str(total["net"]),
+                  "total_281_known_closed_net_pnl": str(total["net"] + latest_net),
+                  "gross_and_fees_of_trade_281": "UNAVAILABLE",
+                  "not_live_trading": True,
+                  "sources": [
+                      "https://github.com/Dtwosam/Cocomelon/actions/runs/39017978645",
+                      "https://github.com/Dtwosam/Cocomelon/actions/runs/39049949008",
+                      "https://github.com/Dtwosam/Cocomelon/issues/469",
+                  ],
+              }, indent=2) + "\n", encoding="utf-8"
+          )
+          (target / "README.txt").write_text(
+              "Actual Cocomelon PAPER trade history as of 2026-10-17 23:27 UTC.\n"
+              "Rows 1-280 have original booked gross/fees/funding/net values\n"
+              "from the genuine completed run 39049949008; rows 1-277 were\n"
+              "cross-checked against independent historical audit run 39017978645.\n"
+              "Row 281 (MON short) has independently reported net PnL only:\n"
+              "original gross, fee split and funding are not published by the\n"
+              "still-running successor. These cells are blank, NOT zero.\n"
+              "Gross is realized price PnL after original fills but before fees.\n"
+              "Net = gross - entry fees - exit fees + funding cash PnL.\n"
+              "Prices reflect PAPER fills, not real-money executions.\n",
+              encoding="utf-8",
+          )
+          print(json.dumps({
+              "all_rows": len(out),
+              "fully_booked": 280,
+              "verified_audit": 277,
+              "net_only": 1,
+              "booked_net": str(total["net"]),
+              "all_known_closed_net": str(total["net"] + latest_net),
+          }))
+
+      - name: Upload small reusable CSV and exact source reconciliation
+        uses: actions/upload-artifact@v4
+        with:
+          name: cocomelon-all-paper-trades-asof-20261017-2327utc
+          path: exported/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6
