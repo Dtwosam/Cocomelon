@@ -825,9 +825,17 @@ class OriginalPaperMicrostructureCapture:
                     # The original source is still irrevocably disqualified.
                     self.dropped_count += len(batch)
             except OriginalCaptureBudgetExceeded as exc:
+                # This batch left the queue but never obtained a durable
+                # writer acknowledgement. Account for every offered row,
+                # including the first batch that exhausted the budget.
                 self.failure = self.failure or str(exc)
+                self.dropped_count += len(batch)
             except Exception as exc:
+                # Keep the failure negative even if the writer thread made
+                # a partial/uncertain append. Never count such rows as a
+                # verified complete source or leave a phantom pending batch.
                 self.failure = self.failure or f"write_failed:{type(exc).__name__}"
+                self.dropped_count += len(batch)
             finally:
                 for _ in batch:
                     self.queue.task_done()
