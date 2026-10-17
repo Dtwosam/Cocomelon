@@ -89,7 +89,8 @@ jobs:
           total = {key: Decimal("0") for key in ("gross", "fees", "funding", "net")}
           for ordinal, (tid, market, direction, opened, closed, encoded) in enumerate(rows, 1):
               t = json.loads(encoded)
-              assert t["trade_id"] == tid
+              # Source trade ID is stored in the immutable SQLite key.
+              # Canonical payload JSON does not repeat this identifier.
               assert int(t["opened_at_ms"]) == opened
               assert int(t["closed_at_ms"]) == closed
               assert (t["market"] == market or (
