@@ -58,6 +58,12 @@ def test_same_stream_concurrent_callbacks_cannot_overtake_awaited_sink() -> None
         await asyncio.sleep(0)
         assert not third_task.done()
         assert delivered == [first.event_key]
+        inflight = mux.ingress_diagnostics()
+        assert inflight["serialization_enabled"] is True
+        assert inflight["active_waiters"] == 2
+        assert inflight["peak_waiters"] == 2
+        assert inflight["contended_calls"] == 1
+        assert inflight["source_gap_or_paper_promotion_authority"] is False
         release.set()
         await asyncio.wait_for(
             asyncio.gather(second_task, third_task), timeout=5
@@ -66,6 +72,10 @@ def test_same_stream_concurrent_callbacks_cannot_overtake_awaited_sink() -> None
             first.event_key, second.event_key, third.event_key,
         ]
         assert mux._last_emitted["trades:BTC"].event_key == third.event_key
+        assert mux.ingress_diagnostics()["active_waiters"] == 0
+        assert mux.ingress_diagnostics()["completed_calls"] == 3
+        assert mux.ingress_diagnostics()["max_lock_wait_ms"] >= 0
+        assert mux.ingress_diagnostics()["max_lock_hold_ms"] >= 0
         assert not gaps
 
     asyncio.run(run())
@@ -108,6 +118,7 @@ def test_lane_disconnect_cannot_flush_standby_ahead_of_inflight_emit() -> None:
         assert not switch_task.done()
         assert mux.failover_count == 0
         assert delivered == [first.event_key]
+        assert mux.ingress_diagnostics()["contended_calls"] == 1
 
         release.set()
         await asyncio.wait_for(
@@ -162,6 +173,11 @@ def test_failed_pending_delivery_does_not_allow_concurrent_gap_switch() -> None:
         await asyncio.wait_for(gap_task, timeout=5)
         assert mux._last_emitted["trades:BTC"].event_key == first.event_key
         assert mux.active_lane("trades:BTC") == 1
+        metrics = mux.ingress_diagnostics()
+        assert metrics["failed_calls"] == 1
+        assert metrics["contended_calls"] == 1
+        assert metrics["completed_calls"] == 3
+        assert metrics["active_waiters"] == 0
         assert not gaps
 
     asyncio.run(run())

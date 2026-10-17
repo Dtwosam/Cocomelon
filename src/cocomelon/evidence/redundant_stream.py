@@ -5,6 +5,7 @@ import hashlib
 import json
 from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable, Mapping
+from time import perf_counter
 
 from cocomelon.domain.stream import DataGap, StreamEvent
 from cocomelon.hyperliquid.ws_supervisor import event_stream_id
@@ -73,6 +74,66 @@ class RedundantStreamMux:
         # _last_emitted or its event key. Preserve actual callback order and
         # never reorder/repair the timestamps in the original events.
         self._ingress_lock = asyncio.Lock()
+        self._ingress_active_waiters = 0
+        self._ingress_peak_waiters = 0
+        self._ingress_contended_calls = 0
+        self._ingress_completed_calls = 0
+        self._ingress_failed_calls = 0
+        self._ingress_max_wait_ms = 0
+        self._ingress_max_hold_ms = 0
+
+    def ingress_diagnostics(self) -> dict[str, int | bool]:
+        """Volatile, negative-only latency evidence; never gap authority."""
+        return {
+            "serialization_enabled": True,
+            "completed_calls": self._ingress_completed_calls,
+            "failed_calls": self._ingress_failed_calls,
+            "contended_calls": self._ingress_contended_calls,
+            "active_waiters": self._ingress_active_waiters,
+            "peak_waiters": self._ingress_peak_waiters,
+            "max_lock_wait_ms": self._ingress_max_wait_ms,
+            "max_lock_hold_ms": self._ingress_max_hold_ms,
+            "source_gap_or_paper_promotion_authority": False,
+        }
+
+    async def _serialize_ingress(
+        self, lane: int, message: StreamEvent | DataGap,
+    ) -> None:
+        # Monotonic process durations only. Do not substitute them for
+        # original venue exchange or socket receive clocks.
+        started = perf_counter()
+        if self._ingress_lock.locked():
+            self._ingress_contended_calls += 1
+        self._ingress_active_waiters += 1
+        self._ingress_peak_waiters = max(
+            self._ingress_peak_waiters, self._ingress_active_waiters
+        )
+        try:
+            async with self._ingress_lock:
+                self._ingress_max_wait_ms = max(
+                    self._ingress_max_wait_ms,
+                    max(0, int((perf_counter() - started) * 1000)),
+                )
+                held_at = perf_counter()
+                try:
+                    if isinstance(message, DataGap):
+                        await self._on_gap_serialized(lane, message)
+                    else:
+                        await self._on_event_serialized(lane, message)
+                except Exception:
+                    # Preserve the actual sink exception and all prior
+                    # immutable source-gap failure semantics.
+                    self._ingress_failed_calls += 1
+                    raise
+                else:
+                    self._ingress_completed_calls += 1
+                finally:
+                    self._ingress_max_hold_ms = max(
+                        self._ingress_max_hold_ms,
+                        max(0, int((perf_counter() - held_at) * 1000)),
+                    )
+        finally:
+            self._ingress_active_waiters -= 1
 
     @property
     def failover_count(self) -> int:
@@ -248,8 +309,7 @@ class RedundantStreamMux:
 
     async def on_event(self, lane: int, event: StreamEvent) -> None:
         self._require_lane(lane)
-        async with self._ingress_lock:
-            await self._on_event_serialized(lane, event)
+        await self._serialize_ingress(lane, event)
 
     async def _on_event_serialized(
         self, lane: int, event: StreamEvent,
@@ -282,8 +342,7 @@ class RedundantStreamMux:
 
     async def on_gap(self, lane: int, gap: DataGap) -> None:
         self._require_lane(lane)
-        async with self._ingress_lock:
-            await self._on_gap_serialized(lane, gap)
+        await self._serialize_ingress(lane, gap)
 
     async def _on_gap_serialized(self, lane: int, gap: DataGap) -> None:
         stream_id = gap.stream_id
