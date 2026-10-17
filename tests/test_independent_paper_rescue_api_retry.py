@@ -85,3 +85,157 @@ def test_malformed_successful_api_response_does_not_retry_into_authority(
         rescue._gh_json("repos/Dtwosam/Cocomelon/actions/runs")
     assert calls == 1
     assert sleeps == []
+
+
+def test_exhausted_token_uses_exact_public_workflow_listing_without_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resource = (
+        "repos/Dtwosam/Cocomelon/actions/workflows/"
+        "continuous-paper.yml/runs?per_page=100"
+    )
+    cli_calls: list[tuple[str, ...]] = []
+    public_calls: list[str] = []
+
+    def failed_cli(
+        cmd: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        cli_calls.append(tuple(cmd))
+        raise subprocess.CalledProcessError(
+            1, cmd, stderr="API rate limit exceeded"
+        )
+
+    def public_read(path: str) -> dict[str, object]:
+        public_calls.append(path)
+        return {"workflow_runs": [{
+            "id": 39049949008, "event": "workflow_dispatch",
+            "path": ".github/workflows/continuous-paper.yml",
+            "head_branch": "main", "status": "in_progress",
+            "head_repository": {"full_name": "Dtwosam/Cocomelon"},
+        }]}
+
+    monkeypatch.setattr(rescue.subprocess, "run", failed_cli)
+    monkeypatch.setattr(rescue.time, "sleep", lambda _: None)
+    monkeypatch.setattr(rescue, "_public_github_json", public_read)
+    result = rescue._gh_json(resource)
+    assert result["workflow_runs"][0]["id"] == 39049949008
+    assert public_calls == [resource]
+    assert len(cli_calls) == len(rescue.GH_API_RETRY_DELAYS_SECONDS)
+    assert all(c[:2] == ("gh", "api") for c in cli_calls)
+
+
+def test_public_fallback_is_pinned_https_read_with_no_redirect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resource = (
+        "repos/Dtwosam/Cocomelon/actions/workflows/"
+        "continuous-paper.yml/runs?per_page=100"
+    )
+    requests: list[object] = []
+
+    class PublicResponse:
+        status = 200
+
+        def __enter__(self) -> PublicResponse:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, count: int) -> bytes:
+            assert count == rescue._PUBLIC_RESPONSE_BYTE_LIMIT + 1
+            return b'{"workflow_runs":[]}'
+
+    class PublicOpener:
+        def open(self, request: object, timeout: int) -> PublicResponse:
+            assert timeout == 20
+            requests.append(request)
+            return PublicResponse()
+
+    def make_opener(*handlers: object) -> PublicOpener:
+        assert len(handlers) == 1
+        assert isinstance(handlers[0], rescue._NoRedirect)
+        assert handlers[0].redirect_request(None, None, 302, "", {}, "") is None
+        return PublicOpener()
+
+    monkeypatch.setattr(rescue.urllib.request, "build_opener", make_opener)
+    result = rescue._public_github_json(resource)
+    assert result == {"workflow_runs": []}
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.full_url == "https://api.github.com/" + resource
+    assert request.get_method() == "GET"
+    assert request.get_header("User-agent") == "Cocomelon-Paper-ReadOnly-Rescue"
+    assert request.get_header("Accept") == "application/vnd.github+json"
+
+
+@pytest.mark.parametrize("resource", [
+    "https://attacker.example/steal",
+    "repos/Dtwosam/Cocomelon/actions/runs",
+    "repos/Dtwosam/Cocomelon/actions/runs?per_page=1",
+    "repos/Dtwosam/Cocomelon/issues/999",
+    "repos/Dtwosam/Cocomelon/../Cocomelon/issues/469",
+    "repos/Dtwosam/Cocomelon/actions/runs/0/jobs?per_page=100",
+    "repos/Dtwosam/Cocomelon/actions/runs/1/logs?per_page=100",
+    "repos/Dtwosam/Cocomelon/actions/workflows/private.yml/runs?per_page=100",
+])
+def test_public_rest_read_rejects_unlisted_resource_without_network(
+    monkeypatch: pytest.MonkeyPatch, resource: str,
+) -> None:
+    def no_network(*_args: object) -> None:
+        raise AssertionError("unsafe network path attempted")
+
+    monkeypatch.setattr(rescue.urllib.request, "build_opener", no_network)
+    with pytest.raises(rescue.PaperRescueError, match="not permitted"):
+        rescue._public_github_json(resource)
+
+
+@pytest.mark.parametrize("response", [
+    b"[]",
+    b"not json",
+    b'{"workflow_runs":',
+])
+def test_public_rest_malformed_body_cannot_authorize_paper_rescue(
+    monkeypatch: pytest.MonkeyPatch, response: bytes,
+) -> None:
+    class Response:
+        status = 200
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, _n: int) -> bytes:
+            return response
+
+    class Opener:
+        def open(self, *_args: object, **_kwargs: object) -> Response:
+            return Response()
+
+    monkeypatch.setattr(
+        rescue.urllib.request, "build_opener", lambda *_: Opener()
+    )
+    with pytest.raises(rescue.PaperRescueError):
+        rescue._public_github_json(
+            "repos/Dtwosam/Cocomelon/issues/469"
+        )
+
+
+def test_public_read_failure_preserves_uncertain_lease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import urllib.error
+
+    class Opener:
+        def open(self, *_args: object, **_kwargs: object) -> None:
+            raise urllib.error.URLError("public API quota exhausted")
+
+    monkeypatch.setattr(
+        rescue.urllib.request, "build_opener", lambda *_: Opener()
+    )
+    with pytest.raises(rescue.PaperRescueError, match="outcome unverified"):
+        rescue._public_github_json(
+            "repos/Dtwosam/Cocomelon/issues/469"
+        )
