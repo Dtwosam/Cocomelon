@@ -2,6 +2,20 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — account for queued original-v3 rows after a hard source failure
+
+The strict original-v3 recorder fails permanently when even one source receive
+clock regresses or its capture queue overflows. Previously a queued batch
+accepted before that failure could drain *without* either a persisted-row
+increment or a dropped-row increment: the terminal negative receipt retained
+a confusing offered-minus-written-minus-dropped remainder. The isolated
+async writer now counts only such **not-written, skipped** queued rows as
+dropped during drain. It still cannot write them, rewrite receive times,
+synthesize missing L2, or turn the failed run into admissible source.
+Both all-queued and already-durable-prefix cases are exercised, and sealing
+must refuse both. Ordinary PAPER ingestion, risk, strategy, orders,
+funding, complete source admission, after-cost proof and LIVE-off are unchanged.
+
 ## October 17 — bounded immutable opening-plan lookups in optional PAPER observers
 
 Authenticated worker #39017978645 (head `78841822`) reported a 5,543ms
