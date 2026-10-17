@@ -2648,9 +2648,11 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     )
     assert "position_research_observer=(" in source
     assert "_CompositePositionResearchObserver(" in source
-    assert source.count(
-        "opening_plan_loader=execution.store.load_plan"
-    ) >= 3
+    # Original-stop source evidence retains a direct immutable SQLite read;
+    # optional research hot paths use only the positive, bounded plan cache.
+    assert source.count("opening_plan_loader=execution.store.load_plan") == 1
+    assert source.count("opening_plan_loader=load_research_plan") == 9
+    assert "load_research_plan = _ResearchOpeningPlanCache(" in source
     assert "opening_lineage_source" in source
     assert "_position_with_original_stop(" in source
     assert '"profit_lock_execution_shadow": (' in source
