@@ -223,6 +223,13 @@ class OriginalPaperMicrostructureCapture:
         # original input bytes, receipt order or PAPER's permissive clock.
         self.regressions_vs_prior_offered = 0
         self.regressions_vs_paper_clock = 0
+        # A fixed 8x8 source-family edge census separates actual original
+        # adjacent misordering from later PAPER highwater knock-on failures.
+        # Never cache or display opaque event keys, source IDs, or markets.
+        self._prior_offered_family: str | None = None
+        self.first_regression_prior_family: str | None = None
+        self.max_adjacent_original_backward_ms = 0
+        self.prior_offered_regression_edges: dict[str, int] = {}
         self.max_original_clock_backward_ms = 0
         self.first_regression_cause: str | None = None
         self.first_regression_event_kind: str | None = None
@@ -498,6 +505,16 @@ class OriginalPaperMicrostructureCapture:
             self.received_clock_regressions += 1
             family = _clock_regression_family(record)
             self.regression_source_family_counts[family] += 1
+            if below_offered and prior_offered is not None:
+                prior_family = self._prior_offered_family or "other"
+                edge = prior_family + " -> " + family
+                self.prior_offered_regression_edges[edge] = (
+                    self.prior_offered_regression_edges.get(edge, 0) + 1
+                )
+                self.max_adjacent_original_backward_ms = max(
+                    self.max_adjacent_original_backward_ms,
+                    prior_offered - record.available_at_ms,
+                )
             if (
                 record.record_kind.value == "normalized_event"
                 and record.event_kind == "l2_book"
@@ -513,6 +530,7 @@ class OriginalPaperMicrostructureCapture:
             )
             if self.first_received_clock_regression is None:
                 self.first_regression_source_family = family
+                self.first_regression_prior_family = self._prior_offered_family
                 # Local PAPER offer age is a diagnostic of deferral, not a
                 # replacement for original receive timestamps. Do not
                 # rewrite, sort or upgrade any original source rows.
@@ -546,6 +564,7 @@ class OriginalPaperMicrostructureCapture:
                 }
             self.failure = self.failure or "original_received_clock_regression"
         self.last_offered_available_at_ms = record.available_at_ms
+        self._prior_offered_family = _clock_regression_family(record)
         if self.failure is not None:
             self.dropped_count += 1
             return
@@ -646,6 +665,17 @@ class OriginalPaperMicrostructureCapture:
             "regressions_vs_prior_offered": self.regressions_vs_prior_offered,
             "regressions_vs_paper_clock": self.regressions_vs_paper_clock,
             "max_original_clock_backward_ms": self.max_original_clock_backward_ms,
+            "max_adjacent_original_backward_ms": (
+                self.max_adjacent_original_backward_ms
+            ),
+            "first_regression_prior_family": self.first_regression_prior_family,
+            "prior_offered_regression_edges": dict(
+                sorted(self.prior_offered_regression_edges.items())
+            ),
+            "prior_offered_edge_counts_reconcile": (
+                sum(self.prior_offered_regression_edges.values())
+                == self.regressions_vs_prior_offered
+            ),
             "first_regression_cause": self.first_regression_cause,
             "first_regression_event_kind": self.first_regression_event_kind,
             "first_regression_source_family": self.first_regression_source_family,
@@ -858,6 +888,17 @@ class OriginalPaperMicrostructureCapture:
             "regressions_vs_prior_offered": self.regressions_vs_prior_offered,
             "regressions_vs_paper_clock": self.regressions_vs_paper_clock,
             "max_original_clock_backward_ms": self.max_original_clock_backward_ms,
+            "max_adjacent_original_backward_ms": (
+                self.max_adjacent_original_backward_ms
+            ),
+            "first_regression_prior_family": self.first_regression_prior_family,
+            "prior_offered_regression_edges": dict(
+                sorted(self.prior_offered_regression_edges.items())
+            ),
+            "prior_offered_edge_counts_reconcile": (
+                sum(self.prior_offered_regression_edges.values())
+                == self.regressions_vs_prior_offered
+            ),
             "first_regression_cause": self.first_regression_cause,
             "first_regression_event_kind": self.first_regression_event_kind,
             "first_regression_source_family": self.first_regression_source_family,

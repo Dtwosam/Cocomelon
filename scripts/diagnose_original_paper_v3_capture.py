@@ -124,6 +124,37 @@ def diagnose_original_paper_v3_capture(
             and type(terminal.get("regressions_vs_prior_offered")) is int
             else None
         ),
+        "original_first_regression_prior_family": (
+            terminal.get("first_regression_prior_family")
+            if terminal_matches
+            and terminal.get("first_regression_prior_family")
+            in ORIGINAL_CLOCK_REGRESSION_FAMILIES
+            else None
+        ),
+        "original_max_adjacent_backward_ms": (
+            terminal.get("max_adjacent_original_backward_ms")
+            if terminal_matches
+            and type(terminal.get("max_adjacent_original_backward_ms")) is int
+            and terminal.get("max_adjacent_original_backward_ms") >= 0
+            else None
+        ),
+        "original_adjacent_family_edges": (
+            {
+                edge: count
+                for edge, count in terminal.get(
+                    "prior_offered_regression_edges", {}
+                ).items()
+                if type(edge) is str and type(count) is int and count >= 0
+                and len(edge.split(" -> ")) == 2
+                and all(
+                    part in ORIGINAL_CLOCK_REGRESSION_FAMILIES
+                    for part in edge.split(" -> ")
+                )
+            }
+            if terminal_matches
+            and type(terminal.get("prior_offered_regression_edges")) is dict
+            else None
+        ),
         "original_regressions_vs_paper_clock": (
             terminal.get("regressions_vs_paper_clock")
             if terminal_matches

@@ -2,6 +2,38 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — attribute original adjacent source clock regressions by event family
+
+On authenticated PAPER worker #39049949008 at 17:20 UTC, the failed source
+showed **71** regressions against the immediately previous offered original
+record and **563** against PAPER's monotonic previous-clock highwater.
+Separate original L2 exchange-time telemetry reported **zero** stale,
+future and same-market venue regressions across its sampled selected L2
+books, so replacing venue clocks or suppressing losses would be unfounded.
+
+The nonblocking original recorder now keeps the *previous original event
+family* and counts adjacent backward-clock transitions in a fixed 8x8
+family dictionary (market snapshot, funding, candle, L2, gap, etc.).
+Unlike cumulative PAPER-clock failures, each adjacent transition is
+a true decrease against the immediately preceding original offer.
+Per-family edge totals must sum exactly to
+`regressions_vs_prior_offered`; a separate largest adjacent backward
+distance and first preceding family are reported. All diagnostics
+continue even after irrevocable original recorder failure.
+
+The heartbeat shows only bounded top-five aggregate event-family edges
+and reconciliation; the read-only terminal diagnosis accepts only exact
+run/attempt/head identity and known family labels. No private source IDs,
+market labels, payloads or event keys are exported. Tests cover PAPER
+highwater cascade without adjacent regression, mixed actual adjacent
+regression edges, irreversible source failure, and opaque family masking.
+
+**Negative telemetry only:** source gap notices, missing original rows,
+received timestamps, venue exchange clocks and 72-hour admission gates
+remain untouched. The comparison helps locate actual scheduling-order
+breaks, not claim venue, source, paired account or economic validity.
+LIVE execution and automatic promotion remain disabled.
+
 ## October 17 — expose real original venue L2 timestamp failures after source quarantine
 
 The independent v3 admission gate added by #1321 rejects stale, future or
