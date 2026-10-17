@@ -2020,6 +2020,27 @@ def test_supervisor_group_health_payload_exposes_lane_failure_shape() -> None:
     assert lanes[1]["reconnect_count"] == 5
     assert lanes[1]["systemic_l2_stale_reconnect_count"] == 0
     assert lanes[1]["systemic_l2_targeted_resubscribe_count"] == 2
+    assert payload["redundant_mux_ingress"] is None
+
+    from cocomelon.evidence.redundant_stream import RedundantStreamMux
+
+    async def no_event(_event: StreamEvent) -> None:
+        return None
+
+    async def no_gap(_gap: DataGap) -> None:
+        return None
+
+    mux = RedundantStreamMux(event_sink=no_event, gap_sink=no_gap)
+    group.redundant_mux = mux
+    enriched = _supervisor_group_health_payload(group, now_ms=10_000)
+    assert enriched["redundant_mux_ingress"] == mux.ingress_diagnostics()
+    assert enriched["unhealthy_l2_market_count"] == 1
+    assert enriched["redundant_mux_ingress"]["serialization_enabled"] is True
+    assert enriched["redundant_mux_ingress"]["completed_calls"] == 0
+    assert (
+        enriched["redundant_mux_ingress"]["source_gap_or_paper_promotion_authority"]
+        is False
+    )
 
 
 def test_effective_l2_readiness_prefers_observed_fresh_evidence() -> None:
