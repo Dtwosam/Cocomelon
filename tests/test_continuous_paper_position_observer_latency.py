@@ -6,8 +6,8 @@ import time
 import pytest
 
 from cocomelon.continuous_paper import (
-    _CompositePositionResearchObserver,
     _POSITION_RESEARCH_OBSERVER_NAMES,
+    _CompositePositionResearchObserver,
 )
 from cocomelon.evidence.lifecycle import BaselineReplayPipeline
 
