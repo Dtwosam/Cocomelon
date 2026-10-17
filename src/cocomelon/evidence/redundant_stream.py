@@ -93,6 +93,9 @@ class RedundantStreamMux:
             "serialization_enabled": True,
             "completed_calls": self._ingress_completed_calls,
             "failed_calls": self._ingress_failed_calls,
+            "uncommitted_aggregate_gap_open_count": len(
+                self._uncommitted_aggregate_gap_opens
+            ),
             "contended_calls": self._ingress_contended_calls,
             "active_waiters": self._ingress_active_waiters,
             "peak_waiters": self._ingress_peak_waiters,
