@@ -289,6 +289,7 @@ class WebSocketSupervisor:
             "l2_duplicate_count": self._l2_duplicate_count,
             "l2_out_of_order_count": self._l2_out_of_order_count,
             "l2_stale_on_receive_count": self._l2_stale_on_receive_count,
+            "uncommitted_source_gap_open_count": len(self._uncommitted_open_gaps),
             "l2_fresh_accepted_count": self._l2_fresh_accepted_count,
             "l2_max_event_sink_await_ms": self._l2_max_event_sink_await_ms,
             "l2_last_normalized_age_ms": received_age,
