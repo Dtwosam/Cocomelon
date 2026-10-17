@@ -1079,12 +1079,43 @@ class _CompositeOpeningResearchObserver:
             observer.record_opening_trace(trace)
 
 
+# Fixed caller-position identities: no dynamic source or market keys, no
+# untrusted observer reprs in the operational heartbeat.
+_POSITION_RESEARCH_OBSERVER_NAMES = (
+    "profit_lock",
+    "profit_target_1r",
+    "profit_target_half_r",
+    "profit_trailing",
+    "net_reserved_trailing",
+    "early_reserved_trailing",
+    "delayed_entry",
+    "delayed_entry_120s",
+    "original_stop_book",
+    "capacity_release_book",
+)
+
+
 class _CompositePositionResearchObserver:
     def __init__(
         self,
         *observers: PositionResearchObserver,
     ) -> None:
+        if len(observers) != len(_POSITION_RESEARCH_OBSERVER_NAMES):
+            raise ValueError("position research observer identity count mismatch")
         self._observers = observers
+        self._max_ms_by_component: dict[str, int] = {}
+
+    @property
+    def max_ms_by_component(self) -> dict[str, int]:
+        """Bounded negative-only stalls; NOT proof of research completeness."""
+        return dict(self._max_ms_by_component)
+
+    def _record_duration(self, action: str, index: int, started: float) -> None:
+        label = f"position_{action}_{_POSITION_RESEARCH_OBSERVER_NAMES[index]}"
+        elapsed_ms = max(0, int((time.perf_counter() - started) * 1_000))
+        self._max_ms_by_component[label] = max(
+            self._max_ms_by_component.get(label, 0), elapsed_ms
+        )
 
     def observe_mark(
         self,
@@ -1093,12 +1124,16 @@ class _CompositePositionResearchObserver:
         *,
         now_ms: int,
     ) -> None:
-        for observer in self._observers:
-            observer.observe_mark(
-                positions,
-                mark_event,
-                now_ms=now_ms,
-            )
+        for index, observer in enumerate(self._observers):
+            started = time.perf_counter()
+            try:
+                observer.observe_mark(
+                    positions,
+                    mark_event,
+                    now_ms=now_ms,
+                )
+            finally:
+                self._record_duration("mark", index, started)
 
     def observe_book(
         self,
@@ -1109,21 +1144,29 @@ class _CompositePositionResearchObserver:
         reference_price: Decimal,
         now_ms: int,
     ) -> None:
-        for observer in self._observers:
-            observer.observe_book(
-                positions,
-                instrument,
-                book,
-                reference_price=reference_price,
-                now_ms=now_ms,
-            )
+        for index, observer in enumerate(self._observers):
+            started = time.perf_counter()
+            try:
+                observer.observe_book(
+                    positions,
+                    instrument,
+                    book,
+                    reference_price=reference_price,
+                    now_ms=now_ms,
+                )
+            finally:
+                self._record_duration("book", index, started)
 
     def record_closed_trade(
         self,
         trade: TradeJournalEntry,
     ) -> None:
-        for observer in self._observers:
-            observer.record_closed_trade(trade)
+        for index, observer in enumerate(self._observers):
+            started = time.perf_counter()
+            try:
+                observer.record_closed_trade(trade)
+            finally:
+                self._record_duration("close", index, started)
 
 
 class _ContinuousDelayedEntryExecutionShadowSink:
