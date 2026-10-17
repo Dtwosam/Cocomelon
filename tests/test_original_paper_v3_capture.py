@@ -491,6 +491,70 @@ def test_paper_workflow_seals_after_successor_without_lifting_trade_controls() -
     assert "live_orders: true" not in workflow[fast:fallback_upload]
 
 
+def test_failure_drain_accounts_for_all_previously_queued_original_rows(
+    tmp_path: Path,
+) -> None:
+    t = FORWARD_NOT_BEFORE_MS + 10_000
+
+    async def scenario() -> tuple[dict[str, object], dict[str, object]]:
+        recorder = OriginalPaperMicrostructureCapture(
+            tmp_path / "original", run_id=RUN, run_attempt=ATTEMPT,
+            head_sha=HEAD, selected_markets=("TEST",),
+            first_observed_ms=t - 10_000, replay_config=BaselineReplayConfig(),
+        )
+        # Do not yield until AFTER the clock regression. The first row
+        # entered the pending queue but could not reach the disk writer.
+        recorder.offer(_book(t + 2, "queued-before-regression"))
+        recorder.offer(_book(t + 1, "regression"))
+        return recorder.live_diagnostic_snapshot(), await recorder.close()
+
+    live, terminal = asyncio.run(scenario())
+    assert live["offered_count"] == 2
+    assert live["dropped_count"] == 1
+    assert live["offered_not_written_or_dropped_count"] == 1
+    assert terminal["offered_count"] == 2
+    assert terminal["written_count"] == 0
+    assert terminal["dropped_count"] == 2
+    assert terminal["offered_not_written_or_dropped_count"] == 0
+    assert terminal["failure"] == "original_received_clock_regression"
+    assert terminal["complete"] is False
+    with pytest.raises(OriginalV3CaptureSealError, match="lost rows"):
+        _seal(tmp_path)
+
+
+def test_failure_drain_preserves_prior_durable_original_prefix(
+    tmp_path: Path,
+) -> None:
+    t = FORWARD_NOT_BEFORE_MS + 20_000
+
+    async def scenario() -> dict[str, object]:
+        recorder = OriginalPaperMicrostructureCapture(
+            tmp_path / "original", run_id=RUN, run_attempt=ATTEMPT,
+            head_sha=HEAD, selected_markets=("TEST",),
+            first_observed_ms=t - 10_000, replay_config=BaselineReplayConfig(),
+        )
+        recorder.offer(_book(t, "previously-written"))
+        await recorder.queue.join()
+        # One accepted queue row is unprocessed when the next offer
+        # regresses. Neither is allowed to enter the original journal.
+        recorder.offer(_book(t + 2, "queued-and-discarded"))
+        recorder.offer(_book(t + 1, "regression"))
+        return await recorder.close()
+
+    terminal = asyncio.run(scenario())
+    assert terminal["offered_count"] == 3
+    assert terminal["written_count"] == 1
+    assert terminal["dropped_count"] == 2
+    assert terminal["offered_not_written_or_dropped_count"] == 0
+    assert terminal["failure"] == "original_received_clock_regression"
+    assert terminal["complete"] is False
+    journal = tmp_path / "original" / "original-received-rows.jsonl"
+    assert len(journal.read_text(encoding="utf-8").splitlines()) == 1
+    assert "previously-written" in journal.read_text(encoding="utf-8")
+    with pytest.raises(OriginalV3CaptureSealError, match="lost rows"):
+        _seal(tmp_path)
+
+
 def test_raw_original_clock_regression_never_becomes_clamped_replay_evidence(
     tmp_path: Path,
 ) -> None:
