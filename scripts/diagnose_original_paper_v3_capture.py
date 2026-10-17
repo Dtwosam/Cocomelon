@@ -184,6 +184,48 @@ def diagnose_original_paper_v3_capture(
             and type(terminal.get("l2_stream_clock_tracking_overflow")) is int
             else None
         ),
+        "original_l2_exchange_selected_book_observations": (
+            terminal.get("l2_exchange_selected_book_observations")
+            if terminal_matches
+            and type(terminal.get("l2_exchange_selected_book_observations")) is int
+            and terminal.get("l2_exchange_selected_book_observations") >= 0
+            else None
+        ),
+        "original_l2_exchange_missing_timestamp_count": (
+            terminal.get("l2_exchange_missing_timestamp_count")
+            if terminal_matches
+            and type(terminal.get("l2_exchange_missing_timestamp_count")) is int
+            and terminal.get("l2_exchange_missing_timestamp_count") >= 0
+            else None
+        ),
+        "original_l2_exchange_lag_over_15s_count": (
+            terminal.get("l2_exchange_lag_over_15s_count")
+            if terminal_matches
+            and type(terminal.get("l2_exchange_lag_over_15s_count")) is int
+            and terminal.get("l2_exchange_lag_over_15s_count") >= 0
+            else None
+        ),
+        "original_l2_exchange_future_over_1s_count": (
+            terminal.get("l2_exchange_future_over_1s_count")
+            if terminal_matches
+            and type(terminal.get("l2_exchange_future_over_1s_count")) is int
+            and terminal.get("l2_exchange_future_over_1s_count") >= 0
+            else None
+        ),
+        "original_l2_exchange_within_market_regressions": (
+            terminal.get("l2_exchange_within_market_regressions")
+            if terminal_matches
+            and type(terminal.get("l2_exchange_within_market_regressions")) is int
+            and terminal.get("l2_exchange_within_market_regressions") >= 0
+            else None
+        ),
+        "original_l2_exchange_max_lag_ms": (
+            terminal.get("l2_exchange_max_lag_ms")
+            if terminal_matches
+            and type(terminal.get("l2_exchange_max_lag_ms")) is int
+            and terminal.get("l2_exchange_max_lag_ms") >= 0
+            else None
+        ),
         "original_source_offered_elapsed_ms": (
             terminal.get("source_offered_elapsed_ms")
             if terminal_matches and type(terminal.get("source_offered_elapsed_ms")) is int
