@@ -436,7 +436,20 @@ def test_report_command_writes_separate_research_only_result(tmp_path: Path) -> 
     assert result.returncode == 0, result.stderr
     assert json.loads(out.read_text(encoding="utf-8"))["overall"]["trades"] == 4
     assert audit_path.read_text(encoding="utf-8") == json.dumps(_audit())
-    assert json.loads(result.stdout)["closed_net_pnl"] == "-13.9"
+    headline = json.loads(result.stdout)
+    assert headline["closed_net_pnl"] == "-13.9"
+    side_quarters = headline["original_fixed_global_close_quartiles_by_side"]
+    assert len(side_quarters) == 8
+    assert [x["global_original_quartile"] for x in side_quarters] == [
+        1, 1, 2, 2, 3, 3, 4, 4,
+    ]
+    assert sum(x["original_closed_trades"] for x in side_quarters) == 4
+    assert sum(
+        Decimal(x["booked_after_cost_net_pnl"]) for x in side_quarters
+    ) == Decimal("-13.9")
+    assert headline["original_side_quartile_evidence_scope"].endswith(
+        "strategy_promotion"
+    )
 
 
 def test_worker_publishes_scoreboard_only_after_full_journal_audit() -> None:
