@@ -84,6 +84,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             row["week_start_ms_utc"],
         )) if original_week_rows else None
     )
+    fixed_side_quarters = report["chronological_quartiles_by_side"]
+    assert isinstance(fixed_side_quarters, dict)
+    side_quarters = fixed_side_quarters["blocks"]
+    assert isinstance(side_quarters, list)
+    side_quarter_net_rows = [
+        {
+            "global_original_quartile": block["quartile"],
+            "side": side["side"],
+            "original_closed_trades": side["trades"],
+            "booked_after_cost_net_pnl": side["net_pnl"],
+            "booked_after_cost_wins": side["wins"],
+            "booked_after_cost_losses": side["losses"],
+            "booked_after_cost_profit_factor": side["booked_net_profit_factor"],
+            "booked_after_cost_without_largest_winner_arithmetic": side[
+                "booked_net_without_largest_winner_arithmetic"
+            ],
+        }
+        for block in side_quarters
+        for side in block["by_side"]
+    ]
     gap = report["original_chart_gap_witness_loss_attribution"]
     assert isinstance(gap, dict)
     gap_classes = gap["mutually_exclusive_evidence_classes"]
@@ -124,6 +144,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             "historical_original_closed_trades_not_full_account_expectancy"
         ),
         "report": str(target),
+        "original_fixed_global_close_quartiles_by_side": (
+            side_quarter_net_rows
+        ),
+        "original_side_quartile_evidence_scope": (
+            "original_completed_journal_historical_not_independent_"
+            "forward_paper_accounts_or_strategy_promotion"
+        ),
         "trades": overall["trades"],
         "original_closed_after_cost_profit_factor": overall[
             "booked_net_profit_factor"

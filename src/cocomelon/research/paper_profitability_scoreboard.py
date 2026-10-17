@@ -2118,14 +2118,41 @@ def paper_profitability_scoreboard(
                 "verified entry context counts do not reconcile"
             )
         # Quartiles are global chronological original-trade blocks, never
-        # re-chosen for favorable strategy outcomes.
+        # re-chosen for favorable strategy outcomes. Split the SAME four
+        # original whole-journal blocks by side; a side's sparse/winning
+        # historical entries may never move the boundaries.
         blocks: list[dict[str, object]] = []
+        blocks_by_side: list[dict[str, object]] = []
+        side_cash: dict[str, Decimal] = {"long": ZERO, "short": ZERO}
+        side_counts: dict[str, int] = {"long": 0, "short": 0}
         for i in range(4):
             members = [
                 trade for j, trade in enumerate(trades)
                 if min(3, 4 * j // max(1, count)) == i
             ]
             blocks.append({"quartile": i + 1, **_metrics(members)})
+            cohorts_by_side: list[dict[str, object]] = []
+            for side in ("long", "short"):
+                # Include even EMPTY side-quartiles to prevent reporting only
+                # periods that happened to contain a positive trade.
+                scoped = [trade for trade in members if trade.side == side]
+                cohorts_by_side.append({"side": side, **_metrics(scoped)})
+                side_cash[side] += sum((trade.net for trade in scoped), ZERO)
+                side_counts[side] += len(scoped)
+            blocks_by_side.append({
+                "quartile": i + 1,
+                "global_original_close_count": len(members),
+                "by_side": cohorts_by_side,
+            })
+        if (
+            sum(side_counts.values()) != count
+            or sum(side_cash.values(), ZERO) != sum(
+                (trade.net for trade in trades), ZERO
+            )
+        ):
+            raise PaperProfitabilityScoreboardError(
+                "fixed chronological side blocks lost booked original cash"
+            )
         return {
             "schema_version": 1,
             "kind": "entire-original-paper-profitability-attribution",
@@ -2176,6 +2203,17 @@ def paper_profitability_scoreboard(
                 })
             ],
             "chronological_quartiles": blocks,
+            "chronological_quartiles_by_side": {
+                "boundary_rule": (
+                    "four_fixed_global_original_close_index_blocks_not_side_"
+                    "specific_or_optimized_profitable_windows"
+                ),
+                "source": "actual_booked_original_trades_after_fees_and_funding",
+                "account_or_forward_challenger_outcome": False,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "blocks": blocks_by_side,
+            },
             "original_fixed_utc_opening_week_economics": (
                 _fixed_original_opening_week_economics(
                     trades,

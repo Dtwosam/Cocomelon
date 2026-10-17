@@ -2,6 +2,34 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — prove or refute directional payoff robustness on original closes
+
+The authentic completed-worker #39001800329 entire-trade chart archive
+(artifact 12096900128) booked **275** original closes and
+**−$315.11** net after recorded fees/funding, with **LONG −$334.31**
+(133 closes) and **SHORT +$19.20** (142 closes). Removing only the
+single largest actual SHORT net winner arithmetically leaves
+**−$94.80 SHORT net**; the 142 original SHORT closes are not proof
+of a future profitable SHORT-only strategy. Across four existing GLOBAL
+chronological close-index quarters, SHORT booked net is approximately
+**+$8.76, −$57.04, −$74.59, +$142.07**. These quarters are retrospective
+and move with the size of the full journal; they are not independent
+future campaigns, fixed calendar boundaries or matched portfolios.
+
+The after-cost complete-journal scoreboard now splits EACH existing
+global quartile by original LONG and SHORT, retaining empty side-quartiles
+and every executed original trade even when original chart or rank
+witnesses are missing. It exports booked net, fees/funding, profit
+factor, actual largest-winner arithmetic, wins/losses and sample count
+for each of eight side/quarter cells, with exact entire-journal
+cash/closed-count reconciliation. The compact post-handoff stdout
+exposes the same direction stability checks. Side-specific hindsight
+cutoffs and excluding losers are prohibited. None of these descriptive
+historical numbers change the already-frozen v3 LONG-trend/SHORT
+experiments, grant strategy promotion, qualify missing L2/source or
+authorize LIVE. A fresh authenticated, completed new worker and its
+independent matched after-cost account remain necessary.
+
 ## October 17 — prevent stale restored session receipts from certifying new PAPER research
 
 Completed worker #39001800329 archived the entire authentic 275-close

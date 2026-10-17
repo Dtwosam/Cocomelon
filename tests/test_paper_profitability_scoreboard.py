@@ -236,6 +236,84 @@ def test_empty_original_journal_has_no_invented_profit_factor_or_winner() -> Non
     assert metrics["booked_net_without_largest_winner_arithmetic"] is None
 
 
+def test_global_closed_trade_quarters_expose_net_side_concentration() -> None:
+    # Four blocks derive ONLY from chronological original journal index.
+    # Side-specific quartile trimming would reclassify the same trade and
+    # conceal three loss-making SHORT closes behind the first big winner.
+    specs = (
+        ("long", "-5", "trend"),
+        ("short", "10", "breakout"),
+        ("long", "2", "trend"),
+        ("long", "-4", "trend"),
+        ("short", "0", None),
+        ("long", "2", "breakout"),
+        ("short", "3", "breakout"),
+        ("short", "-6", "breakout"),
+    )
+    rows = [
+        _trade(
+            i + 1, side=side, market="MARKET", strategy=strategy,
+            gross=gross,
+        )
+        for i, (side, gross, strategy) in enumerate(specs)
+    ]
+    source = _reconciled_audit_from_rows(rows)
+    report = paper_profitability_scoreboard(source)
+    split = report["chronological_quartiles_by_side"]
+    assert split["promotion_authority"] is False
+    assert split["account_or_forward_challenger_outcome"] is False
+    assert split["boundary_rule"].startswith(
+        "four_fixed_global_original_close_index"
+    )
+    blocks = split["blocks"]
+    assert len(blocks) == 4
+    assert [block["global_original_close_count"] for block in blocks] == [2] * 4
+    assert [block["quartile"] for block in blocks] == [1, 2, 3, 4]
+    assert [[side["side"] for side in block["by_side"]] for block in blocks] == (
+        [["long", "short"]] * 4
+    )
+    assert [
+        [(s["trades"], Decimal(s["net_pnl"])) for s in block["by_side"]]
+        for block in blocks
+    ] == [
+        [(1, Decimal("-6")), (1, Decimal("9"))],
+        [(2, Decimal("-4")), (0, Decimal("0"))],
+        [(1, Decimal("1")), (1, Decimal("-1"))],
+        [(0, Decimal("0")), (2, Decimal("-5"))],
+    ]
+    assert blocks[1]["by_side"][1]["booked_net_profit_factor"] is None
+    assert blocks[3]["by_side"][0]["booked_net_largest_winner_trade_id"] is None
+    overall = report["overall"]
+    assert Decimal(overall["net_pnl"]) == -6
+    assert sum(
+        Decimal(s["net_pnl"])
+        for block in blocks for s in block["by_side"]
+    ) == Decimal(overall["net_pnl"])
+    assert sum(s["trades"] for block in blocks for s in block["by_side"]) == 8
+    historical_short = next(
+        s for s in report["side_cohorts"] if s["cohort"]["side"] == "short"
+    )
+    assert Decimal(historical_short["net_pnl"]) == 3
+    assert Decimal(
+        historical_short["booked_net_without_largest_winner_arithmetic"]
+    ) == -6
+    assert report["ready_for_strategy_promotion"] is False
+
+
+def test_global_chronological_side_quarters_remain_empty_without_closes() -> None:
+    report = paper_profitability_scoreboard(_reconciled_audit_from_rows([]))
+    split = report["chronological_quartiles_by_side"]
+    assert len(split["blocks"]) == 4
+    assert all(
+        block["global_original_close_count"] == 0
+        and [s["trades"] for s in block["by_side"]] == [0, 0]
+        and all(s["booked_net_profit_factor"] is None
+                for s in block["by_side"])
+        for block in split["blocks"]
+    )
+    assert split["execution_authority"] is False
+
+
 def test_all_original_trades_and_net_losses_are_retained() -> None:
     source = _audit()
     report = paper_profitability_scoreboard(source)
@@ -358,7 +436,20 @@ def test_report_command_writes_separate_research_only_result(tmp_path: Path) -> 
     assert result.returncode == 0, result.stderr
     assert json.loads(out.read_text(encoding="utf-8"))["overall"]["trades"] == 4
     assert audit_path.read_text(encoding="utf-8") == json.dumps(_audit())
-    assert json.loads(result.stdout)["closed_net_pnl"] == "-13.9"
+    headline = json.loads(result.stdout)
+    assert headline["closed_net_pnl"] == "-13.9"
+    side_quarters = headline["original_fixed_global_close_quartiles_by_side"]
+    assert len(side_quarters) == 8
+    assert [x["global_original_quartile"] for x in side_quarters] == [
+        1, 1, 2, 2, 3, 3, 4, 4,
+    ]
+    assert sum(x["original_closed_trades"] for x in side_quarters) == 4
+    assert sum(
+        Decimal(x["booked_after_cost_net_pnl"]) for x in side_quarters
+    ) == Decimal("-13.9")
+    assert headline["original_side_quartile_evidence_scope"].endswith(
+        "strategy_promotion"
+    )
 
 
 def test_worker_publishes_scoreboard_only_after_full_journal_audit() -> None:
