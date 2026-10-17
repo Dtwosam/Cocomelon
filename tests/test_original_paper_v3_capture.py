@@ -314,6 +314,9 @@ def test_capture_disk_failure_cannot_block_paper_or_seal(
     ))
     assert status["complete"] is False
     assert "write_failed" in str(status["failure"])
+    assert status["dropped_count"] == 1
+    assert status["offered_not_written_or_dropped_count"] == 0
+    assert status["offered_count"] == status["written_count"] + status["dropped_count"]
     with pytest.raises(OriginalV3CaptureSealError, match="lost rows"):
         _seal(tmp_path)
     assert not (tmp_path / "upload").exists()
@@ -357,6 +360,8 @@ def test_source_byte_budget_denies_during_recording_without_paper_failure(
     assert status["written_source_journal_bytes"] == 0
     assert status["source_journal_byte_limit"] == 1
     assert status["failure"] == "original_capture_source_byte_budget_exceeded"
+    assert status["dropped_count"] == 1
+    assert status["offered_not_written_or_dropped_count"] == 0
     assert status["complete"] is False
     with pytest.raises(OriginalV3CaptureSealError, match="lost rows"):
         _seal(tmp_path)
@@ -377,6 +382,9 @@ def test_source_row_budget_denies_during_recording_without_paper_failure(
     assert status["written_count"] <= 1
     assert status["source_journal_row_limit"] == 1
     assert status["failure"] == "original_capture_source_row_budget_exceeded"
+    assert status["dropped_count"] == 2
+    assert status["offered_not_written_or_dropped_count"] == 0
+    assert status["offered_count"] == status["written_count"] + status["dropped_count"]
     assert status["complete"] is False
     with pytest.raises(OriginalV3CaptureSealError, match="lost rows"):
         _seal(tmp_path)
