@@ -634,6 +634,23 @@ def write_deferred_trade_charts(
     facts = EvaluationFactStore(root / "facts.sqlite3")
     try:
         trades = tuple(journal.iter_trades())
+        # A stopped worker can leave a predecessor's session-summary.json
+        # in its restored state root (for example, a 143 signal before the
+        # successor writes its own terminal summary). Never publish an
+        # apparently completed chart source with that stale observation-end
+        # bound: it could mark open-risk weeks mature and lose net trades
+        # downstream. Do not truncate the actual PAPER journal or advance
+        # the bound to the latest close to make the source pass.
+        ended_at_ms = session.get("ended_at_ms")
+        if ended_at_ms is not None:
+            if type(ended_at_ms) is not int or ended_at_ms < 0:
+                raise AllPaperTradeChartAuditError(
+                    "invalid original PAPER handoff end"
+                )
+            if any(t.closed_at_ms > ended_at_ms for t in trades):
+                raise AllPaperTradeChartAuditError(
+                    "stale PAPER handoff end predates an original journal close"
+                )
         paths = ContinuousPaperTradePathStore(root / "trade-paths").iter_payloads()
         report = all_paper_trade_chart_audit(trades, facts, paths)
         entry_analysis = closed_trade_entry_exit_context(
