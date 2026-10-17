@@ -2,6 +2,37 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — prevent stale restored session receipts from certifying new PAPER research
+
+Completed worker #39001800329 archived the entire authentic 275-close
+PAPER journal but its deferred original whole-journal profitability
+scoreboard **failed** with `original booked close exceeds source handoff
+end`. Its chart-audit source falsely claimed handoff end
+2026-10-16 15:00:46 UTC, although 16 original trade closes occurred after
+that boundary (last October 17). A predecessor's `session-summary.json`
+had survived exact state restoration; the interrupted worker exited 143
+before writing its own summary. A 0-open-positions predecessor census
+was also mislabeled as current maturity.
+
+The next PAPER worker now retires the predecessor's local
+`session-summary.json` plus the three prior deferred original chart
+and profitability report outputs before attempting its restored checkpoint;
+the predecessor's uploaded archive and authoritative execution/journal
+files are untouched. If the worker exits before an authentic normal
+handoff, neither stale success receipt nor stale completed-scoreboard
+files can enable/masquerade as deferred after-cost audits.
+The chart-audit producer independently fails closed if a supplied
+handoff end is earlier than any actual original trade close, before
+writing apparently completed research files. Absent legacy bounds remain
+UNKNOWN; no end time is synthesized from trades and no rows are dropped.
+Tests exercise real startup sequencing, stale bounds, malformed bounds,
+preserved journal and unaltered exact account checkpoint.
+
+This is a **source provenance and profit-report integrity correction**,
+not an economic uplift or source gap repair. Only a naturally succeeding
+new worker can supply a new legitimate terminal. LIVE remains disabled
+and all original strategy, stops, risk, fees and frozen trials are unchanged.
+
 ## October 17 — expose actual closed-trade after-cost payoff and winner concentration
 
 The retrospective authenticated whole-original-journal scoreboard now reports

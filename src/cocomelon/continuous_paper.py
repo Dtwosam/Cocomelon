@@ -9418,6 +9418,26 @@ def _restore_open_lifecycles(
         )
 
 
+def _retire_previous_session_handoff(root: Path) -> None:
+    """Retire stale terminal evidence from the newly restored PAPER worktree.
+
+    A successor's account/state root legitimately contains its predecessor's
+    terminal receipt AND optional deferred charts/scoreboards. On a fatal
+    interruption neither the previous successful end/open-position census nor
+    the previous research outputs may masquerade as the successor's after-cost
+    handoff evidence. GitHub's immutable predecessor archive remains intact;
+    no authoritative SQLite/journal/checkpoint files are touched. A failed
+    unlink is fatal to startup rather than a silently retained certificate.
+    """
+    for filename in (
+        SUMMARY_FILENAME,
+        "all-paper-trade-chart-audit.json",
+        "all-paper-trade-charts.html",
+        "all-paper-profitability-scoreboard.json",
+    ):
+        (root / filename).unlink(missing_ok=True)
+
+
 async def run_continuous_paper_session(
     state_root: str | Path,
     config: ContinuousPaperConfig,
@@ -9432,6 +9452,10 @@ async def run_continuous_paper_session(
 
     root = Path(state_root)
     root.mkdir(parents=True, exist_ok=True)
+    # The restored root may contain a legitimate PREDECESSOR summary. It is
+    # not a certificate that this newly starting worker completed handoff.
+    # Invalidate it before even loading the new session's PAPER checkpoint.
+    _retire_previous_session_handoff(root)
     stop_path = None if stop_file is None else Path(stop_file)
     if stop_path is not None and stop_path.exists():
         stop_path.unlink()
