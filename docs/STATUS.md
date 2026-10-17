@@ -2,6 +2,35 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — refuse offsetting or orphaned v3 paired account ledger rows
+
+The new original-source v3 independent paired account audit previously summed
+`paper_fills.taker_fee` and `paper_funding_events.cash_delta`, compared
+those sums with the separately reconstructed PAPER account's cumulative cash
+and reported equity, then called the cash reconciled. This is necessary but
+not sufficient: an **orphan zero-fee fill** or two forged fee/funding cash
+rows of opposite sign can keep the net cash and matched reported equity
+identical while altering the purported original execution history.
+
+The deferred independent, immutable/read-only v3 account checker now validates
+**every** persisted original order plan, execution attempt, fill and funding
+accrual. It reconstructs canonical row payloads and content-derived IDs,
+requires attempt -> existing plan and fill -> existing matching attempt/plan
+lineage, and independently checks filled quantity, notional, cost and VWAP
+against recorded fills for *every* execution attempt. Each funding receipt
+must match its row identity, market/position/boundary and the exact signed
+quantity × oracle price × funding rate cash equation. Any row identity,
+lineage or arithmetic mismatch disqualifies the full paired audit even if
+the added rows net to zero. The report includes verified original attempt,
+fill and funding row counts alongside each lane's after-cost marked equity.
+
+This is additional *local stored-row integrity only*. It cannot manufacture
+or certify venue source and market-gap completeness, external signed handoff,
+72-hour forward observation, full-account positive expectancy or LIVE
+authority; the source still fails. No original receipt is deleted or repaired,
+no account reset, strategy/risk, fees/fills, funding policy, PAPER orders,
+frozen v3 hypothesis or LIVE permission is changed.
+
 ## October 17 — bound optional L2 book registration work to causal time
 
 Authenticated PAPER worker #39034648254 has a **295 ms** observed peak
