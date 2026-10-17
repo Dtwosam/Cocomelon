@@ -165,7 +165,8 @@ def test_actual_booked_net_payoff_factor_and_biggest_winner_stress() -> None:
     assert overall["losses"] == 1
     assert Decimal(overall["booked_net_winning_cash"]) == 4
     assert Decimal(overall["booked_net_losing_cash_abs"]) == 6
-    assert Decimal(overall["booked_net_profit_factor"]) == Decimal(4) / 6
+    with localcontext(prec=96):
+        assert Decimal(overall["booked_net_profit_factor"]) == Decimal(4) / 6
     assert Decimal(overall["booked_net_mean_winner_cash"]) == 4
     assert Decimal(overall["booked_net_mean_loser_abs_cash"]) == 6
     assert Decimal(
@@ -206,11 +207,19 @@ def test_booked_payoff_edge_cases_do_not_invent_observed_opposite_side(
     ])
     result = paper_profitability_scoreboard(source)
     metrics = result["overall"]
-    assert metrics["booked_net_profit_factor"] == expected_factor
+    if expected_factor is None:
+        assert metrics["booked_net_profit_factor"] is None
+    else:
+        assert Decimal(metrics["booked_net_profit_factor"]) == Decimal(
+            expected_factor
+        )
     assert metrics["booked_net_break_even_win_fraction_at_observed_payoffs"] is None
-    assert metrics["booked_net_without_largest_winner_arithmetic"] == (
-        expected_leave_out
-    )
+    if expected_leave_out is None:
+        assert metrics["booked_net_without_largest_winner_arithmetic"] is None
+    else:
+        assert Decimal(
+            metrics["booked_net_without_largest_winner_arithmetic"]
+        ) == Decimal(expected_leave_out)
     assert result["ready_for_strategy_promotion"] is False
 
 
