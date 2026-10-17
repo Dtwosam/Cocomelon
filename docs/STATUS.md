@@ -2,6 +2,43 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — retain failed durable redundant-source gap OPEN debt
+
+The merged two-lane WS mux serialized event/gap dispatch in #1325 and
+reported lock backpressure in #1326. A separate signed-evidence hazard
+remained: when both lanes truly became unavailable, the mux set
+`_aggregate_gap_starts[stream]` **before** its awaited durable
+`redundant_disconnect` gap receipt succeeded. If that write raised or
+its task was cancelled, subsequent aggregate-gap attempts saw an
+apparently already-open gap and skipped the missing OPEN receipt; a
+later valid-looking market recovery could then close a gap whose start
+had never been durably recorded. That would corrupt causal source audit.
+
+The mux now explicitly tracks **uncommitted original aggregate gap
+OPENs** until its real `gap_sink` returns successfully. Before
+processing any later event, disconnect, or `recovered` marker for the
+same stream, it first retries the original gap OPEN with the same stream,
+start millisecond, and reason. If the write still fails, it raises and
+does **not** emit the later market event or permit a recovery closure.
+Cancelled writes leave this debt unresolved. Later successful delivery
+clears only the *uncommitted* marker; the actual aggregate gap stays
+open until an independently accepted original market witness satisfies
+the existing recovery rules. If a sink may have durably committed before
+raising, the protocol conservatively retries the same notice rather than
+silently asserting completeness; duplicate receipt verification remains
+an independent source integrity requirement.
+
+PAPER supervisor health and operational issue #469 now show the count
+of uncommitted source-gap starts as **negative-only** telemetry. Tests
+inject transient/permanent disk-write errors and async cancellation,
+confirm the original start time never shifts, verify no false later
+events/closures or paper authorization, and confirm recovery requires a
+durable OPEN followed by actual delivered source evidence. Existing
+strategy, risk, fees, funding, fills, source exchange/receive clocks,
+original failed rows and LIVE=false are unchanged. The historical
+72-hour original feed and matched positive after-cost accounts remain
+unqualified.
+
 ## October 17 — measure both sides of WS ingress serialization
 
 After #1325, every original two-lane WebSocket callback awaits the
