@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -222,6 +223,124 @@ def test_absent_manifest_gap_list_is_not_empty_gap_evidence() -> None:
             (_record(START + 1, market=A), _record(START + 2, market=B)),
             manifest=missing,
         )
+
+
+def test_original_l2_exchange_clock_accepts_exact_age_and_skew_limits() -> None:
+    rows = (
+        replace(_record(START + 30_000, market=A),
+                exchange_time_ms=START + 15_000),
+        replace(_record(START + 30_001, market=B),
+                exchange_time_ms=START + 31_001),
+    )
+    result = _check(rows)
+    assert result["original_l2_exchange_clock_observation_count"] == 2
+    assert result["original_l2_exchange_age_max_ms_by_market"] == {
+        "AAA": 15_000, "BBB": 0,
+    }
+    assert result["original_l2_exchange_future_skew_max_ms"] == 1_000
+    assert result["original_l2_exchange_clock_monotonic_per_market_verified"] is True
+    assert result["original_l2_exchange_clock_checked_in_warmup_and_forward"] is True
+    assert result["original_exchange_feed_independently_authenticated"] is False
+    assert result["promotion_authority"] is False
+
+
+@pytest.mark.parametrize("offset,reason", [
+    (15_001, "stale"),
+    (-1_001, "future-dated"),
+])
+def test_forged_fresh_received_l2_cannot_launder_venue_clock(
+    offset: int, reason: str,
+) -> None:
+    forged = replace(
+        _record(START + 50_000, market=A),
+        exchange_time_ms=START + 50_000 - offset,
+    )
+    with pytest.raises(FreshLongTrendSourceError, match=reason):
+        _check((forged, _record(START + 50_001, market=B)))
+
+
+def test_missing_l2_exchange_clock_is_rejected() -> None:
+    missing = replace(_record(START + 1, market=A), exchange_time_ms=None)
+    with pytest.raises(FreshLongTrendSourceError, match="clock absent"):
+        _check((missing, _record(START + 2, market=B)))
+
+
+def test_original_l2_exchange_clock_does_not_regress_within_market() -> None:
+    rows = (
+        _record(START + 50_000, market=A),
+        _record(START + 50_001, market=B),
+        replace(
+            _record(START + 51_000, market=A),
+            exchange_time_ms=START + 49_999,
+        ),
+    )
+    assert rows[2].available_at_ms > rows[0].available_at_ms
+    with pytest.raises(FreshLongTrendSourceError, match="regressed within market"):
+        _check(rows)
+
+
+def test_original_warmup_l2_clock_cannot_poison_forward_replay() -> None:
+    first = _record(START - 10_000, market=A)
+    rows = (
+        first,
+        replace(
+            _record(START + 1, market=A),
+            exchange_time_ms=START - 10_001,
+        ),
+        _record(START + 2, market=B),
+    )
+    with pytest.raises(FreshLongTrendSourceError, match="regressed within market"):
+        _check(rows)
+    assert first.exchange_time_ms == START - 10_000
+
+
+def test_original_l2_exchange_clock_equality_is_not_falsely_rejected() -> None:
+    rows = (
+        _record(START + 1, market=A),
+        replace(_record(START + 2, market=A), exchange_time_ms=START + 1),
+        _record(START + 3, market=B),
+    )
+    report = _check(rows)
+    assert report["original_l2_exchange_clock_observation_count"] == 3
+
+
+def test_invalid_l2_exchange_clock_blocks_new_paper_accounts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cocomelon.domain.execution import PaperExecutionConfig
+    from cocomelon.evidence.contracts import BaselineReplayConfig
+
+    class OriginalStub:
+        def __init__(
+            self, *, root: Path, manifest: ReplayManifest,
+            expected_manifest_id: str,
+        ) -> None:
+            del root, manifest, expected_manifest_id
+
+        def verified_records(
+            self, *, forward_not_before_ms: int,
+        ) -> tuple[ReplayRecord, ...]:
+            assert forward_not_before_ms == START
+            return (
+                replace(_record(START + 10, market=A),
+                        exchange_time_ms=START - 30_000),
+                _record(START + 11, market=B),
+            )
+
+    monkeypatch.setattr(study, "PinnedShortRankReplaySource", OriginalStub)
+    monkeypatch.setattr(
+        study, "restore_original_v3_received_order",
+        lambda _root, _manifest, rows: rows,
+    )
+    root = tmp_path / "no-source-clock-laundering"
+    with pytest.raises(FreshLongTrendSourceError, match="clock stale"):
+        study.run_digest_pinned_long_trend_matched_paper(
+            source_root=tmp_path / "unavailable-source",
+            manifest=_manifest(), expected_manifest_id="0123456789abcdef01234567",
+            config=BaselineReplayConfig(execution=PaperExecutionConfig()),
+            selected_markets=(A, B), account_root=root,
+        )
+    assert not root.exists()
 
 
 def test_gap_or_no_l2_is_denied_before_v3_sqlite_directory_is_created(
