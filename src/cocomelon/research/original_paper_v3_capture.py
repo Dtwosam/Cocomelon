@@ -74,6 +74,11 @@ BATCH_SIZE: Final = 256
 # One shared limit with the closed original source ZIP sealer.
 MAX_SOURCE_ROWS: Final = 5_000_000
 MAX_SOURCE_BYTES: Final = 480 * 1024 * 1024
+# A 72h prospective source cannot fit a fixed small journal if its measured
+# offer rate stays high. This is only a conditional observation, NEVER an
+# admission gate or authority to sample/drop original source evidence.
+FROZEN_FORWARD_SOURCE_DURATION_MS: Final = 72 * 60 * 60 * 1000
+MIN_ROW_RATE_PROJECTION_WINDOW_MS: Final = 10 * 60 * 1000
 RECORD_FILE: Final = "original-received-rows.jsonl"
 TERMINAL_FILE: Final = "original-capture-terminal.json"
 READY_SCHEMA: Final = "fresh-v3-original-paper-async-receipt-v1"
@@ -593,6 +598,35 @@ class OriginalPaperMicrostructureCapture:
             self.dropped_count += 1
             self.failure = "original_capture_queue_overflow"
 
+    def _negative_72h_row_budget_projection(self) -> dict[str, object]:
+        """Conditional rate screen only; the real source still must seal."""
+        start = self.first_offered_available_at_ms
+        end = self._max_offered_available_at_ms
+        elapsed = (
+            max(0, end - start)
+            if start is not None and end is not None
+            else 0
+        )
+        estimate = (
+            (
+                self.offered_count * FROZEN_FORWARD_SOURCE_DURATION_MS
+                + elapsed - 1
+            ) // elapsed
+            if elapsed >= MIN_ROW_RATE_PROJECTION_WINDOW_MS
+            and self.offered_count > 0
+            else None
+        )
+        return {
+            "estimated_72h_original_rows_at_observed_offer_rate": estimate,
+            "estimated_72h_source_rows_exceed_fixed_limit": (
+                estimate > MAX_SOURCE_ROWS if estimate is not None else None
+            ),
+            "estimated_72h_source_projection_not_qualification": True,
+            "observed_offer_rate_minimum_window_ms": (
+                MIN_ROW_RATE_PROJECTION_WINDOW_MS
+            ),
+        }
+
     def _negative_l2_coverage(self) -> dict[str, int]:
         """Bounded offered-time L2 diagnostics, not sealed replay evidence.
 
@@ -677,6 +711,7 @@ class OriginalPaperMicrostructureCapture:
             "remaining_persisted_row_budget": max(0, MAX_SOURCE_ROWS - self.record_count),
             "pending_queue_depth": self.queue.qsize(),
             **self._negative_l2_coverage(),
+            **self._negative_72h_row_budget_projection(),
             **self._negative_l2_gap_concentration(),
             "dropped_count": self.dropped_count,
             "received_clock_regressions": self.received_clock_regressions,
@@ -898,6 +933,7 @@ class OriginalPaperMicrostructureCapture:
             "offered_count": self.offered_count,
             "written_count": self.record_count,
             **self._negative_l2_coverage(),
+            **self._negative_72h_row_budget_projection(),
             **self._negative_l2_gap_concentration(),
             # Pending/in-flight during a live heartbeat; an unacknowledged
             # batch on failure once the recorder is closed.
