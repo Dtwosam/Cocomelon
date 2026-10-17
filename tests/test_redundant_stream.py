@@ -310,8 +310,8 @@ def test_same_receive_timestamp_keeps_distinct_active_market_context() -> None:
         changed = _ctx("101", 100)
         exact_duplicate = replace(initial, event_key="distinct-key-same-content")
         await mux.on_event(0, initial)
-        await mux.on_event(0, changed)
         await mux.on_event(0, exact_duplicate)
+        await mux.on_event(0, changed)
 
         # Distinct same-time updates must survive, while semantic duplicates
         # and genuinely backward raw receive times must still be rejected.
