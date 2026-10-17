@@ -316,6 +316,59 @@ def test_completed_worker_joins_first_seen_decision_source_and_keeps_missing(
     assert report["original_first_seen_opportunity_parity"]["promotion_authority"] is False
 
 
+def test_restored_predecessor_handoff_cannot_seal_later_original_closes(
+    tmp_path: Path,
+) -> None:
+    trades = _populate_state(tmp_path)
+    # This exact failure shape was observed in authenticated completed
+    # worker 39001800329: stale October-16 handoff end but October-17
+    # original journal closes, followed by a downstream scoreboard abort.
+    source_end_ms = trades[-2].closed_at_ms
+    (tmp_path / "session-summary.json").write_text(
+        json.dumps({
+            "exit_reason": "upgrade_requested",
+            "ended_at_ms": source_end_ms,
+            "open_positions": 0,
+        }),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        AllPaperTradeChartAuditError,
+        match="stale PAPER handoff end predates an original journal close",
+    ):
+        write_deferred_trade_charts(tmp_path)
+
+    # The actual, complete original journal remains authoritative and
+    # unmodified; no false completed chart/report gets published.
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    try:
+        assert len(tuple(journal.iter_trades())) == len(trades)
+    finally:
+        journal.close()
+    assert not (tmp_path / "all-paper-trade-chart-audit.json").exists()
+    assert not (tmp_path / "all-paper-trade-charts.html").exists()
+
+
+@pytest.mark.parametrize("invalid_end", [-1, True, "past", 0.5])
+def test_invalid_completed_handoff_bound_never_publishes_chart_source(
+    tmp_path: Path, invalid_end: object,
+) -> None:
+    _populate_state(tmp_path)
+    (tmp_path / "session-summary.json").write_text(
+        json.dumps({
+            "exit_reason": "duration_elapsed",
+            "ended_at_ms": invalid_end,
+            "open_positions": 0,
+        }),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        AllPaperTradeChartAuditError, match="invalid original PAPER handoff end",
+    ):
+        write_deferred_trade_charts(tmp_path)
+    assert not (tmp_path / "all-paper-trade-chart-audit.json").exists()
+
+
 def test_completed_handoff_exposes_real_ended_time_and_unclosed_exposure(
     tmp_path: Path,
 ) -> None:
