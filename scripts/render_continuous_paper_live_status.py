@@ -9595,7 +9595,8 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{clock_families.get('other', 'unavailable')}"
         ),
         (
-            "- original regressions formerly anonymous other (all-mids / trade / unrecognized / reconciled): "
+            "- original regressions formerly anonymous other "
+            "(all-mids / trade / unrecognized / reconciled): "
             f"{other_kinds.get('all_mids', 'unavailable')} / "
             f"{other_kinds.get('trade', 'unavailable')} / "
             f"{other_kinds.get('unrecognized', 'unavailable')} / "
