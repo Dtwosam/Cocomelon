@@ -290,6 +290,104 @@ def test_failover_suppresses_receive_time_only_cross_lane_duplicate() -> None:
     asyncio.run(run())
 
 
+def test_same_receive_timestamp_keeps_distinct_active_market_context() -> None:
+    async def run() -> None:
+        from dataclasses import replace
+
+        from cocomelon.evidence.redundant_stream import RedundantStreamMux
+
+        events: list[StreamEvent] = []
+        gaps: list[DataGap] = []
+
+        async def event_sink(event: StreamEvent) -> None:
+            events.append(event)
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        mux = RedundantStreamMux(event_sink=event_sink, gap_sink=gap_sink)
+        initial = _ctx("100", 100)
+        changed = _ctx("101", 100)
+        exact_duplicate = replace(initial, event_key="distinct-key-same-content")
+        await mux.on_event(0, initial)
+        await mux.on_event(0, exact_duplicate)
+        await mux.on_event(0, changed)
+
+        # Distinct same-time updates must survive, while semantic duplicates
+        # and genuinely backward raw receive times must still be rejected.
+        await mux.on_event(0, _ctx("102", 99))
+        assert [event.payload["mark_px"] for event in events] == [
+            Decimal("100"), Decimal("101"),
+        ]
+        assert events[0].receive_time == events[1].receive_time
+        assert mux.active_lane("activeAssetCtx:BTC") == 0
+        assert gaps == []
+
+    asyncio.run(run())
+
+
+def test_same_receive_timestamp_survives_standby_failover_without_false_gap() -> None:
+    async def run() -> None:
+        from cocomelon.evidence.redundant_stream import RedundantStreamMux
+
+        events: list[StreamEvent] = []
+        gaps: list[DataGap] = []
+
+        async def event_sink(event: StreamEvent) -> None:
+            events.append(event)
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        mux = RedundantStreamMux(event_sink=event_sink, gap_sink=gap_sink)
+        initial = _ctx("100", 100)
+        distinct = _ctx("101", 100)
+        await mux.on_event(0, initial)
+        # The equal-time update is buffered on the standby until a genuine
+        # active lane disconnect; its different content is not a replay.
+        await mux.on_event(1, distinct)
+        await mux.on_gap(
+            0,
+            DataGap("activeAssetCtx:BTC", 500, None, "disconnect"),
+        )
+        assert [event.payload["mark_px"] for event in events] == [
+            Decimal("100"), Decimal("101"),
+        ]
+        assert mux.failover_count == 1
+        assert mux.active_lane("activeAssetCtx:BTC") == 1
+        assert gaps == []
+
+    asyncio.run(run())
+
+
+def test_equal_receive_time_cannot_bypass_exact_key_and_semantic_dedup() -> None:
+    async def run() -> None:
+        from dataclasses import replace
+
+        from cocomelon.evidence.redundant_stream import RedundantStreamMux
+
+        events: list[StreamEvent] = []
+
+        async def event_sink(event: StreamEvent) -> None:
+            events.append(event)
+
+        async def gap_sink(_gap: DataGap) -> None:
+            raise AssertionError("no gap expected")
+
+        mux = RedundantStreamMux(event_sink=event_sink, gap_sink=gap_sink)
+        original = _ctx("100", 100)
+        await mux.on_event(0, original)
+        await mux.on_event(0, original)  # Same exact event key.
+        await mux.on_event(
+            0, replace(original, event_key="same-payload-new-event-key")
+        )
+        assert [event.event_key for event in events] == [original.event_key]
+        await mux.on_event(0, _ctx("101", 100))
+        assert len(events) == 2
+
+    asyncio.run(run())
+
+
 def test_inactive_lane_local_anomaly_is_suppressed_when_active_lane_covers() -> None:
     async def run() -> None:
         from cocomelon.evidence.redundant_stream import RedundantStreamMux

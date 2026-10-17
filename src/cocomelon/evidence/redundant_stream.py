@@ -132,7 +132,12 @@ class RedundantStreamMux:
         if previous.exchange_time_ms is not None and event.exchange_time_ms is not None:
             return event.exchange_time_ms < previous.exchange_time_ms
         if previous.exchange_time_ms is None and event.exchange_time_ms is None:
-            return event.receive_time <= previous.receive_time
+            # A single normalized websocket message can contain distinct
+            # context updates with the EXACT same original receive_time.
+            # Equality is not evidence of an old packet: event-key and
+            # semantic payload duplicate guards run immediately afterward.
+            # Only strictly older observed times can be rejected here.
+            return event.receive_time < previous.receive_time
         return False
 
     async def _emit_candidate(self, stream_id: str, event: StreamEvent) -> bool:
