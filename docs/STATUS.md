@@ -2,6 +2,38 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — upstream WS supervisor must also durably OPEN source gaps
+
+PR #1327 closed an uncertain-write gap in the **redundant two-lane mux**.
+The individual upstream `WebSocketSupervisor` had the same missing
+commit boundary for both **per-stream disconnect** and **L2 stale**
+notices: it set `_open_gaps[stream]` before awaiting its original gap
+sink. If the sink failed or its task was cancelled, it permanently
+considered the OPEN already present and could accept subsequent market
+events or a `recovered` gap close without a corresponding durable OPEN.
+
+The supervisor now retains the exact original gap object and tracks
+uncommitted starts independently of already-open gap state. Before
+handling any subsequent normalized event, attempting a stale-gap scan,
+opening disconnect gaps, or closing a recovered gap for that stream, it
+must successfully deliver the same original OPEN. A repeated sink
+failure propagates and blocks the subsequent record. Only a successful
+real downstream gap sink clears the *uncommitted* obligation; the
+separate open-gap lineage remains until a genuine later accepted
+source event supports recovery. Cancellation preserves the obligation.
+An uncertain partial commit is retried conservatively, not silently
+assumed. Lane-local L2 delivery diagnostics include the unresolved
+OPEN count as negative-only evidence.
+
+Tests inject repeated disconnect-gap write failure, an L2 staleness
+OPEN failure, async cancellation during the write, and real subsequent
+market recovery. They verify exact unchanged gap start timestamp,
+no wrongly accepted event/duplicate-key memory, and only durable
+gap-open-then-recovery ordering. This does not heal previous source
+drop/gap failures or prevent genuine exchange disconnects, change
+risk/strategy/fees/funding/positions/fills, assert full-account
+after-cost profit, qualify >72h original venue data, or enable LIVE.
+
 ## October 17 — retain failed durable redundant-source gap OPEN debt
 
 The merged two-lane WS mux serialized event/gap dispatch in #1325 and
