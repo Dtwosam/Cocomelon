@@ -61,6 +61,11 @@ class RedundantStreamMux:
         self._observed_lanes: dict[str, set[int]] = defaultdict(set)
         self._session_ready_lanes: set[int] = set()
         self._aggregate_gap_starts: dict[str, int] = {}
+        # A failed/cancelled durable OPEN write must block all subsequent
+        # observations of this stream until its original gap is recorded.
+        # This is a bounded subset of currently open gaps, not a retry queue
+        # with fabricated timestamps or replacement source records.
+        self._uncommitted_aggregate_gap_opens: set[str] = set()
         # A recovered notification alone is not a replayable price event.
         # Require an actually accepted normalized event from the healed lane.
         self._recovery_witness_lanes: dict[str, set[int]] = defaultdict(set)
@@ -263,6 +268,27 @@ class RedundantStreamMux:
             for lane in range(self._lane_count)
         )
 
+    async def _persist_uncommitted_aggregate_gap_open(
+        self, stream_id: str,
+    ) -> None:
+        if stream_id not in self._uncommitted_aggregate_gap_opens:
+            return
+        # Retry the SAME original aggregate gap start, with the SAME
+        # stream ID. If the sink still fails, propagate its failure BEFORE
+        # any new input is emitted or a recovered closure can be reported.
+        # A partial downstream commit is conservatively at-least-once:
+        # no receipt is silently declared successful after an exception.
+        started_ms = self._aggregate_gap_starts[stream_id]
+        await self._gap_sink(
+            DataGap(
+                stream_id=stream_id,
+                started_ms=started_ms,
+                ended_ms=None,
+                reason="redundant_disconnect",
+            )
+        )
+        self._uncommitted_aggregate_gap_opens.remove(stream_id)
+
     async def _open_aggregate_gap_if_needed(
         self,
         stream_id: str,
@@ -276,15 +302,9 @@ class RedundantStreamMux:
         starts = self._lane_gap_starts[stream_id]
         aggregate_start = max(starts.values(), default=started_ms)
         self._aggregate_gap_starts[stream_id] = aggregate_start
+        self._uncommitted_aggregate_gap_opens.add(stream_id)
         self._recovery_witness_lanes.pop(stream_id, None)
-        await self._gap_sink(
-            DataGap(
-                stream_id=stream_id,
-                started_ms=aggregate_start,
-                ended_ms=None,
-                reason="redundant_disconnect",
-            )
-        )
+        await self._persist_uncommitted_aggregate_gap_open(stream_id)
 
     async def _close_aggregate_gap_if_needed(
         self,
@@ -295,6 +315,8 @@ class RedundantStreamMux:
         started_ms = self._aggregate_gap_starts.get(stream_id)
         if started_ms is None:
             return
+        if stream_id in self._uncommitted_aggregate_gap_opens:
+            raise RuntimeError("aggregate source gap open not durable")
         await self._gap_sink(
             DataGap(
                 stream_id=stream_id,
@@ -315,6 +337,9 @@ class RedundantStreamMux:
         self, lane: int, event: StreamEvent,
     ) -> None:
         stream_id = event_stream_id(event)
+        # No live event is accepted after an uncertain durable OPEN gap
+        # write until the original source-gap receipt succeeds.
+        await self._persist_uncommitted_aggregate_gap_open(stream_id)
         self._session_ready_lanes.add(lane)
         self._observed_lanes[stream_id].add(lane)
         recovered_lane = lane not in self._lane_gap_starts[stream_id]
@@ -346,6 +371,8 @@ class RedundantStreamMux:
 
     async def _on_gap_serialized(self, lane: int, gap: DataGap) -> None:
         stream_id = gap.stream_id
+        # Includes recovered markers: do not close an unpersisted open.
+        await self._persist_uncommitted_aggregate_gap_open(stream_id)
         starts = self._lane_gap_starts[stream_id]
 
         if gap.reason == "recovered":
