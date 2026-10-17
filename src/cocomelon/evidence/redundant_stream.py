@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from collections import defaultdict, deque
@@ -66,6 +67,12 @@ class RedundantStreamMux:
         self._seen_queues: dict[str, deque[str]] = defaultdict(deque)
         self._last_emitted: dict[str, StreamEvent] = {}
         self._failover_count = 0
+        # Both WebSocket supervisors invoke this mux from independent tasks.
+        # A downstream sink can yield: without an ingress lock another lane
+        # can switch/drain a buffer while a prior emit has not yet committed
+        # _last_emitted or its event key. Preserve actual callback order and
+        # never reorder/repair the timestamps in the original events.
+        self._ingress_lock = asyncio.Lock()
 
     @property
     def failover_count(self) -> int:
@@ -241,6 +248,12 @@ class RedundantStreamMux:
 
     async def on_event(self, lane: int, event: StreamEvent) -> None:
         self._require_lane(lane)
+        async with self._ingress_lock:
+            await self._on_event_serialized(lane, event)
+
+    async def _on_event_serialized(
+        self, lane: int, event: StreamEvent,
+    ) -> None:
         stream_id = event_stream_id(event)
         self._session_ready_lanes.add(lane)
         self._observed_lanes[stream_id].add(lane)
@@ -269,6 +282,10 @@ class RedundantStreamMux:
 
     async def on_gap(self, lane: int, gap: DataGap) -> None:
         self._require_lane(lane)
+        async with self._ingress_lock:
+            await self._on_gap_serialized(lane, gap)
+
+    async def _on_gap_serialized(self, lane: int, gap: DataGap) -> None:
         stream_id = gap.stream_id
         starts = self._lane_gap_starts[stream_id]
 
