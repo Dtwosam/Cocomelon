@@ -16,15 +16,16 @@ from typing import Final
 
 from cocomelon.domain.replay import ReplayRecord
 from cocomelon.evidence.contracts import BaselineReplayConfig
-from cocomelon.research.fresh_long_trend_source_integrity import (
-    MAX_ORIGINAL_L2_EXCHANGE_AGE_MS,
-    MAX_ORIGINAL_L2_EXCHANGE_FUTURE_SKEW_MS,
-)
 from cocomelon.util.time import utc_now_ms
 
 MAX_PENDING_RECORDS: Final = 16_384
 # Bounded negative stream-clock attribution; never source data or evidence.
 MAX_TRACKED_ORIGINAL_L2_STREAMS: Final = 512
+# Keep live trade recorder free from offline research source-audit imports.
+# A dedicated test compares these fixed negative-only screens with the
+# independent v3 admission gates, so future threshold drift fails CI.
+V3_L2_EXCHANGE_LAG_NEGATIVE_SCREEN_MS: Final = 15_000
+V3_L2_EXCHANGE_FUTURE_NEGATIVE_SCREEN_MS: Final = 1_000
 # Negative visibility threshold only; not a source-admission certificate.
 L2_COVERAGE_DROUGHT_MS: Final = 5 * 60 * 1000
 # Fixed vocabulary: source-provided reasons never become public diagnostic keys.
@@ -426,10 +427,10 @@ class OriginalPaperMicrostructureCapture:
                 else:
                     exchange_age_ms = record.available_at_ms - exchange_ms
                     self.l2_exchange_lag_over_15s_count += int(
-                        exchange_age_ms > MAX_ORIGINAL_L2_EXCHANGE_AGE_MS
+                        exchange_age_ms > V3_L2_EXCHANGE_LAG_NEGATIVE_SCREEN_MS
                     )
                     self.l2_exchange_future_over_1s_count += int(
-                        exchange_age_ms < -MAX_ORIGINAL_L2_EXCHANGE_FUTURE_SKEW_MS
+                        exchange_age_ms < -V3_L2_EXCHANGE_FUTURE_NEGATIVE_SCREEN_MS
                     )
                     self.l2_exchange_max_lag_ms = max(
                         self.l2_exchange_max_lag_ms, exchange_age_ms,
