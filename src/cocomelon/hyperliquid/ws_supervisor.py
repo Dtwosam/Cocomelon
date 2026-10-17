@@ -720,7 +720,11 @@ class WebSocketSupervisor:
             # replay deduplication. Exchange-time freshness remains strict
             # below and still drives stale-book gaps/eligibility.
             self._last_stream_message[stream_id] = now_ms
-            if not self._remember(stream_id, event.event_key):
+            # A downstream source write must succeed before its event key
+            # is committed to deduplication. A rejected/cancelled write is
+            # uncertain, and a later genuine redelivery must be attempted,
+            # not silently classified as already accepted.
+            if event.event_key in self._recent_key_sets[stream_id]:
                 self._duplicate_count += 1
                 if is_l2:
                     self._l2_duplicate_count += 1
@@ -804,6 +808,10 @@ class WebSocketSupervisor:
             sink_started = perf_counter() if is_l2 else None
             try:
                 await self._emit_event(event)
+                # No await between the acknowledged sink and dedup commit.
+                # This is at-least-once under uncertain downstream failures;
+                # only independent source receipts can certify a full archive.
+                self._remember(stream_id, event.event_key)
             finally:
                 if sink_started is not None:
                     self._l2_max_event_sink_await_ms = max(
