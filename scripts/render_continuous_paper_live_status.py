@@ -9959,6 +9959,23 @@ def _render_operational_live_status(
                 )
             )
 
+    mux_ingress = l2_health.get("redundant_mux_ingress")
+    if isinstance(mux_ingress, dict):
+        l2_lane_lines.append(
+            "- redundant WS mux serialized ingress completed / failed / "
+            "contended / active / peak: "
+            f"{mux_ingress.get('completed_calls', 'unavailable')} / "
+            f"{mux_ingress.get('failed_calls', 'unavailable')} / "
+            f"{mux_ingress.get('contended_calls', 'unavailable')} / "
+            f"{mux_ingress.get('active_waiters', 'unavailable')} / "
+            f"{mux_ingress.get('peak_waiters', 'unavailable')}"
+        )
+        l2_lane_lines.append(
+            "- redundant WS mux maximum lock wait / held ms: "
+            f"{mux_ingress.get('max_lock_wait_ms', 'unavailable')} / "
+            f"{mux_ingress.get('max_lock_hold_ms', 'unavailable')}"
+        )
+
     pre_recovery_lane_lines: list[str] = []
     pre_recovery_health = recovery_trigger.get(
         "pre_recovery_supervisor_health",
