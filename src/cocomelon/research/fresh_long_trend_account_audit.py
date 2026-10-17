@@ -12,10 +12,20 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, cast
 
+from cocomelon.domain.execution import ExecutionAttempt, PaperFill
+from cocomelon.execution.funding import funding_cash_delta
 from cocomelon.execution.store import (
     _account_from_payload,
     _account_payload,
+    _attempt_from_payload,
+    _attempt_payload,
     _canonical_json,
+    _fill_from_payload,
+    _fill_payload,
+    _funding_from_payload,
+    _funding_payload,
+    _plan_from_payload,
+    _plan_payload,
     _position_payload,
 )
 from cocomelon.research.loss_context_paired_portfolio_shadow import (
@@ -45,16 +55,109 @@ def _decimal(value: object, field: str) -> Decimal:
     return amount
 
 
-def _summed_original_cash(conn: sqlite3.Connection, *, table: str, key: str) -> Decimal:
-    total = Decimal("0")
-    for (serialized,) in conn.execute(f"SELECT payload_json FROM {table}"):
-        try:
-            entry: object = json.loads(serialized)
-        except (ValueError, TypeError) as exc:
-            raise V3AccountAuditError(f"{table} journal is invalid") from exc
-        payload = _mapping(entry, table)
-        total += _decimal(payload.get(key), f"{table}.{key}")
-    return total
+def _original_json_row(serialized: object, label: str) -> dict[str, Any]:
+    if type(serialized) is not str:
+        raise V3AccountAuditError(f"{label} original payload not text")
+    try:
+        payload: object = json.loads(serialized)
+    except (TypeError, ValueError) as exc:
+        raise V3AccountAuditError(f"{label} original payload unreadable") from exc
+    return _mapping(payload, label)
+
+
+def _verified_original_execution_cash(
+    conn: sqlite3.Connection,
+) -> tuple[Decimal, Decimal, int, int, int]:
+    """Check actual ledger IDs, plan/attempt/fill joins and funding math.
+
+    A sum of journal cash is not enough: two injected rows can cancel one
+    another and falsely leave equity and reported fee/funding totals equal.
+    This entire check is RO/immutable, independent of actor restore.
+    """
+    plans: set[str] = set()
+    for plan_id, raw in conn.execute(
+        "SELECT plan_id, payload_json FROM paper_order_plans"
+    ):
+        plan = _plan_from_payload(_original_json_row(raw, "plan"))
+        if (
+            plan.plan_id != plan_id
+            or _canonical_json(_plan_payload(plan)) != raw
+        ):
+            raise V3AccountAuditError("original order plan identity differs")
+        plans.add(plan_id)
+    attempts: dict[str, ExecutionAttempt] = {}
+    for attempt_id, plan_id, raw in conn.execute(
+        "SELECT attempt_id, plan_id, payload_json "
+        "FROM paper_execution_attempts"
+    ):
+        attempt = _attempt_from_payload(_original_json_row(raw, "attempt"))
+        if (
+            attempt.attempt_id != attempt_id
+            or attempt.plan_id != plan_id
+            or attempt.plan_id not in plans
+            or _canonical_json(_attempt_payload(attempt)) != raw
+        ):
+            raise V3AccountAuditError("original execution attempt identity differs")
+        attempts[attempt_id] = attempt
+    per_attempt: dict[str, list[PaperFill]] = {
+        attempt_id: [] for attempt_id in attempts
+    }
+    fee_total = Decimal("0")
+    fill_count = 0
+    for fill_id, attempt_id, plan_id, raw in conn.execute(
+        "SELECT fill_id, attempt_id, plan_id, payload_json FROM paper_fills"
+    ):
+        fill = _fill_from_payload(_original_json_row(raw, "fill"))
+        linked = attempts.get(attempt_id)
+        if (
+            linked is None
+            or linked.plan_id != plan_id
+            or fill.fill_id != fill_id
+            or fill.attempt_id != attempt_id
+            or fill.plan_id != plan_id
+            or _canonical_json(_fill_payload(fill)) != raw
+        ):
+            raise V3AccountAuditError("original fill identity or attempt differs")
+        fee_total += fill.taker_fee
+        fill_count += 1
+        per_attempt[attempt_id].append(fill)
+    for attempt_id, attempt in attempts.items():
+        fills = per_attempt[attempt_id]
+        quantity = sum((fill.quantity for fill in fills), Decimal("0"))
+        notional = sum((fill.notional for fill in fills), Decimal("0"))
+        fees = sum((fill.taker_fee for fill in fills), Decimal("0"))
+        if (
+            quantity != attempt.filled_quantity
+            or notional != attempt.gross_fill_notional
+            or fees != attempt.fee
+            or (
+                quantity > 0 and
+                attempt.average_fill_price != notional / quantity
+            )
+        ):
+            raise V3AccountAuditError("original attempt and fills do not reconcile")
+    funding_total = Decimal("0")
+    funding_count = 0
+    for accrual_id, market, boundary_ms, position_id, raw in conn.execute(
+        "SELECT accrual_id, market, boundary_ms, position_id, payload_json "
+        "FROM paper_funding_events"
+    ):
+        accrual = _funding_from_payload(_original_json_row(raw, "funding"))
+        if (
+            accrual.accrual_id != accrual_id
+            or accrual.market.canonical != market
+            or accrual.boundary_ms != boundary_ms
+            or accrual.position_id != position_id
+            or _canonical_json(_funding_payload(accrual)) != raw
+            or accrual.cash_delta != funding_cash_delta(
+                accrual.signed_quantity, accrual.oracle_price,
+                accrual.funding_rate,
+            )
+        ):
+            raise V3AccountAuditError("original funding identity or cash differs")
+        funding_total += accrual.cash_delta
+        funding_count += 1
+    return fee_total, funding_total, len(attempts), fill_count, funding_count
 
 
 def _read_lane(
@@ -112,12 +215,10 @@ def _read_lane(
                 for point in account.rolling_peak_candidates
             ]:
                 raise V3AccountAuditError(f"{lane} peak equity journal differs")
-            recorded_fees = _summed_original_cash(
-                conn, table="paper_fills", key="taker_fee",
-            )
-            recorded_funding = _summed_original_cash(
-                conn, table="paper_funding_events", key="cash_delta",
-            )
+            (
+                recorded_fees, recorded_funding,
+                attempt_count, fill_count, funding_count,
+            ) = _verified_original_execution_cash(conn)
         finally:
             conn.close()
     except (OSError, sqlite3.DatabaseError, KeyError, TypeError, ValueError) as exc:
@@ -168,6 +269,10 @@ def _read_lane(
         "state_id_matches_local_checkpoint": True,
         "positions_and_peak_journal_match": True,
         "fills_and_funding_cash_reconciled": True,
+        "individual_plan_attempt_fill_and_funding_rows_verified": True,
+        "original_execution_attempt_count": attempt_count,
+        "original_execution_fill_count": fill_count,
+        "original_funding_accrual_count": funding_count,
         "starting_cash_usd": str(account.starting_cash),
         "equity_usd": str(account.equity),
         "gross_realized_pnl_usd": str(account.realized_gross_pnl),

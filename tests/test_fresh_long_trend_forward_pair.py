@@ -347,6 +347,68 @@ def _completed_v3(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> (
     return root, checkpoint, summary
 
 
+@pytest.mark.parametrize("kind", [
+    "orphan_zero_fee_fill",
+    "offsetting_fee_fills",
+    "offsetting_funding_cash",
+    "zero_cash_funding_forgery",
+])
+def test_v3_audit_rejects_forged_offsetting_original_ledger_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str,
+) -> None:
+    root, checkpoint, summary = _completed_v3(tmp_path, monkeypatch)
+    candidate_db = root / "candidate-execution.sqlite3"
+    with sqlite3.connect(candidate_db) as conn:
+        if kind == "orphan_zero_fee_fill":
+            conn.execute(
+                "INSERT INTO paper_fills(fill_id,attempt_id,plan_id,payload_json) "
+                "VALUES (?,?,?,?)",
+                ("forged-zero", "unknown-attempt", "unknown-plan",
+                 '{"taker_fee":"0"}'),
+            )
+        elif kind == "offsetting_fee_fills":
+            for num, fee in enumerate(("1.75", "-1.75")):
+                conn.execute(
+                    "INSERT INTO paper_fills("
+                    "fill_id,attempt_id,plan_id,payload_json) VALUES (?,?,?,?)",
+                    (f"counterfeit-{num}", "unknown-attempt", "unknown-plan",
+                     json.dumps({"taker_fee": fee})),
+                )
+        else:
+            for num, cash in enumerate(
+                ("1.25", "-1.25") if kind == "offsetting_funding_cash" else ("0",)
+            ):
+                conn.execute(
+                    "INSERT INTO paper_funding_events("
+                    "accrual_id,market,boundary_ms,position_id,payload_json) "
+                    "VALUES (?,?,?,?,?)",
+                    (f"forged-{num}", "TEST", 1000 + num, f"phantom-{num}",
+                     json.dumps({"cash_delta": cash})),
+                )
+    pristine_after_forgery = candidate_db.read_bytes()
+    # Previously only SUM(taker_fee) and SUM(cash_delta) were checked, so
+    # every forged set here had exactly the genuine ZERO net cash totals.
+    with sqlite3.connect(candidate_db) as conn:
+        fees = [Decimal(json.loads(row[0])["taker_fee"])
+                for row in conn.execute("SELECT payload_json FROM paper_fills")]
+        funding = [Decimal(json.loads(row[0])["cash_delta"])
+                   for row in conn.execute(
+                       "SELECT payload_json FROM paper_funding_events"
+                   )]
+    assert sum(fees, Decimal("0")) == 0
+    assert sum(funding, Decimal("0")) == 0
+    with pytest.raises(V3AccountAuditError):
+        audit_fresh_v3_paired_accounts(
+            root, checkpoint=checkpoint, summary=summary,
+            starting_cash=Decimal("10000"),
+            expected_candidate_id=study.fresh_long_trend_freeze().candidate_id,
+            expected_record_count=2,
+        )
+    # Audit is strictly read-only and must never repair corrupt source or
+    # infer a profitable opportunity from matching net sums.
+    assert candidate_db.read_bytes() == pristine_after_forgery
+
+
 @pytest.mark.parametrize("mutate", [
     "account_id", "account_equity", "fill_fee", "funding_cash",
     "checkpoint", "summary_relative",
