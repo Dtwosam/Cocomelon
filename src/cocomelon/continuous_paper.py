@@ -9418,6 +9418,20 @@ def _restore_open_lifecycles(
         )
 
 
+def _retire_previous_session_handoff(root: Path) -> None:
+    """Invalidate a restored worker's terminal receipt before new PAPER work.
+
+    Exact-state archives intentionally carry prior source/report files, but
+    an interrupted successor must not inherit a predecessor's successful
+    session-summary.json as evidence of *its* own completed source window.
+    Keep the authoritative execution/account checkpoint and prior GitHub
+    archive untouched. Only the new worker's normal successful completion
+    may publish a fresh summary. Failure to remove the stale receipt must
+    stop startup rather than permit misattributed deferred economics.
+    """
+    (root / SUMMARY_FILENAME).unlink(missing_ok=True)
+
+
 async def run_continuous_paper_session(
     state_root: str | Path,
     config: ContinuousPaperConfig,
@@ -9432,6 +9446,10 @@ async def run_continuous_paper_session(
 
     root = Path(state_root)
     root.mkdir(parents=True, exist_ok=True)
+    # The restored root may contain a legitimate PREDECESSOR summary. It is
+    # not a certificate that this newly starting worker completed handoff.
+    # Invalidate it before even loading the new session's PAPER checkpoint.
+    _retire_previous_session_handoff(root)
     stop_path = None if stop_file is None else Path(stop_file)
     if stop_path is not None and stop_path.exists():
         stop_path.unlink()
