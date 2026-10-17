@@ -2,6 +2,31 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — audit original venue L2 clock separately from PAPER receipt
+
+Authentic original PAPER research is still disqualified: at 15:19 UTC
+worker #39034648254 had 53,655 genuine source gap notices and preserved
+3,143 of 290,571 offered original source rows after regression failure.
+No historical source is repaired, replayed with clamped clocks or
+retroactively labeled clean. The frozen v3 after-cost paired-account
+study previously checked per-market L2 receive-time continuity, but
+not whether the actual venue L2 exchange timestamp was fresh and
+nondecreasing. A frequently reoffered stale exchange book could therefore
+falsely satisfy the received-time density requirement.
+
+The v3 source preflight now rejects an L2 book with a missing exchange
+timestamp, more than **15 seconds source-to-receipt lag**, more than **one
+second future skew**, or a decreasing **same-market exchange clock** in
+original received order. Warmup is checked as well as eligible forward
+records, to prevent poisoned seed state. Matching timestamps remain
+valid and books stay in their exact sealed original order. Each
+locally acceptable source report includes observed L2 clock count,
+per-market maximum lag and maximum future skew, with explicit
+`original_exchange_feed_independently_authenticated: false`.
+These strict local checks run before creating either v3 PAPER account.
+They do not prove venue authenticity, repair actual missing messages,
+prove a profitable after-cost edge or enable LIVE trading.
+
 ## October 17 — refuse offsetting or orphaned v3 paired account ledger rows
 
 The new original-source v3 independent paired account audit previously summed
