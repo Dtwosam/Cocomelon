@@ -932,6 +932,13 @@ class CapacityReleaseBookStore:
         self.capture_started_at_ms = self._load_or_create_protocol(
             capture_started_at_ms
         )
+        # Optional research only. The authoritative registration JSON files
+        # are never rewritten or replaced by this volatile same-worker index.
+        # Exact handoff uses a fresh store and revalidates source JSON.
+        self._capture_registrations_by_market: dict[
+            str, tuple[CapacityReleaseBookRegistration, ...]
+        ] | None = None
+        self._capture_registration_directory_stamp: tuple[int, int, int, int] | None = None
 
     @staticmethod
     def _write(path: Path, payload: object) -> None:
@@ -1025,7 +1032,40 @@ class CapacityReleaseBookStore:
                 )
             return False
         self._write(path, registration.to_dict())
+        # Local registration writes always invalidate, even on filesystems
+        # whose directory mtime granularity is coarser than one callback.
+        self._capture_registration_directory_stamp = None
         return True
+
+    def _registrations_for_capture_market(
+        self, market: str,
+    ) -> tuple[CapacityReleaseBookRegistration, ...]:
+        # Reading + canonical-decoding every saved JSON on EVERY L2 book
+        # grows O(number of historical registrations x number of books).
+        # Only reuse a snapshot while the underlying directory is stable;
+        # new local registrations invalidate unconditionally. Final
+        # summary/sealing still independently reread every authoritative
+        # registration file through iter_registrations().
+        stat = self.registrations_root.stat()
+        stamp = (
+            stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino, stat.st_size,
+        )
+        if (
+            self._capture_registrations_by_market is None
+            or self._capture_registration_directory_stamp != stamp
+        ):
+            by_market: dict[str, list[CapacityReleaseBookRegistration]] = {}
+            for registration in self.iter_registrations():
+                by_market.setdefault(registration.release_market, []).append(
+                    registration
+                )
+            # Atomic assignment: a corrupt new file cannot partially
+            # replace the previously complete market registry index.
+            self._capture_registrations_by_market = {
+                key: tuple(items) for key, items in by_market.items()
+            }
+            self._capture_registration_directory_stamp = stamp
+        return self._capture_registrations_by_market.get(market, ())
 
     def _matching_position(
         self,
@@ -1059,7 +1099,9 @@ class CapacityReleaseBookStore:
             return 0
         observed_at_ms = _received_ms(book)
         captured = 0
-        for registration in self.iter_registrations():
+        for registration in self._registrations_for_capture_market(
+            book.market.canonical
+        ):
             registration_id = registration.registration_id
             record_path = self._record_path(registration_id)
             if record_path.exists():
