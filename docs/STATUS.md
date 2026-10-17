@@ -14,11 +14,13 @@ had survived exact state restoration; the interrupted worker exited 143
 before writing its own summary. A 0-open-positions predecessor census
 was also mislabeled as current maturity.
 
-The next PAPER worker now removes ONLY the predecessor's local
-`session-summary.json` before attempting its restored checkpoint;
+The next PAPER worker now retires the predecessor's local
+`session-summary.json` plus the three prior deferred original chart
+and profitability report outputs before attempting its restored checkpoint;
 the predecessor's uploaded archive and authoritative execution/journal
 files are untouched. If the worker exits before an authentic normal
-handoff, no stale success receipt can enable deferred after-cost audits.
+handoff, neither stale success receipt nor stale completed-scoreboard
+files can enable/masquerade as deferred after-cost audits.
 The chart-audit producer independently fails closed if a supplied
 handoff end is earlier than any actual original trade close, before
 writing apparently completed research files. Absent legacy bounds remain
