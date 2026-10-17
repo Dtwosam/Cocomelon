@@ -2,6 +2,37 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — preserve distinct equal-receipt market context across WS lanes
+
+While investigating genuine original receive-clock reversals and dual-lane
+L2 disconnects, a separate deterministic source-loss case was identified:
+the redundant websocket stream merger rejected receive-time-only
+market-context updates as *older* when their exact original receive
+timestamp equaled the immediately previously emitted event. Two distinct
+updates normalized from one WS frame can legally have identical receive
+timestamps and different mark/context payloads. The old `<=` ordering
+test lost the second unique update before the PAPER pipeline and raw
+source recorder could observe it.
+
+For streams without venue exchange timestamps, the merger now rejects
+only a **strictly earlier** receive timestamp. Exact original time
+equality remains untouched and runs through the existing same-event-key
+and semantic-payload duplicate protection. Market streams with genuine
+exchange timestamps retain their existing exchange-time ordering checks;
+real WS disconnect/open/close-gap witnesses remain unchanged.
+Regression tests exercise two genuinely different equal-time context
+updates on the active lane, buffered standby failover, semantic/key
+duplicates still suppressed, and strictly older packet rejection.
+
+This is a **small, real input-preservation fix**, not a manufactured
+market-data timestamp or false source-gap repair. It can affect future
+PAPER marks/decisions because formerly discarded distinct context
+updates now pass the normal feed. No strategy weights, risk limits,
+stop policy, funding/fees, fills, quarantined account or LIVE authority
+is altered. Previously dropped historical messages are not recreated,
+and the recurring raw clock regressions/venue L2 gaps still disqualify
+the original 72-hour source. No profitable edge is implied.
+
 ## October 17 — attribute original adjacent source clock regressions by event family
 
 On authenticated PAPER worker #39049949008 at 17:20 UTC, the failed source
