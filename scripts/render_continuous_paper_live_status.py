@@ -9580,6 +9580,24 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{raw.get('l2_stream_clock_tracking_overflow', 'unavailable')}"
         ),
         (
+            "- original L2 exchange-clock selected / unselected books / missing time: "
+            f"{raw.get('l2_exchange_selected_book_observations', 'unavailable')} / "
+            f"{raw.get('l2_exchange_unselected_book_observations', 'unavailable')} / "
+            f"{raw.get('l2_exchange_missing_timestamp_count', 'unavailable')}"
+        ),
+        (
+            "- original L2 venue lag >15s / future >1s / market clock regressions: "
+            f"{raw.get('l2_exchange_lag_over_15s_count', 'unavailable')} / "
+            f"{raw.get('l2_exchange_future_over_1s_count', 'unavailable')} / "
+            f"{raw.get('l2_exchange_within_market_regressions', 'unavailable')}"
+        ),
+        (
+            "- original L2 max exchange lag / future skew ms / tracked markets: "
+            f"{raw.get('l2_exchange_max_lag_ms', 'unavailable')} / "
+            f"{raw.get('l2_exchange_max_future_skew_ms', 'unavailable')} / "
+            f"{raw.get('l2_exchange_tracked_selected_markets', 'unavailable')}"
+        ),
+        (
             "- source gap offered / open / closed: "
             f"{raw.get('gap_offered_count', 'unavailable')} / "
             f"{raw.get('gap_open_offered_count', 'unavailable')} / "

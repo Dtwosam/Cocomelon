@@ -21,6 +21,11 @@ from cocomelon.util.time import utc_now_ms
 MAX_PENDING_RECORDS: Final = 16_384
 # Bounded negative stream-clock attribution; never source data or evidence.
 MAX_TRACKED_ORIGINAL_L2_STREAMS: Final = 512
+# Keep live trade recorder free from offline research source-audit imports.
+# A dedicated test compares these fixed negative-only screens with the
+# independent v3 admission gates, so future threshold drift fails CI.
+V3_L2_EXCHANGE_LAG_NEGATIVE_SCREEN_MS: Final = 15_000
+V3_L2_EXCHANGE_FUTURE_NEGATIVE_SCREEN_MS: Final = 1_000
 # Negative visibility threshold only; not a source-admission certificate.
 L2_COVERAGE_DROUGHT_MS: Final = 5 * 60 * 1000
 # Fixed vocabulary: source-provided reasons never become public diagnostic keys.
@@ -242,6 +247,17 @@ class OriginalPaperMicrostructureCapture:
         self.l2_offer_age_over_15s_count = 0
         self.l2_offer_timestamp_future_count = 0
         self.l2_max_offer_age_ms = 0
+        # Diagnose actual VENUE exchange clock versus original PAPER receipt.
+        # Bounded to immutable selected markets, never a source certificate.
+        self._last_l2_exchange_ms_by_selected_market: dict[str, int] = {}
+        self.l2_exchange_selected_book_observations = 0
+        self.l2_exchange_unselected_book_observations = 0
+        self.l2_exchange_missing_timestamp_count = 0
+        self.l2_exchange_lag_over_15s_count = 0
+        self.l2_exchange_future_over_1s_count = 0
+        self.l2_exchange_within_market_regressions = 0
+        self.l2_exchange_max_lag_ms = 0
+        self.l2_exchange_max_future_skew_ms = 0
         # Only aggregate observations actually OFFERED to the recorder.
         # Their presence never proves persistent source or venue continuity.
         self._selected_l2_count: dict[str, int] = {}
@@ -400,6 +416,43 @@ class OriginalPaperMicrostructureCapture:
             self.l2_offer_age_over_15s_count += int(age_ms > 15_000)
             self.l2_offer_timestamp_future_count += int(age_ms < 0)
             self.l2_max_offer_age_ms = max(self.l2_max_offer_age_ms, age_ms)
+            # Neither the time this callback runs nor PAPER's permissive
+            # monotonic clamp can fix old original exchange depth. Preserve
+            # both clocks; collect negative counters even after failure.
+            if record.market in self.selected_markets:
+                self.l2_exchange_selected_book_observations += 1
+                exchange_ms = record.exchange_time_ms
+                if exchange_ms is None:
+                    self.l2_exchange_missing_timestamp_count += 1
+                else:
+                    exchange_age_ms = record.available_at_ms - exchange_ms
+                    self.l2_exchange_lag_over_15s_count += int(
+                        exchange_age_ms > V3_L2_EXCHANGE_LAG_NEGATIVE_SCREEN_MS
+                    )
+                    self.l2_exchange_future_over_1s_count += int(
+                        exchange_age_ms < -V3_L2_EXCHANGE_FUTURE_NEGATIVE_SCREEN_MS
+                    )
+                    self.l2_exchange_max_lag_ms = max(
+                        self.l2_exchange_max_lag_ms, exchange_age_ms,
+                    )
+                    self.l2_exchange_max_future_skew_ms = max(
+                        self.l2_exchange_max_future_skew_ms, -exchange_age_ms,
+                    )
+                    prior_exchange = (
+                        self._last_l2_exchange_ms_by_selected_market.get(
+                            record.market
+                        )
+                    )
+                    if (
+                        prior_exchange is not None
+                        and exchange_ms < prior_exchange
+                    ):
+                        self.l2_exchange_within_market_regressions += 1
+                    self._last_l2_exchange_ms_by_selected_market[
+                        record.market
+                    ] = max(prior_exchange or 0, exchange_ms)
+            else:
+                self.l2_exchange_unselected_book_observations += 1
             if record.market in self.selected_markets:
                 last_selected = self._selected_l2_last_ms.get(record.market)
                 if last_selected is None:
@@ -620,6 +673,32 @@ class OriginalPaperMicrostructureCapture:
                 self.l2_offer_timestamp_future_count
             ),
             "l2_max_offer_age_ms": self.l2_max_offer_age_ms,
+            "l2_exchange_selected_book_observations": (
+                self.l2_exchange_selected_book_observations
+            ),
+            "l2_exchange_unselected_book_observations": (
+                self.l2_exchange_unselected_book_observations
+            ),
+            "l2_exchange_missing_timestamp_count": (
+                self.l2_exchange_missing_timestamp_count
+            ),
+            "l2_exchange_lag_over_15s_count": (
+                self.l2_exchange_lag_over_15s_count
+            ),
+            "l2_exchange_future_over_1s_count": (
+                self.l2_exchange_future_over_1s_count
+            ),
+            "l2_exchange_within_market_regressions": (
+                self.l2_exchange_within_market_regressions
+            ),
+            "l2_exchange_max_lag_ms": self.l2_exchange_max_lag_ms,
+            "l2_exchange_max_future_skew_ms": (
+                self.l2_exchange_max_future_skew_ms
+            ),
+            "l2_exchange_tracked_selected_markets": len(
+                self._last_l2_exchange_ms_by_selected_market
+            ),
+            "l2_exchange_diagnostics_not_source_admission": True,
             "gap_offered_count": self.gap_offered_count,
             "gap_reason_counts": dict(self.gap_reason_counts),
             "gap_l2_stream_offered_count": self.gap_l2_stream_offered_count,
@@ -806,6 +885,32 @@ class OriginalPaperMicrostructureCapture:
                 self.l2_offer_timestamp_future_count
             ),
             "l2_max_offer_age_ms": self.l2_max_offer_age_ms,
+            "l2_exchange_selected_book_observations": (
+                self.l2_exchange_selected_book_observations
+            ),
+            "l2_exchange_unselected_book_observations": (
+                self.l2_exchange_unselected_book_observations
+            ),
+            "l2_exchange_missing_timestamp_count": (
+                self.l2_exchange_missing_timestamp_count
+            ),
+            "l2_exchange_lag_over_15s_count": (
+                self.l2_exchange_lag_over_15s_count
+            ),
+            "l2_exchange_future_over_1s_count": (
+                self.l2_exchange_future_over_1s_count
+            ),
+            "l2_exchange_within_market_regressions": (
+                self.l2_exchange_within_market_regressions
+            ),
+            "l2_exchange_max_lag_ms": self.l2_exchange_max_lag_ms,
+            "l2_exchange_max_future_skew_ms": (
+                self.l2_exchange_max_future_skew_ms
+            ),
+            "l2_exchange_tracked_selected_markets": len(
+                self._last_l2_exchange_ms_by_selected_market
+            ),
+            "l2_exchange_diagnostics_not_source_admission": True,
             "gap_offered_count": self.gap_offered_count,
             "gap_reason_counts": dict(self.gap_reason_counts),
             "gap_l2_stream_offered_count": self.gap_l2_stream_offered_count,
