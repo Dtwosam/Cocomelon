@@ -6063,6 +6063,7 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
                 "serialization_enabled": True,
                 "completed_calls": 1722,
                 "failed_calls": 2,
+                "uncommitted_aggregate_gap_open_count": 1,
                 "contended_calls": 33,
                 "active_waiters": 1,
                 "peak_waiters": 3,
@@ -6535,6 +6536,10 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
         "contended / active / peak: 1722 / 2 / 33 / 1 / 3"
     ) in rendered
     assert "- redundant WS mux maximum lock wait / held ms: 981 / 1124" in rendered
+    assert (
+        "- redundant WS mux uncommitted aggregate source-gap opens "
+        "(must block recovery): 1"
+    ) in rendered
     assert (
         "L2-age-observed=20, negative-age=16, "
         "age-min/max=-420/85ms, current-age-observed=20, "
