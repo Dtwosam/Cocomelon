@@ -2,6 +2,29 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 17 — distinguish failed v2 paired-account restore checks without recovery
+
+The genuine PAPER worker's optional v2 paired research actor currently
+reports `V2GenesisError: v2 original signed restore parity invalid`. The
+v2 restore preflight already checks original source gap-witness counts,
+bytes/digest and both independent SQLite account state IDs read-only,
+but the original genesis wrapper flattened every failure into one message.
+This prevents safe triage between **missing original witness**,
+**gap-witness divergence**, **unreadable SQLite** and **advanced/mismatched
+account state**.
+
+The wrapper now emits only an allowlisted, fixed vocabulary failure code
+for the verified preflight exception class. Unknown error text is replaced
+with `unclassified_integrity_failure`, with the underlying exception
+context suppressed to avoid leaking original state paths or payloads.
+Tests prove distinct source-witness, SQLite divergence and unreadable-store
+failures retain their exact bytes and cannot restart research accounts;
+unrecognized private exception text stays hidden. This is diagnostic
+visibility on **future genuine natural PAPER restarts**, not recovery.
+Signed source/account mismatches still quarantine the v2 lane, do not
+modify original evidence or grant source, profit, execution or LIVE
+authorization.
+
 ## October 17 — lock directional after-cost stability to immutable UTC entry weeks
 
 The existing whole-journal chronological trade-count quarters can move as new
