@@ -25,6 +25,7 @@ ClockMs = Callable[[], int]
 UtcNow = Callable[[], datetime]
 Subscription = Mapping[str, object]
 ActivityHook = Callable[[str, bool], None]
+AllMidsFrameSink = Callable[[tuple[StreamEvent, ...]], Awaitable[None]]
 
 
 class _SinkFailure(RuntimeError):
@@ -68,6 +69,7 @@ class WebSocketSupervisor:
         targeted_l2_recovery_timeout_ms: int | None = None,
         systemic_l2_recovery_trigger_floor_ms: int | None = None,
         activity_hook: ActivityHook | None = None,
+        all_mids_frame_sink: AllMidsFrameSink | None = None,
         dedup_size: int = 2048,
     ) -> None:
         if heartbeat_seconds <= 0:
@@ -116,6 +118,7 @@ class WebSocketSupervisor:
         self._subscriptions = tuple(dict(item) for item in subscriptions)
         self._event_sink = event_sink
         self._gap_sink = gap_sink
+        self._all_mids_frame_sink = all_mids_frame_sink
         self._clock_ms = clock_ms
         self._utcnow = utcnow
         self._sleep = sleep
@@ -949,6 +952,20 @@ class WebSocketSupervisor:
             # Preserve the actual frame's recovery boundary, not the later
             # delivery time. Existing pending-write retries remain exact.
             await self._close_gap_if_needed(stream_id, now_ms)
+
+        if (
+            events
+            and events[0].kind is StreamKind.ALL_MIDS
+            and self._all_mids_frame_sink is not None
+        ):
+            # All children and the supervisor's own deferred recovery
+            # receipts have succeeded. Only now may the redundant mux
+            # complete any aggregate recovery for this original frame.
+            # Failed/cancelled children NEVER invoke frame completion.
+            try:
+                await self._all_mids_frame_sink(tuple(events))
+            except Exception as exc:
+                raise _SinkFailure(exc) from exc
 
     def _reset_l2_freshness_for_session(
         self,

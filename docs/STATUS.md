@@ -2,6 +2,50 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 18 — full-frame-only aggregate mux allMids recovery
+
+The authenticated 21:30 UTC worker remains PAPER ONLY, with
+$9,775.09 whole-account equity against $10,000 initial cash,
+**−$224.91 marked net PnL**, 296 completed trades, a FAILED v3 source
+with **1,922,703 dropped records**, and 5,298 adjacent original
+receive-clock reversals. Older row failures are permanent. The new
+worker measured 889,422ms premonitor startup, including 866,045ms
+in original first-seen SHORT-rank research restoration. No
+after-cost profitable edge or 72-hour qualified source exists.
+
+A separate downstream counterpart of PR #1356's supervisor recovery
+split was identified in `RedundantStreamMux._on_event_serialized`.
+The supervisor now waits for all children of a WebSocket `allMids`
+frame before publishing its own recovered notice, but the redundant
+mux **independently** closed an aggregate gap immediately after its
+first accepted child. The resulting source order could be:
+`BTC@2000 -> aggregate recovered@later clock -> ETH@2000`,
+an irreducible backwards original receive-clock step.
+
+This change adds an optional supervisor `all_mids_frame_sink` which
+is called *only after* the full original normalized allMids frame
+and the supervisor's own deferred receipts have been acknowledged.
+The production PAPER mux opts into deferred aggregate recovery. It
+preserves exact first admitted original frame receive times per
+original lane and stream, then closes any actually witnessed,
+locally available aggregate gap under the existing mux serialization
+lock after complete-frame acknowledgement. A failed/cancelled child
+never emits that acknowledgement; a failed/cancelled recovered-gap
+write retains the **exact original** pending CLOSE and blocks later
+inputs according to PR #1357. Standalone mux callers retain the
+original immediate recovery behavior unless they explicitly opt in.
+No event is retimestamped, sorted, dropped, invented or deemed
+eligible because a local callback happened.
+
+Regression tests cover original two-child frame ordering, full
+WebSocket supervisor/mux integration, partially failed/replayed
+children, future acknowledgements and strict production wiring.
+This does not certify cross-lane global chronology, fix real L2
+coverage gaps, alter any PAPER trade/risk/cost input, repair failed
+original source rows or enable LIVE. Independently signed forward
+72h source and genuinely positive absolute after-cost matched
+baseline/challenger accounts remain mandatory.
+
 ## October 18 — fail-closed retry of interrupted mux standby backfill
 
 New authenticated worker #39158845657 had picked up `f65fcfdc` by
