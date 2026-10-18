@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import pytest
 from cocomelon.research.continuous_paper_opening_opportunity_paths import (
     COOPERATIVE_MARK_BATCH_SIZE,
     ContinuousPaperOpeningOpportunityPathError,
+    ContinuousPaperOpeningOpportunityPathMark,
     ContinuousPaperOpeningOpportunityPathStore,
 )
 
@@ -101,16 +103,16 @@ def test_late_conflict_does_not_partially_commit_earlier_valid_batches(
             direction="long",
             opportunity_timestamp_ms=10_000,
         )
-    # The last sorted path carries a conflicting original event at this
-    # observation time. Earlier 69 valid paths must remain untouched.
+    # The last sorted path has a pre-existing valid original mark while
+    # 69 earlier paths remain unobserved. A conflicting same-time mark at
+    # the final chunk must reject BEFORE writing any of the first chunks.
     tail = store._paths_by_id["opp-069"]
-    assert store.observe(
-        market="BTC", observed_at_ms=10_100,
-        mark_px=Decimal("101"), source=SOURCE,
-    ) == 70
-    # Create a second mark on only one late path by restoring the earlier
-    # immutable disk state of all other paths (never fabricate a new row).
-    # A later same-ms price conflict is rejected BEFORE another write.
+    original_mark = ContinuousPaperOpeningOpportunityPathMark(
+        observed_at_ms=10_100, mark_px=Decimal("101"), source=SOURCE,
+    )
+    marked_tail = replace(tail, marks=(original_mark,))
+    store._write(marked_tail)
+    store._index_path(marked_tail)
     before = store.iter_paths()
     with pytest.raises(
         ContinuousPaperOpeningOpportunityPathError,
