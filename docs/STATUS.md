@@ -2,6 +2,31 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 18 — measure the observed 27.8-minute research restore before altering PAPER evidence
+
+Authenticated PAPER worker #39138965707 reported **1,682,506ms**
+before monitoring, including **1,669,717ms** in the formerly opaque
+`research_state_restore` phase. This delayed authentic future observations
+and the frozen 72h source/profit test. The active worker still reports
+negative marked after-cost equity; the original v3 source is irreversibly
+invalid after real receipt-clock regressions and numerous dropped rows.
+
+The current change adds four bounded and overlapping-at-parent-only startup
+component timings: **original rank-source restore** (first-seen, feature,
+market-context archive validation and their cross-bindings),
+**exit-shadow restore** (research-only target/trailing/delayed-entry and
+markout state), **shadow-position reconciliation** and **prospective candidate
+state restore**. These are emitted through the EXISTING five-slowest-profile
+heartbeat. The measured cohort breakdown on the next naturally started
+worker will identify which real work to optimize; the 27.8-minute delay is
+not yet attributed to a single archive or repaired.
+
+The change executes the identical restore functions in their original order.
+No startup step is skipped/deferred, no original source rows/timestamps or
+gaps are modified, and no PAPER account state, execution, risk, positions,
+fees, funding, frozen experiment rule or LIVE gate changes. The metrics
+are diagnostic only, not a signed source or positive-net certificate.
+
 ## October 18 — original v3 economics need per-worker ROW AND BYTE capacity
 
 The v3 first-received original PAPER source is **still invalid**: at
