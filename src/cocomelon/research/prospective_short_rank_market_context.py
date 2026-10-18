@@ -205,7 +205,9 @@ class OriginalRankEligibilityContextBatch:
                     "rank context market identity, receive clock or source invalid"
                 )
 
-    def bind_to(\n        self, rank: FirstSeenRankSnapshot | FirstSeenRankBindingWitness,\n    ) -> None:
+    def bind_to(
+        self, rank: FirstSeenRankSnapshot | FirstSeenRankBindingWitness,
+    ) -> None:
         if (
             self.observed_at_ms != rank.observed_at_ms
             or self.captured_at_ms != rank.captured_at_ms
