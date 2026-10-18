@@ -100,7 +100,7 @@ def test_only_local_descriptive_positive_screen_when_both_accounts_win() -> None
 
 
 @pytest.mark.parametrize(("field", "value", "message"), [
-    ("equity_usd", "9999", "cash mismatch"),
+    ("equity_usd", "9998", "cash mismatch"),
     ("realized_after_cost_usd", "10", "cash mismatch"),
     ("fill_fees_usd", "-1", "cash, fees"),
     ("gross_realized_pnl_usd", "NaN", "nonfinite"),
