@@ -189,7 +189,10 @@ def seal_original_paper_v3_source(
     physical_bytes = stream_path.stat().st_size
     if (
         physical_bytes > MAX_SOURCE_BYTES
-        or physical_bytes != terminal.get("written_source_journal_bytes")
+        or (
+            compressed
+            and physical_bytes != terminal.get("written_source_journal_bytes")
+        )
     ):
         raise OriginalV3CaptureSealError(
             "physical original journal length differs from signed receipt"
