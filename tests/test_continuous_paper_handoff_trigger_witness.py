@@ -81,3 +81,48 @@ def test_terminal_failure_receipt_reports_cause_without_inventing_success() -> N
     assert "exit \"$exit_code\"" in runtime
     # Never let a missing reason field infer a routine main-push upgrade.
     assert 'handoff_trigger="unclassified"' in runtime
+
+
+def test_anonymous_failure_receipt_is_real_newline_delimited_shell_output() -> None:
+    runtime = _runtime()
+    receipt = runtime.split(
+        "            {\n              printf 'kind=paper_trader_nonzero_exit", 1
+    )[1].split(
+        "            } > continuous-paper-trader-failure.txt", 1
+    )[0]
+    # Test ONLY the bounded printf stanza, not the worker or its stop signal.
+    script = (
+        "set -euo pipefail\n"
+        "{\n  printf 'kind=paper_trader_nonzero_exit"
+        + receipt
+        + "}\n"
+    )
+    values = {
+        "GITHUB_RUN_ID": "39103876679",
+        "GITHUB_RUN_ATTEMPT": "1",
+        "GITHUB_SHA": "a" * 40,
+        "failure_class": "trader",
+        "trader_status": "143",
+        "reader_status": "0",
+        "tee_status": "0",
+        "upgrade_stop_requested": "true",
+        "handoff_trigger": "session-overrun-watchdog",
+        "heartbeat_line_count": "427",
+    }
+    run = subprocess.run(
+        ["bash", "-c", script], check=True, capture_output=True,
+        text=True, env={**os.environ, **values},
+    )
+    lines = run.stdout.splitlines()
+    assert len(lines) == 15, lines
+    assert all(line.count("=") == 1 for line in lines)
+    pairs = dict(line.split("=", 1) for line in lines)
+    assert pairs["trader_exit_code"] == "143"
+    assert pairs["handoff_trigger"] == "session-overrun-watchdog"
+    assert pairs["captured_heartbeat_line_count"] == "427"
+    assert pairs["original_account_verified"] == "not_inferred"
+    assert pairs["after_cost_profit_verified"] == "false"
+    assert pairs["live_authority"] == "false"
+    # The prior genuine artifact had literal backslash-n escape sequences,
+    # not actual newlines. Future receipts must be machine-parseable.
+    assert "\\n" not in run.stdout
