@@ -140,7 +140,18 @@ def test_supervisor_frame_ack_is_post_children_and_deferred_mux_close() -> None:
             raise AssertionError("no network required")
 
         async def frame_ack(events: tuple[StreamEvent, ...]) -> None:
-            assert tuple(timeline) == frame
+            if not notifications:
+                # First callback follows both original equal-time children
+                # BEFORE the mux has published aggregate recovery.
+                assert tuple(timeline) == frame
+            else:
+                # An identical replay can receive a second frame-complete
+                # callback, but may not re-emit either original child or
+                # remove/re-publish the already persisted source gap.
+                assert tuple(timeline) == (
+                    *frame,
+                    DataGap(STREAM, 1_200, RECEIVED_MS, "recovered"),
+                )
             notifications.append(events)
             await mux.complete_all_mids_frame(0, events)
 
