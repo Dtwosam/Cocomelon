@@ -78,6 +78,11 @@ MAX_SOURCE_BYTES: Final = 480 * 1024 * 1024
 # offer rate stays high. This is only a conditional observation, NEVER an
 # admission gate or authority to sample/drop original source evidence.
 FROZEN_FORWARD_SOURCE_DURATION_MS: Final = 72 * 60 * 60 * 1000
+# The regular PAPER session lasts 4h; the v3 trial now supports *many*
+# original per-worker archives. Never apply a 5M-row archive cap to the
+# entire 72h study. The separate multiworker replay has a 100M-row limit.
+NATURAL_PAPER_WORKER_DURATION_MS: Final = 4 * 60 * 60 * 1000
+MULTIWORKER_V3_MAX_CHAIN_ROWS: Final = 100_000_000
 MIN_ROW_RATE_PROJECTION_WINDOW_MS: Final = 10 * 60 * 1000
 RECORD_FILE: Final = "original-received-rows.jsonl"
 TERMINAL_FILE: Final = "original-capture-terminal.json"
@@ -599,7 +604,13 @@ class OriginalPaperMicrostructureCapture:
             self.failure = "original_capture_queue_overflow"
 
     def _negative_72h_row_budget_projection(self) -> dict[str, object]:
-        """Conditional rate screen only; the real source still must seal."""
+        """Only conditional estimates; never a source or economics certificate.
+
+        Each natural 4h original worker must independently fit the 5M-row
+        AND 480MiB UNCOMPRESSED journal caps. The 72h experiment requires
+        18+ distinct gap-free workers, not one impossibly large archive.
+        The written sample can be highly biased after early source failure.
+        """
         start = self.first_offered_available_at_ms
         end = self._max_offered_available_at_ms
         elapsed = (
@@ -607,20 +618,66 @@ class OriginalPaperMicrostructureCapture:
             if start is not None and end is not None
             else 0
         )
-        estimate = (
+        offered = self.offered_count
+        valid_rate = (
+            elapsed >= MIN_ROW_RATE_PROJECTION_WINDOW_MS
+            and offered > 0
+        )
+
+        def project(duration_ms: int) -> int | None:
+            if not valid_rate:
+                return None
+            return (offered * duration_ms + elapsed - 1) // elapsed
+
+        estimated_study_rows = project(FROZEN_FORWARD_SOURCE_DURATION_MS)
+        estimated_worker_rows = project(NATURAL_PAPER_WORKER_DURATION_MS)
+        written_rows = getattr(self, "record_count", 0)
+        written_bytes = getattr(self, "record_bytes", 0)
+        sampled_worker_bytes = (
             (
-                self.offered_count * FROZEN_FORWARD_SOURCE_DURATION_MS
-                + elapsed - 1
-            ) // elapsed
-            if elapsed >= MIN_ROW_RATE_PROJECTION_WINDOW_MS
-            and self.offered_count > 0
+                estimated_worker_rows * written_bytes + written_rows - 1
+            ) // written_rows
+            if estimated_worker_rows is not None
+            and type(written_rows) is int and written_rows > 0
+            and type(written_bytes) is int and written_bytes > 0
             else None
         )
         return {
-            "estimated_72h_original_rows_at_observed_offer_rate": estimate,
-            "estimated_72h_source_rows_exceed_fixed_limit": (
-                estimate > MAX_SOURCE_ROWS if estimate is not None else None
+            "estimated_72h_original_rows_at_observed_offer_rate": (
+                estimated_study_rows
             ),
+            # Legacy key: a 72h feed does not fit ONE source worker file.
+            # This is not evidence the now-supported multiworker trial
+            # cannot be replayed from separate genuine 4h archives.
+            "estimated_72h_source_rows_exceed_fixed_limit": (
+                estimated_study_rows > MAX_SOURCE_ROWS
+                if estimated_study_rows is not None else None
+            ),
+            "estimated_4h_original_worker_rows_at_observed_offer_rate": (
+                estimated_worker_rows
+            ),
+            "estimated_4h_worker_rows_exceed_fixed_limit": (
+                estimated_worker_rows > MAX_SOURCE_ROWS
+                if estimated_worker_rows is not None else None
+            ),
+            "estimated_4h_worker_journal_bytes_from_written_sample": (
+                sampled_worker_bytes
+            ),
+            "estimated_4h_worker_bytes_exceed_fixed_limit": (
+                sampled_worker_bytes > MAX_SOURCE_BYTES
+                if sampled_worker_bytes is not None else None
+            ),
+            "estimated_72h_multiworker_rows_exceed_chain_limit": (
+                estimated_study_rows > MULTIWORKER_V3_MAX_CHAIN_ROWS
+                if estimated_study_rows is not None else None
+            ),
+            "minimum_natural_workers_for_72h": (
+                (FROZEN_FORWARD_SOURCE_DURATION_MS
+                 + NATURAL_PAPER_WORKER_DURATION_MS - 1)
+                // NATURAL_PAPER_WORKER_DURATION_MS
+            ),
+            "byte_sample_may_be_nonrepresentative_after_source_failure": True,
+            "estimated_worker_budget_does_not_admit_real_source": True,
             "estimated_72h_source_projection_not_qualification": True,
             "observed_offer_rate_minimum_window_ms": (
                 MIN_ROW_RATE_PROJECTION_WINDOW_MS
