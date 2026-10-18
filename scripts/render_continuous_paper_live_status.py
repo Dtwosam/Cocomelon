@@ -9524,6 +9524,14 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             "- source integrity / forward profitability: NOT VERIFIED",
             "",
         ]
+    estimated_worker_rows = raw.get(
+        "estimated_4h_original_worker_rows_at_observed_offer_rate",
+        "unavailable",
+    )
+    estimated_worker_bytes = raw.get(
+        "estimated_4h_worker_journal_bytes_from_written_sample",
+        "unavailable",
+    )
     reasons = raw.get("gap_reason_counts")
     if not isinstance(reasons, dict):
         reasons = {}
@@ -9591,13 +9599,13 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
         (
             "- conditional 4h ORIGINAL worker row projection / 5M per-worker cap "
             "(not qualification): "
-            f"{raw.get('estimated_4h_original_worker_rows_at_observed_offer_rate', 'unavailable')} / "
+            f"{estimated_worker_rows} / "
             f"{raw.get('estimated_4h_worker_rows_exceed_fixed_limit', 'unavailable')}"
         ),
         (
             "- conditional 4h worker uncompressed journal-byte projection "
             "from potentially biased written sample / 480MiB per-worker cap: "
-            f"{raw.get('estimated_4h_worker_journal_bytes_from_written_sample', 'unavailable')} / "
+            f"{estimated_worker_bytes} / "
             f"{raw.get('estimated_4h_worker_bytes_exceed_fixed_limit', 'unavailable')}"
         ),
         (
