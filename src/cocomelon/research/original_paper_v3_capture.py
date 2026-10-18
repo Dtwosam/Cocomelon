@@ -7,6 +7,7 @@ Only ordinary PAPER's actual ReplayRecord input, not fabricated venue data.
 from __future__ import annotations
 
 import asyncio
+import gzip
 import hashlib
 import json
 import os
@@ -85,6 +86,11 @@ NATURAL_PAPER_WORKER_DURATION_MS: Final = 4 * 60 * 60 * 1000
 MULTIWORKER_V3_MAX_CHAIN_ROWS: Final = 100_000_000
 MIN_ROW_RATE_PROJECTION_WINDOW_MS: Final = 10 * 60 * 1000
 RECORD_FILE: Final = "original-received-rows.jsonl"
+COMPRESSED_RECORD_FILE: Final = RECORD_FILE + ".gz"
+COMPRESSED_JOURNAL_FORMAT: Final = "gzip-member-stream-v1"
+PLAIN_JOURNAL_FORMAT: Final = "plain-jsonl-v1"
+# Bound decoded gzip source, independent of 480MiB compressed disk cap.
+MAX_DECODED_SOURCE_BYTES: Final = 4 * 1024 * 1024 * 1024
 TERMINAL_FILE: Final = "original-capture-terminal.json"
 READY_SCHEMA: Final = "fresh-v3-original-paper-async-receipt-v1"
 STARTUP_FAILURE_FILE: Final = "v3-original-capture-init-failure.json"
@@ -166,6 +172,7 @@ class OriginalPaperMicrostructureCapture:
         replay_config: BaselineReplayConfig,
         predecessor_run_id: str | None = None,
         predecessor_run_attempt: str | None = None,
+        compressed_journal: bool = False,
     ) -> None:
         if (
             not run_id.isdecimal() or not run_attempt.isdecimal()
@@ -193,6 +200,9 @@ class OriginalPaperMicrostructureCapture:
             raise ValueError("original predecessor declaration invalid")
         self.predecessor_run_id = predecessor_run_id
         self.predecessor_run_attempt = predecessor_run_attempt
+        if type(compressed_journal) is not bool:
+            raise ValueError('source journal compression flag must be boolean')
+        self.compressed_journal = compressed_journal
         self.root = root
         self.run_id = run_id
         self.run_attempt = run_attempt
@@ -217,7 +227,8 @@ class OriginalPaperMicrostructureCapture:
             maxsize=MAX_PENDING_RECORDS
         )
         self.record_count = 0
-        self.record_bytes = 0
+        self.record_bytes = 0  # physical journal bytes, gzip if enabled
+        self.uncompressed_record_bytes = 0  # original canonical row bytes
         self.offered_count = 0
         self.dropped_count = 0
         self.last_available_at_ms: int | None = None
@@ -632,7 +643,11 @@ class OriginalPaperMicrostructureCapture:
         estimated_study_rows = project(FROZEN_FORWARD_SOURCE_DURATION_MS)
         estimated_worker_rows = project(NATURAL_PAPER_WORKER_DURATION_MS)
         written_rows = getattr(self, "record_count", 0)
-        written_bytes = getattr(self, "record_bytes", 0)
+        written_bytes = getattr(
+            self, "uncompressed_record_bytes",
+            getattr(self, "record_bytes", 0),
+        )
+        stored_bytes = getattr(self, "record_bytes", 0)
         sampled_worker_bytes = (
             (
                 estimated_worker_rows * written_bytes + written_rows - 1
@@ -642,7 +657,22 @@ class OriginalPaperMicrostructureCapture:
             and type(written_bytes) is int and written_bytes > 0
             else None
         )
+        compressed_worker_bytes = (
+            (estimated_worker_rows * stored_bytes + written_rows - 1)
+            // written_rows
+            if estimated_worker_rows is not None
+            and type(written_rows) is int and written_rows > 0
+            and type(stored_bytes) is int and stored_bytes > 0
+            else None
+        )
         return {
+            "estimated_4h_worker_stored_bytes_from_written_sample": (
+                compressed_worker_bytes
+            ),
+            "estimated_4h_worker_stored_bytes_exceed_fixed_limit": (
+                compressed_worker_bytes > MAX_SOURCE_BYTES
+                if compressed_worker_bytes is not None else None
+            ),
             "estimated_72h_original_rows_at_observed_offer_rate": (
                 estimated_study_rows
             ),
@@ -762,6 +792,11 @@ class OriginalPaperMicrostructureCapture:
                 0, self.offered_count - self.record_count - self.dropped_count
             ),
             "written_source_journal_bytes": self.record_bytes,
+            "uncompressed_original_journal_bytes": self.uncompressed_record_bytes,
+            "original_received_journal_format": (
+                COMPRESSED_JOURNAL_FORMAT if self.compressed_journal
+                else PLAIN_JOURNAL_FORMAT
+            ),
             "source_journal_byte_limit": MAX_SOURCE_BYTES,
             "remaining_persisted_byte_budget": max(0, MAX_SOURCE_BYTES - self.record_bytes),
             "source_journal_row_limit": MAX_SOURCE_ROWS,
@@ -892,29 +927,42 @@ class OriginalPaperMicrostructureCapture:
             "promotion_authority": False,
         }
 
-    def _write_batch(self, rows: list[ReplayRecord]) -> int:
-        # Check BEFORE durable writes, using the exact canonical bytes that
-        # the post-handoff sealer will read. A worker must not spend hours
-        # persisting an archive that can never pass the frozen ZIP budget.
+    def _write_batch(self, rows: list[ReplayRecord]) -> tuple[int, int]:
+        # Never sample, filter or mutate a source row. The original writer
+        # digest covers *uncompressed canonical bytes* in receipt order.
+        # gzip is a pure at-rest representation: standalone concatenated
+        # members can be decoded without any timestamp or content change.
         encoded_rows = [_canonical_json(_replay_payload(row)) for row in rows]
-        batch_bytes = sum(len(encoded) for encoded in encoded_rows)
+        original_bytes = b"".join(encoded_rows)
+        raw_len = len(original_bytes)
         if self.record_count + len(rows) > MAX_SOURCE_ROWS:
             raise OriginalCaptureBudgetExceeded(
                 "original_capture_source_row_budget_exceeded"
             )
-        if self.record_bytes + batch_bytes > MAX_SOURCE_BYTES:
+        if self.uncompressed_record_bytes + raw_len > MAX_DECODED_SOURCE_BYTES:
+            raise OriginalCaptureBudgetExceeded(
+                "original_capture_decoded_source_byte_budget_exceeded"
+            )
+        payload = (
+            gzip.compress(original_bytes, compresslevel=3, mtime=0)
+            if self.compressed_journal else original_bytes
+        )
+        if self.record_bytes + len(payload) > MAX_SOURCE_BYTES:
             raise OriginalCaptureBudgetExceeded(
                 "original_capture_source_byte_budget_exceeded"
             )
-        with (self.root / RECORD_FILE).open("ab") as stream:
-            for encoded in encoded_rows:
-                written = stream.write(encoded)
-                if written != len(encoded):
-                    raise OSError("short original source journal write")
-                self._original_journal_sha256.update(encoded)
+        target = (
+            COMPRESSED_RECORD_FILE if self.compressed_journal else RECORD_FILE
+        )
+        with (self.root / target).open("ab") as stream:
+            written = stream.write(payload)
+            if written != len(payload):
+                raise OSError("short original source journal write")
             stream.flush()
             os.fsync(stream.fileno())
-        return batch_bytes
+        # Only acknowledge both digests after the full physical write.
+        self._original_journal_sha256.update(original_bytes)
+        return len(payload), raw_len
 
     async def _writer(self) -> None:
         while True:
@@ -927,11 +975,13 @@ class OriginalPaperMicrostructureCapture:
                     break
             try:
                 if self.failure is None:
-                    written_bytes = await asyncio.to_thread(self._write_batch, batch)
-                    # Both counters become visible together on the event loop,
-                    # after the worker thread has durably fsynced its batch.
+                    written_bytes, decoded_bytes = await asyncio.to_thread(
+                        self._write_batch, batch
+                    )
+                    # Only these acknowledged, fsynced batches count.
                     self.record_count += len(batch)
                     self.record_bytes += written_bytes
+                    self.uncompressed_record_bytes += decoded_bytes
                     self.last_available_at_ms = batch[-1].available_at_ms
                 else:
                     # A regression or queue overflow can fail this recorder
