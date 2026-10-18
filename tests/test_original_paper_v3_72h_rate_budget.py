@@ -10,9 +10,9 @@ from cocomelon.research.original_paper_v3_capture import (
     FROZEN_FORWARD_SOURCE_DURATION_MS,
     MAX_SOURCE_BYTES,
     MAX_SOURCE_ROWS,
+    MIN_ROW_RATE_PROJECTION_WINDOW_MS,
     MULTIWORKER_V3_MAX_CHAIN_ROWS,
     NATURAL_PAPER_WORKER_DURATION_MS,
-    MIN_ROW_RATE_PROJECTION_WINDOW_MS,
     OriginalPaperMicrostructureCapture,
 )
 from scripts.render_continuous_paper_live_status import _v3_live_capture_lines
