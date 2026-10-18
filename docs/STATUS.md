@@ -2,6 +2,44 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 18 — freeze exact restored/rotated named-gap recovery on sink failure
+
+The current authenticated PAPER worker #39158845657 at 22:18 UTC
+still runs older `f65fcfdc`: $9,769.97 equity from $10,000;
+**−$230.03** whole-account net after costs, 298 closed trades,
+zero open, $229.998 fees, original source FAILED with
+**2,529,437 dropped original records**. None of these historical
+failures can be repaired.
+
+After fixing mux's uncertain recovery receipts, the separate
+`RestoredNamedGapRecovery` checkpoint and watchlist-rotation observers
+still recomputed a `recovered_after_*_witness` gap from a LATER
+market event if an earlier witness fsync, gap pump write, or task
+cancellation had failed. The prior original recovery interval end and
+witness identity could therefore silently move forward, invalidating
+first-received source chronology. PAPER also persisted later normalized
+events BEFORE retrying the observer's uncommitted gap CLOSE.
+
+Both observers now retain the **first exact original recorded source
+event, gap start/end and witness requirement** in volatile pending
+debt before any sink awaits. Uncertain witness fsync is retried with
+the same event; successful witness acknowledgement is retained and not
+re-fsynced on later gap retries. A failed/cancelled gap sink leaves the
+identical original close pending until a later acknowledged retry.
+A missing required witness sink fails closed. In the actual PAPER
+record pump path, every later market event for the named stream first
+retries the unresolved checkpoint and rotation close BEFORE it can
+write the newer normalized event. Invalid original sources, stale
+exchange books, gaps and unsigned past worker history remain invalid.
+
+Adversarial tests inject rejected/cancelled gap writes and witness
+fsync errors in both checkpoint and rotation observers, repeated
+failure, successful exact retry and missing witness sink rejection.
+No original market record, timestamp, source-order evidence, trading
+signal, size, risk, stop, fee/funding or LIVE setting changed. No
+genuine future 72h feed or absolutely positive after-cost matched
+paper account has been certified.
+
 ## October 18 — remove redundant original-rank JSON hashing on the 866s PAPER startup critical path
 
 Worker #39158845657's authenticated 21:49 UTC status is still **PAPER

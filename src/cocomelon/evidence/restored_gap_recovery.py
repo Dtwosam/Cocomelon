@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from cocomelon.domain.candle_intervals import CANDLE_INTERVAL_MS
@@ -105,6 +106,16 @@ def append_in_session_rotation_gap_witness(
         os.fsync(handle.fileno())
 
 
+@dataclass(slots=True)
+class _PendingNamedClosure:
+    """First original recovery witness, retained through uncertain writes."""
+
+    event: StreamEvent
+    gap: DataGap
+    witness_required: bool
+    witness_committed: bool = False
+
+
 class RestoredNamedGapRecovery:
     """Carry forward exact named starts until genuine new events prove recovery.
 
@@ -154,6 +165,9 @@ class RestoredNamedGapRecovery:
             stream_id: starts for stream_id, starts in self._open.items()
             if starts
         }
+        self._pending_closures: dict[
+            tuple[str, int], _PendingNamedClosure
+        ] = {}
 
     @property
     def pending_named_starts(self) -> dict[str, tuple[int, ...]]:
@@ -224,6 +238,61 @@ class RestoredNamedGapRecovery:
             for start in sorted(starts)
         )
 
+    async def _commit_pending_closures(
+        self,
+        stream_id: str,
+        *,
+        gap_sink: GapSink,
+        witness_sink: WitnessSink | None,
+    ) -> int:
+        """Retry the exact first closure and event, never a later timestamp.
+
+        All calls occur under the existing observer lock. A cancelled or
+        failed witness/gap fsync retains the immutable pending receipt and
+        never removes the matching original named source gap start.
+        """
+        committed = 0
+        for key, pending in tuple(self._pending_closures.items()):
+            if key[0] != stream_id:
+                continue
+            if pending.witness_required and not pending.witness_committed:
+                if witness_sink is None:
+                    raise RuntimeError(
+                        "pending named gap recovery requires original witness sink"
+                    )
+                await witness_sink(
+                    pending.event, pending.gap, self._checkpoint_ms,
+                )
+                pending.witness_committed = True
+            await gap_sink(pending.gap)
+            starts = self._open.get(stream_id)
+            if starts is None or pending.gap.started_ms not in starts:
+                raise RuntimeError("pending named source start disappeared")
+            starts.remove(pending.gap.started_ms)
+            if not starts:
+                del self._open[stream_id]
+            del self._pending_closures[key]
+            committed += 1
+        return committed
+
+    async def retry_pending_before_record(
+        self,
+        stream_id: str,
+        *,
+        gap_sink: GapSink,
+        witness_sink: WitnessSink | None = None,
+    ) -> int:
+        """Block later original market receipts on unacknowledged CLOSE debt.
+
+        PAPER calls this before writing any next normalized event, not
+        merely after it. A later source clock cannot overtake an earlier
+        failed/cancelled recovery and the exact original receipt is retried.
+        """
+        async with self._lock:
+            return await self._commit_pending_closures(
+                stream_id, gap_sink=gap_sink, witness_sink=witness_sink,
+            )
+
     async def accept_recorded_event(
         self,
         event: StreamEvent,
@@ -232,27 +301,32 @@ class RestoredNamedGapRecovery:
         gap_sink: GapSink,
         witness_sink: WitnessSink | None = None,
     ) -> int:
-        """Commit recovery receipts, never remove a start on failed persistence.
+        """Commit exact original named recoveries only after durable events.
 
-        This must be called only AFTER the normalized event's durable paper
-        pipeline write has returned successfully. The returned count covers
-        source starts, not certified historical trades or recovered prices.
+        Record a genuine accepted source event first. If its recovery CLOSE
+        write fails, never recompute that first witness/ending from a later
+        observation; keep pending source debt for retry before the next
+        event. Independent source admission still remains mandatory.
         """
         async with self._lock:
-            count = 0
+            stream_id = event_stream_id(event)
+            count = await self._commit_pending_closures(
+                stream_id, gap_sink=gap_sink, witness_sink=witness_sink,
+            )
             for gap in self._fresh_recovery_gaps(
                 event, observed_at_ms=observed_at_ms,
             ):
-                # Record the real accepted source event *before* the gap
-                # closes. A witness alone is not a verified recovery:
-                # deferred audit checks the exact checkpoint afterwards.
-                if witness_sink is not None:
-                    await witness_sink(event, gap, self._checkpoint_ms)
-                await gap_sink(gap)
-                self._open[gap.stream_id].remove(gap.started_ms)
-                if not self._open[gap.stream_id]:
-                    del self._open[gap.stream_id]
-                count += 1
+                key = (gap.stream_id, gap.started_ms)
+                if key in self._pending_closures:
+                    raise RuntimeError("duplicate pending named source closure")
+                self._pending_closures[key] = _PendingNamedClosure(
+                    event=event,
+                    gap=gap,
+                    witness_required=witness_sink is not None,
+                )
+                count += await self._commit_pending_closures(
+                    stream_id, gap_sink=gap_sink, witness_sink=witness_sink,
+                )
             return count
 
 def rotation_named_gap_recovery(
