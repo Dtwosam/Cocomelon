@@ -264,9 +264,14 @@ class RedundantStreamMux:
         while len(buffer) > self._buffer_size:
             dropped = buffer.popleft()
             self._standby_overflow_dropped_rows += 1
-            self._standby_buffer_first_drop_ms.setdefault(
-                key, self._receive_ms(dropped),
-            )
+            # An EXACT previously admitted original event cannot become
+            # missing merely because its redundant standby copy expired.
+            # A semantically similar row, an older exchange clock or a
+            # finite dedup window is NOT enough to certify the source.
+            if dropped.event_key not in self._seen_keys[stream_id]:
+                self._standby_buffer_first_drop_ms.setdefault(
+                    key, self._receive_ms(dropped),
+                )
 
     def _lane_is_available(self, stream_id: str, lane: int) -> bool:
         return (
