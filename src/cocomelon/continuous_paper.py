@@ -13331,6 +13331,13 @@ async def run_continuous_paper_session(
         _write_json_atomic(root / SUMMARY_FILENAME, summary.payload())
         return summary
     finally:
+        # A failure anywhere in the PAPER runner must not leave an
+        # unmanaged optional research writer. The worker never owns
+        # actual trading state, and timeout invalidates its receipts.
+        try:
+            await capacity_release_book_capture.close(timeout_seconds=5.0)
+        except Exception:
+            pass
         if original_v3_capture is not None:
             try:
                 await original_v3_capture.close()
