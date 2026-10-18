@@ -5,7 +5,7 @@ import os
 import sys
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, localcontext
 from typing import Any
 
 MAX_ISSUE_BODY_CHARS = 240_000
@@ -34,6 +34,81 @@ def _reason_summary(raw: object) -> str:
         key=lambda item: (-item[1], item[0]),
     )
     return ", ".join(f"{reason}={count}" for reason, count in counts[:8])
+
+def _account_breakeven_lines(payload: Mapping[str, object]) -> list[str]:
+    """Audit actual whole-account marked PnL and fee-free SAME-fills floor.
+
+    No hypothetical skipped winners, new entries, altered funding or
+    execution authority. If the supplied heartbeat fails exact accounting
+    parity, suppress the financial counterfactual rather than guessing.
+    """
+    unavailable = [
+        "- exact whole-account after-cost breakeven screen: "
+        "`UNAVAILABLE — account components not reconciled`",
+    ]
+
+    def amount(field: str) -> Decimal:
+        raw = payload.get(field)
+        if type(raw) is not str:
+            raise ValueError(f"{field} missing exact decimal text")
+        try:
+            value = Decimal(raw)
+        except InvalidOperation as exc:
+            raise ValueError(f"{field} invalid decimal") from exc
+        if not value.is_finite():
+            raise ValueError(f"{field} nonfinite")
+        return value
+
+    try:
+        with localcontext() as ctx:
+            ctx.prec = 96
+            start = amount("starting_cash")
+            equity = amount("equity")
+            net = amount("total_account_pnl")
+            gross = amount("realized_gross_pnl")
+            fees = amount("cumulative_fees")
+            funding = amount("cumulative_funding")
+            unrealized = amount("unrealized_pnl")
+            if start <= 0 or fees < 0:
+                return unavailable
+            cash_expected = gross - fees + funding + unrealized
+            # PAPER's 28-digit booked decimals can accumulate a few tiny
+            # representational differences; not whole dollars of PnL.
+            tol = Decimal("1e-15")
+            if (
+                abs(equity - start - net) > tol
+                or abs(cash_expected - net) > tol
+            ):
+                return unavailable
+            before_fees = gross + funding + unrealized
+            if abs(before_fees - (net + fees)) > tol:
+                return unavailable
+            return [
+                (
+                    "- exact account after-cost dollars to zero (not profit): "
+                    f"`{max(-net, Decimal(0))}`"
+                ),
+                (
+                    "- actual same-fills marked net with ALL fees refunded "
+                    "(funding/marks unchanged): "
+                    f"`{before_fees}`"
+                ),
+                (
+                    "- fee-free same-fills still loses / remaining gross "
+                    "needed to zero: "
+                    f"`{str(before_fees < 0).lower()} / "
+                    f"{max(-before_fees, Decimal(0))}`"
+                ),
+                (
+                    "- absolute marked PAPER after-cost positive: "
+                    f"`{str(net > 0).lower()}` · "
+                    "72h source / forward edge / LIVE authority: "
+                    "`NOT CERTIFIED / NOT CERTIFIED / DISABLED`"
+                ),
+            ]
+    except (TypeError, ValueError, ArithmeticError):
+        return unavailable
+
 
 def _startup_profile_line(raw: object) -> str:
     """Bounded original startup timings, not account or source certification."""
@@ -10178,6 +10253,7 @@ def _render_operational_live_status(
             f"{payload['cumulative_fees']} / "
             f"{payload['cumulative_funding']}"
         ),
+        *_account_breakeven_lines(payload),
         (
             "- cumulative / session closed trades: "
             f"{payload['closed_trades']} / "
