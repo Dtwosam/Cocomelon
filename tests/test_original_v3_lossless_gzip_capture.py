@@ -24,8 +24,8 @@ from cocomelon.research.fresh_long_trend_receipt_order import (
 from cocomelon.research.original_paper_v3_capture import (
     COMPRESSED_JOURNAL_FORMAT,
     COMPRESSED_RECORD_FILE,
-    OriginalPaperMicrostructureCapture,
     RECORD_FILE,
+    OriginalPaperMicrostructureCapture,
 )
 from cocomelon.research.prospective_short_breakout_pinned_source import (
     PinnedShortRankReplaySource,
