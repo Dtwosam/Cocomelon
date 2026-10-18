@@ -11571,6 +11571,9 @@ async def run_continuous_paper_session(
             mux = RedundantStreamMux(
                 event_sink=event_sink,
                 gap_sink=gap_sink,
+                # A mux aggregate recovery is only durable after the whole
+                # source allMids frame, never between equal-time children.
+                defer_all_mids_aggregate_recovery=True,
             )
             supervisors: list[WebSocketSupervisor] = []
             tasks: list[asyncio.Task[None]] = []
@@ -11649,6 +11652,16 @@ async def run_continuous_paper_session(
                         )
                     await _cooperative_stream_yield()
 
+                async def lane_all_mids_frame_sink(
+                    events: tuple[StreamEvent, ...],
+                    lane: int = lane,
+                ) -> None:
+                    # Called after the supervisor has accepted EVERY
+                    # original child and its own recovery evidence. If a
+                    # child failed, the callback is not invoked and the mux
+                    # aggregate gap must remain open.
+                    await mux.complete_all_mids_frame(lane, events)
+
                 def lane_activity_hook(
                     phase: str,
                     active: bool,
@@ -11665,6 +11678,7 @@ async def run_continuous_paper_session(
                     plan.subscribe,
                     event_sink=lane_event_sink,
                     gap_sink=lane_gap_sink,
+                    all_mids_frame_sink=lane_all_mids_frame_sink,
                     clock_ms=utc_now_ms,
                     utcnow=lambda: datetime.now(UTC),
                     stale_after_ms=_l2_supervisor_stale_after_ms(
