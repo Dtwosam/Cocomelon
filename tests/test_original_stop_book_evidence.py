@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -18,6 +19,7 @@ from cocomelon.execution.accounting import (
     PositionSide,
 )
 from cocomelon.research.original_stop_book_evidence import (
+    MAX_ORIGINAL_STOP_PLAN_CACHE,
     OriginalStopBookCapture,
     OriginalStopBookEvidenceStore,
 )
@@ -550,3 +552,111 @@ def test_capture_is_fail_open_when_opening_plan_is_missing(
     assert capture.error is not None
     assert store.pending_count == 0
     assert store.record_count == 0
+
+
+def test_immutable_opening_stop_plan_loaded_once_for_all_mark_updates(
+    tmp_path: Path,
+) -> None:
+    plan = _plan()
+    position = _position(plan)
+    loaded: list[str] = []
+
+    def loader(plan_id: str) -> PaperOrderPlan | None:
+        loaded.append(plan_id)
+        return plan if plan_id == plan.plan_id else None
+
+    root = tmp_path / "cache"
+    capture = OriginalStopBookCapture(
+        OriginalStopBookEvidenceStore(root),
+        opening_plan_loader=loader,
+        config=CONFIG,
+    )
+    for observed in range(1_100, 1_120):
+        capture.observe_mark(
+            (position,), _mark("96", observed), now_ms=observed,
+        )
+    assert loaded == [plan.plan_id]
+    assert capture.opening_plan_cache_misses == 1
+    assert capture.opening_plan_cache_hits == 19
+    # Crossing still uses the actual immutable opening stop and exact
+    # original mark, then transitions through the same durable evidence.
+    capture.observe_mark(
+        (position,), _mark("94", 1_200), now_ms=1_200,
+    )
+    pending = capture.store.pending_for(plan.plan_id)
+    assert pending is not None
+    assert pending.crossing.original_stop == plan.stop_price
+    assert pending.crossing.crossing_mark_received_ms == 1_200
+    assert capture.error is None
+    # A new worker/restarted observer cannot borrow an old in-memory plan.
+    restored_loads: list[str] = []
+    restarted = OriginalStopBookCapture(
+        OriginalStopBookEvidenceStore(root),
+        opening_plan_loader=lambda key: (
+            restored_loads.append(key) or plan
+        ),
+        config=CONFIG,
+    )
+    restarted.observe_mark(
+        (position,), _mark("93", 1_250), now_ms=1_250,
+    )
+    assert restored_loads == [plan.plan_id]
+    assert restarted.opening_plan_cache_misses == 1
+
+
+def test_stop_plan_lru_bounds_work_and_never_reuses_another_plan(
+    tmp_path: Path,
+) -> None:
+    plans = {
+        plan.plan_id: plan
+        for plan in (
+            replace(_plan(), risk_decision_id=f"frozen-risk-{n}")
+            for n in range(MAX_ORIGINAL_STOP_PLAN_CACHE + 2)
+        )
+    }
+    loaded: list[str] = []
+
+    def loader(key: str) -> PaperOrderPlan | None:
+        loaded.append(key)
+        return plans.get(key)
+
+    capture = OriginalStopBookCapture(
+        OriginalStopBookEvidenceStore(tmp_path / "bounded"),
+        opening_plan_loader=loader,
+        config=CONFIG,
+    )
+    for plan in plans.values():
+        capture._plan_for(_position(plan))
+    assert len(capture._opening_plan_cache) == MAX_ORIGINAL_STOP_PLAN_CACHE
+    assert capture.opening_plan_cache_misses == MAX_ORIGINAL_STOP_PLAN_CACHE + 2
+    first = next(iter(plans.values()))
+    assert capture._plan_for(_position(first)) == first
+    assert capture.opening_plan_cache_misses == MAX_ORIGINAL_STOP_PLAN_CACHE + 3
+    assert loaded.count(first.plan_id) == 2
+    newest = next(reversed(plans.values()))
+    assert capture._plan_for(_position(newest)) == newest
+    assert capture.opening_plan_cache_hits == 1
+
+
+def test_wrong_opening_plan_id_fails_closed_and_is_never_cached(
+    tmp_path: Path,
+) -> None:
+    correct_plan = _plan()
+    wrong_plan = replace(_plan(), risk_decision_id="another-plan")
+    capture = OriginalStopBookCapture(
+        OriginalStopBookEvidenceStore(tmp_path / "wrong"),
+        opening_plan_loader=lambda key: wrong_plan,
+        config=CONFIG,
+    )
+    capture.observe_mark(
+        (_position(correct_plan),),
+        _mark("94", 1_200),
+        now_ms=1_200,
+    )
+    assert capture.error is not None
+    assert "lineage mismatch" in capture.error
+    assert capture.opening_plan_cache_misses == 1
+    assert capture.opening_plan_cache_hits == 0
+    assert not capture._opening_plan_cache
+    assert capture.store.pending_count == 0
+    assert capture.store.record_count == 0
