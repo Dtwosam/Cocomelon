@@ -334,6 +334,7 @@ def seal_original_paper_v3_source(
         if (
             first is None or last is None
             or original_rows != terminal["written_count"]
+            or physical_bytes != terminal.get("written_source_journal_bytes")
             or (
                 source_bytes
                 != terminal.get(
