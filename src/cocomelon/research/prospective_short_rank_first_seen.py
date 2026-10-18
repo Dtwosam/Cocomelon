@@ -216,6 +216,32 @@ class FirstSeenRankSnapshot:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class FirstSeenRankBindingWitness:
+    """Compact identity from a fully validated original rank file.
+
+    Used only during the same worker's startup suffix cross-binding. This
+    witness is NOT a source certificate: later evidence audits must reread
+    the complete original bytes, digest, and chronology independently.
+    """
+
+    observed_at_ms: int
+    captured_at_ms: int
+    snapshot_digest: str
+    features: tuple[tuple[str, str, int], ...]
+
+    @classmethod
+    def from_verified_snapshot(
+        cls, snapshot: FirstSeenRankSnapshot,
+    ) -> FirstSeenRankBindingWitness:
+        return cls(
+            observed_at_ms=snapshot.observed_at_ms,
+            captured_at_ms=snapshot.captured_at_ms,
+            snapshot_digest=snapshot.snapshot_digest,
+            features=snapshot.features,
+        )
+
+
 class FirstSeenRankSnapshotStore:
     """Append-only prospective snapshots, including empty rank universes.
 
@@ -228,8 +254,16 @@ class FirstSeenRankSnapshotStore:
         self.root = Path(root)
         self.records = self.root / "snapshots"
         self.records.mkdir(parents=True, exist_ok=True)
+        # Constructor already validates every original file and chronology.
+        # Retain only compact, exact binding identities, not full rank
+        # histories, to avoid repeatedly reopening a large research archive
+        # while the independently verified feature/context suffixes load.
         previous = self.iter_records()
         self._last = previous[-1] if previous else None
+        self.startup_binding_witnesses = tuple(
+            FirstSeenRankBindingWitness.from_verified_snapshot(snapshot)
+            for snapshot in previous
+        )
 
     def iter_records(self) -> tuple[FirstSeenRankSnapshot, ...]:
         result: list[FirstSeenRankSnapshot] = []
