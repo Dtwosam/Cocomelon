@@ -41,7 +41,8 @@ def test_original_research_bottleneck_is_visible_without_profit_claim() -> None:
     assert "original_rank_source_restore=1660000ms" in status
     assert "candidate_state_restore=2000ms" in status
     assert "exit_shadow_restore=5000ms" in status
-    assert "shadow_position_reconcile=1000ms" not in status  # top five only
+    assert "shadow_position_reconcile=1000ms" in status
+    assert "execution_restore=10ms" not in status  # top five only
     assert "profit" not in status.lower() or "non-PnL" in status
 
 
