@@ -8,12 +8,11 @@ import queue
 import threading
 from bisect import bisect_left, bisect_right
 from collections.abc import Sequence
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from cocomelon.domain.execution import (
     InstrumentExecutionSpec,
@@ -1456,12 +1455,19 @@ class AsyncCapacityReleaseBookCapture:
                     continue
                 kind, payload = task
                 if kind == "register":
-                    trace, opportunity_id = payload
+                    trace, opportunity_id = cast(
+                        tuple[BaselineOpeningTrace, str], payload,
+                    )
                     self._capture.register_from_trace(
                         trace, opportunity_id=opportunity_id
                     )
                 elif kind == "book":
-                    positions, instrument, book, reference_price, now_ms = payload
+                    positions, instrument, book, reference_price, now_ms = cast(
+                        tuple[
+                            tuple[PaperPosition, ...], InstrumentExecutionSpec,
+                            StreamEvent, Decimal, int,
+                        ], payload,
+                    )
                     self._capture.observe_book(
                         positions, instrument, book,
                         reference_price=reference_price, now_ms=now_ms,
