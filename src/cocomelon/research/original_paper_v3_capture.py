@@ -1048,6 +1048,11 @@ class OriginalPaperMicrostructureCapture:
                 0, self.offered_count - self.record_count - self.dropped_count
             ),
             "written_source_journal_bytes": self.record_bytes,
+            "uncompressed_original_journal_bytes": self.uncompressed_record_bytes,
+            "original_received_journal_format": (
+                COMPRESSED_JOURNAL_FORMAT if self.compressed_journal
+                else PLAIN_JOURNAL_FORMAT
+            ),
             "source_journal_byte_limit": MAX_SOURCE_BYTES,
             "source_journal_row_limit": MAX_SOURCE_ROWS,
             "original_received_journal_sha256": (
