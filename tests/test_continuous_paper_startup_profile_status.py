@@ -51,6 +51,19 @@ def test_operational_status_exposes_profile_without_promoting_paper() -> None:
             "timestamp_ms": 1_792_330_000_000,
             "positions": [],
             "recent_closed_trades": [],
+            # Minimal synthetic account fixture required by status rendering.
+            # No numbers here describe an actual PAPER trade or edge.
+            "equity": "10000",
+            "cash": "10000",
+            "unrealized_pnl": "0",
+            "realized_gross_pnl": "0",
+            "cumulative_fees": "0",
+            "cumulative_funding": "0",
+            "closed_trades": 0,
+            "execution_healthy": True,
+            "selected_market_count": 0,
+            "processed_records": 0,
+            "journal_observations": 0,
             "startup_component_ms": {
                 "pre_monitor_total": 1_500_000,
                 "opening_lineage_store": 1_400_000,
