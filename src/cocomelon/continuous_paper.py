@@ -116,6 +116,7 @@ from cocomelon.research.closed_trade_utc_hour import (
     closed_trade_utc_hour_summary,
 )
 from cocomelon.research.continuous_paper_capacity_release_books import (
+    AsyncCapacityReleaseBookCapture,
     CapacityReleaseBookCapture,
     CapacityReleaseBookStore,
 )
@@ -933,7 +934,9 @@ class _ContinuousOpeningOpportunitySink:
         path_store: ContinuousPaperOpeningOpportunityPathStore,
         exit_book_store: ContinuousPaperOpeningOpportunityExitBookStore,
         replacement_funding_store: ContinuousPaperReplacementFundingStore,
-        capacity_release_book_capture: CapacityReleaseBookCapture,
+        capacity_release_book_capture: (
+            CapacityReleaseBookCapture | AsyncCapacityReleaseBookCapture
+        ),
         rank_tracker: LatestCoarseRankTracker,
         *,
         inventory_store: OpportunityInventoryWitnessStore | None = None,
@@ -9604,8 +9607,8 @@ async def run_continuous_paper_session(
         max_book_age_ms=replay_config.execution.max_book_age_ms,
         execution_config=replay_config.execution,
     )
-    capacity_release_book_capture = CapacityReleaseBookCapture(
-        capacity_release_book_store
+    capacity_release_book_capture = AsyncCapacityReleaseBookCapture(
+        CapacityReleaseBookCapture(capacity_release_book_store)
     )
     record_startup_component(
         "capacity_release_book_store",
@@ -12333,6 +12336,10 @@ async def run_continuous_paper_session(
         await flush_opening_path_observe()
         await flush_background_checkpoint()
         persist_checkpoint_sync()
+        # Do not mark optional original-release evidence complete while
+        # a background L2 fsync is still pending. This drain is bounded
+        # and cannot delay or veto the already committed PAPER checkpoint.
+        await capacity_release_book_capture.close(timeout_seconds=5.0)
         # ORIGINAL research source must close before costly final PAPER
         # shadow/report accounting. Historical worker #38879693481 left a
         # real original journal but no terminal receipt when upgrade cleanup
@@ -13326,6 +13333,13 @@ async def run_continuous_paper_session(
         _write_json_atomic(root / SUMMARY_FILENAME, summary.payload())
         return summary
     finally:
+        # A failure anywhere in the PAPER runner must not leave an
+        # unmanaged optional research writer. The worker never owns
+        # actual trading state, and timeout invalidates its receipts.
+        try:
+            await capacity_release_book_capture.close(timeout_seconds=5.0)
+        except Exception:
+            pass
         if original_v3_capture is not None:
             try:
                 await original_v3_capture.close()

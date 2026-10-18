@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
+import queue
+import threading
 from bisect import bisect_left, bisect_right
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from cocomelon.domain.execution import (
     InstrumentExecutionSpec,
@@ -1396,3 +1399,143 @@ class CapacityReleaseBookCapture:
 
     def record_closed_trade(self, trade: TradeJournalEntry) -> None:
         del trade
+
+# One bounded, strictly FIFO worker for OPTIONAL source/position research.
+# Nothing from this queue feeds back into PAPER fills, stops or decisions.
+MAX_OPTIONAL_CAPACITY_BOOK_BACKLOG: Final = 1024
+
+
+class AsyncCapacityReleaseBookCapture:
+    """Isolate fsynced exploratory L2 evidence from the trading event loop.
+
+    Both opening registrations and matching books enter one FIFO. The
+    original synchronous capture instance remains the only evidence writer,
+    so no plan can be overtaken by a later book. Overflow and worker failure
+    permanently invalidate this optional research lane, not PAPER orders.
+    """
+
+    def __init__(
+        self,
+        capture: CapacityReleaseBookCapture,
+        *,
+        capacity: int = MAX_OPTIONAL_CAPACITY_BOOK_BACKLOG,
+    ) -> None:
+        if not 1 <= capacity <= MAX_OPTIONAL_CAPACITY_BOOK_BACKLOG:
+            raise ValueError("optional research queue capacity invalid")
+        self.store = capture.store
+        self._capture = capture
+        self._queue: queue.Queue[tuple[str, object] | None] = queue.Queue(
+            maxsize=capacity
+        )
+        self._failed: str | None = None
+        self._closed = False
+        self._worker = threading.Thread(
+            target=self._run, name="capacity-release-research",
+            daemon=True,
+        )
+        self._worker.start()
+
+    @property
+    def error(self) -> str | None:
+        return self._failed or self._capture.error
+
+    @property
+    def pending(self) -> int:
+        return self._queue.qsize()
+
+    def _run(self) -> None:
+        while True:
+            task = self._queue.get()
+            try:
+                if task is None:
+                    return
+                if self.error is not None:
+                    # Do not silently recover missing intermediate witness:
+                    # all subsequent source-only receipts remain inadmissible.
+                    continue
+                kind, payload = task
+                if kind == "register":
+                    trace, opportunity_id = cast(
+                        tuple[BaselineOpeningTrace, str], payload,
+                    )
+                    self._capture.register_from_trace(
+                        trace, opportunity_id=opportunity_id
+                    )
+                elif kind == "book":
+                    positions, instrument, book, reference_price, now_ms = cast(
+                        tuple[
+                            tuple[PaperPosition, ...], InstrumentExecutionSpec,
+                            StreamEvent, Decimal, int,
+                        ], payload,
+                    )
+                    self._capture.observe_book(
+                        positions, instrument, book,
+                        reference_price=reference_price, now_ms=now_ms,
+                    )
+                else:
+                    raise ValueError("unsupported capacity research task")
+            except Exception as exc:
+                if self._failed is None:
+                    self._failed = f"{type(exc).__name__}: {exc}"
+            finally:
+                self._queue.task_done()
+
+    def _offer(self, kind: str, payload: object) -> None:
+        if self._closed or self.error is not None:
+            return
+        try:
+            self._queue.put_nowait((kind, payload))
+        except queue.Full:
+            # An incomplete observer cannot be certified by an apparently
+            # clean prior subset. No eviction, timestamp rewriting or replay
+            # of skipped records is permitted.
+            self._failed = "optional_capacity_book_research_queue_overflow"
+
+    def register_from_trace(
+        self, trace: BaselineOpeningTrace, *, opportunity_id: str,
+    ) -> None:
+        self._offer("register", (trace, opportunity_id))
+
+    def observe_mark(
+        self, positions: Sequence[PaperPosition], mark_event: StreamEvent,
+        *, now_ms: int,
+    ) -> None:
+        del positions, mark_event, now_ms
+
+    def observe_book(
+        self,
+        positions: Sequence[PaperPosition],
+        instrument: InstrumentExecutionSpec,
+        book: StreamEvent,
+        *,
+        reference_price: Decimal,
+        now_ms: int,
+    ) -> None:
+        # PaperPosition dataclasses and instrument/stream events have
+        # immutable lifecycle identity; snapshot the position collection
+        # before the next independent PAPER account update.
+        self._offer(
+            "book",
+            (tuple(positions), instrument, book, reference_price, now_ms),
+        )
+
+    def record_closed_trade(self, trade: TradeJournalEntry) -> None:
+        del trade
+
+    async def close(self, *, timeout_seconds: float = 5.0) -> None:
+        if timeout_seconds <= 0:
+            raise ValueError("invalid optional observer drain timeout")
+        if self._closed:
+            return
+        self._closed = True
+        # Queue insertion and wait belong to threads, not the L2 event loop.
+        # A timeout is an explicit irrevocable research-only failure.
+        try:
+            async with asyncio.timeout(timeout_seconds):
+                await asyncio.to_thread(self._queue.put, None)
+                await asyncio.to_thread(self._worker.join)
+        except TimeoutError:
+            if self._failed is None:
+                self._failed = "optional_capacity_book_research_drain_timeout"
+        if self._worker.is_alive() and self._failed is None:
+            self._failed = "optional_capacity_book_research_not_drained"
