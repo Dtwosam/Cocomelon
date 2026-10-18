@@ -13,8 +13,8 @@ import pytest
 
 from cocomelon.continuous_paper import (
     ALL_MIDS_COOPERATIVE_YIELD_INTERVAL,
-    _StreamYieldBudget,
     _record_from_stream,
+    _StreamYieldBudget,
 )
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
