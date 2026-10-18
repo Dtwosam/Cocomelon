@@ -14,6 +14,7 @@ from typing import Any
 from cocomelon.research.original_paper_v3_capture import (
     ORIGINAL_CLOCK_REGRESSION_FAMILIES,
     ORIGINAL_GAP_REASON_BUCKETS,
+    OTHER_ORIGINAL_CLOCK_REGRESSION_KINDS,
     RECORD_FILE,
     STARTUP_FAILURE_FILE,
     TERMINAL_FILE,
@@ -301,6 +302,24 @@ def diagnose_original_paper_v3_capture(
                 type(value) is int and value >= 0
                 for value in terminal["regression_source_family_counts"].values()
             )
+            else None
+        ),
+        "original_other_regression_kind_counts": (
+            dict(terminal["other_regression_kind_counts"])
+            if terminal_matches
+            and isinstance(terminal.get("other_regression_kind_counts"), dict)
+            and set(terminal["other_regression_kind_counts"])
+            == set(OTHER_ORIGINAL_CLOCK_REGRESSION_KINDS)
+            and all(
+                type(value) is int and value >= 0
+                for value in terminal["other_regression_kind_counts"].values()
+            )
+            and isinstance(terminal.get("regression_source_family_counts"), dict)
+            and (
+                sum(terminal["other_regression_kind_counts"].values())
+                == terminal["regression_source_family_counts"].get("other")
+            )
+            and terminal.get("other_regression_kind_counts_reconcile") is True
             else None
         ),
         "original_first_regression_source_family": (

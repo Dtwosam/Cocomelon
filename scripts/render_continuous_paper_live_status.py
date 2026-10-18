@@ -9501,6 +9501,9 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
     clock_families = raw.get("regression_source_family_counts")
     if not isinstance(clock_families, dict):
         clock_families = {}
+    other_kinds = raw.get("other_regression_kind_counts")
+    if not isinstance(other_kinds, dict):
+        other_kinds = {}
     # Fixed family vocabulary only; no source-supplied event kind or market
     # identifier is reflected in the public negative evidence heartbeat.
     families = frozenset((
@@ -9590,6 +9593,14 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{clock_families.get('active_asset_ctx', 'unavailable')} / "
             f"{clock_families.get('data_gap', 'unavailable')} / "
             f"{clock_families.get('other', 'unavailable')}"
+        ),
+        (
+            "- original regressions formerly anonymous other "
+            "(all-mids / trade / unrecognized / reconciled): "
+            f"{other_kinds.get('all_mids', 'unavailable')} / "
+            f"{other_kinds.get('trade', 'unavailable')} / "
+            f"{other_kinds.get('unrecognized', 'unavailable')} / "
+            f"{str(raw.get('other_regression_kind_counts_reconcile') is True).lower()}"
         ),
         (
             "- original L2 within-stream / cross-stream-only clock regressions: "

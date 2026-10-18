@@ -56,6 +56,12 @@ def _clock_regression_family(record: ReplayRecord) -> str:
     return "other"
 
 
+# Split the prior anonymous "other" raw-clock family without changing
+# the original failure condition, source order, or frozen family contract.
+OTHER_ORIGINAL_CLOCK_REGRESSION_KINDS: Final = (
+    "all_mids", "trade", "unrecognized",
+)
+
 ORIGINAL_GAP_REASON_BUCKETS: Final = (
     "redundant_disconnect",
     "recovered",
@@ -237,6 +243,9 @@ class OriginalPaperMicrostructureCapture:
         self.first_regression_age_at_offer_ms: int | None = None
         self.regression_source_family_counts = {
             family: 0 for family in ORIGINAL_CLOCK_REGRESSION_FAMILIES
+        }
+        self.other_regression_kind_counts = {
+            kind: 0 for kind in OTHER_ORIGINAL_CLOCK_REGRESSION_KINDS
         }
         self.first_received_clock_regression: dict[str, object] | None = None
         # Event source+market clock tracking distinguishes delayed interleaving
@@ -505,6 +514,14 @@ class OriginalPaperMicrostructureCapture:
             self.received_clock_regressions += 1
             family = _clock_regression_family(record)
             self.regression_source_family_counts[family] += 1
+            if family == "other":
+                kind = (
+                    record.event_kind
+                    if record.record_kind.value == "normalized_event"
+                    and record.event_kind in ("all_mids", "trade")
+                    else "unrecognized"
+                )
+                self.other_regression_kind_counts[kind] += 1
             if below_offered and prior_offered is not None:
                 prior_family = self._prior_offered_family or "other"
                 edge = prior_family + " -> " + family
@@ -550,7 +567,8 @@ class OriginalPaperMicrostructureCapture:
                 self.first_regression_event_kind = (
                     record.event_kind
                     if record.event_kind in (
-                        "l2_book", "trades", "candle", "active_asset_ctx"
+                        "l2_book", "trades", "trade", "all_mids",
+                        "candle", "active_asset_ctx"
                     )
                     else "data_gap"
                     if record.record_kind.value == "data_gap"
@@ -682,6 +700,13 @@ class OriginalPaperMicrostructureCapture:
             "first_regression_age_at_offer_ms": self.first_regression_age_at_offer_ms,
             "regression_source_family_counts": dict(
                 self.regression_source_family_counts
+            ),
+            "other_regression_kind_counts": dict(
+                self.other_regression_kind_counts
+            ),
+            "other_regression_kind_counts_reconcile": (
+                sum(self.other_regression_kind_counts.values())
+                == self.regression_source_family_counts["other"]
             ),
             "l2_tracked_distinct_streams": len(
                 self._last_l2_received_ms_by_stream
@@ -913,6 +938,13 @@ class OriginalPaperMicrostructureCapture:
             "first_regression_age_at_offer_ms": self.first_regression_age_at_offer_ms,
             "regression_source_family_counts": dict(
                 self.regression_source_family_counts
+            ),
+            "other_regression_kind_counts": dict(
+                self.other_regression_kind_counts
+            ),
+            "other_regression_kind_counts_reconcile": (
+                sum(self.other_regression_kind_counts.values())
+                == self.regression_source_family_counts["other"]
             ),
             "l2_tracked_distinct_streams": len(
                 self._last_l2_received_ms_by_stream

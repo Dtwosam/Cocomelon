@@ -133,3 +133,94 @@ def test_first_rest_snapshot_regression_and_following_l2_stay_disqualified(
     assert foreign["original_first_regression_source_family"] is None
     assert foreign["original_regression_source_family_counts"] is None
     assert foreign["original_first_regression_age_at_offer_ms"] is None
+
+
+
+def test_other_clock_family_identifies_real_all_mids_and_trade_sources(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    from cocomelon.research import original_paper_v3_capture as capture_mod
+    from cocomelon.research.original_paper_v3_capture import (
+        TERMINAL_FILE,
+    )
+
+    monkeypatch.setattr(capture_mod, "utc_now_ms", lambda: BASE + 10_000)
+
+    async def run() -> tuple[dict[str, object], dict[str, object]]:
+        recorder = OriginalPaperMicrostructureCapture(
+            tmp_path / "original",
+            run_id=RUN, run_attempt="1", head_sha=HEAD,
+            selected_markets=("TEST",),
+            first_observed_ms=BASE,
+            replay_config=BaselineReplayConfig(),
+        )
+        # The original WS wire kinds are "all_mids" and "trade",
+        # NOT "trades"; both used to be indistinguishable in "other".
+        recorder.offer(_row(BASE + 100, "active_asset_ctx"))
+        recorder.offer(
+            _row(BASE + 90, "all_mids"),
+            paper_previous_at_ms=BASE + 100,
+        )
+        recorder.offer(
+            _row(BASE + 80, "trade"),
+            paper_previous_at_ms=BASE + 100,
+        )
+        recorder.offer(
+            _row(BASE + 70, "unrecognized-private-event"),
+            paper_previous_at_ms=BASE + 100,
+        )
+        return recorder.live_diagnostic_snapshot(), await recorder.close()
+
+    live, terminal = asyncio.run(run())
+    expected = {"all_mids": 1, "trade": 1, "unrecognized": 1}
+    for source in (live, terminal):
+        assert source["other_regression_kind_counts"] == expected
+        assert source["other_regression_kind_counts_reconcile"] is True
+        assert source["regression_source_family_counts"]["other"] == 3
+        assert source.get(
+            "received_clock_regressions",
+            source.get("original_received_clock_regressions"),
+        ) == 3
+        assert source["first_regression_event_kind"] == "all_mids"
+        assert source["first_regression_source_family"] == "other"
+    assert terminal["complete"] is False
+    assert terminal["promotion_authority"] is False
+    report = diagnose_original_paper_v3_capture(
+        capture_root=tmp_path / "original",
+        diagnostic_root=tmp_path, run_id=RUN, run_attempt="1", head_sha=HEAD,
+    )
+    assert report["original_other_regression_kind_counts"] == expected
+    assert report["source_integrity_certified"] is False
+    status = "\n".join(_v3_live_capture_lines(live))
+    assert (
+        "original regressions formerly anonymous other "
+        "(all-mids / trade / unrecognized / reconciled): 1 / 1 / 1 / true"
+    ) in status
+    assert "source and after-cost profit certification: FALSE" in status
+
+    # A terminal altered after the writer has closed cannot attribute
+    # the old nonqualifying clock debt to an invented wire-event type.
+    receipt = tmp_path / "original" / TERMINAL_FILE
+    tampered = json.loads(receipt.read_text(encoding="utf-8"))
+    tampered["other_regression_kind_counts"]["all_mids"] += 1
+    receipt.write_text(json.dumps(tampered), encoding="utf-8")
+    denied = diagnose_original_paper_v3_capture(
+        capture_root=tmp_path / "original",
+        diagnostic_root=tmp_path, run_id=RUN, run_attempt="1", head_sha=HEAD,
+    )
+    assert denied["original_other_regression_kind_counts"] is None
+    assert denied["source_integrity_certified"] is False
+
+
+def test_legacy_other_clock_bucket_does_not_claim_new_attribution() -> None:
+    # Historical workers lack an independently frozen detailed census.
+    status = "\n".join(_v3_live_capture_lines({
+        "failure": "original_received_clock_regression",
+        "regression_source_family_counts": {"other": 2200},
+    }))
+    assert (
+        "original regressions formerly anonymous other "
+        "(all-mids / trade / unrecognized / reconciled): "
+        "unavailable / unavailable / unavailable / false"
+    ) in status
+    assert "source and after-cost profit certification: FALSE" in status
