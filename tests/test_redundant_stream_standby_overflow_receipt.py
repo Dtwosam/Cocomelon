@@ -172,3 +172,33 @@ def test_untruncated_backup_switch_does_not_invent_market_source_loss() -> None:
         assert mux.ingress_diagnostics()["standby_overflow_dropped_rows"] == 0
 
     asyncio.run(run())
+
+
+def test_already_admitted_exact_backup_copy_is_not_a_missing_source_row() -> None:
+    async def run() -> None:
+        actual: list[StreamEvent] = []
+        gaps: list[DataGap] = []
+
+        async def event_sink(event: StreamEvent) -> None:
+            actual.append(event)
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        mux = RedundantStreamMux(
+            event_sink=event_sink, gap_sink=gap_sink, buffer_size=1,
+        )
+        for n in (1, 2, 3):
+            await mux.on_event(0, _trade(n))
+        await mux.on_event(1, _trade(2))
+        await mux.on_event(1, _trade(3))
+        assert mux.ingress_diagnostics()["standby_overflow_dropped_rows"] == 1
+        assert mux.ingress_diagnostics()["standby_overflow_affected_streams"] == 0
+        await mux.on_gap(
+            0, DataGap(STREAM, BASE_MS + 5000, None, "disconnect"),
+        )
+        assert actual == [_trade(1), _trade(2), _trade(3)]
+        assert gaps == []
+        assert mux.failover_count == 1
+
+    asyncio.run(run())
