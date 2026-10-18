@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Final, cast
@@ -65,6 +65,11 @@ class FirstSeenRankSnapshot:
     captured_at_ms: int
     features: tuple[tuple[str, str, int], ...]
     ranks: tuple[tuple[str, int, str, tuple[str, ...]], ...]
+    # Fully deterministic for frozen immutable fields: after a validated
+    # load, the same digest is used by both canonical disk verification
+    # and compact startup rank-to-feature witness binding. Do not hash
+    # the large rank universe repeatedly for each original source file.
+    _cached_digest: str = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         _integer(self.observed_at_ms, "rank observed_at_ms")
@@ -102,6 +107,9 @@ class FirstSeenRankSnapshot:
                 for reason in reasons
             ) or tuple(dict.fromkeys(reasons)) != reasons:
                 raise ShortRankFirstSeenError("rank reasons are noncanonical")
+        # Frozen/slots dataclass: the digest cannot be invalidated by any
+        # later change to this rank snapshot's canonical identity.
+        object.__setattr__(self, "_cached_digest", _digest(self.identity_payload()))
 
     def identity_payload(self) -> dict[str, object]:
         return {
@@ -125,7 +133,7 @@ class FirstSeenRankSnapshot:
 
     @property
     def snapshot_digest(self) -> str:
-        return _digest(self.identity_payload())
+        return self._cached_digest
 
     def to_dict(self) -> dict[str, object]:
         return {**self.identity_payload(), "snapshot_digest": self.snapshot_digest}
@@ -278,14 +286,21 @@ class FirstSeenRankSnapshotStore:
         for path in sorted(self.records.glob("*.json")):
             try:
                 raw = path.read_bytes()
-                parsed = FirstSeenRankSnapshot.from_dict(json.loads(raw))
+                source_row = json.loads(raw)
+                parsed = FirstSeenRankSnapshot.from_dict(source_row)
             except (OSError, ValueError, json.JSONDecodeError) as exc:
                 raise ShortRankFirstSeenError(
                     "first-seen rank snapshot is unreadable or invalid"
                 ) from exc
             if (
                 path.name != f"{parsed.observed_at_ms:016d}.json"
-                or raw != (_canonical_json(parsed.to_dict()) + "\n").encode("utf-8")
+                # from_dict has already validated every original field
+                # and the cached SHA of the complete canonical rank
+                # identity. Canonicalizing the same parsed source JSON
+                # enforces byte-for-byte original disk parity without
+                # creating a second identity dictionary or recomputing
+                # its expensive digest.
+                or raw != (_canonical_json(source_row) + "\n").encode("utf-8")
                 or parsed.observed_at_ms <= previous_ms
                 or parsed.captured_at_ms < previous_capture
             ):
