@@ -446,6 +446,8 @@ class RedundantStreamMux:
 
     async def complete_all_mids_frame(
         self, lane: int, events: tuple[StreamEvent, ...],
+        *,
+        after_frame_sink: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         """Finish only fully acknowledged original allMids child frames.
 
@@ -482,6 +484,14 @@ class RedundantStreamMux:
                 # This is a volatile scheduling witness only. A future
                 # genuinely new disconnect cannot inherit older callbacks.
                 self._all_mids_pending_witnesses.pop(key, None)
+            if after_frame_sink is not None:
+                # Checkpoint/rotation observers must not publish their
+                # independently warranted recovery CLOSE between children
+                # of this already accepted original frame or before the
+                # mux's own aggregate source receipt. Keep the SAME mux
+                # serialization lock through all post-frame source writes.
+                # Failure/cancellation propagates; no false success notice.
+                await after_frame_sink()
 
     async def on_gap(self, lane: int, gap: DataGap) -> None:
         self._require_lane(lane)
