@@ -755,6 +755,12 @@ class WebSocketSupervisor:
         finally:
             if self._activity_hook is not None:
                 self._activity_hook("normalize_message", False)
+        # One allMids frame expands into per-market children sharing the
+        # original receive clock. Do not insert this supervisor's later
+        # recovery observation between those unchanged original children.
+        # Keep namespace order as encountered; a failed child exits before
+        # any deferred recovery is persisted.
+        frame_recovery_streams: dict[str, None] = {}
         for event in events:
             stream_id = event_stream_id(event)
             # No event/key, freshness or recovery proof may pass a missing
@@ -790,6 +796,17 @@ class WebSocketSupervisor:
                 self._duplicate_count += 1
                 if is_l2:
                     self._l2_duplicate_count += 1
+                if event.kind is StreamKind.ALL_MIDS:
+                    gap = self._open_gaps.get(stream_id)
+                    if gap is not None and (
+                        int(event.receive_time.timestamp() * 1_000)
+                        >= gap.started_ms
+                    ):
+                        # An earlier child may have succeeded before a
+                        # sibling namespace failed. Include its acknowledged
+                        # receipt when the complete frame is retried, but
+                        # never heal a newer gap with an older duplicate.
+                        frame_recovery_streams[stream_id] = None
                 continue
 
             exchange_time = event.exchange_time_ms
@@ -903,10 +920,13 @@ class WebSocketSupervisor:
             if exchange_time is not None:
                 self._last_exchange_time[stream_id] = exchange_time
             if not l2_is_stale:
-                await self._close_gap_if_needed(
-                    stream_id,
-                    now_ms,
-                )
+                if event.kind is StreamKind.ALL_MIDS:
+                    frame_recovery_streams[stream_id] = None
+                else:
+                    await self._close_gap_if_needed(
+                        stream_id,
+                        now_ms,
+                    )
                 if is_l2:
                     # Only accepted fresh source evidence can advance this
                     # diagnostic; failed source/gap sinks never count here.
@@ -924,6 +944,11 @@ class WebSocketSupervisor:
                     )
                     if not self._pending_l2_targeted_recovery_streams:
                         self._reset_targeted_l2_recovery()
+
+        for stream_id in frame_recovery_streams:
+            # Preserve the actual frame's recovery boundary, not the later
+            # delivery time. Existing pending-write retries remain exact.
+            await self._close_gap_if_needed(stream_id, now_ms)
 
     def _reset_l2_freshness_for_session(
         self,

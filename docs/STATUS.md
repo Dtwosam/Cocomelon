@@ -2,6 +2,40 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 18 — publish supervisor allMids recovery after its complete frame
+
+A deterministic source-path reproduction found a real receive-clock reversal
+without concurrency or clock rollback: a two-market allMids frame produced
+`BTC@2000 -> recovered-gap observed@2007 -> ETH@2000`. The supervisor
+closed its subscription gap after the first accepted child even though all
+children share the same unchanged original frame receive time.
+
+The supervisor now defers its allMids recovered notification until the
+complete normalized frame has been accepted. Original child order, keys,
+payloads, receive timestamps and gap start/end boundaries are retained.
+A failed or cancelled later child leaves the gap open; failed/cancelled
+recovery persistence retains the exact existing pending-receipt retry.
+L2/trades/context/candle recovery behavior is unchanged. Nine regression
+cases cover original event equality, ordinary no-gap delivery, duplicates,
+child failure/cancellation, mixed-namespace retry, old duplicate refusal
+and recovery-write failure/cancellation. Five cases failed against the old
+implementation and two additional namespace cases caught the retry edge;
+all nine plus the existing supervisor suite passed after the fix (49 tests). Full CI evidence belongs
+to the exact PR head and must pass before merge.
+
+This removes ONLY the supervisor-generated same-frame recovery split.
+Independent redundant-mux aggregate recovery, restored/rotation recovery
+callbacks and older standby-buffer delivery can still interleave clocks;
+none is certified fixed here. Existing failed source history stays invalid.
+At authenticated Issue #469 18:57 UTC, worker #39138965707 still ran
+`0b044f24` from predecessor #39120486505: $9,762.50 marked equity,
+-$237.50 whole-account after-cost PnL, 292 cumulative closes and three open
+positions. Original v3 capture remained FAILED with 3,349,765 dropped rows.
+No running worker is restarted. No strategy, fee, funding, stop, risk or
+LIVE permission changes. Next: verify natural worker adoption/startup
+profiles and resolve the other proven frame-recovery ordering paths before
+attempting qualified 72-hour frozen matched-account economics.
+
 ## October 18 — stream original SHORT-rank startup verification, no source shortcut
 
 The previous original first-seen rank archive has a genuine 780,681,689-byte
