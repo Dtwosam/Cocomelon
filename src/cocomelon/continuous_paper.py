@@ -9624,6 +9624,9 @@ async def run_continuous_paper_session(
         "original_stop_book_store",
         component_started,
     )
+    # This archive cohort can span many historical worker handoffs. Keep
+    # its validation cost separate from ordinary PAPER account recovery.
+    rank_source_started = time.perf_counter()
     rank_tracker = LatestCoarseRankTracker()
     rank_snapshot_error_path = (
         root / "prospective-short-rank-first-seen-error.json"
@@ -9797,6 +9800,8 @@ async def run_continuous_paper_session(
                 )
             except OSError:
                 pass
+
+    record_startup_component("original_rank_source_restore", rank_source_started)
 
     def capture_rank_first_seen(
         *,
@@ -10193,6 +10198,8 @@ async def run_continuous_paper_session(
     # Separate optional-study hot reads from authoritative execution and
     # original-stop source custody. Only immutable positive plans are cached.
     load_research_plan = _ResearchOpeningPlanCache(execution.store.load_plan)
+    # These optional exit experiments are not the trading account.
+    exit_shadow_started = time.perf_counter()
     profit_lock_execution_shadow = (
         _ContinuousProfitLockExecutionShadowSink(
             _restore_profit_lock_execution_shadow(
@@ -10290,10 +10297,14 @@ async def run_continuous_paper_session(
         ),
         opening_plan_loader=load_research_plan,
     )
+    record_startup_component("exit_shadow_restore", exit_shadow_started)
     drawdown_tracker = _restore_drawdown_tracker(
         root / DRAWDOWN_STATE_FILENAME,
         started_at_ms=started_at_ms,
     )
+    # Existing open positions must still be reconciled in full. Measure
+    # the cost without relaxing or deferring any shadow-state validation.
+    shadow_reconcile_started = time.perf_counter()
     profit_lock_execution_shadow.reconcile_open_positions(
         execution.account.positions
     )
@@ -10321,6 +10332,8 @@ async def run_continuous_paper_session(
     entry_mid_markout_shadow.reconcile_open_positions(
         execution.account.positions
     )
+    record_startup_component("shadow_position_reconcile", shadow_reconcile_started)
+    candidate_restore_started = time.perf_counter()
     (
         prospective_short_breakout_rank_state,
         prospective_short_breakout_rank_restore_error,
@@ -10463,6 +10476,7 @@ async def run_continuous_paper_session(
         root / DELAY_SELECTOR_COMPARISON_STATE_FILENAME,
         started_at_ms=started_at_ms,
     )
+    record_startup_component("candidate_state_restore", candidate_restore_started)
     record_startup_component(
         "research_state_restore",
         research_state_started,
