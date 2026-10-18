@@ -2,6 +2,49 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 18 — remove redundant original-rank JSON hashing on the 866s PAPER startup critical path
+
+Worker #39158845657's authenticated 21:49 UTC status is still **PAPER
+ONLY**, $9,776.05 equity vs $10,000 starting capital, **−$223.95 net**
+after costs, 296 closed trades, FAILED original source with 2,178,306
+dropped rows. Worker #39158845657 measured 889,422ms total pre-monitor,
+including **866,045ms in the rank-source restore substage**.
+
+The first-seen rank archive is an original, externally noncertifying
+research source, but its startup constructor must continue to verify
+**every** full original JSON file and preserve every original rank/feature
+identity before its suffixes can be bound. The current fully validated
+per-file path redundantly serialized the same large immutable rank
+identity to canonical JSON three times: when loading the original digest,
+when computing a second digest for full raw-file reconstruction, and
+when creating startup rank witnesses; it additionally serialized the
+complete record once for canonical original file equality.
+
+The new frozen-slot cached digest is computed only once after each
+snapshot's existing field validation. The full file comparison now
+canonicalizes the *original decoded JSON object* directly, after
+the same complete schema/field/digest validation, instead of rebuilding
+another identical identity dict/digest. Each verified original file
+now requires exactly **one complete identity canonical SHA computation
+and one full original JSON canonical byte comparison**, rather than
+four canonical serializations. This does **not** skip a source file,
+alter original byte or SHA requirements, change capture timestamps,
+rank ordering, feature bindings, forward eligibility, archive
+chronology or digest format. Public independent full archive audits
+still reopen and validate original bytes and are not cached.
+Fail-closed tests verify exact serialization counts; noncanonical
+Unicode escaping, duplicate JSON keys, whitespace and changed
+historical source bytes remain rejected. A frozen snapshot replacement
+recomputes its digest, while the original remains unchanged.
+
+This is a quantified reduction in serialization **work**, not yet a
+measured real worker startup-latency reduction and not a certificate
+of source continuity. Source clock regressions/L2 gaps and the
+capital-matched >=72h absolutely positive after-fee/funding paired
+PAPER trial remain unresolved. No changes to PAPER strategy, positions,
+fees, funding, risk, stops, account continuity or LIVE-disabled
+operation. The new code takes effect only on a natural successor.
+
 ## October 18 — full-frame-only aggregate mux allMids recovery
 
 The authenticated 21:30 UTC worker remains PAPER ONLY, with
