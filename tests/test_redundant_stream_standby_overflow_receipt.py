@@ -56,7 +56,10 @@ def test_promoted_overflow_is_durable_negative_coverage_receipt(
         await mux.on_event(1, _trade(1))
         for n in range(2, standby_backlog + 2):
             await mux.on_event(1, _trade(n))
-        dropped_count = standby_backlog - 1
+        # The counter counts physical evictions, including the exact
+        # duplicate trade 1 already accepted on the active lane. Only
+        # unacknowledged evictions create negative source-coverage debt.
+        dropped_count = standby_backlog
         assert mux.ingress_diagnostics()[
             "standby_overflow_dropped_rows"
         ] == dropped_count
