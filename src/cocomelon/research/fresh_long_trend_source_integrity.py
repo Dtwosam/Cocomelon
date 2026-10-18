@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
-from typing import Final
+from collections.abc import Iterable, Sequence
+from typing import Final, Protocol
 
 from cocomelon.domain.market import MarketId
-from cocomelon.domain.replay import ReplayManifest, ReplayRecord, SourceRecordKind
+from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 
 ZERO_GAP_POLICY: Final = "reject_every_original_gap_in_entire_replayed_warmup_and_forward_window"
 MAX_FORWARD_L2_SILENCE_MS: Final = 5 * 60 * 1000
@@ -22,14 +22,22 @@ MAX_ORIGINAL_L2_EXCHANGE_AGE_MS: Final = 15_000
 MAX_ORIGINAL_L2_EXCHANGE_FUTURE_SKEW_MS: Final = 1_000
 
 
+class SourceWindowBounds(Protocol):
+    """Only chronology bounds; per-worker manifest bytes are checked separately."""
+
+    start_ms: int
+    end_ms: int
+    gap_refs: tuple[str, ...]
+
+
 class FreshLongTrendSourceError(ValueError):
     """V3 source is insufficient for even a locally accountable trial."""
 
 
 def audit_fresh_long_trend_original_records(
-    records: Sequence[ReplayRecord],
+    records: Iterable[ReplayRecord],
     *,
-    manifest: ReplayManifest,
+    manifest: SourceWindowBounds,
     selected_markets: Sequence[MarketId],
     forward_not_before_ms: int,
 ) -> dict[str, object]:
@@ -51,8 +59,6 @@ def audit_fresh_long_trend_original_records(
     markets = tuple(sorted(m.canonical for m in selected_markets))
     if not markets or len(set(markets)) != len(markets):
         raise FreshLongTrendSourceError("original market cohort invalid")
-    if not records:
-        raise FreshLongTrendSourceError("empty source")
     observed: dict[str, tuple[int, int, int]] = {
         market: (0, 0, 0) for market in markets
     }
@@ -71,7 +77,9 @@ def audit_fresh_long_trend_original_records(
     original_l2_exchange_clock_observations = 0
     digest = hashlib.sha256()
     last_available = -1
+    record_count = 0
     for record in records:
+        record_count += 1
         if (
             record.available_at_ms < manifest.start_ms
             or record.available_at_ms > manifest.end_ms
@@ -164,6 +172,8 @@ def audit_fresh_long_trend_original_records(
                 record.available_at_ms,
                 count + 1,
             )
+    if record_count == 0:
+        raise FreshLongTrendSourceError("empty source")
     absent = [market for market, (_, _, count) in observed.items() if count == 0]
     if absent:
         raise FreshLongTrendSourceError(
@@ -182,7 +192,7 @@ def audit_fresh_long_trend_original_records(
     common_end = min(last for _, last, _ in observed.values())
     return {
         "schema": "v3-original-local-common-market-l2-horizon-v1",
-        "record_count": len(records),
+        "record_count": record_count,
         "local_canonical_record_stream_sha256": digest.hexdigest(),
         "original_market_count": len(markets),
         "all_original_forward_market_count": len(all_forward_market_sources),
