@@ -23,11 +23,16 @@ MAX_ORIGINAL_L2_EXCHANGE_FUTURE_SKEW_MS: Final = 1_000
 
 
 class SourceWindowBounds(Protocol):
-    """Only chronology bounds; per-worker manifest bytes are checked separately."""
+    """Read-only chronology bounds; never a claimed merged signed manifest."""
 
-    start_ms: int
-    end_ms: int
-    gap_refs: tuple[str, ...]
+    @property
+    def start_ms(self) -> int: ...
+
+    @property
+    def end_ms(self) -> int: ...
+
+    @property
+    def gap_refs(self) -> tuple[str, ...]: ...
 
 
 class FreshLongTrendSourceError(ValueError):
