@@ -13,7 +13,7 @@ def test_learning_catchup_is_bounded_and_post_activation_only() -> None:
     source = _source()
 
     assert "Research Learning Catch-up" in source
-    assert 'cron: "*/10 * * * *"' in source
+    assert 'cron: "27 * * * *"' in source
     assert "workflow_run:" in source
     assert '"Scheduled Research Mainnet Replay Campaign"' in source
     assert '"Research Learning Evidence Sync"' in source
