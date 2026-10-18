@@ -6,10 +6,14 @@ edge, or permission to modify trading.
 """
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation, localcontext
+from decimal import ROUND_HALF_EVEN, Context, Decimal, InvalidOperation, localcontext
 from typing import Any, cast
 
 ZERO = Decimal("0")
+BOOKING_CONTEXT = Context(prec=28, rounding=ROUND_HALF_EVEN)
+# Source accounts book at precision 28; tiny cross-expression differences are
+# not a dollar-denominated edge. Reject material drift without rounding PnL.
+MAX_CASH_RESIDUAL = Decimal("1E-18")
 
 
 class V3EconomicHurdleError(ValueError):
@@ -63,12 +67,11 @@ def _lane(row: dict[str, Any], name: str) -> dict[str, Decimal | int]:
         or open_positions < 0
     ):
         raise V3EconomicHurdleError(f"{name} cash, fees or open count invalid")
-    with localcontext() as ctx:
-        ctx.prec = 96
+    with localcontext(BOOKING_CONTEXT):
         if (
-            realized != gross - fees + funding
-            or marked != realized + unrealized
-            or equity != start + marked
+            abs(realized - (gross - fees + funding)) > MAX_CASH_RESIDUAL
+            or abs(marked - (realized + unrealized)) > MAX_CASH_RESIDUAL
+            or abs(equity - (start + marked)) > MAX_CASH_RESIDUAL
         ):
             raise V3EconomicHurdleError(f"{name} after-cost account cash mismatch")
     return {**values, "open_position_count": open_positions}
@@ -113,11 +116,13 @@ def fresh_long_trend_economic_hurdle(
         unrealized_delta = (
             candidate["unrealized_pnl_usd"] - baseline["unrealized_pnl_usd"]
         )
-        if delta != gross_delta + fee_savings + funding_delta + unrealized_delta:
+        if abs(delta - (gross_delta + fee_savings + funding_delta + unrealized_delta)) > MAX_CASH_RESIDUAL:
             raise V3EconomicHurdleError("paired marked PnL decomposition differs")
         if _amount(
             audit, "candidate_minus_baseline_marked_after_cost_usd", "audit"
-        ) != delta:
+        ) - delta > MAX_CASH_RESIDUAL or delta - _amount(
+            audit, "candidate_minus_baseline_marked_after_cost_usd", "audit"
+        ) > MAX_CASH_RESIDUAL:
             raise V3EconomicHurdleError("audited candidate advantage mismatch")
         if (
             audit.get("candidate_marked_account_positive") is not (candidate_net > ZERO)
