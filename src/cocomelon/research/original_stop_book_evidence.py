@@ -1214,7 +1214,8 @@ class OriginalStopBookCapture:
                 "original-stop opening plan is missing"
             )
         if (
-            plan.reduce_only
+            plan.plan_id != key
+            or plan.reduce_only
             or plan.market != position.market
             or plan.stop_price is None
         ):
