@@ -21,6 +21,9 @@ from cocomelon.evidence.lifecycle import DecisionEpochEngine
 from cocomelon.research.fresh_long_trend_account_audit import (
     audit_fresh_v3_paired_accounts,
 )
+from cocomelon.research.fresh_long_trend_economic_hurdle import (
+    fresh_long_trend_economic_hurdle,
+)
 from cocomelon.research.fresh_long_trend_receipt_order import (
     restore_original_v3_received_order,
 )
@@ -244,6 +247,9 @@ def run_digest_pinned_long_trend_matched_paper(
         expected_candidate_id=freeze.candidate_id,
         expected_record_count=len(original),
     )
+    # Exact-dollar economic attribution is local, research-only and can
+    # NEVER certify original feed, interworker continuity, or live promotion.
+    net_hurdle = fresh_long_trend_economic_hurdle(local_account_audit)
     # No local digest proves original venue market completeness or that the
     # full 72h prospective account evidence passed independent review.
     return {
@@ -268,6 +274,7 @@ def run_digest_pinned_long_trend_matched_paper(
             ),
             "paired_account_original_runtime_summary": summary,
             "locally_reconciled_original_paired_sqlite_accounts": local_account_audit,
+            "locally_reconciled_after_cost_profitability_hurdle": net_hurdle,
             "independent_record_gap_continuity_authenticated": False,
             "independent_signed_terminal_account_parity_certified": False,
             "after_cost_72h_profitability_verified": False,
