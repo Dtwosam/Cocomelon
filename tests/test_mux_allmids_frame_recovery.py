@@ -34,8 +34,12 @@ async def _prepared_mux(
         gap_sink=gap_sink,
         defer_all_mids_aggregate_recovery=True,
     )
+    # The earlier BTC mid is intentionally different: unchanged
+    # receive-only mid updates inside the 1s semantic dedup window
+    # are correctly suppressed and cannot be a recovery witness.
     initial = tuple(normalize_ws_message(
-        FRAME, receive_time=datetime.fromtimestamp(1, UTC),
+        {"channel": "allMids", "data": {"mids": {"BTC": "90"}}},
+        receive_time=datetime.fromtimestamp(1, UTC),
     ))
     await mux.on_event(0, initial[0])
     await mux.on_event(1, initial[0])
