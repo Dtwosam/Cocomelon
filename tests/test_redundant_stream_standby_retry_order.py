@@ -150,7 +150,7 @@ def test_pending_original_standby_backfill_precedes_subsequent_gap_marker(
         await mux.on_gap(1, later_gap)
         assert events == [first, second, third]
         assert gaps == [DataGap(STREAM, 400, None, "redundant_disconnect")]
-        assert mux._buffers[(1, STREAM)] == []
+        assert not mux._buffers[(1, STREAM)]
         assert mux._aggregate_gap_starts[STREAM] == 400
 
     asyncio.run(run())
