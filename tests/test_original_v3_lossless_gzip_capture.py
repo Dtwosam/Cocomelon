@@ -197,7 +197,7 @@ def test_genuine_backward_received_clock_still_invalid_under_gzip(
     assert status["failure"] == "original_received_clock_regression"
     assert status["complete"] is False
     assert status["dropped_count"] >= 1
-    assert status["received_clock_regressions"] >= 1
+    assert status["original_received_clock_regressions"] >= 1
     assert status["promotion_authority"] is False
     with pytest.raises(OriginalV3CaptureSealError, match="lost rows"):
         _seal(tmp_path)
