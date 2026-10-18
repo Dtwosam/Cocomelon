@@ -323,3 +323,86 @@ def test_streamed_audit_reopens_bytes_lazily_not_cached_by_constructor(
     # Startup witnesses never serve as authority after an on-disk change.
     with pytest.raises(ShortRankFirstSeenError):
         restored.iter_records()
+
+
+def test_rank_startup_reuses_one_immutable_digest_per_verified_original_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cocomelon.research import prospective_short_rank_first_seen as source
+
+    root = tmp_path / "original"
+    store = FirstSeenRankSnapshotStore(root)
+    originals = tuple(
+        _snapshot(ms, ms + 50)
+        for ms in (1_000, 2_000, 3_000)
+    )
+    for snapshot in originals:
+        assert store.append(snapshot)
+
+    dumps: list[object] = []
+    canonical = source._canonical_json
+
+    def counted(original: object) -> str:
+        dumps.append(original)
+        return canonical(original)
+
+    monkeypatch.setattr(source, "_canonical_json", counted)
+    restored = FirstSeenRankSnapshotStore(root)
+    # For each fully validated original source file, hash its identity
+    # exactly ONCE when loading and canonically serialize its complete
+    # original loaded bytes exactly ONCE. The former implementation
+    # serialized the large identity three times per source file.
+    assert len(dumps) == 2 * len(originals)
+    assert restored.iter_records() == originals
+    assert tuple(
+        witness.snapshot_digest
+        for witness in restored.startup_binding_witnesses
+    ) == tuple(snapshot.snapshot_digest for snapshot in originals)
+    assert restored._last == originals[-1]
+    for snapshot in originals:
+        assert snapshot.snapshot_digest == snapshot.to_dict()["snapshot_digest"]
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        lambda raw: raw.replace(b'"BTC"', b'"\\u0042TC"', 1),
+        lambda raw: raw.replace(b'"schema_version":1', b'"schema_version":1,"schema_version":1', 1),
+        lambda raw: raw.replace(b'"features":', b'"features": ', 1),
+    ],
+    ids=["noncanonical_unicode_escape", "duplicate_json_key", "spacing_drift"],
+)
+def test_optimized_source_verifier_rejects_noncanonical_original_bytes(
+    tmp_path: Path,
+    mutator,
+) -> None:
+    rank_root = tmp_path / "rank"
+    archive = FirstSeenRankSnapshotStore(rank_root)
+    original = _snapshot(1_000, 1_050)
+    assert archive.append(original)
+    path = rank_root / "snapshots" / "0000000000001000.json"
+    original_bytes = path.read_bytes()
+    changed = mutator(original_bytes)
+    assert changed != original_bytes
+    # Each is JSON with a *semantically unchanged* object/digest. Source
+    # acceptance must still reject its noncanonical ORIGINAL file bytes.
+    assert json.loads(changed) == json.loads(original_bytes)
+    path.write_bytes(changed)
+    with pytest.raises(ShortRankFirstSeenError, match="canonical file drift"):
+        FirstSeenRankSnapshotStore(rank_root)
+    with pytest.raises(ShortRankFirstSeenError, match="canonical file drift"):
+        archive.iter_records()
+
+
+def test_rank_digest_cache_remains_frozen_and_recomputes_on_replacement() -> None:
+    from dataclasses import replace
+
+    original = _snapshot(1_000, 1_050)
+    digest = original.snapshot_digest
+    assert digest == original.to_dict()["snapshot_digest"]
+    replaced = replace(original, captured_at_ms=1_051)
+    assert replaced.snapshot_digest != digest
+    assert replaced.to_dict()["snapshot_digest"] == replaced.snapshot_digest
+    assert original.snapshot_digest == digest
+    assert replaced == FirstSeenRankSnapshot.from_dict(replaced.to_dict())
