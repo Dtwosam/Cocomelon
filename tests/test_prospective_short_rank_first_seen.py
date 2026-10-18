@@ -233,3 +233,93 @@ def test_original_paper_worker_instruments_all_three_rank_refresh_points() -> No
         assert f"features={original}" in code
     assert "prospective-short-rank-first-seen-error.json" in code
     assert "rank_snapshot_capture_error" in code
+
+
+def test_original_rank_startup_streams_full_validated_archive_without_tuple(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    store = FirstSeenRankSnapshotStore(tmp_path / "original")
+    originals = tuple(
+        _snapshot(ms, ms + 50)
+        for ms in (1_000, 2_000, 3_000, 4_000)
+    )
+    for row in originals:
+        assert store.append(row)
+
+    # A complete full-source audit still independently returns the same
+    # sequence, digest and chronology as before the constructor change.
+    before = store.iter_records()
+    assert before == originals
+    digest = store.state_digest
+    verify_public = FirstSeenRankSnapshotStore.iter_records
+
+    def forbid_eager_entire_archive(_self: FirstSeenRankSnapshotStore) -> None:
+        raise AssertionError(
+            "startup may not materialize complete original rank tuple"
+        )
+
+    monkeypatch.setattr(
+        FirstSeenRankSnapshotStore, "iter_records", forbid_eager_entire_archive,
+    )
+    restored = FirstSeenRankSnapshotStore(tmp_path / "original")
+    assert restored._last == originals[-1]
+    assert tuple(
+        item.observed_at_ms for item in restored.startup_binding_witnesses
+    ) == (1_000, 2_000, 3_000, 4_000)
+    assert tuple(
+        item.snapshot_digest for item in restored.startup_binding_witnesses
+    ) == tuple(item.snapshot_digest for item in originals)
+    assert all(
+        witness.features == snapshot.features
+        for witness, snapshot in zip(
+            restored.startup_binding_witnesses, originals, strict=True,
+        )
+    )
+    # The public independent verifier is unchanged; its retained
+    # callable deliberately still reads all original evidence files.
+    assert verify_public(restored) == originals
+    assert (
+        "snapshot_digest" in next(
+            (tmp_path / "original" / "snapshots").glob("*.json")
+        ).read_text(encoding="utf-8")
+    )
+    monkeypatch.undo()
+    assert restored.state_digest == digest
+
+
+def test_streamed_startup_fails_on_any_changed_middle_archive_row(
+    tmp_path: Path,
+) -> None:
+    rank_root = tmp_path / "rank"
+    store = FirstSeenRankSnapshotStore(rank_root)
+    for ms in (1_000, 2_000, 3_000):
+        store.append(_snapshot(ms, ms + 50))
+    corrupted = rank_root / "snapshots" / "0000000000002000.json"
+    data = json.loads(corrupted.read_text(encoding="utf-8"))
+    data["ranks"][0]["score"] = "0.9"
+    corrupted.write_text(json.dumps(data) + "\n", encoding="utf-8")
+    with pytest.raises(ShortRankFirstSeenError):
+        FirstSeenRankSnapshotStore(rank_root)
+    with pytest.raises(ShortRankFirstSeenError):
+        store.iter_records()
+
+
+def test_streamed_audit_reopens_bytes_lazily_not_cached_by_constructor(
+    tmp_path: Path,
+) -> None:
+    rank_root = tmp_path / "rank"
+    store = FirstSeenRankSnapshotStore(rank_root)
+    for ms in (1_000, 2_000, 3_000):
+        store.append(_snapshot(ms, ms + 50))
+    restored = FirstSeenRankSnapshotStore(rank_root)
+    verified = restored._iter_verified_records()
+    assert next(verified).observed_at_ms == 1_000
+    second = rank_root / "snapshots" / "0000000000002000.json"
+    second.write_text("{}", encoding="utf-8")
+    with pytest.raises(ShortRankFirstSeenError):
+        tuple(verified)
+    assert len(restored.startup_binding_witnesses) == 3
+    # Startup witnesses never serve as authority after an on-disk change.
+    with pytest.raises(ShortRankFirstSeenError):
+        restored.iter_records()

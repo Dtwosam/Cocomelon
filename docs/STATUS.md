@@ -2,6 +2,36 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 18 — stream original SHORT-rank startup verification, no source shortcut
+
+The previous original first-seen rank archive has a genuine 780,681,689-byte
+compressed research artifact; actual PAPER had a 27.8-minute premonitor
+research-restore interval. #1353 removed redundant archive rereads but the
+rank constructor still first materialized **every full historical rank
+snapshot in an in-memory tuple** and only then converted to compact startup
+binding witnesses, increasing unnecessary peak memory for a long-lived
+source. This can delay authentic original market receipt and independent
+forward matched PAPER economics.
+
+The new constructor iterates and validates **every canonical rank file
+individually**, including original byte parity, schema, SHA/digest, exact
+filename and strictly increasing observation/capture chronology. It retains
+only the newest full snapshot for the existing append highwater and the
+exact compact feature/digest/timestamp witnesses for still-strict source
+suffix binding. The public `iter_records()` still independently rereads
+and validates the COMPLETE archive and returns its original tuple API.
+Middle-record corruption and modifications after startup remain rejected;
+no startup witness can replace an independent original read.
+
+Tests prove the constructor never calls the eager full-tuple API, that
+original startup binding identities match every source record, that
+independent full audits remain byte-identical, and that changed historical
+middle rows still fail closed. The optimization **does not yet prove**
+a real 27.8-minute speedup, repair actual source-clock regressions,
+qualify any L2 market gaps/72h evidence, change PAPER orders/risk/stops,
+create after-cost positive PnL or enable LIVE orders. Natural new-worker
+timings from #1352 and original-future source audits remain required.
+
 ## October 18 — preserve ALL_MIDS frame progress with bounded cooperative yields
 
 **Genuine current PAPER observation at 18:08 UTC** (Issue #469, existing

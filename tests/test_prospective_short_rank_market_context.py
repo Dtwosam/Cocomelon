@@ -565,7 +565,7 @@ def test_original_rank_restore_binds_all_three_full_archives_once(
 
     counts = {"rank": 0, "features": 0, "context": 0}
     for cls, name, method in (
-        (FirstSeenRankSnapshotStore, "rank", "iter_records"),
+        (FirstSeenRankSnapshotStore, "rank", "_iter_verified_records"),
         (OriginalRankFeatureInputBatchStore, "features", "iter_verified"),
         (OriginalRankEligibilityContextStore, "context", "iter_verified"),
     ):
