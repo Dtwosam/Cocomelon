@@ -9,7 +9,7 @@ def test_clean_catchup_has_bounded_recurring_and_event_wakeups() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
     assert "Research Learning Clean Catch-up" in source
-    assert 'cron: "*/10 * * * *"' in source
+    assert 'cron: "47 * * * *"' in source
     assert "Research Learning Clean State Bootstrap" in source
     assert "Research Learning Clean State Campaign Follower" in source
     assert "types: [completed]" in source

@@ -60,3 +60,62 @@ def test_no_new_trading_authority_or_shortcuts_in_fallbacks() -> None:
             "skip_risk_evaluation",
         ):
             assert forbidden not in source
+
+
+def test_remaining_recovery_pollers_are_hourly_and_collision_staggered() -> None:
+    # Before this change, these 3 source/campaign recovery safety nets
+    # started 4 + 6 + 6 = 16 jobs/hour. Already-throttled workflows add 3.
+    # No ordinary event-following workflow_run input is removed here.
+    schedules = {
+        "continuous-paper-learning-catchup.yml": "7 * * * *",
+        "research-dashboard-catchup.yml": "13 * * * *",
+        "continuous-paper-decision-learning-catchup.yml": "17 * * * *",
+        "research-learning-catchup.yml": "27 * * * *",
+        "prospective-cadence-actual-trade-overlap.yml": "41 * * * *",
+        "research-learning-clean-catchup.yml": "47 * * * *",
+    }
+    assert len(schedules) == len(set(schedules.values())) == 6
+    for filename, expected in schedules.items():
+        source = _workflow(filename)
+        assert re.findall(
+            r'^\s+- cron: "([^"]+)"$', source, re.MULTILINE
+        ) == [expected]
+        assert "workflow_dispatch:" in source
+    for filename, expected_producers in {
+        "continuous-paper-learning-catchup.yml": (
+            "Continuous Mainnet Paper Trader",
+            "Continuous Paper Learning Evidence Sync",
+        ),
+        "research-learning-catchup.yml": (
+            "Scheduled Research Mainnet Replay Campaign",
+            "Research Learning Evidence Sync",
+        ),
+        "research-learning-clean-catchup.yml": (
+            "Research Learning Clean State Bootstrap",
+            "Research Learning Clean State Campaign Follower",
+        ),
+    }.items():
+        source = _workflow(filename)
+        assert "workflow_run:" in source
+        assert "types: [completed]" in source
+        assert "cancel-in-progress: false" in source
+        for producer in expected_producers:
+            assert producer in source
+
+
+def test_no_source_admission_relaxation_in_remaining_api_fallbacks() -> None:
+    for filename in (
+        "continuous-paper-learning-catchup.yml",
+        "research-learning-catchup.yml",
+        "research-learning-clean-catchup.yml",
+    ):
+        source = _workflow(filename).lower()
+        for forbidden in (
+            "live_order",
+            "send_order",
+            "withdraw",
+            "wallet_private",
+            "ignore_source_gap",
+            "skip_risk_evaluation",
+        ):
+            assert forbidden not in source

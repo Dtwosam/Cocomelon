@@ -6,7 +6,7 @@ on:
     paths:
       - ".github/workflows/continuous-paper-learning-catchup.yml"
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7 * * * *"
   workflow_run:
     workflows:
       - "Continuous Mainnet Paper Trader"
