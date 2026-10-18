@@ -9524,6 +9524,14 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             "- source integrity / forward profitability: NOT VERIFIED",
             "",
         ]
+    estimated_worker_rows = raw.get(
+        "estimated_4h_original_worker_rows_at_observed_offer_rate",
+        "unavailable",
+    )
+    estimated_worker_bytes = raw.get(
+        "estimated_4h_worker_journal_bytes_from_written_sample",
+        "unavailable",
+    )
     reasons = raw.get("gap_reason_counts")
     if not isinstance(reasons, dict):
         reasons = {}
@@ -9583,10 +9591,28 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{raw.get('remaining_persisted_row_budget', 'unavailable')}"
         ),
         (
-            "- conditional 72h ORIGINAL row projection / 5M cap exceeded "
-            "(>=10min of actual offers; not qualification): "
+            "- conditional 72h ORIGINAL row projection / 5M ONE-worker cap exceeded "
+            "(not a 72h multiworker limit; >=10min offers): "
             f"{raw.get('estimated_72h_original_rows_at_observed_offer_rate', 'unavailable')} / "
             f"{raw.get('estimated_72h_source_rows_exceed_fixed_limit', 'unavailable')}"
+        ),
+        (
+            "- conditional 4h ORIGINAL worker row projection / 5M per-worker cap "
+            "(not qualification): "
+            f"{estimated_worker_rows} / "
+            f"{raw.get('estimated_4h_worker_rows_exceed_fixed_limit', 'unavailable')}"
+        ),
+        (
+            "- conditional 4h worker uncompressed journal-byte projection "
+            "from potentially biased written sample / 480MiB per-worker cap: "
+            f"{estimated_worker_bytes} / "
+            f"{raw.get('estimated_4h_worker_bytes_exceed_fixed_limit', 'unavailable')}"
+        ),
+        (
+            "- conditional 72h multiworker rows exceed 100M chain cap "
+            "/ minimum natural 4h workers (not source proof): "
+            f"{raw.get('estimated_72h_multiworker_rows_exceed_chain_limit', 'unavailable')} / "
+            f"{raw.get('minimum_natural_workers_for_72h', 'unavailable')}"
         ),
         (
             "- raw-clock regressions versus prior original / PAPER clock: "

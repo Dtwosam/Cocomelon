@@ -2,6 +2,37 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 18 — original v3 economics need per-worker ROW AND BYTE capacity
+
+The v3 first-received original PAPER source is **still invalid**: at
+11:43 UTC successor #39120486505 had $9,762.94 marked equity
+(**−$237.06** whole-account net), 288 closed trades, 394,740 source
+records offered and 393,319 irreversibly dropped after a true raw
+receive-clock regression, with real market-stream source gaps.
+The frozen 72h LONG-trend matched PAPER challenger is **not qualified**.
+
+Original source rate diagnostics previously compared all hypothetical
+72h rows against one 5M-row capture cap, even though main now includes
+a bounded multiworker matched-account runner that requires separate
+continuous authentic ~4h archives (at least 18) and allows 100M total
+rows. This work retains the older hypothetical comparison but adds the
+**actual per-worker 4h row** rate projection versus 5M, a **4h
+uncompressed JSONL byte** projection versus the separate 480MiB cap
+using only actually persisted sample rows (explicitly biased if source
+failed), plus the 72h estimate versus the 100M multiworker bound.
+Unknown byte sample stays unknown; no projection grants source
+admission. See
+[original_v3_multiworker_per_source_budget_2026_10_18.md](original_v3_multiworker_per_source_budget_2026_10_18.md).
+
+This changes neither PAPER fills/fees/funding/risk/positions nor
+original records, timestamp ordering, gaps, frozen challenger, signed
+account lineage or LIVE-disabled authority. Validation requires full
+CI test/research suites; source replay and positive absolute after-cost
+whole-account edge remain unverified. Next material goal is truly
+lossless, contiguous first-received original source with honest
+per-worker storage and signed exact-account handoffs.
+
+
 ## October 17 — upstream WS supervisor must also durably OPEN source gaps
 
 PR #1327 closed an uncertain-write gap in the **redundant two-lane mux**.
