@@ -11599,6 +11599,36 @@ async def run_continuous_paper_session(
 
             async def gap_sink(gap: DataGap) -> None:
                 if gap_gate.is_set():
+                    # A subsequent new disconnect/recovered marker cannot
+                    # overtake a failed original checkpoint/rotation CLOSE
+                    # any more than a later market price record can.
+                    await restored_named_gap_recovery.retry_pending_before_record(
+                        gap.stream_id,
+                        gap_sink=lambda receipt: pump.process(receipt),
+                        witness_sink=lambda witness, receipt, checkpoint_ms: (
+                            asyncio.to_thread(
+                                append_restored_named_gap_witness,
+                                root / WITNESS_FILENAME,
+                                event=witness,
+                                gap=receipt,
+                                checkpoint_ms=checkpoint_ms,
+                            )
+                        ),
+                    )
+                    for recovery in tuple(in_session_rotation_gap_recoveries):
+                        await recovery.retry_pending_before_record(
+                            gap.stream_id,
+                            gap_sink=lambda receipt: pump.process(receipt),
+                            witness_sink=lambda witness, receipt, checkpoint_ms: (
+                                asyncio.to_thread(
+                                    append_in_session_rotation_gap_witness,
+                                    root / ROTATION_WITNESS_FILENAME,
+                                    event=witness,
+                                    gap=receipt,
+                                    checkpoint_ms=checkpoint_ms,
+                                )
+                            ),
+                        )
                     await pump.process(gap)
 
             mux = RedundantStreamMux(
