@@ -20,7 +20,7 @@ def test_decision_learning_catchup_finds_authenticated_decision_source() -> None
     assert "src/cocomelon/no_trade_context_prospective_cli.py" in source
     assert "mon-normal-short-1h-v1.json" in source
     assert "mon-normal-short-1h-v1-source.json" in source
-    assert 'cron: "*/15 * * * *"' in source
+    assert 'cron: "17 * * * *"' in source
     assert '"Continuous Mainnet Paper Trader"' in source
     assert '"Continuous Paper Decision Learning Evidence"' in source
     assert "actions: write" in source

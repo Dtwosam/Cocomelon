@@ -16,7 +16,7 @@ on:
       - "research/no_trade_context_candidates/mon-normal-short-1h-v1.json"
       - "research/no_trade_context_candidates/mon-normal-short-1h-v1-source.json"
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "17 * * * *"
   workflow_run:
     workflows:
       - "Continuous Mainnet Paper Trader"

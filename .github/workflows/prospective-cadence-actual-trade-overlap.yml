@@ -13,7 +13,7 @@ on:
       - "Prospective Cadence Prediction Ledger"
     types: [completed]
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "41 * * * *"
   workflow_dispatch:
 
 permissions:

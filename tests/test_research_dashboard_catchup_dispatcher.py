@@ -14,7 +14,7 @@ def test_dashboard_catchup_dispatches_only_when_trusted_source_is_newer() -> Non
     lowered = source.lower()
 
     assert "name: Research Dashboard Catch-up Dispatcher" in source
-    assert 'cron: "*/5 * * * *"' in source
+    assert 'cron: "13 * * * *"' in source
     assert "workflow_dispatch:" in source
     assert "actions: write" in source
     assert "contents: none" in source
