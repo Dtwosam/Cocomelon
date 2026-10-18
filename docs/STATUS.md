@@ -11,9 +11,12 @@ silently discarded. If that backup later became the active source,
 the mux replayed only the retained suffix and still reported the
 handoff as if it had complete observed standby coverage. The missing
 original standby backfill cannot be recreated by a later price tick.
-It is not always a proven venue outage (the former active lane may
-have delivered the rows); it is a **genuine source-custody
-uncertainty** that must be visible and never treated as clean evidence.
+It is not always a proven venue outage: the former active lane may
+have delivered the rows. The mux therefore first checks whether the
+evicted event's **EXACT original key** was already acknowledged by
+the active source. Those exact accepted duplicates do not create a
+false gap. Evictions without such proof are **genuine source-custody
+uncertainty** and must remain visible, never treated as clean evidence.
 
 The mux now retains the **FIRST actually evicted original receive
 timestamp per lane/stream**, along with a negative-only count of
