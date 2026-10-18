@@ -5585,12 +5585,40 @@ class _RecordPump:
             self.cadence_shadow = None
 
 
+# A single real Hyperliquid allMids websocket FRAME expands to hundreds of
+# per-market events with the exact same immutable first-received timestamp.
+# Yielding after *every* expansion permits newer packets from the other lane
+# and DATA_GAP notices to interleave before the rest of that older frame.
+# This is scheduling only: do not sort, clamp, suppress or retime original
+# normalized events. Bounded 8-row windows preserve control-task fairness.
+ALL_MIDS_COOPERATIVE_YIELD_INTERVAL = 8
+
+
+class _StreamYieldBudget:
+    """Per-lane bounded cooperative yielding, not source admission evidence."""
+
+    def __init__(self, *, lane_count: int = 2) -> None:
+        if type(lane_count) is not int or lane_count <= 0:
+            raise ValueError("stream yield budget requires positive lane count")
+        self._pending_mids = [0] * lane_count
+
+    def should_yield(self, lane: int, kind: StreamKind) -> bool:
+        if type(lane) is not int or not 0 <= lane < len(self._pending_mids):
+            raise ValueError("invalid websocket lane for yield budget")
+        if kind is not StreamKind.ALL_MIDS:
+            self._pending_mids[lane] = 0
+            return True
+        self._pending_mids[lane] += 1
+        if self._pending_mids[lane] >= ALL_MIDS_COOPERATIVE_YIELD_INTERVAL:
+            self._pending_mids[lane] = 0
+            return True
+        return False
+
+
 async def _cooperative_stream_yield() -> None:
-    # Stream handlers can consume buffered websocket bursts without an
-    # otherwise-suspending await once record processing begins. Yield after
-    # each completed dispatch, outside the record-pump lock, so control,
-    # freshness, and health tasks get a scheduling opportunity without
-    # changing stream ordering or trading decisions.
+    # Yield after each non-allMids event or bounded allMids burst, OUTSIDE
+    # the record-pump lock. The websocket supervisor also yields between
+    # original frames, so a truncated frame cannot monopolize the loop.
     await asyncio.sleep(0)
 
 
@@ -11546,6 +11574,9 @@ async def run_continuous_paper_session(
             )
             supervisors: list[WebSocketSupervisor] = []
             tasks: list[asyncio.Task[None]] = []
+            # Volatile scheduling only; state never enters source/account
+            # checkpoints and never changes any original event payload.
+            stream_yield_budget = _StreamYieldBudget(lane_count=2)
             for lane in range(2):
                 async def lane_event_sink(
                     event: StreamEvent,
@@ -11590,7 +11621,8 @@ async def run_continuous_paper_session(
                             activity_name,
                             None,
                         )
-                    await _cooperative_stream_yield()
+                    if stream_yield_budget.should_yield(lane, event.kind):
+                        await _cooperative_stream_yield()
 
                 async def lane_gap_sink(
                     gap: DataGap,
