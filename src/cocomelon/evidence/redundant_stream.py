@@ -245,26 +245,45 @@ class RedundantStreamMux:
             and lane not in self._lane_gap_starts[stream_id]
         )
 
-    async def _switch(self, stream_id: str, lane: int) -> None:
+    async def _drain_active_buffer(self, stream_id: str) -> None:
+        """Resume exact standby backfill before any newer same-stream input.
+
+        An interrupted sink inside _switch has already made the standby
+        active, but its first unacknowledged original event remains at the
+        head of the buffer. Retrying an incoming event directly would skip
+        the older backlog. The original head is removed only after its
+        downstream event sink acknowledges the write (or rejects it as an
+        already admitted duplicate). Failure/cancellation is propagated.
+        """
+        lane = self.active_lane(stream_id)
         if not self._lane_is_available(stream_id, lane):
             return
-        current = self.active_lane(stream_id)
-        if current == lane:
-            return
-        self._active[stream_id] = lane
-        self._failover_count += 1
         buffer = self._buffers[(lane, stream_id)]
         while buffer:
-            delivered = await self._emit_candidate(stream_id, buffer[0])
+            original = buffer[0]
+            delivered = await self._emit_candidate(stream_id, original)
             if (
                 delivered
                 and stream_id in self._aggregate_gap_starts
-                and self._receive_ms(buffer[0]) >= (
+                and self._receive_ms(original) >= (
                     self._aggregate_gap_starts[stream_id]
                 )
             ):
                 self._recovery_witness_lanes[stream_id].add(lane)
             buffer.popleft()
+
+    async def _switch(self, stream_id: str, lane: int) -> None:
+        if not self._lane_is_available(stream_id, lane):
+            return
+        current = self.active_lane(stream_id)
+        if current == lane:
+            # This lane might still hold original data from a previously
+            # failed/cancelled transition; never treat it as caught up.
+            await self._drain_active_buffer(stream_id)
+            return
+        self._active[stream_id] = lane
+        self._failover_count += 1
+        await self._drain_active_buffer(stream_id)
 
     def _available_lane(self, stream_id: str, *, excluding: int) -> int | None:
         for lane in range(self._lane_count):
@@ -366,6 +385,10 @@ class RedundantStreamMux:
         # write until the original source-gap receipt succeeds.
         await self._persist_uncommitted_aggregate_gap_open(stream_id)
         await self._persist_uncommitted_aggregate_gap_close(stream_id)
+        # A prior standby switch can have failed mid-buffer after changing
+        # the active lane. Its original records must be retried first,
+        # otherwise the incoming newer event overtakes the old source.
+        await self._drain_active_buffer(stream_id)
         self._session_ready_lanes.add(lane)
         self._observed_lanes[stream_id].add(lane)
         recovered_lane = lane not in self._lane_gap_starts[stream_id]
@@ -400,6 +423,9 @@ class RedundantStreamMux:
         # Includes recovered markers: do not close an unpersisted open.
         await self._persist_uncommitted_aggregate_gap_open(stream_id)
         await self._persist_uncommitted_aggregate_gap_close(stream_id)
+        # An old standby backlog must be replayed before a newer recovery
+        # marker or disconnect can alter this stream's coverage state.
+        await self._drain_active_buffer(stream_id)
         starts = self._lane_gap_starts[stream_id]
 
         if gap.reason == "recovered":
