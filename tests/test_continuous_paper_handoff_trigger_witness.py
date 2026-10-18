@@ -72,7 +72,7 @@ def test_terminal_failure_receipt_reports_cause_without_inventing_success() -> N
     assert "handoff_trigger=" in runtime
     assert "case \"$(cat /tmp/continuous-paper-handoff-trigger)\" in" in runtime
     assert 'printf \'handoff_trigger=%s\\n\' "$handoff_trigger"' in runtime
-    assert '"stop request cause: $handoff_trigger (diagnostic only)"' in runtime
+    assert 'echo "- stop request cause: $handoff_trigger (diagnostic only)"' in runtime
     assert '"original_account_verified=not_inferred"' in runtime or (
         "original_account_verified=not_inferred" in runtime
     )
