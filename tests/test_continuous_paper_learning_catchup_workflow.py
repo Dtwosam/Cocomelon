@@ -11,7 +11,7 @@ def _workflow() -> str:
 def test_continuous_paper_learning_catchup_is_scheduled_and_reactive() -> None:
     source = _workflow()
     assert "Continuous Paper Learning Catch-up" in source
-    assert 'cron: "*/15 * * * *"' in source
+    assert 'cron: "7 * * * *"' in source
     assert "push:" in source
     assert "branches: [main]" in source
     assert '".github/workflows/continuous-paper-learning-catchup.yml"' in source
