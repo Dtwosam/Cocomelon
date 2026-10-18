@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -254,19 +254,25 @@ class FirstSeenRankSnapshotStore:
         self.root = Path(root)
         self.records = self.root / "snapshots"
         self.records.mkdir(parents=True, exist_ok=True)
-        # Constructor already validates every original file and chronology.
-        # Retain only compact, exact binding identities, not full rank
-        # histories, to avoid repeatedly reopening a large research archive
-        # while the independently verified feature/context suffixes load.
-        previous = self.iter_records()
-        self._last = previous[-1] if previous else None
-        self.startup_binding_witnesses = tuple(
-            FirstSeenRankBindingWitness.from_verified_snapshot(snapshot)
-            for snapshot in previous
-        )
+        # Validate the complete original on-disk archive, one canonical
+        # original file at a time. The old tuple-building pass retained
+        # every expensive full history object simultaneously even though
+        # normal PAPER startup needs only the final append highwater and
+        # exact compact identities for two research suffix bindings.
+        self._last: FirstSeenRankSnapshot | None = None
+        witnesses: list[FirstSeenRankBindingWitness] = []
+        for verified in self._iter_verified_records():
+            self._last = verified
+            witnesses.append(
+                FirstSeenRankBindingWitness.from_verified_snapshot(verified)
+            )
+        self.startup_binding_witnesses = tuple(witnesses)
 
-    def iter_records(self) -> tuple[FirstSeenRankSnapshot, ...]:
-        result: list[FirstSeenRankSnapshot] = []
+    def _iter_verified_records(self) -> Iterator[FirstSeenRankSnapshot]:
+        # Every yield follows FULL original source byte, schema, snapshot
+        # digest and chronological validation. This is NOT a cheaper
+        # source-admission gate. Independent audits still call iter_records()
+        # and must explicitly reread the original archive.
         previous_ms = -1
         previous_capture = -1
         for path in sorted(self.records.glob("*.json")):
@@ -286,10 +292,13 @@ class FirstSeenRankSnapshotStore:
                 raise ShortRankFirstSeenError(
                     "first-seen rank archive ordering or canonical file drift"
                 )
-            result.append(parsed)
             previous_ms = parsed.observed_at_ms
             previous_capture = parsed.captured_at_ms
-        return tuple(result)
+            yield parsed
+
+    def iter_records(self) -> tuple[FirstSeenRankSnapshot, ...]:
+        """Independent full original archive audit, including all rank rows."""
+        return tuple(self._iter_verified_records())
 
     def append(self, snapshot: FirstSeenRankSnapshot) -> bool:
         path = self.records / f"{snapshot.observed_at_ms:016d}.json"
