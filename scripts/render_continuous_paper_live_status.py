@@ -36,6 +36,37 @@ def _reason_summary(raw: object) -> str:
     return ", ".join(f"{reason}={count}" for reason, count in counts[:8])
 
 
+
+def _startup_profile_line(raw: object) -> str:
+    """Bounded original startup timings, not account or source certification."""
+    if not isinstance(raw, dict):
+        return "- PAPER startup pre-monitor / slowest components: \`unavailable\`"
+    total = raw.get("pre_monitor_total")
+    total_text = (
+        f"{total}ms"
+        if type(total) is int and 0 <= total <= 36_000_000
+        else "unknown"
+    )
+    allowed = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_")
+    components: list[tuple[str, int]] = []
+    for name, elapsed in raw.items():
+        if (
+            type(name) is str
+            and 0 < len(name) <= 64
+            and name != "pre_monitor_total"
+            and set(name) <= allowed
+            and type(elapsed) is int
+            and 0 <= elapsed <= 36_000_000
+        ):
+            components.append((name, elapsed))
+    components.sort(key=lambda item: (-item[1], item[0]))
+    top = ", ".join(f"{name}={ms}ms" for name, ms in components[:5])
+    return (
+        "- PAPER startup pre-monitor / slowest components (non-PnL): "
+        f"\`{total_text} / {top or 'none'}\`"
+    )
+
+
 def _stale_book_age_lines(raw: object) -> list[str]:
     if not isinstance(raw, dict):
         return [
@@ -10508,6 +10539,7 @@ def _render_operational_live_status(
                 f"{payload.get('checkpoint_snapshot_slowest_component')} / "
                 f"{payload.get('checkpoint_snapshot_slowest_component_ms', 0)}ms"
             ),
+            _startup_profile_line(payload.get("startup_component_ms")), 
             (
                 "- event-loop phase / max lag / slow>=1s / samples: "
                 f"{payload.get('event_loop_phase', 'unknown')} / "
