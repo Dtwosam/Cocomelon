@@ -934,7 +934,9 @@ class _ContinuousOpeningOpportunitySink:
         path_store: ContinuousPaperOpeningOpportunityPathStore,
         exit_book_store: ContinuousPaperOpeningOpportunityExitBookStore,
         replacement_funding_store: ContinuousPaperReplacementFundingStore,
-        capacity_release_book_capture: CapacityReleaseBookCapture,
+        capacity_release_book_capture: (
+            CapacityReleaseBookCapture | AsyncCapacityReleaseBookCapture
+        ),
         rank_tracker: LatestCoarseRankTracker,
         *,
         inventory_store: OpportunityInventoryWitnessStore | None = None,
