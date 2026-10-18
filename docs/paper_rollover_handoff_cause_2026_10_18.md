@@ -14,6 +14,14 @@ The decoded immutable tiny receipt shows:
 - heartbeat reader and tee each returned zero, with 427 heartbeat lines;
 - account parity, original source and after-cost economics **not inferred**.
 
+The archived text also exposed an independent format bug: Bash used
+`printf` format strings containing literal double backslashes before `n`,
+so the receipt contained the printable sequence `\\n` between fields rather
+than one newline per key/value row. **Old evidence is not rewritten.** The
+new failure writer now uses real newline-delimited rows; a shell execution
+test rejects another malformed receipt and verifies that negative economic
+and LIVE authority flags remain exact and false.
+
 The ordinary worker's unconditional 4h15m session-overrun watchdog and
 the **opt-in-only** main-push upgrade path both call the *same*
 `request_runtime_handoff` shell function and touch the **same**
