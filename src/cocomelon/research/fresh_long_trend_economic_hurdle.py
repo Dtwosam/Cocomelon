@@ -116,13 +116,13 @@ def fresh_long_trend_economic_hurdle(
         unrealized_delta = (
             candidate["unrealized_pnl_usd"] - baseline["unrealized_pnl_usd"]
         )
-        if abs(delta - (gross_delta + fee_savings + funding_delta + unrealized_delta)) > MAX_CASH_RESIDUAL:
+        components = gross_delta + fee_savings + funding_delta + unrealized_delta
+        if abs(delta - components) > MAX_CASH_RESIDUAL:
             raise V3EconomicHurdleError("paired marked PnL decomposition differs")
-        if _amount(
+        audited_delta = _amount(
             audit, "candidate_minus_baseline_marked_after_cost_usd", "audit"
-        ) - delta > MAX_CASH_RESIDUAL or delta - _amount(
-            audit, "candidate_minus_baseline_marked_after_cost_usd", "audit"
-        ) > MAX_CASH_RESIDUAL:
+        )
+        if abs(audited_delta - delta) > MAX_CASH_RESIDUAL:
             raise V3EconomicHurdleError("audited candidate advantage mismatch")
         if (
             audit.get("candidate_marked_account_positive") is not (candidate_net > ZERO)
