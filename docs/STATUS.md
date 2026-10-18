@@ -2,6 +2,46 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 18 — fail-closed retry of interrupted mux standby backfill
+
+New authenticated worker #39158845657 had picked up `f65fcfdc` by
+21:09:53 UTC; whole-account equity **$9,805.12** and net after-cost
+PnL **−$194.88** on 294 completed trades, three open. Original v3
+source is still FAILED, dropping 1,577,263 offered rows, and no after-cost
+positive strategy edge or clean 72h first-received source is qualified.
+Measured startup decreased from earlier 1,682,506ms to 889,422ms,
+still 866,045ms in original rank source restoration. These are two
+distinct worker observations, not a controlled causal speedup study.
+
+A separate original-source mux failure was found in standby failover.
+`RedundantStreamMux._switch()` changed the stream's active lane *before*
+flushing its standby queue. If the event recorder rejected/cancelled a
+buffered original market event, the new lane stayed active with that
+event and successors still queued. Its next direct `on_event` callback
+could emit a newer event immediately, overtaking the failed original
+buffer. A subsequent lane recovery/disconnect gap could similarly mutate
+coverage before the old buffered source had been acknowledged.
+
+The proposed repair makes the existing per-stream active buffer drain
+resumable under the existing ingress lock and runs it **before every
+later same-stream event or gap**, without clearing a rejected source
+event. A repeated failure again propagates and blocks newer events/gaps;
+on actual acceptance the exact old original rows are emitted in their
+original order, once each, before the newer source input. Already
+accepted duplicates remain governed by the original source dedup rules.
+Original source receive clocks, venue exchange clocks, payloads,
+gap boundaries and original event ordering are never rewritten.
+Five adversarial tests inject both OSError and task cancellation,
+verify repeated failures never overtake records or gaps and confirm
+normal failover retains its original byte-identical event sequence.
+
+This fixes a concrete future receipt-ordering bug only; it neither
+repairs prior failed source history nor guarantees monotonic cross-stream
+clocks or selected-market L2 coverage. Trading signals, account,
+positions, fees/funding, stop/risk gates and LIVE-disabled operation
+are unchanged. The independently verified 72h paired PAPER trial
+remains blocked and net positive performance unproven.
+
 ## October 18 — freeze original aggregate mux recovery CLOSE on write failure
 
 The authenticated old worker still has a disqualified original v3 source,
