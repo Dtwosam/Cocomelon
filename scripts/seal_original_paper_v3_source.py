@@ -7,6 +7,7 @@ Never manufacture fills, rank observations or missing market data.
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 from collections.abc import Sequence
@@ -27,8 +28,12 @@ from cocomelon.research.fresh_long_trend_forward_pair import (
     FORWARD_NOT_BEFORE_MS,
 )
 from cocomelon.research.original_paper_v3_capture import (
+    COMPRESSED_JOURNAL_FORMAT,
+    COMPRESSED_RECORD_FILE,
+    MAX_DECODED_SOURCE_BYTES,
     MAX_SOURCE_BYTES,
     MAX_SOURCE_ROWS,
+    PLAIN_JOURNAL_FORMAT,
     RECORD_FILE,
     TERMINAL_FILE,
 )
@@ -133,7 +138,6 @@ def seal_original_paper_v3_source(
     if upload_root.exists() or upload_root.is_symlink():
         raise OriginalV3CaptureSealError("new source upload root already exists")
     terminal_path = capture_root / TERMINAL_FILE
-    stream_path = capture_root / RECORD_FILE
     if (
         capture_root.is_symlink() or not terminal_path.is_file()
     ):
@@ -163,8 +167,36 @@ def seal_original_paper_v3_source(
         )
     ):
         raise OriginalV3CaptureSealError("original capture lost rows or changed identity")
-    if not stream_path.is_file() or stream_path.is_symlink():
-        raise OriginalV3CaptureSealError("original captured source journal missing")
+    format_name = terminal.get(
+        "original_received_journal_format", PLAIN_JOURNAL_FORMAT
+    )
+    if format_name not in (PLAIN_JOURNAL_FORMAT, COMPRESSED_JOURNAL_FORMAT):
+        raise OriginalV3CaptureSealError("unknown original journal representation")
+    compressed = format_name == COMPRESSED_JOURNAL_FORMAT
+    stream_path = capture_root / (
+        COMPRESSED_RECORD_FILE if compressed else RECORD_FILE
+    )
+    unexpected = capture_root / (
+        RECORD_FILE if compressed else COMPRESSED_RECORD_FILE
+    )
+    if (
+        not stream_path.is_file() or stream_path.is_symlink()
+        or unexpected.exists() or unexpected.is_symlink()
+    ):
+        raise OriginalV3CaptureSealError(
+            "original captured source journal missing or ambiguous"
+        )
+    physical_bytes = stream_path.stat().st_size
+    if (
+        physical_bytes > MAX_SOURCE_BYTES
+        or (
+            compressed
+            and physical_bytes != terminal.get("written_source_journal_bytes")
+        )
+    ):
+        raise OriginalV3CaptureSealError(
+            "physical original journal length differs from signed receipt"
+        )
     predecessor_id = terminal.get("declared_predecessor_run_id")
     predecessor_attempt = terminal.get("declared_predecessor_run_attempt")
     if (
@@ -234,14 +266,25 @@ def seal_original_paper_v3_source(
     src.mkdir(parents=True, exist_ok=False)
     per_partition: dict[str, tuple[int, int, int]] = {}
     try:
-        with stream_path.open("rb") as original:
+        # gzip.open handles concatenated independently fsynced gzip members.
+        # Decode to the original exact newline-delimited canonical row bytes,
+        # then verify the writer's UNCOMPRESSED ordered SHA256.
+        with (
+            gzip.open(stream_path, "rb")
+            if compressed else stream_path.open("rb")
+        ) as original:
             for original_line in original:
                 if not original_line.endswith(b"\n"):
                     raise OriginalV3CaptureSealError("torn original received row")
                 source_bytes += len(original_line)
                 original_journal_sha256.update(original_line)
-                if source_bytes > MAX_SOURCE_BYTES:
-                    raise OriginalV3CaptureSealError("original source exceeds ZIP budget")
+                source_limit = (
+                    MAX_DECODED_SOURCE_BYTES if compressed else MAX_SOURCE_BYTES
+                )
+                if source_bytes > source_limit:
+                    raise OriginalV3CaptureSealError(
+                        "original decoded source exceeded recorded safety bound"
+                    )
                 try:
                     row = _source_row(json.loads(original_line))
                 except (UnicodeError, ValueError, TypeError) as exc:
@@ -291,7 +334,14 @@ def seal_original_paper_v3_source(
         if (
             first is None or last is None
             or original_rows != terminal["written_count"]
-            or source_bytes != terminal.get("written_source_journal_bytes")
+            or physical_bytes != terminal.get("written_source_journal_bytes")
+            or (
+                source_bytes
+                != terminal.get(
+                    "uncompressed_original_journal_bytes",
+                    physical_bytes if not compressed else None,
+                )
+            )
             or last != terminal.get("last_written_available_at_ms")
         ):
             raise OriginalV3CaptureSealError(

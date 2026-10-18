@@ -9579,6 +9579,17 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{raw.get('offered_not_written_or_dropped_count', 'unavailable')}"
         ),
         (
+            "- original journal at-rest representation / uncompressed original bytes: "
+            f"{raw.get('original_received_journal_format', 'legacy-unreported')} / "
+            f"{raw.get('uncompressed_original_journal_bytes', 'unavailable')}"
+        ),
+        (
+            "- 4h conditional stored journal bytes / 480MiB original cap "
+            "(written-sample projection, NOT a source certificate): "
+            f"{raw.get('estimated_4h_worker_stored_bytes_from_written_sample', 'unavailable')} / "
+            f"{raw.get('estimated_4h_worker_stored_bytes_exceed_fixed_limit', 'unavailable')}"
+        ),
+        (
             "- persisted original journal bytes / cap / remaining: "
             f"{raw.get('written_source_journal_bytes', 'unavailable')} / "
             f"{raw.get('source_journal_byte_limit', 'unavailable')} / "
