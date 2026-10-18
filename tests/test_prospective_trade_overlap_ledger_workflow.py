@@ -40,7 +40,7 @@ def test_overlap_workflow_waits_for_compact_source_without_backfill() -> None:
     assert "No fuzzy or historical backfill match is attempted" in source
     assert "journal.sqlite3" in source
     assert "strategy_decision_id == prediction decision_id" in source
-    assert 'cron: "*/15 * * * *"' in source
+    assert 'cron: "41 * * * *"' in source
     assert "cancel-in-progress: false" in source
 
 
