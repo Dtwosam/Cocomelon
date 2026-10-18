@@ -13,7 +13,11 @@ import pytest
 from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import (
-    EvidenceClass, ReplayManifest, ReplayRecord, SourceRecordKind, SourceSegment,
+    EvidenceClass,
+    ReplayManifest,
+    ReplayRecord,
+    SourceRecordKind,
+    SourceSegment,
 )
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.research import fresh_long_trend_multiworker_pair as study
