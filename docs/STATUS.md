@@ -2,6 +2,43 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 18 — checkpoint/rotation ALL_MIDS closes wait for complete original frame
+
+The redundant mux's aggregate `allMids` recovery was corrected in
+PR #1359 to run after all original children of the actual websocket
+frame. However, two **separate** named source-gap observers inside
+the PAPER event sink still closed restored-checkpoint and
+in-session-rotation `allMids` gaps immediately after the FIRST
+accepted per-market child. A full equal-receive-time original frame
+could still become BTC@T, named recovered@later observed time, ETH@T,
+a real source clock regression despite the mux fix.
+
+This fix preserves the exact original `allMids` event, first-received
+timestamp and accepted-to-PAPER observation time in a **bounded,
+volatile one-witness-per-namespace** dictionary, populated only after
+`pump.process` acknowledges the ORIGINAL normalized source event.
+Neither observer may write a restored/rotation named gap at per-child
+receipt. `WebSocketSupervisor`'s existing complete-frame callback
+calls the mux, whose existing ingress lock remains held across its
+own source-recovery write and a new optional trusted post-frame
+callback. Only a matching frame containing the exact, actually
+accepted event key can then pass that event to either named observer
+and fsync its witness/CLOSE after ALL original frame children.
+Failed/cancelled children cannot report frame success; cross-lane
+standby/raw frames not accepted downstream cannot heal named gaps.
+Unchanged already-merged PR #1361 exact first-closure retry debt
+still blocks any later source row/gap after uncertain fsync.
+
+Synthetic deterministic tests exercise original 2-child ordering,
+both checkpoint and rotation closure after mux recovery, rejected
+and cancelled original child, restored gap nonadmission, and an
+in-progress frame callback blocking newer lane events under the same
+mux source serialization lock. No source ordering manipulation,
+changed event/gap timestamp, synthetic L2 coverage, altered PAPER
+positions/stops/fees/funding/risk or LIVE admission is introduced.
+The existing original source capture is FAILED and no positive,
+independently validated 72-hour after-cost paired PAPER edge exists.
+
 ## October 18 — freeze exact restored/rotated named-gap recovery on sink failure
 
 The current authenticated PAPER worker #39158845657 at 22:18 UTC
