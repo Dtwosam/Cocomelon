@@ -576,7 +576,10 @@ class ContinuousPaperOpeningOpportunityPathStore:
             # synchronous path. Do not read a later price or alter any
             # original opportunity/mark timestamp while yielding.
             market_paths = self._active_market_paths_snapshot(market)
-            completed = 0
+            # Validate EVERY original candidate before committing ANY path.
+            # The unchunked path was all-or-nothing on malformed marks;
+            # preserve that property despite cooperative yields.
+            staged: list[ContinuousPaperOpeningOpportunityPath] = []
             for start in range(0, len(market_paths), COOPERATIVE_MARK_BATCH_SIZE):
                 # A monolithic offloaded transformation may still monopolize
                 # the GIL across a large active market snapshot and stall
@@ -590,15 +593,15 @@ class ContinuousPaperOpeningOpportunityPathStore:
                     mark_px=mark_px,
                     source=source,
                 )
-                for updated in updates:
-                    await asyncio.to_thread(self._write, updated)
-                    self._index_path(updated)
-                    completed += 1
-                    await asyncio.sleep(0)
+                staged.extend(updates)
                 # Yield also when all paths in a batch are inactive,
                 # already observed, or outside their original horizon.
                 await asyncio.sleep(0)
-            return completed
+            for updated in staged:
+                await asyncio.to_thread(self._write, updated)
+                self._index_path(updated)
+                await asyncio.sleep(0)
+            return len(staged)
 
     @property
     def record_count(self) -> int:
