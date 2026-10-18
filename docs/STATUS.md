@@ -2,6 +2,36 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 18 — eliminate redundant full reads of enormous original SHORT rank archives
+
+The actual preceding worker #39120486505 uploaded a **780,681,689-byte**
+first-seen rank artifact; a later worker spent about **27.8 minutes**
+restoring optional research state. The precise offender awaits a fresh
+new-worker measurement from #1352, but startup code demonstrably did
+*three complete canonical rank-file parses* and *two complete input
+and context archive parses*: one pass per constructor and additional
+separate passes to cross-bind suffixes.
+
+The new research-only startup path preserves **one complete canonical
+file/digest/ordering parse per archive** in the original constructors.
+After fully verifying each rank file, the rank store retains only compact
+immutable original timestamp, digest and feature-identity witnesses. The
+full-feature and market-context constructors now cross-bind their
+entire verified original suffixes against those witnesses during their
+initial full validation; missing/backdated/conflicting rows still reject
+with the same source-specific errors. The compact startup witnesses are
+discarded after both suffix checks and never reused as a certification
+shortcut. Independent auditors and `iter_records`/`iter_verified`
+continue to reopen and validate full source bytes. No prior failed or
+missing original source is made acceptable.
+
+This is an implementation with adversarial unit coverage, not yet a
+measured wall-clock or source-integrity improvement. It changes NO PAPER
+signals, sizing, stops, fee/funding accounting, actual first-received
+market data, source gaps, initial cash, exact account handoffs or LIVE
+orders. Frozen 72h matched new-account absolute-after-cost profitability
+and independent original venue/source custody remain unproven.
+
 ## October 18 — measure the observed 27.8-minute research restore before altering PAPER evidence
 
 Authenticated PAPER worker #39138965707 reported **1,682,506ms**

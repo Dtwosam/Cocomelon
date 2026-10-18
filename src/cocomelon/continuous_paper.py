@@ -9691,30 +9691,9 @@ async def run_continuous_paper_session(
     elif rank_snapshot_store is not None and rank_snapshot_capture_error is None:
         try:
             rank_input_store = OriginalRankFeatureInputBatchStore(
-                root / "prospective-short-rank-full-feature-inputs"
+                root / "prospective-short-rank-full-feature-inputs",
+                startup_rank_witnesses=rank_snapshot_store.startup_binding_witnesses,
             )
-            existing_inputs = rank_input_store.iter_verified()
-            if existing_inputs:
-                existing_ranks = rank_snapshot_store.iter_records()
-                first_index = next(
-                    (
-                        i for i, item in enumerate(existing_ranks)
-                        if item.observed_at_ms == existing_inputs[0].observed_at_ms
-                    ),
-                    None,
-                )
-                if (
-                    first_index is None
-                    or len(existing_ranks) - first_index != len(existing_inputs)
-                ):
-                    raise OriginalRankInputBatchError(
-                        "original rank feature input archive lost a saved rank"
-                    )
-                for rank_row, input_batch in zip(
-                    existing_ranks[first_index:], existing_inputs,
-                    strict=True,
-                ):
-                    input_batch.bind_to(rank_row)
         except Exception as feature_restore_error:
             rank_input_capture_error = (
                 f"{type(feature_restore_error).__name__}: "
@@ -9756,33 +9735,9 @@ async def run_continuous_paper_session(
     elif rank_snapshot_store is not None and rank_snapshot_capture_error is None:
         try:
             rank_context_store = OriginalRankEligibilityContextStore(
-                root / "prospective-short-rank-market-context"
+                root / "prospective-short-rank-market-context",
+                startup_rank_witnesses=rank_snapshot_store.startup_binding_witnesses,
             )
-            recorded_contexts = rank_context_store.iter_verified()
-            if recorded_contexts:
-                original_ranks = rank_snapshot_store.iter_records()
-                first_context = next(
-                    (
-                        i for i, item in enumerate(original_ranks)
-                        if item.observed_at_ms
-                        == recorded_contexts[0].observed_at_ms
-                    ),
-                    None,
-                )
-                if (
-                    first_context is None
-                    or len(original_ranks) - first_context
-                    != len(recorded_contexts)
-                ):
-                    raise OriginalRankEligibilityContextError(
-                        "prospective original rank context suffix has a missing batch"
-                    )
-                for rank_row, ctx_row in zip(
-                    original_ranks[first_context:],
-                    recorded_contexts,
-                    strict=True,
-                ):
-                    ctx_row.bind_to(rank_row)
         except Exception as context_restore_error:
             rank_context_capture_error = (
                 f"{type(context_restore_error).__name__}: "
@@ -9801,6 +9756,11 @@ async def run_continuous_paper_session(
             except OSError:
                 pass
 
+    # Drop compact startup-only witnesses after both research source suffixes
+    # have been checked. Ongoing append and independent archival audits retain
+    # their original full source-file validation.
+    if rank_snapshot_store is not None:
+        rank_snapshot_store.startup_binding_witnesses = ()
     record_startup_component("original_rank_source_restore", rank_source_started)
 
     def capture_rank_first_seen(

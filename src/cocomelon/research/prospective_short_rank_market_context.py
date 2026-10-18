@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -24,6 +24,7 @@ from cocomelon.domain.market import (
 )
 from cocomelon.features.broad import calculate_broad_features
 from cocomelon.research.prospective_short_rank_first_seen import (
+    FirstSeenRankBindingWitness,
     FirstSeenRankSnapshot,
 )
 from cocomelon.research.prospective_short_rank_full_features import (
@@ -204,7 +205,9 @@ class OriginalRankEligibilityContextBatch:
                     "rank context market identity, receive clock or source invalid"
                 )
 
-    def bind_to(self, rank: FirstSeenRankSnapshot) -> None:
+    def bind_to(
+        self, rank: FirstSeenRankSnapshot | FirstSeenRankBindingWitness,
+    ) -> None:
         if (
             self.observed_at_ms != rank.observed_at_ms
             or self.captured_at_ms != rank.captured_at_ms
@@ -285,13 +288,41 @@ class OriginalRankEligibilityContextBatch:
 class OriginalRankEligibilityContextStore:
     """Append-only original context suffix; never fabricate old rank contexts."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self, root: Path, *,
+        startup_rank_witnesses: Sequence[FirstSeenRankBindingWitness] | None = None,
+    ) -> None:
         self.root = Path(root)
         self.records = self.root / "batches"
         if self.root.is_symlink() or self.records.is_symlink():
             raise OriginalRankEligibilityContextError("rank context path is symlinked")
         self.records.mkdir(parents=True, exist_ok=True)
         prior = self.iter_verified()
+        # The complete local archive was just reopened and each original
+        # canonical byte, digest and ordering constraint was verified. Bind
+        # its entire suffix to a compact witness from the separately
+        # verified original rank constructor WITHOUT a second full parse.
+        # This is only startup continuity, never independent authentication.
+        if startup_rank_witnesses is not None and prior:
+            start_index = next(
+                (
+                    i for i, row in enumerate(startup_rank_witnesses)
+                    if row.observed_at_ms == prior[0].observed_at_ms
+                ),
+                None,
+            )
+            if (
+                start_index is None
+                or len(startup_rank_witnesses) - start_index != len(prior)
+            ):
+                raise OriginalRankEligibilityContextError(
+                    "prospective original rank context suffix has a missing batch"
+                )
+            for rank, batch in zip(
+                startup_rank_witnesses[start_index:], prior,
+                strict=True,
+            ):
+                batch.bind_to(rank)
         self._last = prior[-1] if prior else None
 
     def iter_verified(self) -> tuple[OriginalRankEligibilityContextBatch, ...]:

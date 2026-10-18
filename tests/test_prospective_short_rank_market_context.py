@@ -549,3 +549,119 @@ def test_original_completed_run_audit_downloads_exact_third_source() -> None:
     assert "scripts.audit_paper_short_rank_market_context" in workflow
     assert "original-first-seen-short-rank-context-audit-" in workflow
     assert "if-no-files-found: warn" in workflow
+
+
+def test_original_rank_restore_binds_all_three_full_archives_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No redundant 780MB source passes; independent disk reads still validate."""
+    rank, full, context, _ = _sources()
+    root = tmp_path / "rank"
+    feat_root = tmp_path / "features"
+    ctx_root = tmp_path / "contexts"
+    assert FirstSeenRankSnapshotStore(root).append(rank)
+    assert OriginalRankFeatureInputBatchStore(feat_root).append(full)
+    assert OriginalRankEligibilityContextStore(ctx_root).append(context)
+
+    counts = {"rank": 0, "features": 0, "context": 0}
+    for cls, name, method in (
+        (FirstSeenRankSnapshotStore, "rank", "iter_records"),
+        (OriginalRankFeatureInputBatchStore, "features", "iter_verified"),
+        (OriginalRankEligibilityContextStore, "context", "iter_verified"),
+    ):
+        original = getattr(cls, method)
+
+        def counted(self, _original=original, _name=name):
+            counts[_name] += 1
+            return _original(self)
+
+        monkeypatch.setattr(cls, method, counted)
+
+    restored_rank = FirstSeenRankSnapshotStore(root)
+    assert len(restored_rank.startup_binding_witnesses) == 1
+    restored_features = OriginalRankFeatureInputBatchStore(
+        feat_root, startup_rank_witnesses=restored_rank.startup_binding_witnesses,
+    )
+    restored_context = OriginalRankEligibilityContextStore(
+        ctx_root, startup_rank_witnesses=restored_rank.startup_binding_witnesses,
+    )
+    assert counts == {"rank": 1, "features": 1, "context": 1}
+    assert restored_features._last == full
+    assert restored_context._last == context
+    # Only startup's compact identity is consumed; full on-disk audits
+    # must still independently parse every canonical source record.
+    assert restored_rank.iter_records() == (rank,)
+    assert counts["rank"] == 2
+
+
+def test_original_rank_startup_rejects_cross_source_drift_without_second_pass(
+    tmp_path: Path,
+) -> None:
+    rank, full, context, _ = _sources()
+    ranks = FirstSeenRankSnapshotStore(tmp_path / "ranks")
+    ranks.append(rank)
+    rank_witnesses = FirstSeenRankSnapshotStore(
+        tmp_path / "ranks"
+    ).startup_binding_witnesses
+
+    mutated_input = replace(full, rank_snapshot_digest="f" * 64)
+    mutated_context = replace(context, rank_snapshot_digest="e" * 64)
+    feature_root = tmp_path / "full-feature-inputs"
+    context_root = tmp_path / "original-context"
+    OriginalRankFeatureInputBatchStore(feature_root).append(mutated_input)
+    OriginalRankEligibilityContextStore(context_root).append(mutated_context)
+
+    with pytest.raises(OriginalRankInputBatchError, match="disagree"):
+        OriginalRankFeatureInputBatchStore(
+            feature_root, startup_rank_witnesses=rank_witnesses,
+        )
+    with pytest.raises(OriginalRankEligibilityContextError, match="disagree"):
+        OriginalRankEligibilityContextStore(
+            context_root, startup_rank_witnesses=rank_witnesses,
+        )
+    # The same historically stored self-consistent source rows remain
+    # readable only as ineligible research evidence, never re-bound.
+    assert OriginalRankFeatureInputBatchStore(feature_root)._last == mutated_input
+    assert OriginalRankEligibilityContextStore(context_root)._last == mutated_context
+
+
+def test_original_rank_missing_suffix_still_fails_closed_with_compact_witnesses(
+    tmp_path: Path,
+) -> None:
+    rank, full, context, _ = _sources()
+    later = replace(
+        rank, observed_at_ms=rank.observed_at_ms + 1_000,
+        captured_at_ms=rank.captured_at_ms + 1_000,
+    )
+    source = FirstSeenRankSnapshotStore(tmp_path / "rank")
+    source.append(rank)
+    source.append(later)
+    witnesses = FirstSeenRankSnapshotStore(
+        tmp_path / "rank"
+    ).startup_binding_witnesses
+    feature_root = tmp_path / "features"
+    context_root = tmp_path / "contexts"
+    OriginalRankFeatureInputBatchStore(feature_root).append(full)
+    OriginalRankEligibilityContextStore(context_root).append(context)
+
+    with pytest.raises(OriginalRankInputBatchError, match="lost a saved rank"):
+        OriginalRankFeatureInputBatchStore(
+            feature_root, startup_rank_witnesses=witnesses,
+        )
+    with pytest.raises(OriginalRankEligibilityContextError, match="missing batch"):
+        OriginalRankEligibilityContextStore(
+            context_root, startup_rank_witnesses=witnesses,
+        )
+
+
+def test_original_paper_runtime_uses_verified_constructor_suffix_only() -> None:
+    worker = (
+        Path(__file__).resolve().parents[1] / "src/cocomelon/continuous_paper.py"
+    ).read_text(encoding="utf-8")
+    assert worker.count(
+        "startup_rank_witnesses=rank_snapshot_store.startup_binding_witnesses"
+    ) == 2
+    assert "rank_snapshot_store.iter_records()" not in worker
+    assert "rank_input_store.iter_verified()" not in worker
+    assert "rank_context_store.iter_verified()" not in worker
+    assert 'record_startup_component("original_rank_source_restore"' in worker
