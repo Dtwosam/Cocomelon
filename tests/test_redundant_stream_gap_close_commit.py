@@ -140,8 +140,12 @@ def test_pending_aggregate_close_retries_before_new_gap_boundary() -> None:
         assert mux._lane_gap_starts[STREAM] == {1: 2_100}
         fail[0] = False
         await mux.on_gap(0, DataGap(STREAM, 4_000, None, "disconnect"))
-        assert attempts[-1] == first_close
+        assert attempts[-2] == first_close
+        assert attempts[-1] == DataGap(
+            STREAM, 4_000, None, "redundant_disconnect",
+        )
         assert STREAM not in mux._uncommitted_aggregate_gap_closes
+        assert mux._aggregate_gap_starts[STREAM] == 4_000
         assert accepted == [_trade(1, 100).event_key, _trade(2, 500).event_key]
 
     asyncio.run(run())
