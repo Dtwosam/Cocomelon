@@ -40,7 +40,7 @@ def test_yields_are_bounded_and_independently_accounted_per_lane() -> None:
     assert ALL_MIDS_COOPERATIVE_YIELD_INTERVAL == 8
     budget = _StreamYieldBudget(lane_count=2)
     for lane in range(2):
-        for i in range(7):
+        for _ in range(7):
             assert budget.should_yield(lane, StreamKind.ALL_MIDS) is False
     assert budget.should_yield(0, StreamKind.ALL_MIDS) is True
     # Lane 1 has independent unfinished 7-event budget.
