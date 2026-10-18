@@ -297,6 +297,12 @@ def test_fresh_source_replay_constructs_new_independent_account_pair(
     assert receipt["candidate"]["funding_cash_usd"] == "0"
     assert receipt["candidate_minus_baseline_marked_after_cost_usd"] == "0"
     assert receipt["72h_forward_profitability_certified"] is False
+    hurdle = response["locally_reconciled_after_cost_profitability_hurdle"]
+    assert hurdle["baseline"]["marked_after_all_costs_usd"] == "0"
+    assert hurdle["candidate"]["marked_after_all_costs_usd"] == "0"
+    assert hurdle["candidate_minus_baseline_after_cost_usd"] == "0"
+    assert hurdle["positive_absolute_baseline_and_candidate_and_delta"] is False
+    assert hurdle["whole_account_positive_forward_edge_certified"] is False
     assert receipt["promotion_authority"] is False
     assert response["promotion_authority"] is False
     assert response["execution_authority"] is False
