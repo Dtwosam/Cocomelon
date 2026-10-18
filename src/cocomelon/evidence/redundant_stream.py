@@ -65,6 +65,15 @@ class RedundantStreamMux:
         self._all_mids_pending_witnesses: dict[tuple[int, str], int] = {}
         self._active: dict[str, int] = {}
         self._buffers: dict[tuple[int, str], deque[StreamEvent]] = defaultdict(deque)
+        # The standby buffer is bounded, but discarding its oldest
+        # originals makes a later failover's backfill incomplete.
+        # Preserve the FIRST actual dropped receive clock per lane/stream
+        # and publish negative-only coverage uncertainty if promoted.
+        self._standby_buffer_first_drop_ms: dict[tuple[int, str], int] = {}
+        self._uncommitted_standby_overflow_gaps: dict[
+            tuple[int, str], DataGap
+        ] = {}
+        self._standby_overflow_dropped_rows = 0
         self._lane_gap_starts: dict[str, dict[int, int]] = defaultdict(dict)
         self._observed_lanes: dict[str, set[int]] = defaultdict(set)
         self._session_ready_lanes: set[int] = set()
@@ -110,6 +119,13 @@ class RedundantStreamMux:
             ),
             "uncommitted_aggregate_gap_close_count": len(
                 self._uncommitted_aggregate_gap_closes
+            ),
+            "standby_overflow_dropped_rows": self._standby_overflow_dropped_rows,
+            "standby_overflow_affected_streams": len(
+                self._standby_buffer_first_drop_ms
+            ),
+            "uncommitted_standby_overflow_gap_count": len(
+                self._uncommitted_standby_overflow_gaps
             ),
             "contended_calls": self._ingress_contended_calls,
             "active_waiters": self._ingress_active_waiters,
@@ -242,10 +258,15 @@ class RedundantStreamMux:
         return True
 
     def _buffer(self, lane: int, stream_id: str, event: StreamEvent) -> None:
-        buffer = self._buffers[(lane, stream_id)]
+        key = (lane, stream_id)
+        buffer = self._buffers[key]
         buffer.append(event)
         while len(buffer) > self._buffer_size:
-            buffer.popleft()
+            dropped = buffer.popleft()
+            self._standby_overflow_dropped_rows += 1
+            self._standby_buffer_first_drop_ms.setdefault(
+                key, self._receive_ms(dropped),
+            )
 
     def _lane_is_available(self, stream_id: str, lane: int) -> bool:
         return (
@@ -266,7 +287,29 @@ class RedundantStreamMux:
         lane = self.active_lane(stream_id)
         if not self._lane_is_available(stream_id, lane):
             return
-        buffer = self._buffers[(lane, stream_id)]
+        key = (lane, stream_id)
+        buffer = self._buffers[key]
+        first_dropped = self._standby_buffer_first_drop_ms.get(key)
+        if first_dropped is not None and key not in (
+            self._uncommitted_standby_overflow_gaps
+        ):
+            if not buffer:
+                raise RuntimeError(
+                    "original standby backfill lost its retained boundary"
+                )
+            # The actual first retained event is an observed end boundary,
+            # NOT evidence that any earlier dropped standby rows exist.
+            # Save immutable negative source debt BEFORE any sink awaits;
+            # future retries may not shift its first source timestamp.
+            first_retained = self._receive_ms(buffer[0])
+            self._uncommitted_standby_overflow_gaps[key] = DataGap(
+                stream_id=stream_id,
+                started_ms=first_dropped,
+                ended_ms=(
+                    first_retained if first_retained >= first_dropped else None
+                ),
+                reason="standby_backfill_overflow",
+            )
         while buffer:
             original = buffer[0]
             delivered = await self._emit_candidate(stream_id, original)
@@ -275,6 +318,15 @@ class RedundantStreamMux:
                     stream_id, lane, original,
                 )
             buffer.popleft()
+        pending_gap = self._uncommitted_standby_overflow_gaps.get(key)
+        if pending_gap is not None:
+            # Emit after acknowledged old buffered children, before ANY
+            # newer market row/gap. This is a conservative original
+            # standby-coverage uncertainty receipt, not an invented
+            # exchange outage or proof of future data continuity.
+            await self._gap_sink(pending_gap)
+            self._uncommitted_standby_overflow_gaps.pop(key, None)
+            self._standby_buffer_first_drop_ms.pop(key, None)
 
     async def _switch(self, stream_id: str, lane: int) -> None:
         if not self._lane_is_available(stream_id, lane):
