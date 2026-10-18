@@ -35,12 +35,10 @@ def _reason_summary(raw: object) -> str:
     )
     return ", ".join(f"{reason}={count}" for reason, count in counts[:8])
 
-
-
 def _startup_profile_line(raw: object) -> str:
     """Bounded original startup timings, not account or source certification."""
     if not isinstance(raw, dict):
-        return "- PAPER startup pre-monitor / slowest components: \`unavailable\`"
+        return "- PAPER startup pre-monitor / slowest components: `unavailable`"
     total = raw.get("pre_monitor_total")
     total_text = (
         f"{total}ms"
@@ -63,7 +61,7 @@ def _startup_profile_line(raw: object) -> str:
     top = ", ".join(f"{name}={ms}ms" for name, ms in components[:5])
     return (
         "- PAPER startup pre-monitor / slowest components (non-PnL): "
-        f"\`{total_text} / {top or 'none'}\`"
+        f"`{total_text} / {top or 'none'}`"
     )
 
 
@@ -10539,7 +10537,7 @@ def _render_operational_live_status(
                 f"{payload.get('checkpoint_snapshot_slowest_component')} / "
                 f"{payload.get('checkpoint_snapshot_slowest_component_ms', 0)}ms"
             ),
-            _startup_profile_line(payload.get("startup_component_ms")), 
+            _startup_profile_line(payload.get("startup_component_ms")),
             (
                 "- event-loop phase / max lag / slow>=1s / samples: "
                 f"{payload.get('event_loop_phase', 'unknown')} / "
