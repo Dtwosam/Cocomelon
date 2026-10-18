@@ -11525,6 +11525,39 @@ async def run_continuous_paper_session(
             ] = tuple({} for _ in range(2))
 
             async def event_sink(event: StreamEvent) -> None:
+                # A previously acknowledged market record might have
+                # suffered an uncertain named-gap recovery CLOSE write.
+                # Retry the EXACT original CLOSE and signed witness before
+                # accepting the next market event; otherwise a newer
+                # normalized source timestamp could overtake older debt.
+                stream_id = event_stream_id(event)
+                await restored_named_gap_recovery.retry_pending_before_record(
+                    stream_id,
+                    gap_sink=lambda gap: pump.process(gap),
+                    witness_sink=lambda witness, gap, checkpoint_ms: (
+                        asyncio.to_thread(
+                            append_restored_named_gap_witness,
+                            root / WITNESS_FILENAME,
+                            event=witness,
+                            gap=gap,
+                            checkpoint_ms=checkpoint_ms,
+                        )
+                    ),
+                )
+                for recovery in tuple(in_session_rotation_gap_recoveries):
+                    await recovery.retry_pending_before_record(
+                        stream_id,
+                        gap_sink=lambda gap: pump.process(gap),
+                        witness_sink=lambda witness, gap, checkpoint_ms: (
+                            asyncio.to_thread(
+                                append_in_session_rotation_gap_witness,
+                                root / ROTATION_WITNESS_FILENAME,
+                                event=witness,
+                                gap=gap,
+                                checkpoint_ms=checkpoint_ms,
+                            )
+                        ),
+                    )
                 # This mux-confirmed normalized event must be accepted by
                 # the paper pipeline before an inherited named source can
                 # be certified recovered. Closure is committed through the
