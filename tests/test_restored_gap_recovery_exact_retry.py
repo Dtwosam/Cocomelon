@@ -202,3 +202,16 @@ def test_original_paper_blocks_market_record_on_previous_named_close_debt() -> N
     assert "await rotation_observer.accept_recorded_event(" in source[
         next_market:next_market + 1800
     ]
+    next_gap = source.index(
+        "async def gap_sink(gap: DataGap)", next_market,
+    )
+    forwarded = source.index("await pump.process(gap)", next_gap)
+    gap_retry = source.index(
+        "await restored_named_gap_recovery.retry_pending_before_record(",
+        next_gap,
+    )
+    rotation_gap_retry = source.index(
+        "await recovery.retry_pending_before_record(",
+        next_gap,
+    )
+    assert next_gap < gap_retry < rotation_gap_retry < forwarded
