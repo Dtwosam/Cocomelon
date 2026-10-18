@@ -11524,6 +11524,14 @@ async def run_continuous_paper_session(
                 dict[str, int], ...
             ] = tuple({} for _ in range(2))
 
+            # Volatile, bounded one-witness-per-namespace scheduling
+            # buffer. Only ORIGINAL mux-accepted full-frame children can
+            # witness a restored/rotated named allMids gap; never use
+            # unseen standby traffic or a partially failed source frame.
+            accepted_named_all_mids: dict[
+                str, tuple[StreamEvent, int]
+            ] = {}
+
             async def event_sink(event: StreamEvent) -> None:
                 # A previously acknowledged market record might have
                 # suffered an uncertain named-gap recovery CLOSE write.
@@ -11563,6 +11571,14 @@ async def run_continuous_paper_session(
                 # be certified recovered. Closure is committed through the
                 # exact same durable record pump, never by elapsed time.
                 await pump.process(_record_from_stream(event))
+                if event.kind is StreamKind.ALL_MIDS:
+                    # Do not append an inherited/rotation recovery marker
+                    # between the equal-receive-time children of one
+                    # actual incoming Hyperliquid allMids WS frame.
+                    accepted_named_all_mids[event_stream_id(event)] = (
+                        event, utc_now_ms(),
+                    )
+                    return
                 await restored_named_gap_recovery.accept_recorded_event(
                     event,
                     observed_at_ms=utc_now_ms(),
@@ -11720,10 +11736,63 @@ async def run_continuous_paper_session(
                     lane: int = lane,
                 ) -> None:
                     # Called after the supervisor has accepted EVERY
-                    # original child and its own recovery evidence. If a
-                    # child failed, the callback is not invoked and the mux
-                    # aggregate gap must remain open.
-                    await mux.complete_all_mids_frame(lane, events)
+                    # original child and its own recovery evidence. A
+                    # failed/cancelled child never receives this callback.
+                    async def finish_named_recovery() -> None:
+                        for stream_id in dict.fromkeys(
+                            event_stream_id(event) for event in events
+                        ):
+                            actual = accepted_named_all_mids.get(stream_id)
+                            if actual is None:
+                                continue
+                            witnessed, observed_at_ms = actual
+                            if not any(
+                                item.event_key == witnessed.event_key
+                                for item in events
+                            ):
+                                # Another lane might have delivered a
+                                # different accepted frame while this
+                                # frame completed. Never heal from that
+                                # unrelated witness or unknown standby.
+                                continue
+                            accepted_named_all_mids.pop(stream_id, None)
+                            await restored_named_gap_recovery.accept_recorded_event(
+                                witnessed,
+                                observed_at_ms=observed_at_ms,
+                                gap_sink=lambda gap: pump.process(gap),
+                                witness_sink=lambda witness, gap, checkpoint_ms: (
+                                    asyncio.to_thread(
+                                        append_restored_named_gap_witness,
+                                        root / WITNESS_FILENAME,
+                                        event=witness,
+                                        gap=gap,
+                                        checkpoint_ms=checkpoint_ms,
+                                    )
+                                ),
+                            )
+                            for recovery in tuple(in_session_rotation_gap_recoveries):
+                                await recovery.accept_recorded_event(
+                                    witnessed,
+                                    observed_at_ms=observed_at_ms,
+                                    gap_sink=lambda gap: pump.process(gap),
+                                    witness_sink=lambda witness, gap, checkpoint_ms: (
+                                        asyncio.to_thread(
+                                            append_in_session_rotation_gap_witness,
+                                            root / ROTATION_WITNESS_FILENAME,
+                                            event=witness,
+                                            gap=gap,
+                                            checkpoint_ms=checkpoint_ms,
+                                        )
+                                    ),
+                                )
+
+                    # Hold mux original ingress serialization until BOTH
+                    # its own aggregate gap and all checkpoint/rotation
+                    # recovery source receipts have been persisted.
+                    await mux.complete_all_mids_frame(
+                        lane, events,
+                        after_frame_sink=finish_named_recovery,
+                    )
 
                 def lane_activity_hook(
                     phase: str,
