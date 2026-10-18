@@ -2,6 +2,36 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 18 — freeze original aggregate mux recovery CLOSE on write failure
+
+The authenticated old worker still has a disqualified original v3 source,
+and PR #1356's supervisor allMids per-frame recovery change cannot
+repair historic clock reversals. A separate inspectable failure remained
+inside `RedundantStreamMux`: an aggregate recovered gap's first event
+could be accepted downstream, but if its matching durable CLOSE sink
+raised or was cancelled, a *later* event would retry with a NEW
+`ended_ms`. That breaks precise first-witness chronology and may admit
+new original price events while the prior close's write outcome is
+uncertain.
+
+This research-source integrity fix retains the exact first
+`DataGap(stream_id, started_ms, ended_ms, recovered)` pending receipt
+before awaiting the downstream sink. Any subsequent event, lane
+handoff or gap for the same aggregate stream first retries that **exact
+original close**. Repeated failures propagate unchanged; later source
+events cannot pass an unacknowledged close. Only a successfully
+acknowledged sink clears the original aggregate gap and recovery
+witness state; a fresh real disconnect must open a new original gap.
+At-least-once uncertain writes and original failed-source history stay
+visible. This does not order raw different-stream events after the
+fact or fix any remaining genuine selected-market L2 gaps.
+
+Failure injection covers OSError and task cancellation, two subsequent
+failed retries, later exact success, ordering before a newer disconnect
+and unchanged success-path gap content. PAPER signals, fills, positions,
+risk/stops, accounting and LIVE-off remain identical. It does not
+certify clean 72-hour original source or positive after-cost economics.
+
 ## October 18 — publish supervisor allMids recovery after its complete frame
 
 A deterministic source-path reproduction found a real receive-clock reversal
