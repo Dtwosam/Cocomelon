@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, cast
@@ -20,6 +21,7 @@ from cocomelon.research.learning_feature_snapshots import (
     feature_snapshot_payload,
 )
 from cocomelon.research.prospective_short_rank_first_seen import (
+    FirstSeenRankBindingWitness,
     FirstSeenRankSnapshot,
 )
 
@@ -81,7 +83,7 @@ class OriginalRankFeatureInputBatch:
                     "ranking feature was not known at observation start"
                 )
 
-    def bind_to(self, rank: FirstSeenRankSnapshot) -> None:
+    def bind_to(\n        self, rank: FirstSeenRankSnapshot | FirstSeenRankBindingWitness,\n    ) -> None:
         if (
             self.observed_at_ms != rank.observed_at_ms
             or self.captured_at_ms != rank.captured_at_ms
@@ -204,7 +206,10 @@ class OriginalRankFeatureInputBatch:
 class OriginalRankFeatureInputBatchStore:
     """Append one durable source batch per rank refresh, without old backfill."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self, root: Path, *,
+        startup_rank_witnesses: Sequence[FirstSeenRankBindingWitness] | None = None,
+    ) -> None:
         self.root = Path(root)
         self.records = self.root / "batches"
         if self.root.is_symlink() or self.records.is_symlink():
@@ -213,6 +218,31 @@ class OriginalRankFeatureInputBatchStore:
             )
         self.records.mkdir(parents=True, exist_ok=True)
         previous = self.iter_verified()
+        # The complete local archive was just reopened and each original
+        # canonical byte, digest and ordering constraint was verified. Bind
+        # its entire suffix to a compact witness from the separately
+        # verified original rank constructor WITHOUT a second full parse.
+        # This is only startup continuity, never independent authentication.
+        if startup_rank_witnesses is not None and previous:
+            start_index = next(
+                (
+                    i for i, row in enumerate(startup_rank_witnesses)
+                    if row.observed_at_ms == previous[0].observed_at_ms
+                ),
+                None,
+            )
+            if (
+                start_index is None
+                or len(startup_rank_witnesses) - start_index != len(previous)
+            ):
+                raise OriginalRankInputBatchError(
+                    "original rank feature input archive lost a saved rank"
+                )
+            for rank, batch in zip(
+                startup_rank_witnesses[start_index:], previous,
+                strict=True,
+            ):
+                batch.bind_to(rank)
         self._last = previous[-1] if previous else None
 
     def iter_verified(self) -> tuple[OriginalRankFeatureInputBatch, ...]:
