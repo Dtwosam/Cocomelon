@@ -81,7 +81,7 @@ from cocomelon.hyperliquid.normalize import (
 )
 from cocomelon.hyperliquid.watchlist import DeepWatchlistManager
 from cocomelon.hyperliquid.ws_client import connect_mainnet_ws
-from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor
+from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor, event_stream_id
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.account_lifecycle_bridge import (
     account_lifecycle_bridge,
