@@ -2,6 +2,43 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 18 — preserve ALL_MIDS frame progress with bounded cooperative yields
+
+**Genuine current PAPER observation at 18:08 UTC** (Issue #469, existing
+worker #39138965707 on *old* `0b044f24`): whole-account marked after-cost
+net was **−$233.65** on $9,766.35 equity, with 291 lifetime completed trades
+and four open positions. Original v3 market capture still FAILED with
+2,511,693 irreversibly dropped source rows, 320,766 offer-clock regressions,
+10,575 true adjacent raw reversals, many selected-market L2 gaps and a
+first **DATA_GAP → ALL_MIDS** 137,786ms raw-clock reversal. None of this
+history can be repaired or profit-certified by changing cooperative yields.
+
+The real websocket `allMids` subscription normalizes **one source frame
+into a series of distinct per-market events** all sharing the exact original
+first-received timestamp. PAPER's per-event lane sink previously inserted a
+forced `asyncio.sleep(0)` **after EVERY market event**. For a 73-market
+source frame, this inserts 73 independent scheduler handoffs before the
+frame has finished, permitting newer messages/gaps to interleave with
+undelivered older parts. This is a genuine scheduler vulnerability, not
+proof it alone caused every regression or source gap.
+
+New bounded scheduling retains every original per-market event, original
+first-received time/key, payload, mux ordering, gap and failure semantics:
+**at most eight ALL_MIDS events between forced cooperative yields**, with
+non-ALL_MIDS events still forcing their original immediate yield. Both
+independent redundant lanes maintain separate volatile budgets. The
+WebSocket supervisor already forces a yield between every completed raw
+frame. Tests compare complete unchanged normalized PAPER records and
+source gap emissions with previous semantics, exercise two-lane budgets,
+fairness on L2/trades/candles/context, and reject invalid lane identities.
+
+This changes only async scheduling and may reduce interleaving/overhead in
+future naturally upgraded workers. It does **NOT** sort/clamp source clocks,
+claim data continuity, bypass any market gap or risk gate, alter strategy,
+fills, positions, fees, funding, stops or enable LIVE. Forward measured
+receiver clocks, true L2 coverage and clean signed >=72h matched PAPER
+after-cost economics remain necessary before admission.
+
 ## October 18 — eliminate redundant full reads of enormous original SHORT rank archives
 
 The actual preceding worker #39120486505 uploaded a **780,681,689-byte**
