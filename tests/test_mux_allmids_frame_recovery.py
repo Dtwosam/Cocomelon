@@ -222,6 +222,7 @@ def test_paper_wires_full_frame_boundary_with_live_orders_still_disabled() -> No
         / "src/cocomelon/continuous_paper.py"
     ).read_text(encoding="utf-8")
     assert "defer_all_mids_aggregate_recovery=True" in worker
-    assert "await mux.complete_all_mids_frame(lane, events)" in worker
+    assert "await mux.complete_all_mids_frame(" in worker
+    assert "after_frame_sink=finish_named_recovery" in worker
     assert "all_mids_frame_sink=lane_all_mids_frame_sink" in worker
     assert "await pump.process(_record_from_stream(event))" in worker
