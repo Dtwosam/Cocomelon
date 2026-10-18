@@ -12,6 +12,8 @@ from typing import Final
 SCHEMA_VERSION: Final = 1
 DEFAULT_MAX_PATH_AGE_MS: Final = 21_600_000
 DEFAULT_MAX_COMPLETION_LAG_MS: Final = 120_000
+# Keep optional research work bounded before returning control to L2 handlers.
+COOPERATIVE_MARK_BATCH_SIZE: Final = 32
 ZERO: Final = Decimal("0")
 
 
@@ -570,20 +572,33 @@ class ContinuousPaperOpeningOpportunityPathStore:
         source: str,
     ) -> int:
         async with self._cooperative_observe_lock:
+            # Freeze the same immutable sorted market snapshot used by the
+            # synchronous path. Do not read a later price or alter any
+            # original opportunity/mark timestamp while yielding.
             market_paths = self._active_market_paths_snapshot(market)
-            updates = await asyncio.to_thread(
-                self._updated_paths_for_mark_from_snapshot,
-                market_paths,
-                market=market,
-                observed_at_ms=observed_at_ms,
-                mark_px=mark_px,
-                source=source,
-            )
-            for updated in updates:
-                await asyncio.to_thread(self._write, updated)
-                self._index_path(updated)
+            completed = 0
+            for start in range(0, len(market_paths), COOPERATIVE_MARK_BATCH_SIZE):
+                # A monolithic offloaded transformation may still monopolize
+                # the GIL across a large active market snapshot and stall
+                # websocket receive tasks. Each batch is bounded; the async
+                # writer remains strictly ordered, durable and fail-closed.
+                updates = await asyncio.to_thread(
+                    self._updated_paths_for_mark_from_snapshot,
+                    market_paths[start:start + COOPERATIVE_MARK_BATCH_SIZE],
+                    market=market,
+                    observed_at_ms=observed_at_ms,
+                    mark_px=mark_px,
+                    source=source,
+                )
+                for updated in updates:
+                    await asyncio.to_thread(self._write, updated)
+                    self._index_path(updated)
+                    completed += 1
+                    await asyncio.sleep(0)
+                # Yield also when all paths in a batch are inactive,
+                # already observed, or outside their original horizon.
                 await asyncio.sleep(0)
-            return len(updates)
+            return completed
 
     @property
     def record_count(self) -> int:
