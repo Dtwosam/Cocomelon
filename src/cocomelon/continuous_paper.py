@@ -10794,6 +10794,9 @@ async def run_continuous_paper_session(
                     selected_markets=tuple(m.canonical for m in selected),
                     first_observed_ms=started_at_ms,
                     replay_config=replay_config,
+                    # Exact at-rest compression only; preserve every original
+                    # normalized input, receive timestamp and source SHA.
+                    compressed_journal=True,
                     predecessor_run_id=(os.environ.get("PREDECESSOR_RUN_ID") or None),
                     predecessor_run_attempt=(
                         os.environ.get("PREDECESSOR_RUN_ATTEMPT") or None
