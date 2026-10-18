@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -23,6 +24,7 @@ from cocomelon.execution.accounting import PaperPosition, PositionSide
 SCHEMA_VERSION: Final = 1
 PROTOCOL_SCHEMA_VERSION: Final = 1
 ZERO: Final = Decimal("0")
+MAX_ORIGINAL_STOP_PLAN_CACHE: Final = 128
 
 
 class OriginalStopBookEvidenceError(RuntimeError):
@@ -1181,6 +1183,13 @@ class OriginalStopBookCapture:
         self.store = store
         self._opening_plan_loader = opening_plan_loader
         self._config = config
+        # The opening plan is frozen; its original stop and fee/risk
+        # provenance do not vary with later mark updates. Do not issue a
+        # synchronous backing-store lookup on every L2/mark event.
+        # Bound cache memory and reload after eviction/restart.
+        self._opening_plan_cache: OrderedDict[str, PaperOrderPlan] = OrderedDict()
+        self.opening_plan_cache_hits = 0
+        self.opening_plan_cache_misses = 0
         self.error: str | None = None
 
     def _fail(self, exc: Exception) -> None:
@@ -1191,9 +1200,15 @@ class OriginalStopBookCapture:
         self,
         position: PaperPosition,
     ) -> PaperOrderPlan:
-        plan = self._opening_plan_loader(
-            position.opening_plan_id
-        )
+        key = position.opening_plan_id
+        plan = self._opening_plan_cache.get(key)
+        if plan is None:
+            # Missing/invalid original lineage remains fail-closed. Cache
+            # ONLY validated, immutable original plans.
+            plan = self._opening_plan_loader(key)
+            self.opening_plan_cache_misses += 1
+        else:
+            self.opening_plan_cache_hits += 1
         if plan is None:
             raise OriginalStopBookEvidenceError(
                 "original-stop opening plan is missing"
@@ -1206,6 +1221,12 @@ class OriginalStopBookCapture:
             raise OriginalStopBookEvidenceError(
                 "original-stop opening plan lineage mismatch"
             )
+        if key in self._opening_plan_cache:
+            self._opening_plan_cache.move_to_end(key)
+        else:
+            self._opening_plan_cache[key] = plan
+            if len(self._opening_plan_cache) > MAX_ORIGINAL_STOP_PLAN_CACHE:
+                self._opening_plan_cache.popitem(last=False)
         return plan
 
     def observe_mark(
