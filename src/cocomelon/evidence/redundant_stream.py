@@ -7,7 +7,7 @@ from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable, Mapping
 from time import perf_counter
 
-from cocomelon.domain.stream import DataGap, StreamEvent
+from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.hyperliquid.ws_supervisor import event_stream_id
 
 EventSink = Callable[[StreamEvent], Awaitable[None]]
@@ -40,6 +40,7 @@ class RedundantStreamMux:
         buffer_size: int = 8192,
         dedup_size: int = 16384,
         receive_only_duplicate_window_ms: int = 1_000,
+        defer_all_mids_aggregate_recovery: bool = False,
     ) -> None:
         if lane_count < 2:
             raise ValueError("lane_count must be at least two")
@@ -55,6 +56,13 @@ class RedundantStreamMux:
         self._buffer_size = buffer_size
         self._dedup_size = dedup_size
         self._receive_only_duplicate_window_ms = receive_only_duplicate_window_ms
+        # Opt-in only for production supervisors with an authenticated
+        # complete-frame acknowledgement callback. Standalone mux callers
+        # preserve the old per-event recovery contract.
+        self._defer_all_mids_aggregate_recovery = (
+            defer_all_mids_aggregate_recovery
+        )
+        self._all_mids_pending_witnesses: dict[tuple[int, str], int] = {}
         self._active: dict[str, int] = {}
         self._buffers: dict[tuple[int, str], deque[StreamEvent]] = defaultdict(deque)
         self._lane_gap_starts: dict[str, dict[int, int]] = defaultdict(dict)
@@ -262,14 +270,10 @@ class RedundantStreamMux:
         while buffer:
             original = buffer[0]
             delivered = await self._emit_candidate(stream_id, original)
-            if (
-                delivered
-                and stream_id in self._aggregate_gap_starts
-                and self._receive_ms(original) >= (
-                    self._aggregate_gap_starts[stream_id]
+            if delivered:
+                self._remember_recovery_witness(
+                    stream_id, lane, original,
                 )
-            ):
-                self._recovery_witness_lanes[stream_id].add(lane)
             buffer.popleft()
 
     async def _switch(self, stream_id: str, lane: int) -> None:
@@ -284,6 +288,23 @@ class RedundantStreamMux:
         self._active[stream_id] = lane
         self._failover_count += 1
         await self._drain_active_buffer(stream_id)
+
+    def _remember_recovery_witness(
+        self, stream_id: str, lane: int, event: StreamEvent,
+    ) -> None:
+        gap_start = self._aggregate_gap_starts.get(stream_id)
+        original_received_ms = self._receive_ms(event)
+        if gap_start is None or original_received_ms < gap_start:
+            return
+        self._recovery_witness_lanes[stream_id].add(lane)
+        if (
+            self._defer_all_mids_aggregate_recovery
+            and event.kind is StreamKind.ALL_MIDS
+        ):
+            key = (lane, stream_id)
+            self._all_mids_pending_witnesses.setdefault(
+                key, original_received_ms,
+            )
 
     def _available_lane(self, stream_id: str, *, excluding: int) -> int | None:
         for lane in range(self._lane_count):
@@ -331,6 +352,9 @@ class RedundantStreamMux:
         starts = self._lane_gap_starts[stream_id]
         aggregate_start = max(starts.values(), default=started_ms)
         self._aggregate_gap_starts[stream_id] = aggregate_start
+        for key in tuple(self._all_mids_pending_witnesses):
+            if key[1] == stream_id:
+                self._all_mids_pending_witnesses.pop(key, None)
         self._uncommitted_aggregate_gap_opens.add(stream_id)
         self._recovery_witness_lanes.pop(stream_id, None)
         await self._persist_uncommitted_aggregate_gap_open(stream_id)
@@ -348,6 +372,9 @@ class RedundantStreamMux:
         self._uncommitted_aggregate_gap_closes.pop(stream_id, None)
         self._aggregate_gap_starts.pop(stream_id, None)
         self._recovery_witness_lanes.pop(stream_id, None)
+        for key in tuple(self._all_mids_pending_witnesses):
+            if key[1] == stream_id:
+                self._all_mids_pending_witnesses.pop(key, None)
 
     async def _close_aggregate_gap_if_needed(
         self,
@@ -397,22 +424,64 @@ class RedundantStreamMux:
             await self._switch(stream_id, lane)
         if lane == self.active_lane(stream_id):
             delivered = await self._emit_candidate(stream_id, event)
-            if (
-                delivered
-                and stream_id in self._aggregate_gap_starts
-                and self._receive_ms(event) >= (
-                    self._aggregate_gap_starts[stream_id]
+            if delivered:
+                self._remember_recovery_witness(
+                    stream_id, lane, event,
                 )
-            ):
-                self._recovery_witness_lanes[stream_id].add(lane)
         else:
             self._buffer(lane, stream_id, event)
         if recovered_lane and lane in self._recovery_witness_lanes[stream_id]:
-            # A healthy socket alone cannot prove replayable market coverage.
-            await self._close_aggregate_gap_if_needed(
-                stream_id,
-                recovered_ms=self._receive_ms(event),
-            )
+            # allMids children share the first-received timestamp. A
+            # recovered gap emitted HERE would split an original frame:
+            # BTC@2000 -> recovered@2007 -> ETH@2000. Wait for the
+            # supervisor's post-frame acknowledgement instead.
+            if not (
+                self._defer_all_mids_aggregate_recovery
+                and event.kind is StreamKind.ALL_MIDS
+            ):
+                await self._close_aggregate_gap_if_needed(
+                    stream_id,
+                    recovered_ms=self._receive_ms(event),
+                )
+
+    async def complete_all_mids_frame(
+        self, lane: int, events: tuple[StreamEvent, ...],
+    ) -> None:
+        """Finish only fully acknowledged original allMids child frames.
+
+        This callback must be called by the upstream supervisor *after*
+        every child and its deferred gap receipts have been acknowledged.
+        An incomplete frame must never close the aggregate source gap.
+        """
+        self._require_lane(lane)
+        if not events or any(
+            event.kind is not StreamKind.ALL_MIDS for event in events
+        ):
+            raise ValueError("allMids frame completion requires allMids events")
+        if not self._defer_all_mids_aggregate_recovery:
+            raise RuntimeError("allMids frame recovery deferral is disabled")
+        async with self._ingress_lock:
+            # Preserve first occurrence and original namespace ordering.
+            streams = tuple(dict.fromkeys(event_stream_id(e) for e in events))
+            for stream_id in streams:
+                await self._persist_uncommitted_aggregate_gap_open(stream_id)
+                await self._persist_uncommitted_aggregate_gap_close(stream_id)
+                key = (lane, stream_id)
+                first_received_ms = self._all_mids_pending_witnesses.get(key)
+                gap_start = self._aggregate_gap_starts.get(stream_id)
+                if (
+                    first_received_ms is not None
+                    and gap_start is not None
+                    and first_received_ms >= gap_start
+                    and lane in self._recovery_witness_lanes[stream_id]
+                    and self._lane_is_available(stream_id, lane)
+                ):
+                    await self._close_aggregate_gap_if_needed(
+                        stream_id, recovered_ms=first_received_ms,
+                    )
+                # This is a volatile scheduling witness only. A future
+                # genuinely new disconnect cannot inherit older callbacks.
+                self._all_mids_pending_witnesses.pop(key, None)
 
     async def on_gap(self, lane: int, gap: DataGap) -> None:
         self._require_lane(lane)
