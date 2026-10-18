@@ -134,14 +134,14 @@ def test_pending_original_standby_backfill_precedes_subsequent_gap_marker(
         await mux.on_event(1, first)
         await mux.on_event(1, second)
         await mux.on_event(1, third)
-        with pytest.raises((asyncio.CancelledError if cancel else OSError)):
+        with pytest.raises(asyncio.CancelledError if cancel else OSError):
             await mux.on_gap(
                 0, DataGap(STREAM, 350, None, "disconnect")
             )
         later_gap = DataGap(STREAM, 400, None, "disconnect")
         # A fresh disconnect cannot mark this already-active standby as
         # unavailable before its older buffered market rows are accepted.
-        with pytest.raises((asyncio.CancelledError if cancel else OSError)):
+        with pytest.raises(asyncio.CancelledError if cancel else OSError):
             await mux.on_gap(1, later_gap)
         assert mux._lane_gap_starts[STREAM] == {0: 350}
         assert events == [first]
