@@ -2,6 +2,36 @@
 
 > Profitability-first mandate: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). No non-economic promotion or LIVE relaxation.
 
+## October 19 — separately funded IOC vs maker entry-period mark, not profit
+
+Authenticated ordinary PAPER #39223537959 at 12:08 UTC:
+**$9,788.86 marked equity, -$211.14 net**, 302 cumulative
+closed trades and two open positions; gross realized +$32.93,
+actual fees $234.47 and funding -$2.92. Old worker `372dff6d`
+source FAILED with 3,778,839 dropped original rows and 194,499
+clock regressions. Source and economics gates remain failed.
+
+New pure research `maker_entry_paired_mark.py` bridges unchanged
+baseline IOC and strict-through conditional maker entries into
+**two fresh, independently funded in-memory canonical PAPER
+accounts**, deducts appropriate taker/maker entry fees from
+respective cash and marks each at the same later original
+`ACTIVE_ASSET_CTX`. A no-fill candidate stays in cash instead
+of inheriting the baseline position. Source clocks, mark
+freshness/market and original risk lineage fail closed;
+maker quote and implied fill identity are independently
+reconstructed from original book/trades. The temporary
+research-labeled maker PaperFill objects never reach
+durable execution or active PAPER. Explicit gates remain
+FALSE: no exits/funding/stop/capital-reflow modeled, no source
+authentication, no whole-account profitability or promotion.
+See [paired entry-mark economics](maker_entry_paired_mark_2026_10_19.md).
+
+This enables the next *real* economically falsifiable account
+replay; nothing in ordinary strategy, LIVE state, fee booking,
+frozen trials or worker deployment changed. **NO VERIFIED
+PROFITABLE EDGE.**
+
 ## October 19 — maker-first strict-through entry PAPER shadow, still no PnL
 
 Authenticated 11:30 UTC ordinary PAPER #39223537959 (old
