@@ -75,6 +75,12 @@ class FakeActor:
             raise RuntimeError("unsafe handoff")
         return {"candidate_id": self.candidate_id, "end_ms": end_ms}
 
+    async def terminal_checkpoint(self, *, end_ms: int) -> dict[str, object]:
+        self.events.append(("terminal_checkpoint", end_ms))
+        if self.bad_checkpoint or self.failures:
+            raise RuntimeError("unsafe handoff")
+        return {"candidate_id": self.candidate_id, "end_ms": end_ms}
+
     async def close(self) -> None:
         self.events.append(("close",))
 
@@ -285,3 +291,37 @@ def test_broken_legacy_v5_market_census_does_not_disable_fresh_trial(
     receipt = json.loads((tmp_path / TREND_PAIR_SUMMARY_FILE).read_text())
     assert receipt["checkpoint_published"] is True
     assert receipt["ready_for_review"] is False
+
+
+def test_final_sidecar_checkpoint_fences_both_independent_research_actors(
+    tmp_path: Path,
+) -> None:
+    duo, legacy, trend = _pair(tmp_path)
+    result = asyncio.run(duo.terminal_checkpoint(end_ms=5_000))
+    assert result == {"candidate_id": "old", "end_ms": 5_000}
+    assert ("terminal_checkpoint", 5_000) in legacy.events
+    assert ("terminal_checkpoint", 5_000) in trend.events
+    assert ("checkpoint", 5_000) not in legacy.events
+    assert ("checkpoint", 5_000) not in trend.events
+    receipt = json.loads((tmp_path / TREND_PAIR_SUMMARY_FILE).read_text())
+    assert receipt["checkpoint_published"] is True
+    assert receipt["checkpoint"] == {
+        "candidate_id": "new", "end_ms": 5_000,
+    }
+    assert receipt["execution_authority"] is False
+    assert receipt["promotion_authority"] is False
+    asyncio.run(duo.close())
+
+
+def test_failed_terminal_primary_still_fences_separate_trend_research_actor(
+    tmp_path: Path,
+) -> None:
+    duo, legacy, trend = _pair(tmp_path, bad_primary=True)
+    with pytest.raises(RuntimeError, match="unsafe handoff"):
+        asyncio.run(duo.terminal_checkpoint(end_ms=6_000))
+    assert ("terminal_checkpoint", 6_000) in legacy.events
+    assert ("terminal_checkpoint", 6_000) in trend.events
+    receipt = json.loads((tmp_path / TREND_PAIR_SUMMARY_FILE).read_text())
+    assert receipt["checkpoint_published"] is True
+    assert receipt["forward_profitable_signed_account_edge_proven"] is False
+    asyncio.run(duo.close())
