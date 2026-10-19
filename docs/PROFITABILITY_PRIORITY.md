@@ -1,5 +1,40 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 19 — original-v3 feed takes priority over 15-minute optional SHORT rank research
+
+The latest authenticated worker #39198200811 at 08:11 UTC still lost
+**$193.68 net** on the exact $10,000 PAPER account, with **301
+completed trades**. Gross realized gains ($41.30) remain far below
+$232.01 booked trading fees, and the original first-received v3
+market-data recorder was FAILED with **3,648,660 dropped rows**.
+Its 915,445ms premonitor startup had 891,505ms in an *optional*
+historical SHORT-rank source restore. Previous comparable worker
+spent 866,045ms in the same restore, so #1360's removed redundant
+JSON serializations had not materially solved real archive startup.
+
+The new, deliberately explicit PAPER source-first allocation
+suspends all three optional first-seen SHORT-rank research archives
+when strict `V3_CAPTURE_ORIGINAL_SOURCE=1` is requested. Rank
+capture, feature inputs and decision context each get a durable
+permanent-negative research discontinuity receipt. Existing
+negative receipts win. All historical rank data stay untouched;
+no rank suffix gap may be silently filled, skipped or promoted as
+clean. Active baseline PAPER rankings still compute normally for
+market selection, but optional rank *archival* no longer consumes
+~15 minutes before the worker starts ingesting first-received
+mainnet data. If negative receipt persistence fails, fail closed.
+This is a resource/prioritization decision, not evidence that
+future market source, venue L2, or source clocks will be valid, or
+that PAPER economic expectancy is now positive.
+
+No active PAPER worker restart, strategy/risk/stop/fee/funding
+changes, LIVE orders or source gate weakening. This does
+sacrifice continuous eligibility of the old optional SHORT-rank
+research trial; it cannot be resurrected without a genuinely
+fresh predeclared clean campaign. The original-v3 paired
+LONG-trend frozen study and absolute positive after-cost
+account requirements remain unchanged.
+
 ## October 16 — source-first PAPER mode excludes optional cadence shadow
 
 Real authenticated PAPER #38921086842 exposed over 200 one-second
