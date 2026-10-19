@@ -28,7 +28,7 @@ metadata, original fee schedule and the complete same-market original
 trade tape from quote to expiry.
 
 1. **Strict unchanged approved risk:** requires original plan lineage,
-   market, metadata and fee configuration; BUY quote must remain below
+   market, metadata and fee configuration; the supplied original L2\n   book is independently re-parsed to re-create the quote, with exact\n   source event identity, touch price and visible queue size required.\n   BUY quote must remain below
    original stop-safe slippage ceiling and above stop; SELL inverse.
    Requested amount must match original plan and instrument quantum.
    Clip modeled quantity to original requested amount, approved
