@@ -100,6 +100,12 @@ class RedundantStreamMux:
         self._uncommitted_retrograde_gaps: dict[
             str, tuple[DataGap, str]
         ] = {}
+        # Negative gap acknowledgements must NEVER enter _seen_keys: those
+        # keys mean genuine admitted source in standby-overflow accounting.
+        self._retrograde_rejected_keys: dict[str, set[str]] = defaultdict(set)
+        self._retrograde_rejected_order: dict[
+            str, deque[str]
+        ] = defaultdict(deque)
         self._retrograde_unseen_gap_count = 0
         self._failover_count = 0
         # Both WebSocket supervisors invoke this mux from independent tasks.
@@ -271,7 +277,10 @@ class RedundantStreamMux:
             keys.discard(queue.popleft())
 
     def _is_duplicate(self, stream_id: str, event: StreamEvent) -> bool:
-        if event.event_key in self._seen_keys[stream_id]:
+        if (
+            event.event_key in self._seen_keys[stream_id]
+            or event.event_key in self._retrograde_rejected_keys[stream_id]
+        ):
             return True
         previous = self._last_emitted.get(stream_id)
         if (
@@ -308,7 +317,13 @@ class RedundantStreamMux:
         # Exact at-least-once replay on an uncertain downstream sink.
         # A cancelled write cannot be mistaken for a successful receipt.
         await self._gap_sink(gap)
-        self._remember_key(stream_id, event_key)
+        rejected = self._retrograde_rejected_keys[stream_id]
+        if event_key not in rejected:
+            rejected.add(event_key)
+            order = self._retrograde_rejected_order[stream_id]
+            order.append(event_key)
+            while len(order) > self._dedup_size:
+                rejected.discard(order.popleft())
         self._uncommitted_retrograde_gaps.pop(stream_id, None)
         self._retrograde_unseen_gap_count += 1
 
