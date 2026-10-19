@@ -94,6 +94,7 @@ def _conditional_paper_fills(
             fee = Decimal(str(row["conditional_entry_fee_usd"]))
         except (KeyError, ValueError, ArithmeticError) as exc:
             raise MakerEntryWitnessError("conditional maker fill malformed") from exc
+        received_at_ms = row.get("received_at_ms")
         if (
             not quantity.is_finite()
             or quantity <= ZERO
@@ -101,7 +102,7 @@ def _conditional_paper_fills(
             or price <= ZERO
             or not fee.is_finite()
             or fee != price * quantity * maker_rate
-            or type(row.get("received_at_ms")) is not int
+            or type(received_at_ms) is not int
         ):
             raise MakerEntryWitnessError("conditional maker fee or fill malformed")
         result.append(PaperFill(
@@ -116,7 +117,7 @@ def _conditional_paper_fills(
             source_event_key=(
                 f"{MAKER_ATTEMPT_PREFIX}:{row['original_trade_event_key']}"
             ),
-            timestamp_ms=row["received_at_ms"],
+            timestamp_ms=received_at_ms,
         ))
     return tuple(result)
 
@@ -140,7 +141,11 @@ def paired_maker_vs_ioc_entry_mark(
     exact future mark for both lanes; independent initial cash and positions.
     No borrowed baseline fills in the conditional maker lane.
     """
-    if type(start_cash) is not Decimal or not start_cash.is_finite() or start_cash <= ZERO:
+    if (
+        type(start_cash) is not Decimal
+        or not start_cash.is_finite()
+        or start_cash <= ZERO
+    ):
         raise MakerEntryWitnessError("paired entry account start cash invalid")
     if source_integrity_passed is not True:
         raise MakerEntryWitnessError("paired entry original source not continuous")
