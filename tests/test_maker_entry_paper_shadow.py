@@ -112,6 +112,7 @@ def _run(
     clean: bool = True,
     end: int = 2500,
     quote_overrides: dict[str, object] | None = None,
+    book_override: StreamEvent | None = None,
 ) -> dict[str, object]:
     original = plan or _plan()
     witness = quote_research_only_maker_entry(
@@ -127,6 +128,7 @@ def _run(
     return simulate_strict_through_maker_entry(
         witness,
         original_plan=original,
+        original_book=book_override or _book(),
         instrument=spec or _spec(),
         execution_config=PaperExecutionConfig(),
         original_events=events,
@@ -302,3 +304,43 @@ def test_risk_clipped_below_native_minimum_refuses_maker_order() -> None:
 def test_maker_source_trade_future_exchange_time_is_rejected() -> None:
     with pytest.raises(MakerEntryWitnessError, match="exchange/receipt"):
         _run((_trade(1400, "A", "99", "8", exchange_ms=1500),))
+
+
+
+def test_forged_resting_quote_price_cannot_create_modeled_cash() -> None:
+    # A passive candidate cannot insert a lower bid than the actual source.
+    with pytest.raises(MakerEntryWitnessError, match="book/witness"):
+        _run(
+            (_trade(1400, "A", "98", "20"),),
+            quote_overrides={"quote_price": Decimal("99")},
+        )
+
+
+def test_forged_visible_queue_depth_cannot_jump_original_queue() -> None:
+    with pytest.raises(MakerEntryWitnessError, match="book/witness"):
+        _run(
+            (_trade(1400, "A", "99", "20"),),
+            quote_overrides={"displayed_best_level_quantity": Decimal("0.1")},
+        )
+
+
+def test_supplied_book_must_match_source_timed_original_quote() -> None:
+    changed = replace(
+        _book(),
+        event_key="original-tampered-book",
+    )
+    with pytest.raises(MakerEntryWitnessError, match="book/witness"):
+        _run(
+            (_trade(1400, "A", "99", "20"),),
+            book_override=changed,
+        )
+
+
+def test_stale_original_book_does_not_get_maker_shadow_fills() -> None:
+    stale = replace(
+        _book(),
+        receive_time=datetime.fromtimestamp(0, tz=UTC),
+        exchange_time_ms=0,
+    )
+    with pytest.raises(MakerEntryWitnessError, match="stale"):
+        _run((_trade(1400, "A", "99", "20"),), book_override=stale)
