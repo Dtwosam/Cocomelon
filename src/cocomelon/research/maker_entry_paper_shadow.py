@@ -60,12 +60,16 @@ def _validate_envelope(
         or instrument.metadata_received_at_ms != plan.instrument_metadata_received_at_ms
         or not instrument.execution_supported
         or witness.baseline_taker_fee_rate != config.taker_fee_rate
+        or type(witness.quote_at_ms) is not int
+        or witness.quote_at_ms < 0
         or plan.earliest_execution_ms > witness.quote_at_ms
         or witness.quote_at_ms < plan.created_at_ms
         or type(witness.expire_at_ms) is not int
         or not 0 < witness.expire_at_ms - witness.quote_at_ms <= MAX_WAIT_MS
     ):
-        raise MakerEntryWitnessError("maker shadow original plan or market lineage drift")
+        raise MakerEntryWitnessError(
+            "maker shadow original plan or market lineage drift"
+        )
     quote = _finite_positive(witness.quote_price, "price")
     requested = _finite_positive(witness.requested_quantity, "quantity")
     _finite_positive(witness.displayed_best_level_quantity, "queue depth")
@@ -95,7 +99,9 @@ def _validate_envelope(
             or quote >= plan.stop_price
         )
     ):
-        raise MakerEntryWitnessError("maker shadow quote violates original stop/slippage")
+        raise MakerEntryWitnessError(
+            "maker shadow quote violates original stop/slippage"
+        )
     quantum = instrument.size_quantum
     if requested != _floor(requested, quantum):
         raise MakerEntryWitnessError("maker shadow quantity violates instrument step")
@@ -112,7 +118,7 @@ def _validate_envelope(
             if plan.side is OrderSide.BUY
             else plan.stop_price - quote * (ONE - buffer)
         )
-        if per_unit_risk <= ZERO:
+        if not per_unit_risk.is_finite() or per_unit_risk <= ZERO:
             raise MakerEntryWitnessError("maker shadow nonpositive unit stop risk")
         allowed_qty = _floor(
             min(
@@ -122,8 +128,10 @@ def _validate_envelope(
             ),
             quantum,
         )
-        if allowed_qty <= ZERO:
-            raise MakerEntryWitnessError("maker shadow risk budgets permit no order")
+        if allowed_qty <= ZERO or quote * allowed_qty < minimum:
+            raise MakerEntryWitnessError(
+                "maker shadow risk budgets permit no venue-sized order"
+            )
         return allowed_qty, per_unit_risk
 
 
