@@ -34,6 +34,11 @@ class FakeActor:
         self.bad_census = bad_census
         self.events: list[tuple[object, ...]] = []
         self.failures: list[str] = []
+        self.terminal_fenced = False
+
+    def fence_terminal_admission(self) -> None:
+        self.terminal_fenced = True
+        self.events.append(("fence",))
 
     def status_payload(self) -> dict[str, object]:
         return {"candidate_id": self.candidate_id, "failed": bool(self.failures)}
@@ -41,6 +46,8 @@ class FakeActor:
     def submit_record(
         self, record: Any, *, now_ms: int, evaluate_decisions: bool,
     ) -> bool:
+        if self.terminal_fenced:
+            return False
         self.events.append(("record", record, now_ms, evaluate_decisions))
         return True
 
@@ -77,6 +84,7 @@ class FakeActor:
 
     async def terminal_checkpoint(self, *, end_ms: int) -> dict[str, object]:
         self.events.append(("terminal_checkpoint", end_ms))
+        assert self.terminal_fenced
         if self.bad_checkpoint or self.failures:
             raise RuntimeError("unsafe handoff")
         return {"candidate_id": self.candidate_id, "end_ms": end_ms}
@@ -324,4 +332,74 @@ def test_failed_terminal_primary_still_fences_separate_trend_research_actor(
     receipt = json.loads((tmp_path / TREND_PAIR_SUMMARY_FILE).read_text())
     assert receipt["checkpoint_published"] is True
     assert receipt["forward_profitable_signed_account_edge_proven"] is False
+    asyncio.run(duo.close())
+
+
+
+def test_both_research_lanes_fenced_before_waiting_on_slow_primary_checkpoint(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        duo, original, trend = _pair(tmp_path)
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        class SlowPrimary(FakeActor):
+            async def terminal_checkpoint(
+                self, *, end_ms: int,
+            ) -> dict[str, object]:
+                assert self.terminal_fenced
+                assert trend.terminal_fenced
+                entered.set()
+                await release.wait()
+                return await super().terminal_checkpoint(end_ms=end_ms)
+
+        # The test double owns the same actor interface as the real actor,
+        # but delays its SQLite checkpoint until the second sidecar is probed.
+        slow = SlowPrimary("old")
+        duo.primary = slow  # type: ignore[assignment]
+        checkpoint_task = asyncio.create_task(
+            duo.terminal_checkpoint(end_ms=8_000),
+        )
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=3)
+            assert slow.terminal_fenced is True
+            assert trend.terminal_fenced is True
+            assert not duo.submit_record(
+                "late-source-record", now_ms=8_001,
+                evaluate_decisions=True,
+            )
+            assert all(event[0] != "record" for event in trend.events)
+            assert ("terminal_checkpoint", 8_000) not in trend.events
+            release.set()
+            assert await asyncio.wait_for(checkpoint_task, timeout=3) == {
+                "candidate_id": "old", "end_ms": 8_000,
+            }
+            assert slow.events.index(("fence",)) < slow.events.index(
+                ("terminal_checkpoint", 8_000),
+            )
+            assert trend.events.index(("fence",)) < trend.events.index(
+                ("terminal_checkpoint", 8_000),
+            )
+            assert original.events == []
+        finally:
+            release.set()
+            if not checkpoint_task.done():
+                await checkpoint_task
+            await duo.close()
+
+    asyncio.run(scenario())
+
+
+def test_missing_legacy_also_fences_trend_before_checkpoint(tmp_path: Path) -> None:
+    duo, _, trend = _pair(tmp_path)
+    duo.primary = None
+    with pytest.raises(RuntimeError, match="legacy paired shadow unavailable"):
+        asyncio.run(duo.terminal_checkpoint(end_ms=9_000))
+    assert trend.terminal_fenced
+    assert ("fence",) in trend.events
+    assert ("terminal_checkpoint", 9_000) in trend.events
+    assert not trend.submit_record(
+        "late-event", now_ms=9_001, evaluate_decisions=False,
+    )
     asyncio.run(duo.close())
