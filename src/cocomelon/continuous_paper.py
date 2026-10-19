@@ -11839,7 +11839,7 @@ async def run_continuous_paper_session(
                             await restored_named_gap_recovery.accept_recorded_event(
                                 witnessed,
                                 observed_at_ms=observed_at_ms,
-                                gap_sink=lambda gap: pump.process(gap),
+                                gap_sink=named_recovery_gap_sink,
                                 witness_sink=lambda witness, gap, checkpoint_ms: (
                                     asyncio.to_thread(
                                         append_restored_named_gap_witness,
@@ -11854,7 +11854,7 @@ async def run_continuous_paper_session(
                                 await recovery.accept_recorded_event(
                                     witnessed,
                                     observed_at_ms=observed_at_ms,
-                                    gap_sink=lambda gap: pump.process(gap),
+                                    gap_sink=named_recovery_gap_sink,
                                     witness_sink=lambda witness, gap, checkpoint_ms: (
                                         asyncio.to_thread(
                                             append_in_session_rotation_gap_witness,
