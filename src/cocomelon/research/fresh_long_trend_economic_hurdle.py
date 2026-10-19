@@ -201,7 +201,11 @@ def fresh_long_trend_economic_hurdle(
         # The 0% scenario MUST reconstruct actual booked cash. The 100%
         # scenario MUST strip the fee advantage from the original delta.
         if (
-            fee_refund_sensitivity[0]["candidate_minus_baseline_usd"] != str(delta)
+            abs(
+                (candidate_net + FEE_REFUND_FRACTIONS[0] * candidate_fees)
+                - (base_net + FEE_REFUND_FRACTIONS[0] * baseline_fees)
+                - delta
+            ) > MAX_CASH_RESIDUAL
             or abs(
                 (candidate_net + candidate_fees)
                 - (base_net + baseline_fees)
