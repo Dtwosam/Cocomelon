@@ -2,6 +2,41 @@
 
 > Profitability-first mandate: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). No non-economic promotion or LIVE relaxation.
 
+## October 19 — first-received original allMids frame atomic mux ingress
+
+At 12:28 UTC ordinary PAPER worker #39223537959 (old
+`372dff6d`) equity is **$9,780.35, net -$219.65** after
+$235.51 actual fees, with 304 closed trades and zero open.
+Original prospective v3 source was already FAILED with
+**4,152,793 dropped rows** and 211,876 receive-clock
+regressions. There is no source-qualified profitable forward
+candidate; LIVE disabled.
+
+Addressed a concrete source clock reversal path: each raw
+`allMids` WS frame expands into many per-market children
+sharing one immutable original receive clock, but previous
+mux ingress locking only protected one child at a time.
+A second lane's later market record could interleave,
+reversing the original frame clock. The supervisor now has
+an optional whole-original-frame dispatch guard, wired only
+in PAPER mainnet redundant mux. The mux holds the original
+ingress lock through all children, durable supervisor gap
+notices, aggregate completion and checkpoint/rotation
+after-frame receipts, while only the owning task can
+re-enter the lock. Tests exercise concurrent later L2
+blocking, failed partial frames, cancellation and exact
+retry without falsely healing a source gap.
+
+This does NOT rewrite/clamp/sort any first-received
+observation, repair previously FAILED capture, guarantee
+all new gaps are fixed, change trade decisions/risk/costs
+or certify the new 72h source. Large-frame lock hold may
+affect runtime latency and must be independently measured
+at natural worker handoff. See
+[atomic allMids source boundary](original_v3_atomic_allmids_source_2026_10_19.md).
+Only clean original source and matched after-fee account
+evidence can promote a profitable strategy.
+
 ## October 19 — separately funded IOC vs maker entry-period mark, not profit
 
 Authenticated ordinary PAPER #39223537959 at 12:08 UTC:

@@ -4,7 +4,8 @@ import asyncio
 import hashlib
 import json
 from collections import defaultdict, deque
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import asynccontextmanager
 from time import perf_counter
 
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
@@ -100,6 +101,10 @@ class RedundantStreamMux:
         # _last_emitted or its event key. Preserve actual callback order and
         # never reorder/repair the timestamps in the original events.
         self._ingress_lock = asyncio.Lock()
+        # Only the task owning an authenticated *complete* original allMids
+        # frame may re-enter. Other WebSocket lanes must not put newer
+        # source receipts between equal-time siblings of one WS frame.
+        self._frame_owner_task: asyncio.Task[object] | None = None
         self._ingress_active_waiters = 0
         self._ingress_peak_waiters = 0
         self._ingress_contended_calls = 0
@@ -135,20 +140,57 @@ class RedundantStreamMux:
             "source_gap_or_paper_promotion_authority": False,
         }
 
+    @asynccontextmanager
+    async def _serialized_or_owned_frame(self) -> AsyncIterator[None]:
+        if asyncio.current_task() is self._frame_owner_task:
+            yield
+        else:
+            async with self._ingress_lock:
+                yield
+
+    async def serialize_all_mids_frame_dispatch(
+        self,
+        lane: int,
+        events: tuple[StreamEvent, ...],
+        dispatch: Callable[[], Awaitable[None]],
+    ) -> None:
+        """Serialize an entire ORIGINAL WS frame and its gap receipts.
+
+        Never claim this has made the original recorder gap-free. Failed or
+        cancelled dispatch retains existing durable source-gap/receipt
+        semantics; the guard always releases so later source work proceeds.
+        """
+        self._require_lane(lane)
+        if not events or any(
+            event.kind is not StreamKind.ALL_MIDS for event in events
+        ):
+            raise ValueError("frame guard requires complete allMids children")
+        async with self._ingress_lock:
+            if self._frame_owner_task is not None:
+                raise RuntimeError("a prior original frame owner is still active")
+            self._frame_owner_task = asyncio.current_task()
+            try:
+                await dispatch()
+            finally:
+                self._frame_owner_task = None
+
     async def _serialize_ingress(
         self, lane: int, message: StreamEvent | DataGap,
     ) -> None:
         # Monotonic process durations only. Do not substitute them for
         # original venue exchange or socket receive clocks.
         started = perf_counter()
-        if self._ingress_lock.locked():
+        if (
+            self._ingress_lock.locked()
+            and asyncio.current_task() is not self._frame_owner_task
+        ):
             self._ingress_contended_calls += 1
         self._ingress_active_waiters += 1
         self._ingress_peak_waiters = max(
             self._ingress_peak_waiters, self._ingress_active_waiters
         )
         try:
-            async with self._ingress_lock:
+            async with self._serialized_or_owned_frame():
                 self._ingress_max_wait_ms = max(
                     self._ingress_max_wait_ms,
                     max(0, int((perf_counter() - started) * 1000)),
@@ -519,7 +561,7 @@ class RedundantStreamMux:
             raise ValueError("allMids frame completion requires allMids events")
         if not self._defer_all_mids_aggregate_recovery:
             raise RuntimeError("allMids frame recovery deferral is disabled")
-        async with self._ingress_lock:
+        async with self._serialized_or_owned_frame():
             # Preserve first occurrence and original namespace ordering.
             streams = tuple(dict.fromkeys(event_stream_id(e) for e in events))
             for stream_id in streams:

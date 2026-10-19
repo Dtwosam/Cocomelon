@@ -26,6 +26,10 @@ UtcNow = Callable[[], datetime]
 Subscription = Mapping[str, object]
 ActivityHook = Callable[[str, bool], None]
 AllMidsFrameSink = Callable[[tuple[StreamEvent, ...]], Awaitable[None]]
+AllMidsFrameDispatchGuard = Callable[
+    [tuple[StreamEvent, ...], Callable[[], Awaitable[None]]],
+    Awaitable[None],
+]
 
 
 class _SinkFailure(RuntimeError):
@@ -70,6 +74,7 @@ class WebSocketSupervisor:
         systemic_l2_recovery_trigger_floor_ms: int | None = None,
         activity_hook: ActivityHook | None = None,
         all_mids_frame_sink: AllMidsFrameSink | None = None,
+        all_mids_frame_dispatch_guard: AllMidsFrameDispatchGuard | None = None,
         dedup_size: int = 2048,
     ) -> None:
         if heartbeat_seconds <= 0:
@@ -119,6 +124,7 @@ class WebSocketSupervisor:
         self._event_sink = event_sink
         self._gap_sink = gap_sink
         self._all_mids_frame_sink = all_mids_frame_sink
+        self._all_mids_frame_dispatch_guard = all_mids_frame_dispatch_guard
         self._clock_ms = clock_ms
         self._utcnow = utcnow
         self._sleep = sleep
@@ -758,6 +764,30 @@ class WebSocketSupervisor:
         finally:
             if self._activity_hook is not None:
                 self._activity_hook("normalize_message", False)
+        if (
+            events
+            and events[0].kind is StreamKind.ALL_MIDS
+            and self._all_mids_frame_dispatch_guard is not None
+        ):
+            # Lock all children, supervisor gap receipts and the final
+            # downstream frame acknowledgement as ONE original ingress
+            # transaction. A second WS lane cannot interleave a later
+            # receive clock between unchanged equal-time allMids children.
+            await self._all_mids_frame_dispatch_guard(
+                tuple(events),
+                lambda: self._dispatch_normalized_events(
+                    tuple(events), now_ms=now_ms
+                ),
+            )
+            return
+        await self._dispatch_normalized_events(tuple(events), now_ms=now_ms)
+
+    async def _dispatch_normalized_events(
+        self,
+        events: tuple[StreamEvent, ...],
+        *,
+        now_ms: int,
+    ) -> None:
         # One allMids frame expands into per-market children sharing the
         # original receive clock. Do not insert this supervisor's later
         # recovery observation between those unchanged original children.
