@@ -9669,6 +9669,34 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
         raw.get("gap_predecessor_counts_reconcile") is True
         and displayed_total == adjacent_gap_total
     )
+    # A coarse "closed:other" source predecessor may be an exchange
+    # anomaly, an actual standby hole, or other coverage debt. Expose
+    # ONLY canonical reason names from our own code: arbitrary source
+    # strings are never echoed into the public worker heartbeat.
+    safe_other_closed = frozenset((
+        "out_of_order", "standby_backfill_overflow",
+        "redundant_unseen_retrograde", "stale", "disconnect",
+        "handoff", "rotation", "unclassified",
+    ))
+    raw_other_causes = raw.get("closed_other_gap_regression_causes")
+    other_causes: list[tuple[str, int]] = []
+    if isinstance(raw_other_causes, dict):
+        for key, count in raw_other_causes.items():
+            if (
+                type(key) is str and key in safe_other_closed
+                and type(count) is int and count >= 0
+            ):
+                other_causes.append((key, count))
+    other_causes.sort(key=lambda pair: (-pair[1], pair[0]))
+    other_causes_top = ", ".join(
+        f"{key}={count}" for key, count in other_causes[:5] if count
+    ) or "none observed"
+    coarse_closed_other = dict(predecessor_counts).get("closed:other", 0)
+    other_causes_reconcile = (
+        raw.get("closed_other_gap_regression_causes_reconcile") is True
+        and len(other_causes) == len(safe_other_closed)
+        and sum(count for _, count in other_causes) == coarse_closed_other
+    )
     first_gap_reason = raw.get("first_regression_prior_gap_reason")
     first_gap_boundary = raw.get("first_regression_prior_gap_boundary")
     if type(first_gap_reason) is not str or first_gap_reason not in safe_reasons:
@@ -9782,6 +9810,15 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             "- original gap predecessor bucket counts / adjacent-edge reconcile: "
             f"{displayed_total} / "
             f"{str(predecessor_reconciled).lower()}"
+        ),
+        (
+            "- CLOSED:other gap source-cause regressions (top five): "
+            + other_causes_top
+        ),
+        (
+            "- CLOSED:other source-cause counts / coarse predecessor reconcile: "
+            f"{sum(count for _, count in other_causes)} / "
+            f"{str(other_causes_reconcile).lower()}"
         ),
         (
             "- original regressions market-snapshot / funding / candle: "
