@@ -367,7 +367,11 @@ def test_overdue_l2_deadline_drains_buffered_fresh_book() -> None:
         def clock_ms() -> int:
             nonlocal clock_calls
             clock_calls += 1
-            return 1_000 if clock_calls <= 6 else 7_000
+            # Packet receive clocks are now passed through normalization
+            # without a second _dispatch clock read, so the overdue-deadline
+            # fixture reaches the same simulated clock transition one read
+            # earlier. This is fixture scheduling, never event re-timing.
+            return 1_000 if clock_calls <= 5 else 7_000
 
         connection = FakeConnection(
             [book(1_000), book(7_000)]
@@ -391,7 +395,7 @@ def test_overdue_l2_deadline_drains_buffered_fresh_book() -> None:
             gap_sink=gap_sink,
             clock_ms=clock_ms,
             utcnow=lambda: datetime.fromtimestamp(
-                (1_000 if clock_calls <= 6 else 7_000) / 1000,
+                (1_000 if clock_calls <= 5 else 7_000) / 1000,
                 tz=UTC,
             ),
             stale_after_ms=5_000,
