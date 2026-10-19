@@ -9663,9 +9663,12 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
     ) or "none observed"
     first_gap_reason = raw.get("first_regression_prior_gap_reason")
     first_gap_boundary = raw.get("first_regression_prior_gap_boundary")
-    if first_gap_reason not in safe_reasons:
+    if type(first_gap_reason) is not str or first_gap_reason not in safe_reasons:
         first_gap_reason = "none observed"
-    if first_gap_boundary not in safe_boundaries:
+    if (
+        type(first_gap_boundary) is not str
+        or first_gap_boundary not in safe_boundaries
+    ):
         first_gap_boundary = "none observed"
     return lines + [
         f"- capture enabled: {str(raw.get('enabled') is True).lower()}",
