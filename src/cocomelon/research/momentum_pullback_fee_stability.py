@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from decimal import Decimal, InvalidOperation
-from typing import Final, Mapping, Sequence
+from typing import Final
 
 from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.research.prospective_momentum_band_forward_markout import (
