@@ -469,7 +469,7 @@ def test_rejected_exit_never_becomes_cost_free_close() -> None:
     report = _closed_pair((), exit_book=thin_exit)
     baseline = report["baseline_account"]
     assert isinstance(baseline, dict)
-    assert report["baseline_ioc_exit_quantity"] == "0"
+    assert Decimal(report["baseline_ioc_exit_quantity"]) == Decimal("0")
     assert report["both_lanes_flat_after_original_exit"] is False
     assert baseline["position_count"] == 1
     assert report["whole_account_profitable_edge_proven"] is False
