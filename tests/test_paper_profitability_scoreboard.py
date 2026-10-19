@@ -3230,3 +3230,85 @@ def test_predeclared_trend_cannot_mature_with_open_original_handoff() -> None:
     )
     assert trial["descriptive_sample_floor_met_not_promotion"] is False
     assert trial["forward_positive_signed_account_edge_proven"] is False
+
+
+def test_actual_cost_hurdle_is_quantified_per_original_trade_not_projected(
+) -> None:
+    rows = [
+        _trade(
+            1, side="long", market="BTC", strategy="trend",
+            gross="2.00", entry_fee="0.30", exit_fee="0.50",
+            funding="-0.20",
+        ),
+        _trade(
+            2, side="short", market="ETH", strategy="breakout",
+            gross="-1.50", entry_fee="0.40", exit_fee="0.60",
+            funding="0.10",
+        ),
+    ]
+    report = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows(rows),
+    )
+    total = report["overall"]
+    assert total["trades"] == 2
+    assert Decimal(total["gross_realized_pnl"]) == Decimal("0.50")
+    assert Decimal(total["fees"]) == Decimal("1.80")
+    assert Decimal(total["funding_cash_pnl"]) == Decimal("-0.10")
+    assert Decimal(total["net_pnl"]) == Decimal("-1.40")
+    assert Decimal(
+        total["observed_gross_realized_per_closed_trade_usd"]
+    ) == Decimal("0.25")
+    assert Decimal(
+        total["booked_cost_to_break_even_per_closed_trade_usd"]
+    ) == Decimal("0.95")
+    assert Decimal(
+        total["additional_gross_needed_per_closed_trade_to_zero_usd"]
+    ) == Decimal("0.70")
+    assert Decimal(
+        total["additional_gross_needed_whole_closed_cohort_to_zero_usd"]
+    ) == Decimal("1.40")
+    assert total["observed_gross_covers_booked_fees_and_funding"] is False
+    assert "not_entry_time_forecast" in total["gross_cost_hurdle_scope"]
+    assert report["ready_for_strategy_promotion"] is False
+    # Independent side buckets expose cost hurdle without pretending a
+    # retrospectively profitable side could be selected pre-entry.
+    buckets = {row["side"]: row for row in report["side_cohorts"]}
+    assert Decimal(
+        buckets["long"]["booked_cost_to_break_even_per_closed_trade_usd"]
+    ) == Decimal("1.00")
+    assert Decimal(
+        buckets["short"]["booked_cost_to_break_even_per_closed_trade_usd"]
+    ) == Decimal("0.90")
+
+
+def test_booked_gross_hurdle_handles_empty_profitable_and_funding_credit() -> None:
+    empty = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows([]),
+    )["overall"]
+    assert empty["observed_gross_realized_per_closed_trade_usd"] is None
+    assert empty["booked_cost_to_break_even_per_closed_trade_usd"] is None
+    assert empty["additional_gross_needed_per_closed_trade_to_zero_usd"] is None
+    assert empty["observed_gross_covers_booked_fees_and_funding"] is None
+    assert Decimal(
+        empty["additional_gross_needed_whole_closed_cohort_to_zero_usd"]
+    ) == 0
+
+    # The actual signed funding CREDIT may exceed booked trading fees;
+    # the break-even gross hurdle can therefore be negative. Do not
+    # silently clamp funding to zero or manufacture executable certainty.
+    profitable = paper_profitability_scoreboard(
+        _reconciled_audit_from_rows([
+            _trade(
+                1, side="short", market="BTC", strategy="breakout",
+                gross="0.5", entry_fee="0.1", exit_fee="0.1",
+                funding="1",
+            ),
+        ]),
+    )["overall"]
+    assert Decimal(
+        profitable["booked_cost_to_break_even_per_closed_trade_usd"]
+    ) == Decimal("-0.8")
+    assert Decimal(
+        profitable["additional_gross_needed_per_closed_trade_to_zero_usd"]
+    ) == 0
+    assert profitable["observed_gross_covers_booked_fees_and_funding"] is True
