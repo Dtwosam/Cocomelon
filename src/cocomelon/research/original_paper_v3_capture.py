@@ -71,6 +71,19 @@ ORIGINAL_GAP_REASON_BUCKETS: Final = (
     "MAINNET_FUNDING_HISTORY_INFO_UNAVAILABLE",
     "other",
 )
+# Only FIXED source code reasons are safe to publish. In particular,
+# an exchange-time `out_of_order` gap is NOT an accepted recovery witness
+# and its ended_ms must NEVER be treated as an original receive clock.
+OTHER_CLOSED_GAP_CAUSE_BUCKETS: Final = (
+    "out_of_order",
+    "standby_backfill_overflow",
+    "redundant_unseen_retrograde",
+    "stale",
+    "disconnect",
+    "handoff",
+    "rotation",
+    "unclassified",
+)
 BATCH_SIZE: Final = 256
 # One shared limit with the closed original source ZIP sealer.
 MAX_SOURCE_ROWS: Final = 5_000_000
@@ -259,6 +272,7 @@ class OriginalPaperMicrostructureCapture:
         # pump BEFORE that event. Classify, never retime or drop either.
         self._prior_gap_reason_bucket: str | None = None
         self._prior_gap_boundary_kind: str | None = None
+        self._prior_closed_other_gap_detail: str | None = None
         self.first_regression_prior_family: str | None = None
         self.first_regression_prior_gap_reason: str | None = None
         self.first_regression_prior_gap_boundary: str | None = None
@@ -266,6 +280,12 @@ class OriginalPaperMicrostructureCapture:
             f"{boundary}:{reason}": 0
             for boundary in ("open", "closed", "invalid")
             for reason in ORIGINAL_GAP_REASON_BUCKETS
+        }
+        # Split ONLY the coarse CLOSED:other predecessor used in strict
+        # adjacent inversions, preserving a bounded fixed vocabulary and
+        # exact reconciliation with the historical existing coarse bucket.
+        self.closed_other_gap_regression_causes: dict[str, int] = {
+            key: 0 for key in OTHER_CLOSED_GAP_CAUSE_BUCKETS
         }
         self.max_adjacent_original_backward_ms = 0
         self.prior_offered_regression_edges: dict[str, int] = {}
@@ -370,6 +390,7 @@ class OriginalPaperMicrostructureCapture:
         prior_paper = paper_previous_at_ms
         gap_boundary_kind: str | None = None
         gap_reason_bucket: str | None = None
+        closed_other_gap_detail: str | None = None
         if record.record_kind.value == "data_gap":
             # Gap payload bounds are not immutable arrival receipts:
             # (start, end) may be established before the gap is emitted.
@@ -397,6 +418,14 @@ class OriginalPaperMicrostructureCapture:
             )
             self.gap_reason_counts[reason_bucket] += 1
             gap_reason_bucket = reason_bucket
+            if reason_bucket == "other":
+                closed_other_gap_detail = (
+                    source_reason
+                    if type(source_reason) is str
+                    and source_reason in OTHER_CLOSED_GAP_CAUSE_BUCKETS
+                    and source_reason != "unclassified"
+                    else "unclassified"
+                )
             stream_id = (
                 gap_payload.get("stream_id") if isinstance(gap_payload, dict)
                 else None
@@ -567,6 +596,12 @@ class OriginalPaperMicrostructureCapture:
                         f"{self._prior_gap_reason_bucket or 'other'}"
                     )
                     self.gap_predecessor_regression_counts[cause_key] += 1
+                    if cause_key == "closed:other":
+                        detail = (
+                            self._prior_closed_other_gap_detail
+                            or "unclassified"
+                        )
+                        self.closed_other_gap_regression_causes[detail] += 1
                 edge = prior_family + " -> " + family
                 self.prior_offered_regression_edges[edge] = (
                     self.prior_offered_regression_edges.get(edge, 0) + 1
@@ -635,6 +670,10 @@ class OriginalPaperMicrostructureCapture:
         self._prior_offered_family = _clock_regression_family(record)
         self._prior_gap_reason_bucket = gap_reason_bucket
         self._prior_gap_boundary_kind = gap_boundary_kind
+        self._prior_closed_other_gap_detail = (
+            closed_other_gap_detail if gap_boundary_kind == "closed"
+            else None
+        )
         if self.failure is not None:
             self.dropped_count += 1
             return
@@ -853,6 +892,13 @@ class OriginalPaperMicrostructureCapture:
             ),
             "gap_predecessor_regression_counts": dict(
                 sorted(self.gap_predecessor_regression_counts.items())
+            ),
+            "closed_other_gap_regression_causes": dict(
+                sorted(self.closed_other_gap_regression_causes.items())
+            ),
+            "closed_other_gap_regression_causes_reconcile": (
+                sum(self.closed_other_gap_regression_causes.values())
+                == self.gap_predecessor_regression_counts["closed:other"]
             ),
             "gap_predecessor_counts_reconcile": (
                 sum(self.gap_predecessor_regression_counts.values())
@@ -1128,6 +1174,13 @@ class OriginalPaperMicrostructureCapture:
             ),
             "gap_predecessor_regression_counts": dict(
                 sorted(self.gap_predecessor_regression_counts.items())
+            ),
+            "closed_other_gap_regression_causes": dict(
+                sorted(self.closed_other_gap_regression_causes.items())
+            ),
+            "closed_other_gap_regression_causes_reconcile": (
+                sum(self.closed_other_gap_regression_causes.values())
+                == self.gap_predecessor_regression_counts["closed:other"]
             ),
             "gap_predecessor_counts_reconcile": (
                 sum(self.gap_predecessor_regression_counts.values())
