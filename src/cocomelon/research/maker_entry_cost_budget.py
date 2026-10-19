@@ -40,6 +40,11 @@ def _amount(raw: object, name: str, *, positive: bool = False) -> Decimal:
     return amount
 
 
+def _cash_text(value: Decimal) -> str:
+    # Canonical cash string without precision-context trailing zeros.
+    return format(value.normalize(), "f")
+
+
 def _validate_review(
     trade: TradeJournalEntry,
     raw: Mapping[str, object],
@@ -231,26 +236,26 @@ def maker_entry_closed_trade_cost_budget(
             "schema": "maker-entry-original-closed-journal-cost-budget-v1",
             "closed_trades": len(items),
             "scope": "booked_closed_journal_only_not_whole_marked_paper_account",
-            "original_booked_gross_usd": str(gross),
-            "original_booked_entry_fees_usd": str(entry_fees),
-            "original_booked_exit_fees_usd": str(exit_fees),
-            "original_booked_funding_usd": str(funding),
-            "original_booked_net_usd": str(original_net),
+            "original_booked_gross_usd": _cash_text(gross),
+            "original_booked_entry_fees_usd": _cash_text(entry_fees),
+            "original_booked_exit_fees_usd": _cash_text(exit_fees),
+            "original_booked_funding_usd": _cash_text(funding),
+            "original_booked_net_usd": _cash_text(original_net),
             "exact_entry_fee_discount_fraction": str(fee_discount_fraction),
             "entry_fee_refund_fraction_needed_for_zero": entry_refund_fraction_to_zero,
-            "all_original_entries_same_fill_fee_only_saving_usd": str(discount),
-            "all_original_entries_same_fill_net_usd": str(same_fill_net),
+            "all_original_entries_same_fill_fee_only_saving_usd": _cash_text(discount),
+            "all_original_entries_same_fill_net_usd": _cash_text(same_fill_net),
             "all_entry_fee_discount_still_nonpositive": same_fill_net <= ZERO,
-            "additional_non_fee_gross_needed_to_reach_zero_usd": str(
+            "additional_non_fee_gross_needed_to_reach_zero_usd": _cash_text(
                 max(-same_fill_net, ZERO)
             ),
-            "hypothetical_surplus_to_absorb_missed_winner_usd": str(
+            "hypothetical_surplus_to_absorb_missed_winner_usd": _cash_text(
                 max(same_fill_net, ZERO)
             ),
-            "hypothetical_net_if_largest_positive_trade_missed_usd": str(
+            "hypothetical_net_if_largest_positive_trade_missed_usd": _cash_text(
                 missed_winners(1)
             ),
-            "hypothetical_net_if_top_three_positive_trades_missed_usd": str(
+            "hypothetical_net_if_top_three_positive_trades_missed_usd": _cash_text(
                 missed_winners(3)
             ),
             "positive_hypothetical_trade_contributions": len(winning_contributions),
