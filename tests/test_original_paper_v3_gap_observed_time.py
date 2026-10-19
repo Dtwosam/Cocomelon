@@ -7,6 +7,7 @@ from pathlib import Path
 
 from cocomelon.continuous_paper import (
     _record_from_gap,
+    _record_from_witnessed_mux_recovery_gap,
     _record_from_witnessed_named_recovery_gap,
     _RecordPump,
 )
@@ -242,3 +243,98 @@ def test_runtime_routes_all_original_named_closes_through_witness_clock() -> Non
     finish = source[stop:]
     assert finish.count("gap_sink=named_recovery_gap_sink,") >= 2
     assert "await pump.process(gap)" in enclosed
+
+
+
+def test_mux_aggregate_recovered_close_uses_real_first_witness_not_sink_delay(
+    monkeypatch, tmp_path: Path,
+) -> None:
+    from dataclasses import replace
+
+    import cocomelon.continuous_paper as paper
+    import cocomelon.research.original_paper_v3_capture as capture_module
+
+    # Earlier original aggregate OPEN was captured separately. Its
+    # acknowledged recovery at first-received 2990 is the ONLY original
+    # witness for this CLOSE. Disk/gap callback waits until 3500 while
+    # the following real WS packet was already received at 3000.
+    clock = [BASE + 3_500]
+    monkeypatch.setattr(paper, "utc_now_ms", lambda: clock[0])
+    monkeypatch.setattr(capture_module, "utc_now_ms", lambda: clock[0])
+    close = DataGap(
+        stream_id="l2Book:TEST",
+        started_ms=BASE + 1_000,
+        ended_ms=BASE + 2_990,
+        reason="recovered",
+    )
+    original = _record_from_witnessed_mux_recovery_gap(close)
+    assert original.available_at_ms == BASE + 2_990
+    assert original.record_kind is SourceRecordKind.DATA_GAP
+    assert json.loads(original.payload_json) == {
+        "stream_id": "l2Book:TEST",
+        "started_ms": BASE + 1_000,
+        "ended_ms": BASE + 2_990,
+        "reason": "recovered",
+    }
+    first = _book(BASE + 2_990)
+    second = replace(
+        _book(BASE + 3_000), event_key="actually-newer-book",
+    )
+
+    async def scenario() -> dict[str, object]:
+        capture = OriginalPaperMicrostructureCapture(
+            tmp_path / "mux-aggregate",
+            run_id="998879", run_attempt="1", head_sha="f" * 40,
+            selected_markets=("TEST",),
+            first_observed_ms=BASE, replay_config=BaselineReplayConfig(),
+        )
+        pipeline = _Pipeline()
+        pump = _RecordPump(
+            pipeline,  # type: ignore[arg-type]
+            _Journal(),  # type: ignore[arg-type]
+            last_available_at_ms=BASE,
+            original_v3_capture=capture,
+        )
+        await pump.process(first)
+        await pump.process(original)
+        await pump.process(second)
+        assert [x.available_at_ms for x in pipeline.records] == [
+            BASE + 2_990, BASE + 2_990, BASE + 3_000,
+        ]
+        return await capture.close()
+
+    terminal = asyncio.run(scenario())
+    assert terminal["complete"] is True
+    assert terminal["original_received_clock_regressions"] == 0
+    assert terminal["offered_count"] == terminal["written_count"] == 3
+    assert terminal["gap_closed_offered_count"] == 1
+    # Genuine gap negative coverage is still recorded: no full external
+    # source completeness or trading promotion is conferred.
+    assert terminal["external_market_completeness_authenticated"] is False
+    assert terminal["promotion_authority"] is False
+
+
+def test_witnessed_mux_close_cannot_launder_other_or_open_gap() -> None:
+    import pytest
+
+    for gap in (
+        DataGap("l2Book:TEST", BASE, BASE + 10, "other"),
+        DataGap("l2Book:TEST", BASE, None, "recovered"),
+        DataGap("l2Book:TEST", BASE, BASE + 10, "disconnect"),
+    ):
+        with pytest.raises(ValueError, match="mux aggregate recovery"):
+            _record_from_witnessed_mux_recovery_gap(gap)
+
+
+def test_mux_runtime_only_special_cases_aggregate_recovered_close() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "src/cocomelon/continuous_paper.py"
+    ).read_text(encoding="utf-8")
+    start = source.index("            async def gap_sink(gap: DataGap)")
+    end = source.index("            mux = RedundantStreamMux(", start)
+    gap_path = source[start:end]
+    assert 'gap.reason == "recovered" and not gap.is_open' in gap_path
+    assert "_record_from_witnessed_mux_recovery_gap(gap)" in gap_path
+    assert "await pump.process(gap)" in gap_path
+    assert "gap_sink=gap_sink" in source[end:]
