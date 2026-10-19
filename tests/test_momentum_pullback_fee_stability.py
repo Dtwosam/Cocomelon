@@ -74,7 +74,7 @@ def test_exact_long_and_short_exit_fee_notional_and_all_horizons() -> None:
     assert report["positive_absolute_after_cost_equity_verified"] is False
     assert report["execution_authority"] is False
     assert report["promotion_authority"] is False
-    assert report["live_orders"] is False
+    assert "live_orders" not in report
 
 
 def test_earliest_loss_and_market_dependence_undercut_positive_mean() -> None:
