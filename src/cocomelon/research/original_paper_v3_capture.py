@@ -254,7 +254,19 @@ class OriginalPaperMicrostructureCapture:
         # adjacent misordering from later PAPER highwater knock-on failures.
         # Never cache or display opaque event keys, source IDs, or markets.
         self._prior_offered_family: str | None = None
+        # Only fixed negative data-gap vocabulary. A gap may be observed
+        # AFTER an already received WS event but accepted into the PAPER
+        # pump BEFORE that event. Classify, never retime or drop either.
+        self._prior_gap_reason_bucket: str | None = None
+        self._prior_gap_boundary_kind: str | None = None
         self.first_regression_prior_family: str | None = None
+        self.first_regression_prior_gap_reason: str | None = None
+        self.first_regression_prior_gap_boundary: str | None = None
+        self.gap_predecessor_regression_counts: dict[str, int] = {
+            f"{boundary}:{reason}": 0
+            for boundary in ("open", "closed", "invalid")
+            for reason in ORIGINAL_GAP_REASON_BUCKETS
+        }
         self.max_adjacent_original_backward_ms = 0
         self.prior_offered_regression_edges: dict[str, int] = {}
         self.max_original_clock_backward_ms = 0
@@ -357,6 +369,7 @@ class OriginalPaperMicrostructureCapture:
         prior_offered = self.last_offered_available_at_ms
         prior_paper = paper_previous_at_ms
         gap_boundary_kind: str | None = None
+        gap_reason_bucket: str | None = None
         if record.record_kind.value == "data_gap":
             # Gap payload bounds are not immutable arrival receipts:
             # (start, end) may be established before the gap is emitted.
@@ -383,6 +396,7 @@ class OriginalPaperMicrostructureCapture:
                 else "other"
             )
             self.gap_reason_counts[reason_bucket] += 1
+            gap_reason_bucket = reason_bucket
             stream_id = (
                 gap_payload.get("stream_id") if isinstance(gap_payload, dict)
                 else None
@@ -545,6 +559,14 @@ class OriginalPaperMicrostructureCapture:
                 self.other_regression_kind_counts[kind] += 1
             if below_offered and prior_offered is not None:
                 prior_family = self._prior_offered_family or "other"
+                if prior_family == "data_gap":
+                    # Capture ONLY fixed buckets from the immediately
+                    # preceding original gap; no source-supplied raw reasons.
+                    cause_key = (
+                        f"{self._prior_gap_boundary_kind or 'invalid'}:"
+                        f"{self._prior_gap_reason_bucket or 'other'}"
+                    )
+                    self.gap_predecessor_regression_counts[cause_key] += 1
                 edge = prior_family + " -> " + family
                 self.prior_offered_regression_edges[edge] = (
                     self.prior_offered_regression_edges.get(edge, 0) + 1
@@ -569,6 +591,13 @@ class OriginalPaperMicrostructureCapture:
             if self.first_received_clock_regression is None:
                 self.first_regression_source_family = family
                 self.first_regression_prior_family = self._prior_offered_family
+                if below_offered and self._prior_offered_family == "data_gap":
+                    self.first_regression_prior_gap_reason = (
+                        self._prior_gap_reason_bucket
+                    )
+                    self.first_regression_prior_gap_boundary = (
+                        self._prior_gap_boundary_kind or "invalid"
+                    )
                 # Local PAPER offer age is a diagnostic of deferral, not a
                 # replacement for original receive timestamps. Do not
                 # rewrite, sort or upgrade any original source rows.
@@ -604,6 +633,8 @@ class OriginalPaperMicrostructureCapture:
             self.failure = self.failure or "original_received_clock_regression"
         self.last_offered_available_at_ms = record.available_at_ms
         self._prior_offered_family = _clock_regression_family(record)
+        self._prior_gap_reason_bucket = gap_reason_bucket
+        self._prior_gap_boundary_kind = gap_boundary_kind
         if self.failure is not None:
             self.dropped_count += 1
             return
@@ -814,6 +845,22 @@ class OriginalPaperMicrostructureCapture:
                 self.max_adjacent_original_backward_ms
             ),
             "first_regression_prior_family": self.first_regression_prior_family,
+            "first_regression_prior_gap_reason": (
+                self.first_regression_prior_gap_reason
+            ),
+            "first_regression_prior_gap_boundary": (
+                self.first_regression_prior_gap_boundary
+            ),
+            "gap_predecessor_regression_counts": dict(
+                sorted(self.gap_predecessor_regression_counts.items())
+            ),
+            "gap_predecessor_counts_reconcile": (
+                sum(self.gap_predecessor_regression_counts.values())
+                == sum(
+                    count for edge, count in self.prior_offered_regression_edges.items()
+                    if edge.startswith("data_gap -> ")
+                )
+            ),
             "prior_offered_regression_edges": dict(
                 sorted(self.prior_offered_regression_edges.items())
             ),
@@ -1073,6 +1120,22 @@ class OriginalPaperMicrostructureCapture:
                 self.max_adjacent_original_backward_ms
             ),
             "first_regression_prior_family": self.first_regression_prior_family,
+            "first_regression_prior_gap_reason": (
+                self.first_regression_prior_gap_reason
+            ),
+            "first_regression_prior_gap_boundary": (
+                self.first_regression_prior_gap_boundary
+            ),
+            "gap_predecessor_regression_counts": dict(
+                sorted(self.gap_predecessor_regression_counts.items())
+            ),
+            "gap_predecessor_counts_reconcile": (
+                sum(self.gap_predecessor_regression_counts.values())
+                == sum(
+                    count for edge, count in self.prior_offered_regression_edges.items()
+                    if edge.startswith("data_gap -> ")
+                )
+            ),
             "prior_offered_regression_edges": dict(
                 sorted(self.prior_offered_regression_edges.items())
             ),
