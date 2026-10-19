@@ -144,12 +144,27 @@ def _excursion_metric(value: object, field: str) -> ExcursionMetric | None:
 
 
 class JournalStore:
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, read_only: bool = False) -> None:
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.connection = sqlite3.connect(self.path)
+        if read_only:
+            # Offline research must never open a missing source journal in
+            # SQLite's implicit-create mode or touch its authoritative
+            # account/close records.
+            if not self.path.is_file():
+                raise JournalConsistencyError("read-only journal file missing")
+            self.connection = sqlite3.connect(
+                self.path.resolve().as_uri() + "?mode=ro", uri=True,
+            )
+            self.connection.execute("PRAGMA query_only = ON")
+        else:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.connection = sqlite3.connect(self.path)
         self.connection.execute("PRAGMA foreign_keys = ON")
-        self._initialize_schema()
+        try:
+            self._initialize_schema(read_only=read_only)
+        except Exception:
+            self.connection.close()
+            raise
         # Per-process diagnostics only; never stored in the signed trade journal.
         self.slow_trade_sql_count = 0
         self.slow_trade_sql_max_total_ms = 0
@@ -165,7 +180,7 @@ class JournalStore:
             allow_nan=False,
         )
 
-    def _initialize_schema(self) -> None:
+    def _initialize_schema(self, *, read_only: bool = False) -> None:
         known_tables = frozenset(
             {
                 "journal_meta",
@@ -184,6 +199,8 @@ class JournalStore:
             )
         }
         existing_store = bool(existing_tables & known_tables)
+        if read_only and not existing_store:
+            raise JournalConsistencyError("read-only original journal schema missing")
         if existing_store:
             if "journal_meta" not in existing_tables:
                 raise JournalConsistencyError("missing journal schema metadata")
@@ -204,6 +221,11 @@ class JournalStore:
                     "incomplete journal schema: missing tables="
                     + ",".join(sorted(missing_tables))
                 )
+        if read_only:
+            # No CREATE TABLE, metadata insert or COMMIT even when every
+            # schema and canonical trade checksum validates. Source stays
+            # fully immutable under this connection.
+            return
 
         self.connection.executescript(
             """
