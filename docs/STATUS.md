@@ -2,6 +2,35 @@
 
 > Profitability-first mandate: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). No non-economic promotion or LIVE relaxation.
 
+## October 19 — paired IOC/maker exit-cost cash (single path, unverified)
+
+Read-only `maker_entry_paired_exit_cost.py` now takes the
+prospectively decided ORIGINAL reduce-only exit plan and
+original exit L2/mark, applies identical exit timing/book to
+two independently funded canonical PAPER cash accounts
+from #1371, while sizing the maker exit only to its
+conditionally modeled filled entry quantity. Both pay exact
+taker exit fees and book realized gross with the canonical
+accounting engine; no-fill entries miss winners, and
+no-fill exits remain OPEN and marked, not magically closed.
+A post-exit original mark values every remaining exposure.
+
+Safety: only one fixed exit path, no full portfolio funding,
+stops, capital reflow, true venue maker fills, independently
+attested source or promotional authority. Even a positive
+single-path result is NOT a verified profitable edge. See
+[maker-vs-IOC single exit note](maker_paired_single_exit_costs_2026_10_19.md).
+
+Authenticated ordinary #469 at 12:35 UTC: old worker
+`372dff6d` has **$9,780.35 marked equity / -$219.65
+whole-account net** after $235.51 fees and -$2.92 funding;
+304 closed trades, zero open, 4,275,117 failed-source
+drops. New exact successor #39255842615 started at
+12:55 UTC on merge SHA `6c9f045a`, but predecessor
+state restore was still in progress when inspected,
+NOT an authenticated PAPER start or clean source.
+LIVE OFF, original trial gates preserved.
+
 ## October 19 — first-received original allMids frame atomic mux ingress
 
 At 12:28 UTC ordinary PAPER worker #39223537959 (old
