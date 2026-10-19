@@ -103,7 +103,7 @@ def test_buy_post_only_quote_is_cheaper_if_hypothetically_filled() -> None:
             _trade(1800, "A", "99", "0.7"),
             _trade(2300, "A", "99", "10"),
         ),
-        observation_end_ms=2250,
+        observation_end_ms=2500,
         source_integrity_passed=True,
     )
     assert result["crossing_original_trade_count"] == 2
@@ -156,7 +156,7 @@ def test_no_trades_does_not_turn_a_cheaper_quote_into_free_profit() -> None:
     ("book", "quote_at", "rate", "error"),
     [
         (_book(), 1250, Decimal("0.00045"), "maker rate"),
-        (_book(), 2001, Decimal("0.00015"), "stale"),
+        (_book(), 2251, Decimal("0.00015"), "stale"),
         (_book(1500), 1250, Decimal("0.00015"), "future"),
         (_event(StreamKind.L2_BOOK, 1250, {
             "bids": [{"px": Decimal("101"), "sz": Decimal("1")}],
