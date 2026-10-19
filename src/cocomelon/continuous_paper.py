@@ -12598,7 +12598,7 @@ async def run_continuous_paper_session(
             )
             try:
                 shadow_checkpoint = (
-                    await loss_context_paired_shadow_runtime.checkpoint(
+                    await loss_context_paired_shadow_runtime.terminal_checkpoint(
                         end_ms=ended_at_ms
                     )
                 )
