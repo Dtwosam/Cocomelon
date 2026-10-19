@@ -160,6 +160,13 @@ class LossContextPairedShadowRuntime:
             maxsize=max_queue_size
         )
         self._lock = threading.Lock()
+        # The terminal archive must never pair an older signed checkpoint
+        # with SQLite accounts advanced by later research commands.
+        # Serialize terminal admission fencing with each source enqueue,
+        # while leaving ordinary PAPER feeds and scheduled read-only
+        # summaries completely independent of this research sidecar.
+        self._admission_lock = threading.Lock()
+        self._terminal_checkpoint_requested = False
         self._failed = threading.Event()
         self._closed = threading.Event()
         self._initialized = threading.Event()
@@ -254,17 +261,22 @@ class LossContextPairedShadowRuntime:
             )
 
     def _put_nowait(self, command: _Command) -> bool:
-        if self._failed.is_set() or self._closed.is_set():
-            return False
-        try:
-            self._queue.put_nowait(command)
-        except queue.Full:
-            with self._lock:
-                self._queue_overflows += 1
-            self._set_error(
-                "LossContextPairedShadowRuntimeError: paired shadow queue overflow"
-            )
-            return False
+        with self._admission_lock:
+            if (
+                self._failed.is_set()
+                or self._closed.is_set()
+                or self._terminal_checkpoint_requested
+            ):
+                return False
+            try:
+                self._queue.put_nowait(command)
+            except queue.Full:
+                with self._lock:
+                    self._queue_overflows += 1
+                self._set_error(
+                    "LossContextPairedShadowRuntimeError: paired shadow queue overflow"
+                )
+                return False
         self._record_queue_depth()
         return True
 
@@ -499,6 +511,31 @@ class LossContextPairedShadowRuntime:
             timeout_seconds=timeout_seconds,
         )
 
+    async def terminal_checkpoint(
+        self,
+        *,
+        end_ms: int,
+        timeout_seconds: float = DEFAULT_CONTROL_TIMEOUT_SECONDS,
+    ) -> dict[str, object]:
+        """Fence all future research mutations before final signed handoff.
+
+        Previously queued market records precede the FIFO checkpoint.
+        The admission fence and command enqueue use a separate short lock,
+        so no source callback can append a new unsigned command after the
+        terminal handoff begins, even while its durable snapshot waits for
+        outstanding processing. The failed original campaigns are NOT
+        reopened or retrospectively repaired by this guard.
+        """
+        with self._admission_lock:
+            if self._terminal_checkpoint_requested:
+                raise LossContextPairedShadowRuntimeError(
+                    "paired shadow terminal checkpoint already requested"
+                )
+            self._terminal_checkpoint_requested = True
+        return await self.checkpoint(
+            end_ms=end_ms, timeout_seconds=timeout_seconds,
+        )
+
     async def summary(
         self,
         *,
@@ -592,6 +629,9 @@ class LossContextPairedShadowRuntime:
                 ),
                 "checkpoint_count": self._checkpoint_count,
                 "last_checkpoint_end_ms": self._last_checkpoint_end_ms,
+                "terminal_checkpoint_fenced": (
+                    self._terminal_checkpoint_requested
+                ),
                 "research_only": True,
                 "shadow_only": True,
                 "paper_only": True,
