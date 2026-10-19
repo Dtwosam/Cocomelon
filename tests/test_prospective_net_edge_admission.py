@@ -116,7 +116,7 @@ def test_future_closes_and_same_ms_closes_can_never_vote_on_earlier_entry() -> N
         100, r="100", opened_ms=BASE + 50, closed_ms=at + 1,
     )
     tied = _trade(
-        101, r="-100", opened_ms=BASE + 60, closed_ms=at,
+        101, r="-9", opened_ms=BASE + 60, closed_ms=at,
     )
     outcome = preentry_net_floor(
         prior + (eventual, tied),
