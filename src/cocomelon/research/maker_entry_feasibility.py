@@ -39,17 +39,26 @@ def _positive_decimal(value: object, name: str) -> Decimal:
 
 
 def _first_level(raw: object, name: str) -> tuple[Decimal, Decimal]:
-    if (
-        not isinstance(raw, (tuple, list))
-        or not raw
-        or not isinstance(raw[0], Mapping)
-    ):
-        raise MakerEntryWitnessError(f"{name} book level absent")
-    level = raw[0]
-    return (
-        _positive_decimal(level.get("px"), f"{name} price"),
-        _positive_decimal(level.get("sz"), f"{name} size"),
-    )
+    if not isinstance(raw, (tuple, list)) or not 0 < len(raw) <= 1000:
+        raise MakerEntryWitnessError(f"{name} book level absent or unbounded")
+    best: tuple[Decimal, Decimal] | None = None
+    previous_price: Decimal | None = None
+    # A misplaced first level invents a better passive quote and changes
+    # hypothetical fee savings; reject rather than silently selecting it.
+    for level in raw:
+        if not isinstance(level, Mapping):
+            raise MakerEntryWitnessError(f"{name} book level malformed")
+        price = _positive_decimal(level.get("px"), f"{name} price")
+        quantity = _positive_decimal(level.get("sz"), f"{name} size")
+        if previous_price is not None and (
+            price >= previous_price if name == "bid" else price <= previous_price
+        ):
+            raise MakerEntryWitnessError(f"{name} book levels not best-first")
+        if best is None:
+            best = (price, quantity)
+        previous_price = price
+    assert best is not None
+    return best
 
 
 @dataclass(frozen=True, slots=True)
