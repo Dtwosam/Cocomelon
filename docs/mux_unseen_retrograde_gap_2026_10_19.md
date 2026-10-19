@@ -16,12 +16,15 @@ look as if standby backfill was complete.
 
 ## Narrow PAPER original-source correction
 
-- For an *unseen* strictly older active/standby candidate, commit a
+- For an *unseen* strictly older discarded **standby backfill** candidate, commit a
   `redundant_unseen_retrograde` DataGap with the unchanged exact bounded
   earlier/later original clock values. Never fabricate a price or emit an
   old event into a trading decision.
 - Exact already-admitted duplicates remain correctly suppressed with no
-  spurious negative gap.
+  spurious negative gap. Older receive-only live messages on the
+  *existing active* lane retain their existing drop/no-gap semantics;
+  the negative marker is not an invented disconnect or an assertion that
+  every transport reorder denotes a missing source interval.
 - Hold the exact missing-source receipt (gap and event key) across sink
   error OR cancellation. Before accepting any later event or gap on that
   stream, retry the same immutable negative receipt; on successful commit
