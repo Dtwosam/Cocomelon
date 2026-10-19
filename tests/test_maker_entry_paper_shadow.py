@@ -200,9 +200,9 @@ def test_selling_requires_buy_aggressor_strictly_above_ask() -> None:
         ),
         plan=_plan(OrderSide.SELL),
     )
-    assert result["modelled_entry_status"] == "partial"
+    # Original best ask queue 5: 3 at touch and then 4 through
+    # consumes remaining 2 ahead and model-fills 2 conditional units.
     assert result["conditional_modelled_entry_quantity"] == "2"
-    # The original approved stop protects SHORT and allows full 2 units.
     assert result["modelled_entry_status"] == "full"
 
 
@@ -287,3 +287,18 @@ def test_cannot_smuggle_invalid_maker_quote_or_reduce_risk_envelope(
 def test_original_instrument_lineage_is_mandatory() -> None:
     with pytest.raises(MakerEntryWitnessError, match="lineage"):
         _run((), spec=replace(_spec(), metadata_received_at_ms=901))
+
+
+
+def test_risk_clipped_below_native_minimum_refuses_maker_order() -> None:
+    low = replace(
+        _plan(),
+        approved_risk_amount_ceiling=Decimal("0.5"),
+    )
+    with pytest.raises(MakerEntryWitnessError, match="venue-sized"):
+        _run((), plan=low)
+
+
+def test_maker_source_trade_future_exchange_time_is_rejected() -> None:
+    with pytest.raises(MakerEntryWitnessError, match="exchange/receipt"):
+        _run((_trade(1400, "A", "99", "8", exchange_ms=1500),))
