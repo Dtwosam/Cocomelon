@@ -99,7 +99,11 @@ def paired_maker_vs_ioc_exit_cost_probe(
     prices. This is a SINGLE original trade path, with no future signals,
     capital reallocation or funding, and cannot certify whole-account profit.
     """
-    if type(start_cash) is not Decimal or not start_cash.is_finite() or start_cash <= ZERO:
+    if (
+        type(start_cash) is not Decimal
+        or not start_cash.is_finite()
+        or start_cash <= ZERO
+    ):
         raise MakerEntryWitnessError("paired exit original cash invalid")
     if source_integrity_passed is not True:
         raise MakerEntryWitnessError("paired exit original source failed")
