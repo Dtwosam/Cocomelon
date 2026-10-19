@@ -258,9 +258,18 @@ class PairedShadowTrendSidecar:
         return legacy
 
     async def terminal_checkpoint(self, *, end_ms: int) -> dict[str, object]:
-        # Terminal custody must fence BOTH isolated research actors.
-        # In particular, a failed historical primary cannot leave the
-        # separate fresh-trend actor accepting unsigned later events.
+        # BOTH separately funded actors must stop accepting original
+        # mutations in this same synchronous turn. In the old sequence,
+        # an awaited slow primary checkpoint allowed the trend lane to
+        # ingest NEW original rows for seconds afterwards. Its signature
+        # then covered a different terminal observation window.
+        #
+        # Fences do NOT mean both ledgers are valid, or make a frozen
+        # failed campaign restorable. Each independent durable checkpoint
+        # is still performed and verified separately.
+        if self.primary is not None:
+            self.primary.fence_terminal_admission()
+        self.trend.fence_terminal_admission()
         if self.primary is None:
             await self._checkpoint_trend(end_ms=end_ms, terminal=True)
             raise RuntimeError("legacy paired shadow unavailable; no v5 checkpoint")
