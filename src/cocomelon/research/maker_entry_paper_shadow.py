@@ -22,6 +22,7 @@ from cocomelon.research.maker_entry_feasibility import (
     MAX_WAIT_MS,
     MakerEntryQuoteWitness,
     MakerEntryWitnessError,
+    quote_research_only_maker_entry,
     review_original_trade_through,
 )
 
@@ -139,6 +140,7 @@ def simulate_strict_through_maker_entry(
     witness: MakerEntryQuoteWitness,
     *,
     original_plan: PaperOrderPlan,
+    original_book: StreamEvent,
     instrument: InstrumentExecutionSpec,
     execution_config: PaperExecutionConfig,
     original_events: Sequence[StreamEvent],
@@ -157,6 +159,20 @@ def simulate_strict_through_maker_entry(
     allowed, per_unit_risk = _validate_envelope(
         witness, original_plan, instrument, execution_config
     )
+    # Independently reconstruct the quote from the supplied original L2.
+    # A stale, wrong-side or forged quote/queue/fee cannot drive paper fills.
+    rebuilt = quote_research_only_maker_entry(
+        original_plan=original_plan,
+        original_book=original_book,
+        execution=execution_config,
+        maker_fee_rate=witness.hypothetical_maker_fee_rate,
+        quote_at_ms=witness.quote_at_ms,
+        wait_ms=witness.expire_at_ms - witness.quote_at_ms,
+    )
+    if witness != rebuilt:
+        raise MakerEntryWitnessError(
+            "maker shadow original book/witness lineage mismatch"
+        )
     # First reuse original strict all-market/clock/expiry/duplicates validator.
     review = review_original_trade_through(
         witness,
