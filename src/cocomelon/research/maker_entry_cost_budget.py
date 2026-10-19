@@ -191,7 +191,13 @@ def maker_entry_closed_trade_cost_budget(
                 raise MakerEntryCostBudgetError(
                     "original trade cash fails reconciliation"
                 )
-            fee_savings = trade.entry_fees * fee_discount_fraction
+            # Compute dollars from the fee-ratio division last. Using a
+            # rounded repeating discount fraction (e.g. two thirds) can
+            # create false sub-cent residuals even for exact booked fees.
+            fee_savings = (
+                trade.entry_fees
+                - (trade.entry_fees * maker_fee_rate / taker_fee_rate)
+            )
             original_net += trade.net_pnl
             gross += trade.gross_realized_pnl
             entry_fees += trade.entry_fees
