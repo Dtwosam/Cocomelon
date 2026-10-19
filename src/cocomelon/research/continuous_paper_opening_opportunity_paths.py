@@ -12,8 +12,14 @@ from typing import Final
 SCHEMA_VERSION: Final = 1
 DEFAULT_MAX_PATH_AGE_MS: Final = 21_600_000
 DEFAULT_MAX_COMPLETION_LAG_MS: Final = 120_000
-# Keep optional research work bounded before returning control to L2 handlers.
-COOPERATIVE_MARK_BATCH_SIZE: Final = 32
+# Real PAPER worker #39198200811 saw 6,196ms event-loop stalls in
+# context-refresh periods with optional opening-path research concurrently
+# transforming markouts in Python threads. Those threads still compete for
+# the GIL while transforming each original path. Keep the existing *exact*
+# staged/write-ordered semantics but limit each offloaded CPU burst to at
+# most eight complete original path transformations before control yields.
+# This is a negative-only latency mitigation, not source certification.
+COOPERATIVE_MARK_BATCH_SIZE: Final = 8
 ZERO: Final = Decimal("0")
 
 

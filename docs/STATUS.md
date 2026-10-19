@@ -2,6 +2,37 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 19 — bound optional opening-path GIL work while preserving EVERY observed mark
+
+Real authenticated PAPER #39198200811 on October 19 08:11 UTC
+had $9,806.32 marked equity, **−$193.68 after all fees and funding**,
+and 301 lifetime closed trades. Original v3 source still FAILED with
+3,648,660 dropped rows. The previous session's largest event-loop
+heartbeat delay was 6,196ms in context-refresh while optional
+opening-path research and the checkpoint writer were active.
+This is a correlation, not attribution to a specific Python batch.
+
+The optional `ContinuousPaperOpeningOpportunityPathStore` already
+offloads complete mark transformations to worker threads while its
+async path yields between batches and individual durable writes.
+But that background Python still competes for the GIL with the WS
+receive loop: each chunk could process **32 entire original
+opportunity paths** in one offloaded CPU burst. New explicit
+source-first bound is **8**. A full canonical-parity regression
+registers 19 genuine structured synthetic research opportunities
+and requires 8+8+3 bounded threads, exact same original mark
+timestamp/source/payload in *all* 19 durable files, and an
+independently matching aggregate state digest. No opportunity is
+sampled, dropped, sorted, deferred past its original timestamp,
+retimed or considered admitted to original-v3 market source.
+
+Neither the authenticated 6.2-second lag nor improved measured
+runtime is claimed fixed by a unit test; only new-worker timings
+can establish impact. Source v3 clock/L2 failures, total account
+negative after-cost economics, frozen capital-matched 72h
+promotion gate and LIVE disabled state are unchanged. No
+position, fee/funding, decision or risk/stop alteration.
+
 ## October 19 — prioritize strict v3 source by retiring optional rank research continuity
 
 Authenticated PAPER #39198200811 at 08:11 UTC: $10,000 initial,

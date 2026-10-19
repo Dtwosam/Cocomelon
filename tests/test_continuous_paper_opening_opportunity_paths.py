@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from cocomelon.research.continuous_paper_opening_opportunity_paths import (
+    COOPERATIVE_MARK_BATCH_SIZE,
     ContinuousPaperOpeningOpportunityPath,
     ContinuousPaperOpeningOpportunityPathError,
     ContinuousPaperOpeningOpportunityPathMark,
@@ -391,3 +392,64 @@ def test_forward_path_does_not_impute_after_completion_deadline(
     assert path.complete is False
     assert path.marks == ()
 
+
+
+def test_opening_path_small_cpu_batches_preserve_every_original_mark(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert COOPERATIVE_MARK_BATCH_SIZE == 8
+    serial = ContinuousPaperOpeningOpportunityPathStore(
+        tmp_path / "serial",
+        max_path_age_ms=100_000,
+        max_completion_lag_ms=2_000,
+    )
+    cooperative = ContinuousPaperOpeningOpportunityPathStore(
+        tmp_path / "cooperative",
+        max_path_age_ms=100_000,
+        max_completion_lag_ms=2_000,
+    )
+    for index in range(19):
+        for store in (serial, cooperative):
+            store.register(
+                opportunity_id=f"original-{index:02d}",
+                market="BTC",
+                direction="long" if index % 2 == 0 else "short",
+                opportunity_timestamp_ms=10_000 + index,
+            )
+
+    original = cooperative._updated_paths_for_mark_from_snapshot
+    sizes: list[int] = []
+    threads: list[int] = []
+    caller_thread = threading.get_ident()
+
+    def measured(original_paths, **kwargs):
+        sizes.append(len(original_paths))
+        threads.append(threading.get_ident())
+        return original(original_paths, **kwargs)
+
+    monkeypatch.setattr(
+        cooperative, "_updated_paths_for_mark_from_snapshot", measured,
+    )
+
+    kwargs = {
+        "market": "BTC",
+        "observed_at_ms": 10_100,
+        "mark_px": Decimal("102.4"),
+        "source": "metaAndAssetCtxs",
+    }
+    assert serial.observe(**kwargs) == 19
+    assert asyncio.run(cooperative.observe_cooperatively(**kwargs)) == 19
+    # All original updates are validated, not skipped or sampled; one
+    # CPU burst cannot process all 19 historical market-path records.
+    assert sizes == [8, 8, 3]
+    assert threads and all(t != caller_thread for t in threads)
+    for index in range(19):
+        name = f"original-{index:02d}"
+        raw = serial.load(name)
+        bounded = cooperative.load(name)
+        assert raw is not None and bounded is not None
+        assert raw.to_dict() == bounded.to_dict()
+        assert raw.marks[0].observed_at_ms == 10_100
+        assert bounded.marks[0].source == "metaAndAssetCtxs"
+    assert serial.state_digest == cooperative.state_digest
