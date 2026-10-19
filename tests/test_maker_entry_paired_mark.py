@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -465,5 +466,10 @@ def test_rejected_exit_never_becomes_cost_free_close() -> None:
         {"bids": [{"px": Decimal("80"), "sz": Decimal("10")}],
          "asks": [{"px": Decimal("81"), "sz": Decimal("10")}]},
     )
-    with pytest.raises(MakerEntryWitnessError, match="IOC rejected"):
-        _closed_pair((), exit_book=thin_exit)
+    report = _closed_pair((), exit_book=thin_exit)
+    baseline = report["baseline_account"]
+    assert isinstance(baseline, dict)
+    assert report["baseline_ioc_exit_quantity"] == "0"
+    assert report["both_lanes_flat_after_original_exit"] is False
+    assert baseline["position_count"] == 1
+    assert report["whole_account_profitable_edge_proven"] is False
