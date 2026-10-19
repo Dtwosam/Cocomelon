@@ -210,6 +210,8 @@ def test_unseen_retrograde_standby_print_emits_negative_source_gap() -> None:
         assert not mux._buffers[(1, STREAM)]
         assert mux.ingress_diagnostics()["retrograde_unseen_gap_count"] == 1
         assert mux.ingress_diagnostics()["uncommitted_retrograde_gap_count"] == 0
+        assert delayed.event_key not in mux._seen_keys[STREAM]
+        assert delayed.event_key in mux._retrograde_rejected_keys[STREAM]
         await mux.on_event(1, delayed)
         assert len(gaps) == 1
         await mux.on_event(1, next_print)
