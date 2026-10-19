@@ -2,6 +2,34 @@
 
 > Profitability-first mandate: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). No non-economic promotion or LIVE relaxation.
 
+## October 19 — maker queue-ahead uncertainty instead of free assumed fills
+
+Ordinary authenticated PAPER #39223537959 at 11:05 UTC:
+$9,799.45 marked equity, **-$200.55 net** from $10k initial
+with 302 lifetime closes, two open positions and $234.47 booked
+trading fees. Old worker `372dff6d` still has 2,606,253
+dropped original v3 source rows and receipt-clock failure;
+no eligible maker comparison or clean profit edge exists.
+
+New read-only `maker_entry_queue_stress.py` extends the original
+maker quote/trade witness with hypothetical best-touch queue-ahead
+scenarios (0x, 1x, 2x displayed top-level quantity) and separates
+prints strictly through the quote from prints at touch. It
+refuses duplicate, stale, ambiguous timestamp, wrong market or
+non-complete original source through expiry, and **never books
+a fill, cost saving or candidate profit**. A simple FIFO scenario
+is not a venue-verified fill or an unconditional bound.
+The original maker L2 quote also validates all depth levels in
+strict best-first price order, not just its first level.
+
+This is a direct feasibility check for the maker-first PAPER
+idea, not a change to existing trading/risk, maker orders,
+fee booking, data timestamps, frozen v3 account experiment,
+worker restart or LIVE state. See
+[maker queue note](maker_entry_queue_ahead_2026_10_19.md).
+Unaltered source and independent actual matched after-cost
+account proof remain mandatory. **NO PROFITABLE EDGE VERIFIED.**
+
 ## October 19 — Maker entry missed-winner cost budget; no fabricated profit
 
 Authenticated PAPER worker #39223537959 at 10:40 UTC: **-$209.31**
