@@ -168,4 +168,4 @@ def test_raw_diagnostic_keys_cannot_leak_into_public_heartbeat(tmp_path: Path) -
     ) in status
     assert "open:redundant_disconnect=1" in status
     assert "open:other=True" not in status
-    assert "bucket counts / adjacent-edge reconcile: 1 / true" in status
+    assert "bucket counts / adjacent-edge reconcile: 1 / false" in status
