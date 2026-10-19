@@ -72,3 +72,30 @@ def test_prospective_readiness_embedded_resolver_python_compiles() -> None:
         "<prospective-readiness-resolver>",
         "exec",
     )
+
+
+def test_readiness_reuses_exact_artifact_queries_with_bounded_newest_window(
+) -> None:
+    source = Path(
+        ".github/workflows/prospective-trade-quality-readiness.yml"
+    ).read_text(encoding="utf-8")
+    resolver = source.split(
+        "      - name: Resolve latest coherent immutable ledgers", 1,
+    )[1].split(
+        "      - name: Build fail-closed readiness manifest", 1,
+    )[0]
+    # No unlimited 40-success historical rewind after the newest
+    # original forecast fails. Keep integrity matching & hard failure.
+    assert "MAX_RESEARCH_LOOKBACK_RUNS = 12" in resolver
+    assert "per_page=20" in resolver
+    assert "per_page=100" not in resolver
+    assert "runs[:MAX_RESEARCH_LOOKBACK_RUNS]" in resolver
+    assert "len(candidates) >= MAX_RESEARCH_LOOKBACK_RUNS" in resolver
+    assert "cache_key = (run_id, prefix)" in resolver
+    assert "if cache_key in artifact_cache" in resolver
+    assert "artifact_cache[cache_key] = None" in resolver
+    assert "artifact_cache[cache_key] = artifact" in resolver
+    assert 'latest.get("conclusion") != "success"' in resolver
+    assert "No authenticated prediction/comparison ledger pair shares" in resolver
+    assert "Artifact digest mismatch" in resolver
+    assert "artifact_cache.get(cache_key) or" not in resolver
