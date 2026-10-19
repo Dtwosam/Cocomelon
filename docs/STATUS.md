@@ -1,5 +1,32 @@
 # Cocomelon Project Status
 
+## October 19 — maker entry trade-through upper bound, never synthetic fills
+
+Profit question: with booked fees $233.4237 and realized gross +$32.9299
+on ordinary PAPER #39223537959 (Oct 19 10:13 UTC), merely replacing
+the current 4.5bp taker fee by the official 1.5bp maker base tier on
+**ALL unchanged historical entries/exits** still predicts ~-$47.85
+account net. The ~87.17% fee removal required for break-even is beyond
+the two-thirds nominal base maker discount. Fee-only economics cannot
+prove a strategy; changing fill location affects gross/market selection.
+
+New research-only `maker_entry_feasibility.py` checks a real source-timed
+best-bid/ask potential passive quote after original latency. It measures
+the *conditional* single-entry maximum maker-fee saving, then checks
+subsequent original exact-market sell/buy prints to bound what might
+have crossed that quote. **It never asserts a maker fill**: volume
+crossing a price does not prove queue priority, accepted resting order,
+realized saving or complete account PnL. Bad source clocks, missing
+time horizon, stale/future/crossed L2, duplicate/reordered prints,
+equal-timestamp unknown order and other market tape fail closed or
+do not count. Tests cover the negative/ambiguity cases and both sides.
+
+No ordinary PAPER orders, risk, fee/funding calculation, frozen v3
+hypothesis, source archive, state checkpoints or LIVE state changed.
+See [maker fillability note](maker_entry_cost_and_fillability_2026_10_19.md).
+A truly capital-matched future maker-vs-IOC after-cost paired account
+with independent original-source custody remains **UNVERIFIED**.
+
 ## October 19 — exact matched-account fee stress (research only)
 
 The Oct 19 09:40 UTC authenticated PAPER #39223537959 heartbeat reports
