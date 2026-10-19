@@ -252,3 +252,57 @@ def test_same_millisecond_original_trade_is_not_assumed_after_quote() -> None:
     )
     assert result["possible_entry_fill_quantity_upper_bound"] == "0.25"
     assert result["maker_fill_certified"] is False
+
+
+@pytest.mark.parametrize(
+    ("book_payload", "message"),
+    [
+        ({
+            "bids": [
+                {"px": Decimal("99"), "sz": Decimal("1")},
+                {"px": Decimal("100"), "sz": Decimal("1")},
+            ],
+            "asks": [{"px": Decimal("101"), "sz": Decimal("2")}],
+        }, "best-first"),
+        ({
+            "bids": [{"px": Decimal("100"), "sz": Decimal("2")}],
+            "asks": [
+                {"px": Decimal("102"), "sz": Decimal("1")},
+                {"px": Decimal("101"), "sz": Decimal("1")},
+            ],
+        }, "best-first"),
+        ({
+            "bids": [
+                {"px": Decimal("100"), "sz": Decimal("2")},
+                {"px": Decimal("100"), "sz": Decimal("1")},
+            ],
+            "asks": [{"px": Decimal("101"), "sz": Decimal("2")}],
+        }, "best-first"),
+        ({
+            "bids": [
+                {"px": Decimal("100"), "sz": Decimal("2")},
+                {"px": "not-decimal", "sz": Decimal("1")},
+            ],
+            "asks": [{"px": Decimal("101"), "sz": Decimal("2")}],
+        }, "positive Decimal"),
+        ({
+            "bids": [{"px": Decimal("100"), "sz": Decimal("2")}],
+            "asks": [
+                {"px": Decimal("101"), "sz": Decimal("2")},
+                {"px": Decimal("102"), "sz": Decimal("0")},
+            ],
+        }, "positive Decimal"),
+    ],
+)
+def test_maker_quote_rejects_malformed_or_misordered_deep_l2(
+    book_payload: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(MakerEntryWitnessError, match=message):
+        quote_research_only_maker_entry(
+            original_plan=_plan(),
+            original_book=replace(_book(), payload=book_payload),
+            execution=PaperExecutionConfig(),
+            maker_fee_rate=Decimal("0.00015"),
+            quote_at_ms=1250,
+        )
