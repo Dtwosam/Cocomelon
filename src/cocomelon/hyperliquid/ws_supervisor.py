@@ -752,14 +752,25 @@ class WebSocketSupervisor:
         )
         await self._persist_uncommitted_recovered_gap(stream_id)
 
-    async def _dispatch(self, raw: object) -> None:
-        now_ms = self._clock_ms()
+    async def _dispatch(
+        self,
+        raw: object,
+        *,
+        received_at_ms: int | None = None,
+        received_at_utc: datetime | None = None,
+    ) -> None:
+        # An actual session provides timestamps sampled at socket receipt.
+        # Normalization, source gap commits, or awaitable lane dispatch must
+        # NEVER replace those with a later and apparently fresher clock.
+        # Direct offline/test dispatch retains its established clock path.
+        now_ms = self._clock_ms() if received_at_ms is None else received_at_ms
+        receive_time = self._utcnow() if received_at_utc is None else received_at_utc
         if self._activity_hook is not None:
             self._activity_hook("normalize_message", True)
         try:
             events = normalize_ws_message(
                 raw,
-                receive_time=self._utcnow(),
+                receive_time=receive_time,
             )
         finally:
             if self._activity_hook is not None:
@@ -1098,10 +1109,19 @@ class WebSocketSupervisor:
                         )
                     continue
             assert raw is not None
+            # Freeze both clocks immediately after recv_json, before
+            # normalization hooks or any downstream async source writes.
+            # The immutable WS receive_time remains first-observed, not the
+            # later PAPER/mux/pump acceptance clock.
             received_at_ms = self._clock_ms()
+            received_at_utc = self._utcnow()
             self._last_server_message_ms = received_at_ms
             last_session_message_ms = received_at_ms
-            await self._dispatch(raw)
+            await self._dispatch(
+                raw,
+                received_at_ms=received_at_ms,
+                received_at_utc=received_at_utc,
+            )
             received += 1
 
             # recv_json() and downstream sinks can both complete immediately
