@@ -202,3 +202,19 @@ def test_no_fees_and_fee_free_breakeven_do_not_synthesize_an_edge() -> None:
         "both_accounts_strictly_positive"
     ]
     assert report["whole_account_positive_forward_edge_certified"] is False
+
+
+def test_fee_refund_zero_scenario_tolerates_booked_decimal_scale() -> None:
+    base = _lane("3", "0", "0", "0", count=0)
+    challenger = _lane("4", "0", "0", "0", count=0)
+    # Source accounting tolerates genuinely sub-attodollar residuals.
+    # Decimal(0) * a fine-scale booked fee can otherwise add trailing
+    # zeros to the report string without changing a single cash dollar.
+    base["fill_fees_usd"] = "0.00000000000000000001"
+    report = fresh_long_trend_economic_hurdle(_audit(base, challenger))
+    scenario = report["paired_same_fills_fee_refund_sensitivity"][0]
+    actual_delta = Decimal(report["candidate_minus_baseline_after_cost_usd"])
+    assert abs(Decimal(scenario["candidate_minus_baseline_usd"]) - actual_delta) <= (
+        Decimal("1E-18")
+    )
+    assert report["execution_authority"] is False
