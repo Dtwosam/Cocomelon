@@ -1,5 +1,7 @@
 # Cocomelon Project Status
 
+> Profitability-first mandate: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). No non-economic promotion or LIVE relaxation.
+
 ## October 19 — maker entry trade-through upper bound, never synthetic fills
 
 Profit question: with booked fees $233.4237 and realized gross +$32.9299
