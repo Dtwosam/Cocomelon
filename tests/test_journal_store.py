@@ -602,6 +602,10 @@ def test_readonly_canonical_paper_trade_journal_cannot_change_source(
                 "INSERT INTO journal_meta(key, value) "
                 "VALUES ('research_fake_key', 'profit')"
             )
+        with pytest.raises(
+            JournalConsistencyError, match="cannot record trades asynchronously",
+        ):
+            asyncio.run(reader.record_trade_async(original_trade))
     finally:
         reader.close()
     assert hashlib.sha256(path.read_bytes()).hexdigest() == initial
