@@ -14,6 +14,14 @@ BOOKING_CONTEXT = Context(prec=28, rounding=ROUND_HALF_EVEN)
 # Source accounts book at precision 28; tiny cross-expression differences are
 # not a dollar-denominated edge. Reject material drift without rounding PnL.
 MAX_CASH_RESIDUAL = Decimal("1E-18")
+# Predefined same-fill arithmetic scenarios; they do not change executions.
+FEE_REFUND_FRACTIONS = (
+    Decimal("0"),
+    Decimal("0.25"),
+    Decimal("0.50"),
+    Decimal("0.75"),
+    Decimal("1"),
+)
 
 
 class V3EconomicHurdleError(ValueError):
@@ -137,7 +145,19 @@ def fresh_long_trend_economic_hurdle(
             net = cast(Decimal, lane["marked_after_cost_usd"])
             fees = cast(Decimal, lane["fill_fees_usd"])
             no_fee = net + fees
+            # Exact same-fills fee feasibility, NOT a changed fill simulation.
+            # A share above one means even a 100% fee refund cannot break even.
+            fee_refund_to_zero = (
+                str(max(-net, ZERO) / fees)
+                if fees > ZERO
+                else "0" if net >= ZERO else None
+            )
             return {
+                "booked_fee_coverage_by_non_fee_marked_pnl_ratio": (
+                    str(no_fee / fees) if fees > ZERO else None
+                ),
+                "fraction_of_booked_fees_to_refund_for_zero": fee_refund_to_zero,
+                "even_full_fee_refund_cannot_make_strict_profit": no_fee <= ZERO,
                 "marked_after_all_costs_usd": str(net),
                 "gross_realized_usd": str(lane["gross_realized_pnl_usd"]),
                 "fees_paid_usd": str(fees),
@@ -155,8 +175,44 @@ def fresh_long_trend_economic_hurdle(
                 "absolute_after_cost_positive": net > ZERO,
             }
 
+        # Independent matched lanes, exactly the same hypothetical fee
+        # refund fraction for each. A better delta with both lanes negative
+        # or a fee-free advantage is NOT an independent forward account edge.
+        baseline_fees = cast(Decimal, baseline["fill_fees_usd"])
+        candidate_fees = cast(Decimal, candidate["fill_fees_usd"])
+        fee_refund_sensitivity = []
+        for fraction in FEE_REFUND_FRACTIONS:
+            baseline_net = base_net + fraction * baseline_fees
+            challenger_net = candidate_net + fraction * candidate_fees
+            paired_delta = challenger_net - baseline_net
+            fee_refund_sensitivity.append({
+                "booked_fee_refund_fraction": str(fraction),
+                "baseline_same_fills_marked_net_usd": str(baseline_net),
+                "candidate_same_fills_marked_net_usd": str(challenger_net),
+                "candidate_minus_baseline_usd": str(paired_delta),
+                "both_accounts_strictly_positive": (
+                    baseline_net > ZERO and challenger_net > ZERO
+                ),
+                "candidate_strictly_ahead": paired_delta > ZERO,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+            })
+        # The 0% scenario MUST reconstruct actual booked cash. The 100%
+        # scenario MUST strip the fee advantage from the original delta.
+        if (
+            fee_refund_sensitivity[0]["candidate_minus_baseline_usd"] != str(delta)
+            or abs(
+                (candidate_net + candidate_fees)
+                - (base_net + baseline_fees)
+                - (gross_delta + funding_delta + unrealized_delta)
+            ) > MAX_CASH_RESIDUAL
+        ):
+            raise V3EconomicHurdleError("same-fills fee sensitivity mismatch")
+
         return {
             "schema": "fresh-long-trend-v3-local-net-profit-hurdle-v1",
+            "paired_same_fills_fee_refund_sensitivity": fee_refund_sensitivity,
             "baseline": target(baseline),
             "candidate": target(candidate),
             "candidate_minus_baseline_after_cost_usd": str(delta),
