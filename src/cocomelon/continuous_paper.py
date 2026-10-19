@@ -2717,6 +2717,37 @@ def _position_action_from_payload(raw: object) -> PositionAction:
         timestamp_ms=int(raw["timestamp_ms"]),
     )
 
+def _disqualify_optional_rank_research_for_v3(
+    path: Path, *, source_name: str,
+) -> str:
+    """Permanently mark a deliberately interrupted rank research cohort.
+
+    In strict original-v3 capture sessions, revalidating years of optional
+    SHORT rank snapshots delays real mainnet observation by ~15 minutes per
+    natural PAPER worker. A source-critical session may suspend that
+    optional cohort, but it must NOT silently resume its lineage later.
+    This durable negative-only receipt is deliberately not a source pass.
+    """
+    if source_name not in {
+        "rank_snapshot", "rank_full_features", "rank_market_context",
+    }:
+        raise ValueError("invalid optional rank source cohort")
+    reason = (
+        f"{source_name}_research_discontinued_for_original_v3_source_priority"
+    )
+    _write_json_atomic(
+        path,
+        {
+            "error": reason,
+            "research_only": True,
+            "source_continuity_certified": False,
+            "execution_authority": False,
+            "promotion_authority": False,
+        },
+    )
+    return reason
+
+
 def _cadence_shadow_with_original_source_priority(
     *,
     original_v3_capture_requested: bool,
@@ -9655,6 +9686,13 @@ async def run_continuous_paper_session(
     # This archive cohort can span many historical worker handoffs. Keep
     # its validation cost separate from ordinary PAPER account recovery.
     rank_source_started = time.perf_counter()
+    # The strict original mainnet capture takes priority over the optional
+    # previous SHORT-rank research history. This deliberately invalidates
+    # that rank cohort for future continuity, rather than pretending that
+    # skipped original files were checked or rank observations continued.
+    rank_source_priority_requested = (
+        os.environ.get("V3_CAPTURE_ORIGINAL_SOURCE") == "1"
+    )
     rank_tracker = LatestCoarseRankTracker()
     rank_snapshot_error_path = (
         root / "prospective-short-rank-first-seen-error.json"
@@ -9675,6 +9713,10 @@ async def run_continuous_paper_session(
             rank_snapshot_capture_error = old_error["error"]
         except (OSError, ValueError):
             rank_snapshot_capture_error = "unreadable_rank_failure_receipt"
+    elif rank_source_priority_requested:
+        rank_snapshot_capture_error = _disqualify_optional_rank_research_for_v3(
+            rank_snapshot_error_path, source_name="rank_snapshot",
+        )
     else:
         try:
             rank_snapshot_store = FirstSeenRankSnapshotStore(
@@ -9716,6 +9758,10 @@ async def run_continuous_paper_session(
             rank_input_capture_error = prior_error["error"]
         except (OSError, ValueError):
             rank_input_capture_error = "unreadable_rank_input_failure_receipt"
+    elif rank_source_priority_requested:
+        rank_input_capture_error = _disqualify_optional_rank_research_for_v3(
+            rank_input_error_path, source_name="rank_full_features",
+        )
     elif rank_snapshot_store is not None and rank_snapshot_capture_error is None:
         try:
             rank_input_store = OriginalRankFeatureInputBatchStore(
@@ -9760,6 +9806,10 @@ async def run_continuous_paper_session(
             rank_context_capture_error = prior_context_error["error"]
         except (OSError, ValueError):
             rank_context_capture_error = "unreadable_rank_market_context_failure"
+    elif rank_source_priority_requested:
+        rank_context_capture_error = _disqualify_optional_rank_research_for_v3(
+            rank_context_error_path, source_name="rank_market_context",
+        )
     elif rank_snapshot_store is not None and rank_snapshot_capture_error is None:
         try:
             rank_context_store = OriginalRankEligibilityContextStore(
