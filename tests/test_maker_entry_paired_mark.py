@@ -20,6 +20,9 @@ from cocomelon.research.maker_entry_feasibility import (
     MakerEntryWitnessError,
     quote_research_only_maker_entry,
 )
+from cocomelon.research.maker_entry_paired_exit_cost import (
+    paired_maker_vs_ioc_exit_cost_probe,
+)
 from cocomelon.research.maker_entry_paired_mark import (
     paired_maker_vs_ioc_entry_mark,
 )
@@ -285,3 +288,182 @@ def test_original_duplicate_trade_events_cannot_make_two_paper_positions() -> No
     event = _trade(1400, "A", "99", "8")
     with pytest.raises(MakerEntryWitnessError, match="duplicate"):
         _pair((event, event))
+
+
+
+def _exit_plan(side: OrderSide = OrderSide.BUY) -> PaperOrderPlan:
+    source = _plan(side)
+    return replace(
+        source,
+        side=OrderSide.SELL if side is OrderSide.BUY else OrderSide.BUY,
+        reduce_only=True,
+        stop_price=None,
+        approved_risk_amount_ceiling=None,
+        stop_distance_fraction=None,
+        effective_loss_fraction=None,
+        execution_reference_price=Decimal(
+            "104" if side is OrderSide.BUY else "98"
+        ),
+        risk_decision_id="predeclared-exit-risk-1",
+        strategy_decision_id="predeclared-exit-signal-1",
+        created_at_ms=2900,
+        earliest_execution_ms=3200,
+    )
+
+
+def _exit_book(side: OrderSide = OrderSide.BUY) -> StreamEvent:
+    return _event(
+        StreamKind.L2_BOOK, 3200,
+        {
+            "bids": [{"px": Decimal(
+                "104" if side is OrderSide.BUY else "97"
+            ), "sz": Decimal("10")}],
+            "asks": [{"px": Decimal(
+                "105" if side is OrderSide.BUY else "98"
+            ), "sz": Decimal("10")}],
+        },
+    )
+
+
+def _closed_pair(
+    prints: tuple[StreamEvent, ...],
+    *,
+    side: OrderSide = OrderSide.BUY,
+    exit_book: StreamEvent | None = None,
+    exit_plan: PaperOrderPlan | None = None,
+    end_mark: StreamEvent | None = None,
+    clean: bool = True,
+) -> dict[str, object]:
+    original = _plan(side)
+    book = _book()
+    witness = quote_research_only_maker_entry(
+        original_plan=original,
+        original_book=book,
+        execution=PaperExecutionConfig(),
+        maker_fee_rate=Decimal("0.00015"),
+        quote_at_ms=1250,
+        wait_ms=1000,
+    )
+    return paired_maker_vs_ioc_exit_cost_probe(
+        original_opening_plan=original,
+        original_exit_plan=exit_plan or _exit_plan(side),
+        original_open_book=book,
+        original_trades_to_maker_expiry=prints,
+        original_exit_book=exit_book or _exit_book(side),
+        original_after_exit_mark=end_mark or _mark(
+            "104" if side is OrderSide.BUY else "98", ms=3300,
+        ),
+        maker_witness=witness,
+        instrument=_spec(),
+        execution_config=PaperExecutionConfig(),
+        start_cash=Decimal("10000"),
+        exit_at_ms=3200,
+        mark_at_ms=3300,
+        source_integrity_passed=clean,
+    )
+
+
+def test_closed_long_both_lanes_pay_actual_simulated_entry_and_exit_fees() -> None:
+    result = _closed_pair((_trade(1400, "A", "99", "8"),))
+    baseline = result["baseline_account"]
+    maker = result["conditional_maker_account"]
+    assert isinstance(baseline, dict) and isinstance(maker, dict)
+    assert Decimal(baseline["marked_equity_usd"]) == Decimal("10005.8155")
+    assert Decimal(maker["marked_equity_usd"]) == Decimal("10007.8764")
+    assert Decimal(baseline["cumulative_fees_usd"]) == Decimal("0.1845")
+    assert Decimal(maker["cumulative_fees_usd"]) == Decimal("0.1236")
+    assert Decimal(baseline["realized_gross_pnl_usd"]) == Decimal("6")
+    assert Decimal(maker["realized_gross_pnl_usd"]) == Decimal("8")
+    assert Decimal(result["single_path_after_exit_marked_delta_usd"]) == (
+        Decimal("2.0609")
+    )
+    assert result["both_lanes_flat_after_original_exit"] is True
+    assert result["whole_account_profitable_edge_proven"] is False
+    assert result["funding_boundaries_and_multi_trade_capacity_modeled"] is False
+    assert result["real_maker_fills_confirmed"] is False
+    assert result["promotion_authority"] is False
+
+
+def test_closed_maker_missed_winner_exposes_full_gross_and_fee_opportunity() -> None:
+    result = _closed_pair((_trade(1400, "B", "101", "9"),))
+    maker = result["conditional_maker_account"]
+    assert isinstance(maker, dict)
+    assert Decimal(maker["marked_equity_usd"]) == Decimal("10000")
+    assert maker["position_count"] == 0
+    assert maker["cumulative_fees_usd"] == "0"
+    assert Decimal(result["single_path_after_exit_marked_delta_usd"]) == (
+        Decimal("-5.8155")
+    )
+    assert result["conditional_maker_exit_result"] == "no_entry"
+
+
+def test_partial_maker_exit_charges_only_actual_conditional_quantity() -> None:
+    result = _closed_pair((
+        _trade(1300, "A", "100", "4"),
+        _trade(1400, "A", "99", "0.7"),
+        _trade(1500, "A", "99", "0.8"),
+    ))
+    maker = result["conditional_maker_account"]
+    assert isinstance(maker, dict)
+    assert Decimal(result["conditional_maker_exit_quantity"]) == Decimal("0.5")
+    assert Decimal(maker["realized_gross_pnl_usd"]) == Decimal("2")
+    assert Decimal(maker["cumulative_fees_usd"]) == Decimal("0.0309")
+    assert Decimal(maker["marked_equity_usd"]) == Decimal("10001.9691")
+    assert result["both_lanes_flat_after_original_exit"] is True
+
+
+def test_short_funding_free_single_exit_costs_are_side_correct() -> None:
+    result = _closed_pair(
+        (_trade(1400, "B", "102", "9"),), side=OrderSide.SELL,
+    )
+    baseline = result["baseline_account"]
+    maker = result["conditional_maker_account"]
+    assert isinstance(baseline, dict) and isinstance(maker, dict)
+    assert Decimal(baseline["marked_equity_usd"]) == Decimal("10003.8218")
+    assert Decimal(maker["marked_equity_usd"]) == Decimal("10005.8815")
+    assert Decimal(result["single_path_after_exit_marked_delta_usd"]) == (
+        Decimal("2.0597")
+    )
+    assert result["both_lanes_flat_after_original_exit"] is True
+
+
+def test_closed_no_maker_fill_on_losing_original_is_not_promotion_evidence() -> None:
+    loss_exit = _event(
+        StreamKind.L2_BOOK, 3200,
+        {"bids": [{"px": Decimal("97"), "sz": Decimal("10")}],
+         "asks": [{"px": Decimal("98"), "sz": Decimal("10")}]},
+    )
+    loss_plan = replace(
+        _exit_plan(), execution_reference_price=Decimal("97")
+    )
+    result = _closed_pair((), exit_book=loss_exit, exit_plan=loss_plan)
+    assert Decimal(result["single_path_after_exit_marked_delta_usd"]) > 0
+    assert result["whole_account_profitable_edge_proven"] is False
+
+
+def test_closed_exit_probe_refuses_failed_original_or_hindsight_exit() -> None:
+    with pytest.raises(MakerEntryWitnessError, match="source failed"):
+        _closed_pair((), clean=False)
+    with pytest.raises(MakerEntryWitnessError, match="lineage"):
+        _closed_pair((), exit_plan=replace(
+            _exit_plan(), created_at_ms=2000,
+        ))
+    with pytest.raises(MakerEntryWitnessError, match="book or mark"):
+        _closed_pair((), exit_book=_event(
+            StreamKind.L2_BOOK, 3200,
+            {"bids": (), "asks": ()}, market="ETH",
+        ))
+    with pytest.raises(MakerEntryWitnessError, match="mark untrusted"):
+        _closed_pair((), end_mark=_mark("104", ms=2500))
+
+
+def test_rejected_exit_never_becomes_cost_free_close() -> None:
+    # Original exit price is not guaranteed: only actual book depth
+    # within predeclared slippage can release a PAPER position.
+    thin_exit = _event(
+        StreamKind.L2_BOOK, 3200,
+        {"bids": [{"px": Decimal("80"), "sz": Decimal("10")}],
+         "asks": [{"px": Decimal("81"), "sz": Decimal("10")}]},
+    )
+    with pytest.raises(MakerEntryWitnessError, match="IOC rejected"):
+        _closed_pair((), exit_book=thin_exit)
