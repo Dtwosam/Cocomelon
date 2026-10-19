@@ -327,13 +327,23 @@ class RedundantStreamMux:
         self._uncommitted_retrograde_gaps.pop(stream_id, None)
         self._retrograde_unseen_gap_count += 1
 
-    async def _emit_candidate(self, stream_id: str, event: StreamEvent) -> bool:
+    async def _emit_candidate(
+        self, stream_id: str, event: StreamEvent, *,
+        from_standby_backfill: bool = False,
+    ) -> bool:
         await self._persist_retrograde_gap(stream_id)
         if self._is_older_than_last_emitted(stream_id, event):
-            # An exact previously acknowledged original needs no new gap;
-            # a *new* old book/print cannot be lost without a negative
-            # source-coverage receipt when standby failover lags.
-            if not self._is_duplicate(stream_id, event):
+            # A negative coverage receipt is justified for the mux's own
+            # standby BACKFILL exclusion: a never-admitted buffered original
+            # will be permanently discarded during a lane transition.
+            # Do not label a receive-only, naturally backward live packet
+            # on the existing active lane as an invented coverage outage.
+            # Supervisor-level anomaly receipts cover exchange-clock
+            # reversals on direct live delivery.
+            if (
+                from_standby_backfill
+                and not self._is_duplicate(stream_id, event)
+            ):
                 previous = self._last_emitted[stream_id]
                 if (
                     previous.exchange_time_ms is not None
@@ -424,7 +434,9 @@ class RedundantStreamMux:
             )
         while buffer:
             original = buffer[0]
-            delivered = await self._emit_candidate(stream_id, original)
+            delivered = await self._emit_candidate(
+                stream_id, original, from_standby_backfill=True,
+            )
             if delivered:
                 self._remember_recovery_witness(
                     stream_id, lane, original,
