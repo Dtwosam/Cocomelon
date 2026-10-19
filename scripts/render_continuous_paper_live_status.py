@@ -9635,6 +9635,49 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
     top_edges = ", ".join(
         f"{edge}={count}" for edge, count in edges[:5]
     ) or "none observed"
+    # Never reflect raw gap reasons, free-form stream IDs or sensitive
+    # venue metadata in public live telemetry. Accept only fixed buckets.
+    safe_reasons = frozenset((
+        "redundant_disconnect", "recovered",
+        "recovered_after_handoff_witness",
+        "recovered_after_rotation_witness",
+        "MAINNET_FUNDING_HISTORY_INFO_UNAVAILABLE", "other",
+    ))
+    safe_boundaries = frozenset(("open", "closed", "invalid"))
+    raw_predecessors = raw.get("gap_predecessor_regression_counts")
+    predecessor_counts: list[tuple[str, int]] = []
+    if isinstance(raw_predecessors, dict):
+        for key, count in raw_predecessors.items():
+            if type(key) is not str or type(count) is not int or count < 0:
+                continue
+            tokens = key.split(":")
+            if (
+                len(tokens) == 2
+                and tokens[0] in safe_boundaries
+                and tokens[1] in safe_reasons
+            ):
+                predecessor_counts.append((key, count))
+    predecessor_counts.sort(key=lambda row: (-row[1], row[0]))
+    predecessor_top = ", ".join(
+        f"{key}={count}" for key, count in predecessor_counts[:4] if count > 0
+    ) or "none observed"
+    displayed_total = sum(count for _, count in predecessor_counts)
+    adjacent_gap_total = sum(
+        count for edge, count in edges if edge.startswith("data_gap -> ")
+    )
+    predecessor_reconciled = (
+        raw.get("gap_predecessor_counts_reconcile") is True
+        and displayed_total == adjacent_gap_total
+    )
+    first_gap_reason = raw.get("first_regression_prior_gap_reason")
+    first_gap_boundary = raw.get("first_regression_prior_gap_boundary")
+    if type(first_gap_reason) is not str or first_gap_reason not in safe_reasons:
+        first_gap_reason = "none observed"
+    if (
+        type(first_gap_boundary) is not str
+        or first_gap_boundary not in safe_boundaries
+    ):
+        first_gap_boundary = "none observed"
     return lines + [
         f"- capture enabled: {str(raw.get('enabled') is True).lower()}",
         f"- capture failure: {raw.get('failure') or 'none observed yet'}",
@@ -9727,6 +9770,19 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
             f"{str(raw.get('prior_offered_edge_counts_reconcile') is True).lower()}"
         ),
         "- original adjacent source-family regressions (top five): " + top_edges,
+        (
+            "- first preceding original gap reason / open-close: "
+            f"{first_gap_reason} / {first_gap_boundary}"
+        ),
+        (
+            "- original gap predecessor clock regressions (top four): "
+            + predecessor_top
+        ),
+        (
+            "- original gap predecessor bucket counts / adjacent-edge reconcile: "
+            f"{displayed_total} / "
+            f"{str(predecessor_reconciled).lower()}"
+        ),
         (
             "- original regressions market-snapshot / funding / candle: "
             f"{clock_families.get('market_snapshot', 'unavailable')} / "

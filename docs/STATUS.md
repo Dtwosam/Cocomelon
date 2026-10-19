@@ -2,6 +2,39 @@
 
 > Profitability-first mandate: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). No non-economic promotion or LIVE relaxation.
 
+## October 19 — original DATA_GAP → raw event causal reason before changing source order
+
+Authenticated 13:20 UTC worker #39255842615 has PAPER
+**$9,772.15 equity / -$227.85 net** after actual
+$236.94 fees, 304 lifetime closed trades, two open;
+LIVE OFF. The new worker **has adopted** #1372 atomic
+allMids frame code but its own prospective original v3
+source still irreversibly FAILED: 270,776 dropped and
+17,278 clock regressions. The first true adjacent raw
+regression follows `data_gap`; the previous headline
+did not distinguish OPEN disconnect, recovery CLOSE,
+rotation/handoff and other gap types.
+
+Added negative-only fixed-bucket predecessor gap reason
+and open/closed counters for each actual adjacent
+`data_gap -> next source family` inversion, including
+the first reason and exact reconciliation to adjacent
+raw-edge census. The public status validates bucket keys,
+prevents untrusted stream/reason leakage and independently
+reconciles counts; terminal negative receipt retains the
+same diagnostics. PAPER-only/highwater knock-on clocks
+do not create fake adjacent gap-inversion counts. Source
+timestamps, data-gap payload/history, completeness gates,
+accounting, trade decisions, fees and LIVE state remain
+**unchanged**. See [original gap cause note](original_gap_predecessor_clock_reason_2026_10_19.md).
+
+This is causality evidence, NOT a source repair or clean 72h
+forward-proof certificate. It lets the NEXT natural worker
+pinpoint a specific open/close scheduling path before
+risking changes that might launder missing coverage.
+Both full after-cost matched PAPER accounts must still
+be **strictly profitable** to promote any maker candidate.
+
 ## October 19 — paired IOC/maker exit-cost cash (single path, unverified)
 
 Read-only `maker_entry_paired_exit_cost.py` now takes the
