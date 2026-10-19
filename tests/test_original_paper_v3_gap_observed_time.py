@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 
 from cocomelon.continuous_paper import (
-    _RecordPump,
     _record_from_gap,
     _record_from_witnessed_named_recovery_gap,
+    _RecordPump,
 )
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.stream import DataGap
@@ -175,9 +175,12 @@ def test_original_named_recovery_clock_is_first_witness_not_later_fsync(
             "reason": reason,
         }
 
-        async def scenario() -> dict[str, object]:
+        async def scenario(
+            reason_for_path: str,
+            named_gap_record: ReplayRecord,
+        ) -> dict[str, object]:
             capture = OriginalPaperMicrostructureCapture(
-                tmp_path / reason,
+                tmp_path / reason_for_path,
                 run_id="998878", run_attempt="1", head_sha="f" * 40,
                 selected_markets=("TEST",),
                 first_observed_ms=BASE,
@@ -192,11 +195,11 @@ def test_original_named_recovery_clock_is_first_witness_not_later_fsync(
             await pump.process(first)
             # A truly deferred callback still sends the exact FIRST
             # witnessed original gap rather than resampling fsync time.
-            await pump.process(exact)
+            await pump.process(named_gap_record)
             await pump.process(next_packet)
             return await capture.close()
 
-        terminal = asyncio.run(scenario())
+        terminal = asyncio.run(scenario(reason, exact))
         assert terminal["original_received_clock_regressions"] == 0
         assert terminal["offered_count"] == terminal["written_count"] == 3
         assert terminal["gap_closed_offered_count"] == 1
