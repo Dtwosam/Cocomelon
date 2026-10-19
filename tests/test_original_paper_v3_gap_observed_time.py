@@ -5,7 +5,11 @@ import asyncio
 import json
 from pathlib import Path
 
-from cocomelon.continuous_paper import _record_from_gap, _RecordPump
+from cocomelon.continuous_paper import (
+    _record_from_gap,
+    _record_from_witnessed_named_recovery_gap,
+    _RecordPump,
+)
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.stream import DataGap
 from cocomelon.evidence.contracts import BaselineReplayConfig
@@ -129,3 +133,112 @@ def test_gap_observation_input_must_be_real_valid_milliseconds() -> None:
             pass
         else:
             raise AssertionError("invalid gap timestamp accepted")
+
+
+
+def test_original_named_recovery_clock_is_first_witness_not_later_fsync(
+    monkeypatch, tmp_path: Path,
+) -> None:
+    from dataclasses import replace
+
+    import cocomelon.continuous_paper as paper
+    import cocomelon.research.original_paper_v3_capture as capture_module
+
+    # The FIRST named gap CLOSE is known from the original accepted L2
+    # witness at 2_990. A witness disk fsync finishes at 3_500, while
+    # the next WS packet was ACTUALLY received at 3_000. Sampling the
+    # gap's wall-clock at fsync completion would falsely regress that
+    # newer market packet. Preserve BOTH original source packet clocks.
+    clock = [BASE + 3_500]
+    monkeypatch.setattr(paper, "utc_now_ms", lambda: clock[0])
+    monkeypatch.setattr(capture_module, "utc_now_ms", lambda: clock[0])
+    first = _book(BASE + 2_990)
+    next_packet = replace(
+        _book(BASE + 3_000), event_key="actual-newer-L2-received"
+    )
+    for reason in (
+        "recovered_after_handoff_witness",
+        "recovered_after_rotation_witness",
+    ):
+        gap = DataGap(
+            stream_id="l2Book:TEST",
+            started_ms=BASE + 100,
+            ended_ms=BASE + 2_990,
+            reason=reason,
+        )
+        exact = _record_from_witnessed_named_recovery_gap(gap)
+        assert exact.available_at_ms == BASE + 2_990
+        assert json.loads(exact.payload_json) == {
+            "stream_id": "l2Book:TEST",
+            "started_ms": BASE + 100,
+            "ended_ms": BASE + 2_990,
+            "reason": reason,
+        }
+
+        async def scenario(
+            reason_for_path: str,
+            named_gap_record: ReplayRecord,
+        ) -> dict[str, object]:
+            capture = OriginalPaperMicrostructureCapture(
+                tmp_path / reason_for_path,
+                run_id="998878", run_attempt="1", head_sha="f" * 40,
+                selected_markets=("TEST",),
+                first_observed_ms=BASE,
+                replay_config=BaselineReplayConfig(),
+            )
+            pump = _RecordPump(
+                _Pipeline(),  # type: ignore[arg-type]
+                _Journal(),  # type: ignore[arg-type]
+                last_available_at_ms=BASE,
+                original_v3_capture=capture,
+            )
+            await pump.process(first)
+            # A truly deferred callback still sends the exact FIRST
+            # witnessed original gap rather than resampling fsync time.
+            await pump.process(named_gap_record)
+            await pump.process(next_packet)
+            return await capture.close()
+
+        terminal = asyncio.run(scenario(reason, exact))
+        assert terminal["original_received_clock_regressions"] == 0
+        assert terminal["offered_count"] == terminal["written_count"] == 3
+        assert terminal["gap_closed_offered_count"] == 1
+        assert terminal["external_market_completeness_authenticated"] is False
+        assert terminal["promotion_authority"] is False
+
+
+def test_named_recovery_timestamp_refuses_unwitnessed_or_open_source_gap() -> None:
+    import pytest
+
+    for gap in (
+        DataGap(
+            "l2Book:TEST", BASE, BASE + 100, "recovered"
+        ),
+        DataGap(
+            "l2Book:TEST", BASE, None, "recovered_after_handoff_witness"
+        ),
+        DataGap(
+            "l2Book:TEST", BASE + 200, None,
+            "recovered_after_rotation_witness",
+        ),
+    ):
+        with pytest.raises(ValueError, match="named recovery"):
+            _record_from_witnessed_named_recovery_gap(gap)
+
+
+def test_runtime_routes_all_original_named_closes_through_witness_clock() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "src/cocomelon/continuous_paper.py"
+    ).read_text(encoding="utf-8")
+    start = source.index("            async def named_recovery_gap_sink")
+    stop = source.index("            mux = RedundantStreamMux(", start)
+    enclosed = source[start:stop]
+    # Every witnessed handoff/rotation close AND exact retry must use
+    # the same dedicated receipt path. Generic mux gap callbacks remain
+    # ordinary live observation clocks.
+    assert enclosed.count("gap_sink=named_recovery_gap_sink,") == 6
+    assert "gap_sink=lambda gap: pump.process(gap)" not in enclosed
+    finish = source[stop:]
+    assert finish.count("gap_sink=named_recovery_gap_sink,") >= 2
+    assert "await pump.process(gap)" in enclosed
