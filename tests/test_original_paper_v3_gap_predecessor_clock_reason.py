@@ -103,8 +103,14 @@ def test_predecessor_reason_and_open_close_reconcile_without_healing(
     assert terminal["gap_predecessor_regression_counts"] == counts
 
     status = "\n".join(_v3_live_capture_lines(snapshot))
-    assert "first preceding original gap reason / open-close: redundant_disconnect / open" in status
-    assert "original gap predecessor bucket counts / adjacent-edge reconcile: 3 / true" in status
+    assert (
+        "first preceding original gap reason / open-close: "
+        "redundant_disconnect / open"
+    ) in status
+    assert (
+        "original gap predecessor bucket counts / adjacent-edge reconcile: "
+        "3 / true"
+    ) in status
     assert "private-key-source-name" not in status
     assert "source and after-cost profit certification: FALSE" in status
 
@@ -156,7 +162,10 @@ def test_raw_diagnostic_keys_cannot_leak_into_public_heartbeat(tmp_path: Path) -
     assert "private-secret" not in status
     assert "private-stream" not in status
     assert "unknown" not in status
-    assert "first preceding original gap reason / open-close: none observed / none observed" in status
+    assert (
+        "first preceding original gap reason / open-close: "
+        "none observed / none observed"
+    ) in status
     assert "open:redundant_disconnect=1" in status
     assert "open:other=True" not in status
     assert "bucket counts / adjacent-edge reconcile: 1 / true" in status
