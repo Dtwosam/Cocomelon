@@ -190,3 +190,122 @@ def test_cancelled_l2_sink_does_not_ack_source_clock_or_interval() -> None:
         )["l2_source_age_samples"] == 1
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("raw", "subscriptions", "expected_events"),
+    [
+        (
+            {
+                "channel": "trades",
+                "data": [{
+                    "coin": "BTC", "side": "B", "px": "100", "sz": "1",
+                    "hash": "0x1", "time": 1_000, "tid": 1,
+                    "users": ["a", "b"],
+                }],
+            },
+            ({"type": "trades", "coin": "BTC"},),
+            1,
+        ),
+        (
+            {
+                "channel": "allMids",
+                "data": {"mids": {"BTC": "100", "ETH": "50"}},
+            },
+            ({"type": "allMids"},),
+            2,
+        ),
+    ],
+)
+def test_session_normalization_delay_never_retimes_first_received_packet(
+    raw: dict[str, object],
+    subscriptions: tuple[dict[str, str], ...],
+    expected_events: int,
+) -> None:
+    async def scenario() -> None:
+        # The real packet has already been delivered by recv_json at 2s.
+        # A slow normalize hook represents expensive future processing. A
+        # second utcnow call inside normalization would falsely date the
+        # raw original WS packet at 7s instead of the receipt at 2s.
+        clock = [2_000]
+        original = [2_000]
+        events: list[StreamEvent] = []
+        gaps: list[DataGap] = []
+
+        class Connection:
+            async def send_json(self, payload: object) -> None:
+                del payload
+
+            async def recv_json(self) -> dict[str, object]:
+                return raw
+
+        async def factory() -> object:
+            raise AssertionError("no actual venue or network access")
+
+        async def event_sink(event: StreamEvent) -> None:
+            events.append(event)
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        def activity(phase: str, active: bool) -> None:
+            if phase == "normalize_message" and active:
+                clock[0] += 5_000
+                original[0] += 5_000
+
+        supervisor = WebSocketSupervisor(
+            factory, subscriptions,
+            event_sink=event_sink, gap_sink=gap_sink,
+            clock_ms=lambda: clock[0],
+            utcnow=lambda: datetime.fromtimestamp(original[0] / 1_000, UTC),
+            activity_hook=activity,
+            heartbeat_seconds=45,
+        )
+        await supervisor._session(Connection(), max_messages=1)
+        assert len(events) == expected_events
+        assert all(
+            int(event.receive_time.timestamp() * 1_000) == 2_000
+            for event in events
+        )
+        assert supervisor.health().last_server_message_ms == 2_000
+        assert clock[0] == original[0] == 7_000
+        assert not gaps
+        assert all(
+            supervisor._last_stream_message[
+                "allMids" if expected_events == 2 else "trades:BTC"
+            ] == 2_000
+            for event in events
+        )
+
+    asyncio.run(scenario())
+
+
+def test_direct_dispatch_retains_explicit_normalized_receive_clock() -> None:
+    async def scenario() -> None:
+        observed: list[StreamEvent] = []
+
+        async def factory() -> object:
+            raise AssertionError("no actual venue network")
+
+        async def sink(event: StreamEvent) -> None:
+            observed.append(event)
+
+        supervisor = WebSocketSupervisor(
+            factory, ({"type": "l2Book", "coin": "BTC"},),
+            event_sink=sink,
+            gap_sink=lambda gap: asyncio.sleep(0),
+            clock_ms=lambda: 4_000,
+            utcnow=lambda: datetime.fromtimestamp(4, UTC),
+        )
+        await supervisor._dispatch(
+            _book(2_000),
+            received_at_ms=3_000,
+            received_at_utc=datetime.fromtimestamp(3, UTC),
+        )
+        assert len(observed) == 1
+        assert int(observed[0].receive_time.timestamp() * 1_000) == 3_000
+        assert supervisor._last_stream_message["l2Book:BTC"] == 3_000
+        # The exchange timestamp is immutable and never projected forward.
+        assert observed[0].exchange_time_ms == 2_000
+
+    asyncio.run(scenario())
