@@ -1,6 +1,6 @@
 """After-entry exit-cost sensitivity on two independent PAPER cash accounts.
 
-Not a complete prospective portfolio, funding ledger or real maker execution.
+Not a complete prospective portfolio or real maker execution.
 One original predetermined exit decision is applied to both conditional lanes;
 no cherry-picked deletion of losing baseline trades or invented maker fills.
 """
@@ -16,13 +16,21 @@ from cocomelon.domain.execution import (
     PaperExecutionConfig,
     PaperOrderPlan,
 )
+from cocomelon.domain.market import FundingRate
 from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.execution.accounting import (
     PaperAccountState,
+    apply_funding_accrual,
     apply_opening_fills,
     apply_reduce_only_fills,
     empty_account,
     mark_to_market,
+    roll_account_day,
+)
+from cocomelon.execution.funding import (
+    FUNDING_INTERVAL_MS,
+    FundingAccrual,
+    reconcile_funding_boundary,
 )
 from cocomelon.execution.ioc import simulate_ioc
 from cocomelon.research.maker_entry_feasibility import (
@@ -39,6 +47,36 @@ from cocomelon.research.maker_entry_paper_shadow import (
 )
 
 ZERO = Decimal("0")
+
+
+def _fund_one_lane(
+    account: PaperAccountState,
+    *,
+    boundary_ms: int,
+    oracle_ctx: StreamEvent,
+    rate: FundingRate,
+    config: PaperExecutionConfig,
+) -> PaperAccountState:
+    # A no-entry lane pays nothing, and a late-entry lane never inherits
+    # a funding bill for a boundary it did not hold a position through.
+    if not account.positions or account.positions[0].opened_at_ms >= boundary_ms:
+        return account
+    if len(account.positions) != 1:
+        raise MakerEntryWitnessError("paired funding requires one open position")
+    cash_event = reconcile_funding_boundary(
+        account.positions[0],
+        boundary_ms,
+        oracle_ctx,
+        rate,
+        now_ms=rate.received_at_ms,
+        config=config,
+    )
+    if not isinstance(cash_event, FundingAccrual):
+        raise MakerEntryWitnessError(
+            f"paired funding original source gap: {cash_event.reason}"
+        )
+    account = roll_account_day(account, rate.received_at_ms)
+    return apply_funding_accrual(account, cash_event, rate.received_at_ms)
 
 
 def _exit_lane(
@@ -92,12 +130,14 @@ def paired_maker_vs_ioc_exit_cost_probe(
     exit_at_ms: int,
     mark_at_ms: int,
     source_integrity_passed: bool,
+    original_funding_oracle: StreamEvent | None = None,
+    original_funding_rate: FundingRate | None = None,
 ) -> dict[str, object]:
     """Pair an unchanged original exit *plan* with conditional maker entries.
 
     The exit plan must pre-exist the exit book, not be synthesized from later
     prices. This is a SINGLE original trade path, with no future signals,
-    capital reallocation or funding, and cannot certify whole-account profit.
+    capital reallocation or multi-boundary funding, and cannot certify profit.
     """
     if (
         type(start_cash) is not Decimal
@@ -200,6 +240,55 @@ def paired_maker_vs_ioc_exit_cost_probe(
         or baseline.positions[0].quantity != original_exit_plan.requested_quantity
     ):
         raise MakerEntryWitnessError("paired exit baseline/plan size mismatch")
+    # The original baseline's first real PAPER IOC fill determines the
+    # first hourly funding boundary. If even one such boundary is crossed,
+    # refusing missing evidence is mandatory: charging zero is a fake edge.
+    baseline_opened_at = baseline.positions[0].opened_at_ms
+    first_boundary = (
+        (baseline_opened_at // FUNDING_INTERVAL_MS) + 1
+    ) * FUNDING_INTERVAL_MS
+    funding_crossed = first_boundary <= exit_at_ms
+    if funding_crossed:
+        if (
+            first_boundary + FUNDING_INTERVAL_MS <= exit_at_ms
+            or original_funding_oracle is None
+            or original_funding_rate is None
+            or original_funding_oracle.source != original_open_book.source
+            or original_funding_oracle.market != original_opening_plan.market
+            or original_funding_oracle.event_key in {
+                original_open_book.event_key,
+                original_exit_book.event_key,
+                original_after_exit_mark.event_key,
+            }
+            or original_funding_rate.market != original_opening_plan.market
+            or original_funding_rate.source != "hyperliquid-mainnet-info"
+            or not (
+                first_boundary
+                <= original_funding_rate.received_at_ms
+                <= exit_at_ms
+            )
+        ):
+            raise MakerEntryWitnessError(
+                "paired funding boundary lacks complete original evidence"
+            )
+        baseline = _fund_one_lane(
+            baseline,
+            boundary_ms=first_boundary,
+            oracle_ctx=original_funding_oracle,
+            rate=original_funding_rate,
+            config=execution_config,
+        )
+        candidate = _fund_one_lane(
+            candidate,
+            boundary_ms=first_boundary,
+            oracle_ctx=original_funding_oracle,
+            rate=original_funding_rate,
+            config=execution_config,
+        )
+    elif original_funding_oracle is not None or original_funding_rate is not None:
+        raise MakerEntryWitnessError(
+            "paired funding input without crossed original boundary"
+        )
     baseline, baseline_status, baseline_exit_qty = _exit_lane(
         baseline, original_exit_plan, original_exit_book,
         instrument, execution_config, exit_at_ms,
@@ -237,6 +326,14 @@ def paired_maker_vs_ioc_exit_cost_probe(
         ),
         "original_source_independently_authenticated": False,
         "real_maker_fills_confirmed": False,
+        "single_funding_boundary_costed": funding_crossed,
+        "original_funding_boundary_ms": (
+            first_boundary if funding_crossed else None
+        ),
+        "original_funding_oracle_event_key": (
+            original_funding_oracle.event_key if funding_crossed
+            and original_funding_oracle is not None else None
+        ),
         "funding_boundaries_and_multi_trade_capacity_modeled": False,
         "whole_account_profitable_edge_proven": False,
         "research_only": True,
