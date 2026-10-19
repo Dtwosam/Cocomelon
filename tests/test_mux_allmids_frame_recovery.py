@@ -10,7 +10,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from cocomelon.domain.stream import DataGap, StreamEvent
+from cocomelon.domain.market import MarketId
+from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
 from cocomelon.hyperliquid.ws_protocol import normalize_ws_message
 from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor
@@ -226,3 +227,142 @@ def test_paper_wires_full_frame_boundary_with_live_orders_still_disabled() -> No
     assert "after_frame_sink=finish_named_recovery" in worker
     assert "all_mids_frame_sink=lane_all_mids_frame_sink" in worker
     assert "await pump.process(_record_from_stream(event))" in worker
+
+
+def test_guarded_complete_frame_blocks_newer_other_stream_between_children() -> None:
+    async def run() -> None:
+        timeline: list[StreamEvent | DataGap] = []
+        btc_written = asyncio.Event()
+        let_eth_continue = asyncio.Event()
+        frame = _frame()
+
+        async def event_sink(event: StreamEvent) -> None:
+            timeline.append(event)
+            if event.event_key == frame[0].event_key:
+                btc_written.set()
+                await let_eth_continue.wait()
+
+        async def gap_sink(gap: DataGap) -> None:
+            timeline.append(gap)
+
+        mux = await _prepared_mux(event_sink, gap_sink)
+        timeline.clear()
+
+        async def connection():
+            raise AssertionError("no network required")
+
+        async def frame_complete(events: tuple[StreamEvent, ...]) -> None:
+            await mux.complete_all_mids_frame(0, events)
+
+        supervisor = WebSocketSupervisor(
+            connection,
+            [{"type": "allMids"}],
+            event_sink=lambda event: mux.on_event(0, event),
+            gap_sink=lambda gap: mux.on_gap(0, gap),
+            clock_ms=lambda: RECEIVED_MS,
+            utcnow=lambda: datetime.fromtimestamp(RECEIVED_MS / 1_000, UTC),
+            all_mids_frame_sink=frame_complete,
+            all_mids_frame_dispatch_guard=(
+                lambda events, dispatch:
+                mux.serialize_all_mids_frame_dispatch(0, events, dispatch)
+            ),
+        )
+        frame_task = asyncio.create_task(supervisor._dispatch(FRAME))
+        await asyncio.wait_for(btc_written.wait(), timeout=3)
+        later = StreamEvent(
+            kind=StreamKind.L2_BOOK,
+            market=MarketId("", "BTC"),
+            exchange_time_ms=2_400,
+            receive_time=datetime.fromtimestamp(2.4, UTC),
+            schema_version=1,
+            source="hyperliquid-mainnet-ws",
+            event_key="later-BTC-book",
+            payload={"bids": (), "asks": ()},
+        )
+        later_task = asyncio.create_task(mux.on_event(0, later))
+        await asyncio.sleep(0)
+        # The whole allMids frame holds the receipt-order lock. A later
+        # market event from a concurrent task cannot divide same-time kids.
+        assert timeline == [frame[0]]
+        assert not later_task.done()
+        let_eth_continue.set()
+        await asyncio.wait_for(asyncio.gather(frame_task, later_task), timeout=3)
+        assert timeline == [
+            *frame,
+            DataGap(STREAM, 1_200, RECEIVED_MS, "recovered"),
+            later,
+        ]
+        assert mux._frame_owner_task is None
+        assert mux.ingress_diagnostics()["active_waiters"] == 0
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("cancel", [False, True], ids=["exception", "cancellation"])
+def test_guarded_partial_frame_releases_lock_without_claiming_recovery(
+    cancel: bool,
+) -> None:
+    async def run() -> None:
+        seen: list[str] = []
+        failures = [True]
+        frame_completions = []
+
+        async def event_sink(event: StreamEvent) -> None:
+            if event.market.coin == "ETH" and failures[0]:
+                if cancel:
+                    raise asyncio.CancelledError()
+                raise OSError("source write unavailable")
+            seen.append(event.market.coin)
+
+        mux = await _prepared_mux(event_sink, lambda gap: asyncio.sleep(0))
+        seen.clear()
+
+        async def connection():
+            raise AssertionError("no network required")
+
+        async def frame_complete(events: tuple[StreamEvent, ...]) -> None:
+            frame_completions.append(events)
+            await mux.complete_all_mids_frame(0, events)
+
+        supervisor = WebSocketSupervisor(
+            connection,
+            [{"type": "allMids"}],
+            event_sink=lambda event: mux.on_event(0, event),
+            gap_sink=lambda gap: mux.on_gap(0, gap),
+            clock_ms=lambda: RECEIVED_MS,
+            utcnow=lambda: datetime.fromtimestamp(RECEIVED_MS / 1_000, UTC),
+            all_mids_frame_sink=frame_complete,
+            all_mids_frame_dispatch_guard=(
+                lambda events, dispatch:
+                mux.serialize_all_mids_frame_dispatch(0, events, dispatch)
+            ),
+        )
+        expected = asyncio.CancelledError if cancel else RuntimeError
+        with pytest.raises(expected):
+            await supervisor._dispatch(FRAME)
+        assert seen == ["BTC"]
+        assert frame_completions == []
+        assert mux._frame_owner_task is None
+        assert STREAM in mux._aggregate_gap_starts
+        failures[0] = False
+        # Retrying the real frame should not deadlock or create a false
+        # second BTC source observation after it was already acknowledged.
+        await asyncio.wait_for(supervisor._dispatch(FRAME), timeout=3)
+        assert seen == ["BTC", "ETH"]
+        assert frame_completions == [_frame()]
+        assert STREAM not in mux._aggregate_gap_starts
+        assert mux._frame_owner_task is None
+
+    asyncio.run(run())
+
+
+def test_original_allmids_frame_guard_is_production_wired() -> None:
+    from pathlib import Path
+
+    worker = (
+        Path(__file__).resolve().parents[1]
+        / "src/cocomelon/continuous_paper.py"
+    ).read_text(encoding="utf-8")
+    assert "all_mids_frame_dispatch_guard=lane_frame_dispatch_guard" in worker
+    assert "await mux.serialize_all_mids_frame_dispatch(" in worker
+    assert "all_mids_frame_sink=lane_all_mids_frame_sink" in worker
