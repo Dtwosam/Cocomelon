@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
 import hashlib
 import json
 from collections import defaultdict, deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import asynccontextmanager
 from time import perf_counter
 
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
