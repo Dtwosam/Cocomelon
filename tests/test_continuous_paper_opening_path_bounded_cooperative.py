@@ -39,7 +39,7 @@ def test_large_market_snapshot_yields_bounded_exact_offloaded_batches(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert COOPERATIVE_MARK_BATCH_SIZE == 32
+    assert COOPERATIVE_MARK_BATCH_SIZE == 8
     sync = _store(tmp_path / "sync")
     async_store = _store(tmp_path / "async")
     _register(sync)
@@ -75,7 +75,7 @@ def test_large_market_snapshot_yields_bounded_exact_offloaded_batches(
 
     btc_count, ticks, eth_count = asyncio.run(run())
     assert (btc_count, eth_count) == (68, 5)
-    assert captured_sizes == [32, 32, 4, 5]
+    assert captured_sizes == [8] * 8 + [4, 5]
     assert all(size <= COOPERATIVE_MARK_BATCH_SIZE for size in captured_sizes)
     assert all(worker != main_thread for worker in threads)
     assert ticks > 1
@@ -145,7 +145,7 @@ def test_expired_empty_batches_do_not_create_synthetic_marks(
         market="BTC", observed_at_ms=11_201,
         mark_px=Decimal("101"), source=SOURCE,
     )) == 0
-    assert calls == [32, 32, 4]
+    assert calls == [8] * 8 + [4]
     assert store.record_count == 73
     assert all(not path.marks for path in store.iter_paths())
 
