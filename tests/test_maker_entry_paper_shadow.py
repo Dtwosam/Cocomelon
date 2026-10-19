@@ -182,7 +182,7 @@ def test_strict_through_can_model_full_but_never_verify_a_venue_fill() -> None:
         _trade(1400, "A", "99", "8"),
     ))
     assert result["modelled_entry_status"] == "full"
-    assert result["conditional_modelled_entry_quantity"] == "2"
+    assert Decimal(result["conditional_modelled_entry_quantity"]) == Decimal("2")
     assert Decimal(result["conditional_modelled_entry_fee_usd"]) == Decimal(
         "0.0300"
     )
@@ -204,7 +204,7 @@ def test_selling_requires_buy_aggressor_strictly_above_ask() -> None:
     )
     # Original best ask queue 5: 3 at touch and then 4 through
     # consumes remaining 2 ahead and model-fills 2 conditional units.
-    assert result["conditional_modelled_entry_quantity"] == "2"
+    assert Decimal(result["conditional_modelled_entry_quantity"]) == Decimal("2")
     assert result["modelled_entry_status"] == "full"
 
 
