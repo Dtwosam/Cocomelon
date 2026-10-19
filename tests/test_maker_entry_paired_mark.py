@@ -15,7 +15,7 @@ from cocomelon.domain.execution import (
     PaperExecutionConfig,
     PaperOrderPlan,
 )
-from cocomelon.domain.market import MarketId
+from cocomelon.domain.market import FundingRate, MarketId
 from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.research.maker_entry_feasibility import (
     MakerEntryWitnessError,
@@ -473,3 +473,204 @@ def test_rejected_exit_never_becomes_cost_free_close() -> None:
     assert report["both_lanes_flat_after_original_exit"] is False
     assert baseline["position_count"] == 1
     assert report["whole_account_profitable_edge_proven"] is False
+
+
+FUNDING_SHIFT_MS = 3_598_000
+FUNDING_BOUNDARY_MS = 3_600_000
+
+
+def _shift_event(event: StreamEvent, offset_ms: int) -> StreamEvent:
+    at_ms = int(event.receive_time.timestamp() * 1000) + offset_ms
+    return replace(
+        event,
+        event_key=f"shifted:{event.event_key}:{offset_ms}",
+        receive_time=datetime.fromtimestamp(at_ms / 1000, tz=UTC),
+        exchange_time_ms=(
+            None if event.exchange_time_ms is None
+            else event.exchange_time_ms + offset_ms
+        ),
+    )
+
+
+def _shift_plan(plan: PaperOrderPlan, offset_ms: int) -> PaperOrderPlan:
+    return replace(
+        plan,
+        created_at_ms=plan.created_at_ms + offset_ms,
+        earliest_execution_ms=plan.earliest_execution_ms + offset_ms,
+        instrument_metadata_received_at_ms=(
+            plan.instrument_metadata_received_at_ms + offset_ms
+        ),
+    )
+
+
+def _funded_closed_pair(
+    prints: tuple[StreamEvent, ...],
+    *,
+    side: OrderSide = OrderSide.BUY,
+    oracle: StreamEvent | None = None,
+    rate: FundingRate | None = None,
+    supply_evidence: bool = True,
+    shift_ms: int = FUNDING_SHIFT_MS,
+) -> dict[str, object]:
+    plan = _shift_plan(_plan(side), shift_ms)
+    exit_plan = _shift_plan(_exit_plan(side), shift_ms)
+    book = _shift_event(_book(), shift_ms)
+    witness = quote_research_only_maker_entry(
+        original_plan=plan,
+        original_book=book,
+        execution=PaperExecutionConfig(),
+        maker_fee_rate=Decimal("0.00015"),
+        quote_at_ms=1250 + shift_ms,
+        wait_ms=1000,
+    )
+    if supply_evidence:
+        if oracle is None:
+            oracle = _event(
+                StreamKind.ACTIVE_ASSET_CTX,
+                FUNDING_BOUNDARY_MS - 100,
+                {"oracle_px": Decimal("100"), "mark_px": Decimal("100")},
+            )
+        if rate is None:
+            rate = FundingRate(
+                market=plan.market,
+                time_ms=FUNDING_BOUNDARY_MS,
+                funding_rate=Decimal("0.001"),
+                premium=Decimal("0"),
+                source="hyperliquid-mainnet-info",
+                received_at_ms=FUNDING_BOUNDARY_MS + 200,
+                schema_version=1,
+            )
+    return paired_maker_vs_ioc_exit_cost_probe(
+        original_opening_plan=plan,
+        original_exit_plan=exit_plan,
+        original_open_book=book,
+        original_trades_to_maker_expiry=tuple(
+            _shift_event(event, shift_ms) for event in prints
+        ),
+        original_exit_book=_shift_event(_exit_book(side), shift_ms),
+        original_after_exit_mark=_shift_event(
+            _mark("104" if side is OrderSide.BUY else "98", ms=3300),
+            shift_ms,
+        ),
+        maker_witness=witness,
+        instrument=replace(
+            _spec(),
+            metadata_received_at_ms=900 + shift_ms,
+        ),
+        execution_config=PaperExecutionConfig(),
+        start_cash=Decimal("10000"),
+        exit_at_ms=3200 + shift_ms,
+        mark_at_ms=3300 + shift_ms,
+        source_integrity_passed=True,
+        original_funding_oracle=oracle,
+        original_funding_rate=rate,
+    )
+
+
+def test_funded_full_long_charges_independent_lane_balances() -> None:
+    funded = _funded_closed_pair((_trade(1400, "A", "99", "8"),))
+    bare = _closed_pair((_trade(1400, "A", "99", "8"),))
+    for name in ("baseline_account", "conditional_maker_account"):
+        lane = funded[name]
+        before = bare[name]
+        assert isinstance(lane, dict) and isinstance(before, dict)
+        assert Decimal(lane["funding_usd"]) == Decimal("-0.2")
+        assert Decimal(lane["marked_equity_usd"]) == (
+            Decimal(before["marked_equity_usd"]) - Decimal("0.2")
+        )
+        assert Decimal(lane["cumulative_fees_usd"]) == Decimal(
+            before["cumulative_fees_usd"]
+        )
+    assert funded["single_funding_boundary_costed"] is True
+    assert funded["original_funding_boundary_ms"] == FUNDING_BOUNDARY_MS
+    assert funded["both_lanes_flat_after_original_exit"] is True
+    assert funded["whole_account_profitable_edge_proven"] is False
+
+
+def test_missed_maker_winner_still_pays_baseline_funding() -> None:
+    funded = _funded_closed_pair((_trade(1400, "B", "101", "9"),))
+    bare = _closed_pair((_trade(1400, "B", "101", "9"),))
+    maker = funded["conditional_maker_account"]
+    baseline = funded["baseline_account"]
+    assert isinstance(maker, dict) and isinstance(baseline, dict)
+    assert maker["position_count"] == 0
+    assert Decimal(maker["funding_usd"]) == Decimal("0")
+    assert Decimal(baseline["funding_usd"]) == Decimal("-0.2")
+    assert Decimal(funded["single_path_after_exit_marked_delta_usd"]) == (
+        Decimal(bare["single_path_after_exit_marked_delta_usd"])
+        + Decimal("0.2")
+    )
+    assert funded["real_maker_fills_confirmed"] is False
+
+
+def test_partial_maker_pays_only_its_source_conditional_size_funding() -> None:
+    tape = (
+        _trade(1300, "A", "100", "4"),
+        _trade(1400, "A", "99", "0.7"),
+        _trade(1500, "A", "99", "0.8"),
+    )
+    funded = _funded_closed_pair(tape)
+    baseline, maker = funded["baseline_account"], funded["conditional_maker_account"]
+    assert isinstance(baseline, dict) and isinstance(maker, dict)
+    assert Decimal(baseline["funding_usd"]) == Decimal("-0.2")
+    assert Decimal(maker["funding_usd"]) == Decimal("-0.05")
+    assert Decimal(maker["realized_gross_pnl_usd"]) == Decimal("2")
+
+
+def test_short_positive_rate_credits_each_true_open_quantity() -> None:
+    funded = _funded_closed_pair(
+        (_trade(1400, "B", "102", "9"),), side=OrderSide.SELL,
+    )
+    for lane in ("baseline_account", "conditional_maker_account"):
+        row = funded[lane]
+        assert isinstance(row, dict)
+        assert Decimal(row["funding_usd"]) == Decimal("0.2")
+
+
+def test_funding_required_instead_of_free_when_crossing_original_boundary() -> None:
+    with pytest.raises(MakerEntryWitnessError, match="complete original evidence"):
+        _funded_closed_pair((), supply_evidence=False)
+
+
+def test_bad_or_late_original_funding_is_not_applied_as_zero() -> None:
+    wrong = _event(
+        StreamKind.ACTIVE_ASSET_CTX,
+        FUNDING_BOUNDARY_MS - 100,
+        {"oracle_px": Decimal("100"), "mark_px": Decimal("100")},
+        market="ETH",
+    )
+    with pytest.raises(MakerEntryWitnessError, match="complete original evidence"):
+        _funded_closed_pair((), oracle=wrong)
+
+    stale = _event(
+        StreamKind.ACTIVE_ASSET_CTX,
+        FUNDING_BOUNDARY_MS - 60_000,
+        {"oracle_px": Decimal("100"), "mark_px": Decimal("100")},
+    )
+    with pytest.raises(MakerEntryWitnessError, match="original source gap"):
+        _funded_closed_pair((), oracle=stale)
+
+    late = FundingRate(
+        market=MarketId("", "BTC"),
+        time_ms=FUNDING_BOUNDARY_MS,
+        funding_rate=Decimal("0.001"),
+        premium=Decimal("0"),
+        source="hyperliquid-mainnet-info",
+        received_at_ms=FUNDING_BOUNDARY_MS + 9000,
+        schema_version=1,
+    )
+    with pytest.raises(MakerEntryWitnessError, match="complete original evidence"):
+        _funded_closed_pair((), rate=late)
+
+
+def test_future_funding_inputs_without_crossed_boundary_are_not_credits() -> None:
+    with pytest.raises(MakerEntryWitnessError, match="without crossed"):
+        _funded_closed_pair(
+            (),
+            shift_ms=0,
+            oracle=_event(
+                StreamKind.ACTIVE_ASSET_CTX, 2000,
+                {"oracle_px": Decimal("100"), "mark_px": Decimal("100")},
+            ),
+            supply_evidence=True,
+        )
