@@ -2653,6 +2653,30 @@ def _record_from_gap(
     )
 
 
+def _record_from_witnessed_named_recovery_gap(gap: DataGap) -> ReplayRecord:
+    """Preserve the FIRST actually received witness as named CLOSE observation.
+
+    A named restored/rotation CLOSE is first evidenced by the accepted WS
+    witness itself. The independent durable witness/fsync can finish much
+    later, overtaking packets already timestamped at raw WS receipt. Its
+    original market observation is the witness's receive time (the exact
+    persisted gap END), not the later async persistence completion clock.
+
+    This applies ONLY to exact source-witnessed named recoveries. Generic
+    disconnect/recovery/lane notices still get live pump observation time;
+    no historical start, raw WS receive clock or venue timestamp is changed.
+    A pending failed receipt retries with the exact same original time.
+    """
+    if gap.reason not in (
+        "recovered_after_handoff_witness",
+        "recovered_after_rotation_witness",
+    ) or gap.ended_ms is None:
+        raise ValueError("named recovery requires exact accepted witness close")
+    if gap.ended_ms < gap.started_ms:
+        raise ValueError("named recovery witness must follow its gap start")
+    return _record_from_gap(gap, observed_at_ms=gap.ended_ms)
+
+
 def _record_payload(record: ReplayRecord) -> dict[str, object]:
     return {
         "record_kind": record.record_kind.value,
@@ -11582,6 +11606,12 @@ async def run_continuous_paper_session(
                 str, tuple[StreamEvent, int]
             ] = {}
 
+            async def named_recovery_gap_sink(gap: DataGap) -> None:
+                # First-received evidence was accepted by the original pump
+                # before this deferred CLOSE. A slow witness fsync is NOT a
+                # later source event or reason to re-time that evidence.
+                await pump.process(_record_from_witnessed_named_recovery_gap(gap))
+
             async def event_sink(event: StreamEvent) -> None:
                 # A previously acknowledged market record might have
                 # suffered an uncertain named-gap recovery CLOSE write.
@@ -11591,7 +11621,7 @@ async def run_continuous_paper_session(
                 stream_id = event_stream_id(event)
                 await restored_named_gap_recovery.retry_pending_before_record(
                     stream_id,
-                    gap_sink=lambda gap: pump.process(gap),
+                    gap_sink=named_recovery_gap_sink,
                     witness_sink=lambda witness, gap, checkpoint_ms: (
                         asyncio.to_thread(
                             append_restored_named_gap_witness,
@@ -11605,7 +11635,7 @@ async def run_continuous_paper_session(
                 for recovery in tuple(in_session_rotation_gap_recoveries):
                     await recovery.retry_pending_before_record(
                         stream_id,
-                        gap_sink=lambda gap: pump.process(gap),
+                        gap_sink=named_recovery_gap_sink,
                         witness_sink=lambda witness, gap, checkpoint_ms: (
                             asyncio.to_thread(
                                 append_in_session_rotation_gap_witness,
@@ -11632,7 +11662,7 @@ async def run_continuous_paper_session(
                 await restored_named_gap_recovery.accept_recorded_event(
                     event,
                     observed_at_ms=utc_now_ms(),
-                    gap_sink=lambda gap: pump.process(gap),
+                    gap_sink=named_recovery_gap_sink,
                     witness_sink=lambda witness, gap, checkpoint_ms: (
                         asyncio.to_thread(
                             append_restored_named_gap_witness,
@@ -11651,7 +11681,7 @@ async def run_continuous_paper_session(
                     await rotation_observer.accept_recorded_event(
                         event,
                         observed_at_ms=utc_now_ms(),
-                        gap_sink=lambda gap: pump.process(gap),
+                        gap_sink=named_recovery_gap_sink,
                         witness_sink=lambda witness, gap, checkpoint_ms: (
                             asyncio.to_thread(
                                 append_in_session_rotation_gap_witness,
@@ -11670,7 +11700,7 @@ async def run_continuous_paper_session(
                     # any more than a later market price record can.
                     await restored_named_gap_recovery.retry_pending_before_record(
                         gap.stream_id,
-                        gap_sink=lambda receipt: pump.process(receipt),
+                        gap_sink=named_recovery_gap_sink,
                         witness_sink=lambda witness, receipt, checkpoint_ms: (
                             asyncio.to_thread(
                                 append_restored_named_gap_witness,
@@ -11684,7 +11714,7 @@ async def run_continuous_paper_session(
                     for recovery in tuple(in_session_rotation_gap_recoveries):
                         await recovery.retry_pending_before_record(
                             gap.stream_id,
-                            gap_sink=lambda receipt: pump.process(receipt),
+                            gap_sink=named_recovery_gap_sink,
                             witness_sink=lambda witness, receipt, checkpoint_ms: (
                                 asyncio.to_thread(
                                     append_in_session_rotation_gap_witness,
