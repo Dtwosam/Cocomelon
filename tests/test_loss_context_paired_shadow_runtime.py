@@ -348,3 +348,36 @@ def test_normal_in_session_checkpoint_keeps_research_admission_open(
             await runtime.close()
 
     asyncio.run(scenario())
+
+
+def test_pre_fenced_shadow_can_sign_once_but_never_accept_new_records(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        runtime = _runtime(tmp_path, shadow_factory=_FakeShadow)
+        try:
+            assert runtime.submit_record(
+                _record(3_000), now_ms=3_000, evaluate_decisions=False,
+            )
+            runtime.fence_terminal_admission()
+            runtime.fence_terminal_admission()
+            assert runtime.status_payload()["terminal_checkpoint_fenced"] is True
+            assert runtime.submit_record(
+                _record(3_500), now_ms=3_500, evaluate_decisions=True,
+            ) is False
+            assert runtime.submit_reconcile((MARKET,)) is False
+            result = await runtime.terminal_checkpoint(end_ms=4_000)
+            assert result == {"checkpoint_end_ms": 4_000}
+            assert _FakeShadow.events == [
+                ("record", 3_000, 3_000, False),
+                ("checkpoint", 4_000),
+            ]
+            with pytest.raises(
+                LossContextPairedShadowRuntimeError,
+                match="terminal checkpoint already requested",
+            ):
+                await runtime.terminal_checkpoint(end_ms=5_000)
+        finally:
+            await runtime.close()
+
+    asyncio.run(scenario())
