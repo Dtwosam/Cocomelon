@@ -94,6 +94,19 @@ class RedundantStreamMux:
         self._seen_keys: dict[str, set[str]] = defaultdict(set)
         self._seen_queues: dict[str, deque[str]] = defaultdict(deque)
         self._last_emitted: dict[str, StreamEvent] = {}
+        # A previously unseen original which is now strictly older than
+        # the selected lane's last source cannot simply disappear. Preserve
+        # the exact negative gap across a failed or cancelled sink write.
+        self._uncommitted_retrograde_gaps: dict[
+            str, tuple[DataGap, str]
+        ] = {}
+        # Negative gap acknowledgements must NEVER enter _seen_keys: those
+        # keys mean genuine admitted source in standby-overflow accounting.
+        self._retrograde_rejected_keys: dict[str, set[str]] = defaultdict(set)
+        self._retrograde_rejected_order: dict[
+            str, deque[str]
+        ] = defaultdict(deque)
+        self._retrograde_unseen_gap_count = 0
         self._failover_count = 0
         # Both WebSocket supervisors invoke this mux from independent tasks.
         # A downstream sink can yield: without an ingress lock another lane
@@ -132,6 +145,10 @@ class RedundantStreamMux:
             "uncommitted_standby_overflow_gap_count": len(
                 self._uncommitted_standby_overflow_gaps
             ),
+            "uncommitted_retrograde_gap_count": len(
+                self._uncommitted_retrograde_gaps
+            ),
+            "retrograde_unseen_gap_count": self._retrograde_unseen_gap_count,
             "contended_calls": self._ingress_contended_calls,
             "active_waiters": self._ingress_active_waiters,
             "peak_waiters": self._ingress_peak_waiters,
@@ -260,7 +277,10 @@ class RedundantStreamMux:
             keys.discard(queue.popleft())
 
     def _is_duplicate(self, stream_id: str, event: StreamEvent) -> bool:
-        if event.event_key in self._seen_keys[stream_id]:
+        if (
+            event.event_key in self._seen_keys[stream_id]
+            or event.event_key in self._retrograde_rejected_keys[stream_id]
+        ):
             return True
         previous = self._last_emitted.get(stream_id)
         if (
@@ -289,8 +309,63 @@ class RedundantStreamMux:
             return event.receive_time < previous.receive_time
         return False
 
-    async def _emit_candidate(self, stream_id: str, event: StreamEvent) -> bool:
+    async def _persist_retrograde_gap(self, stream_id: str) -> None:
+        pending = self._uncommitted_retrograde_gaps.get(stream_id)
+        if pending is None:
+            return
+        gap, event_key = pending
+        # Exact at-least-once replay on an uncertain downstream sink.
+        # A cancelled write cannot be mistaken for a successful receipt.
+        await self._gap_sink(gap)
+        rejected = self._retrograde_rejected_keys[stream_id]
+        if event_key not in rejected:
+            rejected.add(event_key)
+            order = self._retrograde_rejected_order[stream_id]
+            order.append(event_key)
+            while len(order) > self._dedup_size:
+                rejected.discard(order.popleft())
+        self._uncommitted_retrograde_gaps.pop(stream_id, None)
+        self._retrograde_unseen_gap_count += 1
+
+    async def _emit_candidate(
+        self, stream_id: str, event: StreamEvent, *,
+        from_standby_backfill: bool = False,
+    ) -> bool:
+        await self._persist_retrograde_gap(stream_id)
         if self._is_older_than_last_emitted(stream_id, event):
+            # A negative coverage receipt is justified for the mux's own
+            # standby BACKFILL exclusion: a never-admitted buffered original
+            # will be permanently discarded during a lane transition.
+            # Do not label a receive-only, naturally backward live packet
+            # on the existing active lane as an invented coverage outage.
+            # Supervisor-level anomaly receipts cover exchange-clock
+            # reversals on direct live delivery.
+            if (
+                from_standby_backfill
+                and not self._is_duplicate(stream_id, event)
+            ):
+                previous = self._last_emitted[stream_id]
+                if (
+                    previous.exchange_time_ms is not None
+                    and event.exchange_time_ms is not None
+                ):
+                    earlier, later = (
+                        event.exchange_time_ms, previous.exchange_time_ms
+                    )
+                else:
+                    earlier, later = (
+                        self._receive_ms(event), self._receive_ms(previous)
+                    )
+                self._uncommitted_retrograde_gaps[stream_id] = (
+                    DataGap(
+                        stream_id=stream_id,
+                        started_ms=min(earlier, later),
+                        ended_ms=max(earlier, later),
+                        reason="redundant_unseen_retrograde",
+                    ),
+                    event.event_key,
+                )
+                await self._persist_retrograde_gap(stream_id)
             return False
         if self._is_duplicate(stream_id, event):
             return False
@@ -359,7 +434,9 @@ class RedundantStreamMux:
             )
         while buffer:
             original = buffer[0]
-            delivered = await self._emit_candidate(stream_id, original)
+            delivered = await self._emit_candidate(
+                stream_id, original, from_standby_backfill=True,
+            )
             if delivered:
                 self._remember_recovery_witness(
                     stream_id, lane, original,
@@ -511,6 +588,7 @@ class RedundantStreamMux:
         # write until the original source-gap receipt succeeds.
         await self._persist_uncommitted_aggregate_gap_open(stream_id)
         await self._persist_uncommitted_aggregate_gap_close(stream_id)
+        await self._persist_retrograde_gap(stream_id)
         # A prior standby switch can have failed mid-buffer after changing
         # the active lane. Its original records must be retried first,
         # otherwise the incoming newer event overtakes the old source.
@@ -601,6 +679,7 @@ class RedundantStreamMux:
         # Includes recovered markers: do not close an unpersisted open.
         await self._persist_uncommitted_aggregate_gap_open(stream_id)
         await self._persist_uncommitted_aggregate_gap_close(stream_id)
+        await self._persist_retrograde_gap(stream_id)
         # An old standby backlog must be replayed before a newer recovery
         # marker or disconnect can alter this stream's coverage state.
         await self._drain_active_buffer(stream_id)
