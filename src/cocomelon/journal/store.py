@@ -146,6 +146,7 @@ def _excursion_metric(value: object, field: str) -> ExcursionMetric | None:
 class JournalStore:
     def __init__(self, path: str | Path, *, read_only: bool = False) -> None:
         self.path = Path(path)
+        self._read_only = read_only
         if read_only:
             # Offline research must never open a missing source journal in
             # SQLite's implicit-create mode or touch its authoritative
@@ -651,6 +652,13 @@ class JournalStore:
         self,
         trade: TradeJournalEntry,
     ) -> None:
+        # This write path opens a fresh SQLite connection in a background
+        # thread; PRAGMA query_only on the audit connection alone does NOT
+        # protect the original database against asynchronous writes.
+        if self._read_only:
+            raise JournalConsistencyError(
+                "read-only original journal cannot record trades asynchronously"
+            )
         payload = self._canonical_json(trade)
         stages = await asyncio.to_thread(
             self._record_trade_at_path,
