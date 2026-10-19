@@ -11844,6 +11844,19 @@ async def run_continuous_paper_session(
                         after_frame_sink=finish_named_recovery,
                     )
 
+                async def lane_frame_dispatch_guard(
+                    events: tuple[StreamEvent, ...],
+                    dispatch: Callable[[], Awaitable[None]],
+                    lane: int = lane,
+                ) -> None:
+                    # Serialize every original allMids child plus the
+                    # supervisor's deferred recovered notices and mux
+                    # checkpoint/rotation closure. Never rewrite the
+                    # original receive timestamp or claim source recovery.
+                    await mux.serialize_all_mids_frame_dispatch(
+                        lane, events, dispatch,
+                    )
+
                 def lane_activity_hook(
                     phase: str,
                     active: bool,
@@ -11861,6 +11874,7 @@ async def run_continuous_paper_session(
                     event_sink=lane_event_sink,
                     gap_sink=lane_gap_sink,
                     all_mids_frame_sink=lane_all_mids_frame_sink,
+                    all_mids_frame_dispatch_guard=lane_frame_dispatch_guard,
                     clock_ms=utc_now_ms,
                     utcnow=lambda: datetime.now(UTC),
                     stale_after_ms=_l2_supervisor_stale_after_ms(
