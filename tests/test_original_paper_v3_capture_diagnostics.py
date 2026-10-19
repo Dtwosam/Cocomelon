@@ -424,7 +424,7 @@ def test_original_v3_terminal_closes_right_after_authoritative_paper_checkpoint(
         'root / "paper-ena-quarantine-summary.json"', checkpoint
     )
     expensive_shadow = source.index(
-        "await loss_context_paired_shadow_runtime.checkpoint(", checkpoint
+        "await loss_context_paired_shadow_runtime.terminal_checkpoint(", checkpoint
     )
     assert at < checkpoint < early_close < budget < discretionary
     assert budget < expensive_shadow

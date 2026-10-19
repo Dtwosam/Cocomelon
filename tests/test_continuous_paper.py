@@ -5504,7 +5504,7 @@ def test_loss_context_paired_shadow_feed_stays_off_active_critical_path() -> Non
     assert "await self.loss_context_paired_shadow_runtime.submit_record" not in process
 
     final_checkpoint_at = source.index(
-        "await loss_context_paired_shadow_runtime.checkpoint("
+        "await loss_context_paired_shadow_runtime.terminal_checkpoint("
     )
     active_persist_at = source.index("persist_checkpoint_sync()")
     assert active_persist_at < final_checkpoint_at

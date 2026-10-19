@@ -257,7 +257,24 @@ class PairedShadowTrendSidecar:
         await self._checkpoint_trend(end_ms=end_ms)
         return legacy
 
-    async def _checkpoint_trend(self, *, end_ms: int) -> None:
+    async def terminal_checkpoint(self, *, end_ms: int) -> dict[str, object]:
+        # Terminal custody must fence BOTH isolated research actors.
+        # In particular, a failed historical primary cannot leave the
+        # separate fresh-trend actor accepting unsigned later events.
+        if self.primary is None:
+            await self._checkpoint_trend(end_ms=end_ms, terminal=True)
+            raise RuntimeError("legacy paired shadow unavailable; no v5 checkpoint")
+        try:
+            legacy = await self.primary.terminal_checkpoint(end_ms=end_ms)
+        except Exception:
+            await self._checkpoint_trend(end_ms=end_ms, terminal=True)
+            raise
+        await self._checkpoint_trend(end_ms=end_ms, terminal=True)
+        return legacy
+
+    async def _checkpoint_trend(
+        self, *, end_ms: int, terminal: bool = False,
+    ) -> None:
         status = self.trend.status_payload()
         payload: dict[str, object] = {
             "schema_version": 1,
@@ -292,7 +309,11 @@ class PairedShadowTrendSidecar:
             "checkpoint_error": None,
         }
         try:
-            payload["checkpoint"] = await self.trend.checkpoint(end_ms=end_ms)
+            checkpoint = (
+                self.trend.terminal_checkpoint
+                if terminal else self.trend.checkpoint
+            )
+            payload["checkpoint"] = await checkpoint(end_ms=end_ms)
             payload["checkpoint_published"] = True
         except Exception as exc:
             self.trend.fail_closed(
