@@ -159,6 +159,13 @@ jobs:
 
       - name: Restore previous first-failure receipts
         id: previous
+        # No immutable readiness manifest means NO new candidate can be
+        # evaluated. Scanning 100 historical receipt workflows here would
+        # waste the shared installation API budget and may fail with 403
+        # before the canonical BLOCKED status can be published. Historical
+        # receipts remain untouched; restoration occurs only when there is
+        # a genuine newly authenticated source to append.
+        if: ${{ steps.source.outputs.ready == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           CURRENT_RUN_ID: ${{ github.run_id }}

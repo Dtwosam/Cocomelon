@@ -41,3 +41,28 @@ def test_failure_receipt_workflow_is_research_only_and_append_only() -> None:
         "live_orders: true",
     )
     assert all(item not in source for item in forbidden)
+
+
+def test_blocked_readiness_never_consumes_historical_receipt_api_budget() -> None:
+    source = Path(
+        ".github/workflows/prospective-candidate-failure-receipts.yml"
+    ).read_text(encoding="utf-8")
+    restore = source.split(
+        "      - name: Restore previous first-failure receipts", 1,
+    )[1].split(
+        "      - name: Update append-only first-failure receipts", 1,
+    )[0]
+    assert "if: ${{ steps.source.outputs.ready == 'true' }}" in restore
+    assert "prospective-candidate-failure-receipts.yml/runs?" in restore
+    assert "gh api" in restore
+    update = source.split(
+        "      - name: Update append-only first-failure receipts", 1,
+    )[1].split("      - name: Publish blocked receipt status", 1)[0]
+    assert "if: ${{ steps.source.outputs.ready == 'true' }}" in update
+    blocked = source.split(
+        "      - name: Publish blocked receipt status", 1,
+    )[1].split("      - name: Fail closed on receipt integrity", 1)[0]
+    assert "steps.source.outputs.ready != 'true'" in blocked
+    assert "**Status:** BLOCKED" in blocked
+    assert "**Execution authority:** `false`" in blocked
+    assert "**Promotion authority:** `false`" in blocked
