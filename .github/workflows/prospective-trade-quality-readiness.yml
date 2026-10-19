@@ -95,10 +95,16 @@ jobs:
                   ]
               )
 
+          # Actions shares one installation API budget across research
+          # jobs. Limit the archived search to a recent evidence horizon.
+          # Anything older is INELIGIBLE, not a fallback winning cohort.
+          MAX_RESEARCH_LOOKBACK_RUNS = 12
+          artifact_cache: dict[tuple[int, str], dict[str, object] | None] = {}
+
           def completed_runs(workflow_file: str) -> list[dict[str, object]]:
               payload = gh_json(
                   f"repos/{repo}/actions/workflows/{workflow_file}/runs"
-                  "?branch=main&per_page=100"
+                  "?branch=main&per_page=20"
               )
               runs = [
                   run
@@ -121,7 +127,7 @@ jobs:
                       f"{workflow_file} run {latest.get('id')} concluded "
                       f"{latest.get('conclusion')}."
                   )
-              return runs
+              return runs[:MAX_RESEARCH_LOOKBACK_RUNS]
 
           def artifact_for_run(
               run: dict[str, object],
@@ -132,8 +138,19 @@ jobs:
               run_id = run.get("id")
               if not isinstance(run_id, int):
                   raise SystemExit("workflow run ID is invalid")
+              # We inspect the newest exact run twice; cache that lookup
+              # without ever treating a missing artifact as a valid one.
+              cache_key = (run_id, prefix)
+              if cache_key in artifact_cache:
+                  existing = artifact_cache[cache_key]
+                  if existing is None and required:
+                      raise SystemExit(
+                          f"Expected exactly one current artifact with prefix "
+                          f"{prefix} for latest run {run_id}."
+                      )
+                  return existing
               payload = gh_json(
-                  f"repos/{repo}/actions/runs/{run_id}/artifacts?per_page=100"
+                  f"repos/{repo}/actions/runs/{run_id}/artifacts?per_page=20"
               )
               matches = [
                   item
@@ -154,6 +171,7 @@ jobs:
                           f"Expected exactly one current artifact with prefix "
                           f"{prefix} for latest run {run_id}."
                       )
+                  artifact_cache[cache_key] = None
                   return None
               artifact = matches[0]
               digest = artifact.get("digest")
@@ -161,6 +179,7 @@ jobs:
                   raise SystemExit(
                       f"Artifact digest is missing or invalid for run {run_id}."
                   )
+              artifact_cache[cache_key] = artifact
               return artifact
 
           def load_artifact_json(
@@ -235,7 +254,7 @@ jobs:
                           "data": data,
                       }
                   )
-                  if len(candidates) >= 40:
+                  if len(candidates) >= MAX_RESEARCH_LOOKBACK_RUNS:
                       break
               if not candidates:
                   raise SystemExit(
