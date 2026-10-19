@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+
+import pytest
 from pathlib import Path
 from typing import Any
 
@@ -274,3 +276,73 @@ def test_paired_shadow_position_query_follows_enqueued_record(
         assert runtime.status_payload()["failed"] is True
     finally:
         asyncio.run(runtime.close())
+
+
+def test_terminal_checkpoint_fences_future_unsigned_shadow_updates(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        runtime = _runtime(tmp_path, shadow_factory=_FakeShadow)
+        try:
+            assert runtime.submit_record(
+                _record(3_000), now_ms=3_000, evaluate_decisions=False,
+            )
+            assert runtime.submit_reconcile((MARKET,))
+            checkpoint = await runtime.terminal_checkpoint(end_ms=4_000)
+            assert checkpoint == {"checkpoint_end_ms": 4_000}
+            assert runtime.status_payload()["terminal_checkpoint_fenced"] is True
+            assert runtime.status_payload()["failed"] is False
+            assert not runtime.submit_record(
+                _record(5_000), now_ms=5_000, evaluate_decisions=True,
+            )
+            assert not runtime.submit_rank_snapshot((), observed_at_ms=5_000)
+            assert not runtime.submit_reconcile((MARKET,))
+            assert not runtime.submit_restore_warmup_complete()
+            # A read-only terminal summary remains available for custody.
+            assert await runtime.summary(end_ms=4_000) == {
+                "summary_end_ms": 4_000,
+            }
+            with pytest.raises(
+                Exception, match="terminal checkpoint already requested",
+            ):
+                await runtime.terminal_checkpoint(end_ms=6_000)
+            assert _FakeShadow.events == [
+                ("record", 3_000, 3_000, False),
+                ("reconcile", ("TEST",)),
+                ("checkpoint", 4_000),
+                ("summary", 4_000),
+            ]
+            assert runtime.status_payload()["submitted_records"] == 1
+            assert runtime.status_payload()["processed_records"] == 1
+            assert runtime.status_payload()["queue_overflows"] == 0
+        finally:
+            await runtime.close()
+
+    asyncio.run(scenario())
+
+
+def test_normal_in_session_checkpoint_keeps_research_admission_open(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        runtime = _runtime(tmp_path, shadow_factory=_FakeShadow)
+        try:
+            assert await runtime.checkpoint(end_ms=2_500) == {
+                "checkpoint_end_ms": 2_500,
+            }
+            assert runtime.status_payload()["terminal_checkpoint_fenced"] is False
+            assert runtime.submit_record(
+                _record(3_000), now_ms=3_000, evaluate_decisions=False,
+            )
+            assert await runtime.terminal_checkpoint(end_ms=4_000) == {
+                "checkpoint_end_ms": 4_000,
+            }
+            assert _FakeShadow.events == [
+                ("checkpoint", 2_500),
+                ("record", 3_000, 3_000, False),
+                ("checkpoint", 4_000),
+            ]
+        finally:
+            await runtime.close()
+
+    asyncio.run(scenario())
