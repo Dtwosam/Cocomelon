@@ -167,6 +167,7 @@ class LossContextPairedShadowRuntime:
         # summaries completely independent of this research sidecar.
         self._admission_lock = threading.Lock()
         self._terminal_checkpoint_requested = False
+        self._terminal_checkpoint_started = False
         self._failed = threading.Event()
         self._closed = threading.Event()
         self._initialized = threading.Event()
@@ -511,27 +512,36 @@ class LossContextPairedShadowRuntime:
             timeout_seconds=timeout_seconds,
         )
 
+    def fence_terminal_admission(self) -> None:
+        """Stop all new mutations synchronously, before any awaited I/O.
+
+        Sidecars with independent research accounts fence EVERY actor
+        before they await the first slow SQLite checkpoint. Idempotent
+        fencing is intentionally separate from one-shot checkpointing.
+        """
+        with self._admission_lock:
+            self._terminal_checkpoint_requested = True
+
     async def terminal_checkpoint(
         self,
         *,
         end_ms: int,
         timeout_seconds: float = DEFAULT_CONTROL_TIMEOUT_SECONDS,
     ) -> dict[str, object]:
-        """Fence all future research mutations before final signed handoff.
+        """Freeze admission and sign one final actor-ordered checkpoint.
 
-        Previously queued market records precede the FIFO checkpoint.
-        The admission fence and command enqueue use a separate short lock,
-        so no source callback can append a new unsigned command after the
-        terminal handoff begins, even while its durable snapshot waits for
-        outstanding processing. The failed original campaigns are NOT
-        reopened or retrospectively repaired by this guard.
+        The admission fence may already have been set by the two-lane
+        sidecar, before it awaits ANY account's SQLite flush. A second
+        checkpoint is still forbidden, and failed old campaigns stay
+        failed without reconstruction or PnL credit.
         """
         with self._admission_lock:
-            if self._terminal_checkpoint_requested:
+            if self._terminal_checkpoint_started:
                 raise LossContextPairedShadowRuntimeError(
                     "paired shadow terminal checkpoint already requested"
                 )
             self._terminal_checkpoint_requested = True
+            self._terminal_checkpoint_started = True
         return await self.checkpoint(
             end_ms=end_ms, timeout_seconds=timeout_seconds,
         )
