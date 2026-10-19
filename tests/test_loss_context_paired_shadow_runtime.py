@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
-
-import pytest
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.domain.market import MarketId
