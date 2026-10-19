@@ -9661,6 +9661,14 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
     predecessor_top = ", ".join(
         f"{key}={count}" for key, count in predecessor_counts[:4] if count > 0
     ) or "none observed"
+    displayed_total = sum(count for _, count in predecessor_counts)
+    adjacent_gap_total = sum(
+        count for edge, count in edges if edge.startswith("data_gap -> ")
+    )
+    predecessor_reconciled = (
+        raw.get("gap_predecessor_counts_reconcile") is True
+        and displayed_total == adjacent_gap_total
+    )
     first_gap_reason = raw.get("first_regression_prior_gap_reason")
     first_gap_boundary = raw.get("first_regression_prior_gap_boundary")
     if type(first_gap_reason) is not str or first_gap_reason not in safe_reasons:
@@ -9772,13 +9780,8 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
         ),
         (
             "- original gap predecessor bucket counts / adjacent-edge reconcile: "
-            f"{sum(count for _, count in predecessor_counts)} / "
-            f"{str(
-                raw.get('gap_predecessor_counts_reconcile') is True
-                and sum(count for _, count in predecessor_counts)
-                == sum(count for edge, count in edges
-                       if edge.startswith('data_gap -> '))
-            ).lower()}"
+            f"{displayed_total} / "
+            f"{str(predecessor_reconciled).lower()}"
         ),
         (
             "- original regressions market-snapshot / funding / candle: "
