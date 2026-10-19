@@ -2677,6 +2677,20 @@ def _record_from_witnessed_named_recovery_gap(gap: DataGap) -> ReplayRecord:
     return _record_from_gap(gap, observed_at_ms=gap.ended_ms)
 
 
+def _record_from_witnessed_mux_recovery_gap(gap: DataGap) -> ReplayRecord:
+    """Use the real mux-accepted source witness to clock aggregate CLOSE.
+
+    The redundant mux only publishes its own `recovered` aggregate CLOSE
+    after a market event's downstream sink has ACKed it. That CLOSE's
+    immutable ended_ms is the original accepted source witness/first
+    received packet clock. A possibly much later async gap sink/pump/fsync
+    is not a new market observation. Other gap kinds must not use this.
+    """
+    if gap.reason != "recovered" or gap.ended_ms is None:
+        raise ValueError("mux aggregate recovery requires genuine closed witness")
+    return _record_from_gap(gap, observed_at_ms=gap.ended_ms)
+
+
 def _record_payload(record: ReplayRecord) -> dict[str, object]:
     return {
         "record_kind": record.record_kind.value,
@@ -11725,7 +11739,17 @@ async def run_continuous_paper_session(
                                 )
                             ),
                         )
-                    await pump.process(gap)
+                    if gap.reason == "recovered" and not gap.is_open:
+                        # Every mux aggregate recovery follows an ACKed
+                        # original source witness. Its CLOSE clock is that
+                        # already-observed receipt, not the later lock/fsync
+                        # time. Unwitnessed/general gap classes retain
+                        # conservative live pump observation semantics.
+                        await pump.process(
+                            _record_from_witnessed_mux_recovery_gap(gap)
+                        )
+                    else:
+                        await pump.process(gap)
 
             mux = RedundantStreamMux(
                 event_sink=event_sink,
