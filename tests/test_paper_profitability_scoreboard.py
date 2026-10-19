@@ -3272,7 +3272,7 @@ def test_actual_cost_hurdle_is_quantified_per_original_trade_not_projected(
     assert report["ready_for_strategy_promotion"] is False
     # Independent side buckets expose cost hurdle without pretending a
     # retrospectively profitable side could be selected pre-entry.
-    buckets = {row["side"]: row for row in report["side_cohorts"]}
+    buckets = {row["cohort"]["side"]: row for row in report["side_cohorts"]}
     assert Decimal(
         buckets["long"]["booked_cost_to_break_even_per_closed_trade_usd"]
     ) == Decimal("1.00")
