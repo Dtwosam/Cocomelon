@@ -78,6 +78,37 @@ def test_relative_winner_can_still_lose_absolute_after_cost() -> None:
     assert report["candidate"]["additional_net_to_reach_zero_usd"] == "1"
     assert report["candidate"]["absolute_after_cost_positive"] is False
     assert report["positive_absolute_baseline_and_candidate_and_delta"] is False
+    assert (
+        report["baseline"]["booked_fee_coverage_by_non_fee_marked_pnl_ratio"]
+        == "-2.35"
+    )
+    assert report["baseline"]["fraction_of_booked_fees_to_refund_for_zero"] == "3.35"
+    assert report["baseline"]["even_full_fee_refund_cannot_make_strict_profit"]
+    assert (
+        report["candidate"]["booked_fee_coverage_by_non_fee_marked_pnl_ratio"]
+        == "0.9"
+    )
+    assert report["candidate"]["fraction_of_booked_fees_to_refund_for_zero"] == "0.1"
+    assert not report["candidate"]["even_full_fee_refund_cannot_make_strict_profit"]
+    scenarios = report["paired_same_fills_fee_refund_sensitivity"]
+    assert [x["booked_fee_refund_fraction"] for x in scenarios] == [
+        "0", "0.25", "0.50", "0.75", "1"
+    ]
+    assert [x["candidate_minus_baseline_usd"] for x in scenarios] == [
+        "66", "63.50", "61.00", "58.50", "56"
+    ]
+    assert scenarios[0]["baseline_same_fills_marked_net_usd"] == "-67"
+    assert scenarios[0]["candidate_same_fills_marked_net_usd"] == "-1"
+    assert scenarios[1]["candidate_same_fills_marked_net_usd"] == "1.50"
+    assert scenarios[-1]["baseline_same_fills_marked_net_usd"] == "-47"
+    assert scenarios[-1]["candidate_same_fills_marked_net_usd"] == "9"
+    assert all(not row["both_accounts_strictly_positive"] for row in scenarios)
+    assert all(row["candidate_strictly_ahead"] for row in scenarios)
+    assert all(
+        row["research_only"] and not row["execution_authority"]
+        and not row["promotion_authority"]
+        for row in scenarios
+    )
     assert report["open_exposure_valuation_can_change"] is True
     assert report["whole_account_positive_forward_edge_certified"] is False
     assert report["promotion_authority"] is False
@@ -141,3 +172,49 @@ def test_identical_zero_profit_is_not_a_winning_trial() -> None:
     assert report["positive_absolute_baseline_and_candidate_and_delta"] is False
     assert report["candidate"]["additional_net_to_reach_zero_usd"] == "0"
     assert report["candidate"]["absolute_after_cost_positive"] is False
+
+
+def test_paid_fee_discount_threshold_is_not_forward_profit() -> None:
+    base = _lane("20", "10", "0", "0", count=0)
+    challenger = _lane("18", "3", "0", "0", count=0)
+    report = fresh_long_trend_economic_hurdle(_audit(base, challenger))
+    assert report["candidate_minus_baseline_after_cost_usd"] == "5"
+    assert report["delta_gross_realized_usd"] == "-2"
+    assert report["delta_fee_savings_usd"] == "7"
+    scenarios = report["paired_same_fills_fee_refund_sensitivity"]
+    assert scenarios[0]["candidate_minus_baseline_usd"] == "5"
+    assert scenarios[-1]["candidate_minus_baseline_usd"] == "-2"
+    assert report["positive_absolute_baseline_and_candidate_and_delta"] is True
+    assert report["promotion_authority"] is False
+
+
+def test_no_fees_and_fee_free_breakeven_do_not_synthesize_an_edge() -> None:
+    base = _lane("-1", "0", "0", "0", count=0)
+    challenger = _lane("2", "2", "0", "0", count=0)
+    report = fresh_long_trend_economic_hurdle(_audit(base, challenger))
+    assert report["baseline"]["fraction_of_booked_fees_to_refund_for_zero"] is None
+    assert report["baseline"]["booked_fee_coverage_by_non_fee_marked_pnl_ratio"] is None
+    assert report["baseline"]["even_full_fee_refund_cannot_make_strict_profit"]
+    assert report["candidate"]["fraction_of_booked_fees_to_refund_for_zero"] == "0"
+    assert not report["candidate"]["even_full_fee_refund_cannot_make_strict_profit"]
+    assert report["candidate"]["absolute_after_cost_positive"] is False
+    assert not report["paired_same_fills_fee_refund_sensitivity"][0][
+        "both_accounts_strictly_positive"
+    ]
+    assert report["whole_account_positive_forward_edge_certified"] is False
+
+
+def test_fee_refund_zero_scenario_tolerates_booked_decimal_scale() -> None:
+    base = _lane("3", "0", "0", "0", count=0)
+    challenger = _lane("4", "0", "0", "0", count=0)
+    # Source accounting tolerates genuinely sub-attodollar residuals.
+    # Decimal(0) * a fine-scale booked fee can otherwise add trailing
+    # zeros to the report string without changing a single cash dollar.
+    base["fill_fees_usd"] = "0.00000000000000000001"
+    report = fresh_long_trend_economic_hurdle(_audit(base, challenger))
+    scenario = report["paired_same_fills_fee_refund_sensitivity"][0]
+    actual_delta = Decimal(report["candidate_minus_baseline_after_cost_usd"])
+    assert abs(Decimal(scenario["candidate_minus_baseline_usd"]) - actual_delta) <= (
+        Decimal("1E-18")
+    )
+    assert report["execution_authority"] is False

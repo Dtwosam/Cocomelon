@@ -1,5 +1,32 @@
 # Cocomelon Project Status
 
+## October 19 — exact matched-account fee stress (research only)
+
+The Oct 19 09:40 UTC authenticated PAPER #39223537959 heartbeat reports
+$9,796.54 whole-account marked equity, **-$203.46 net after costs**,
+302 lifetime completed trades, $233.42 booked fees and +$32.93
+realized gross. Same-fills all-fees-refunded arithmetic is +$29.96,
+not a real executed profit or strategy. Original v3 source still fails
+receipt clocks and selected-market L2 continuity.
+
+Frozen v3 independent matched-account economic hurdle now explicitly
+reports the **observed fee coverage** and minimum booked-fee refund fraction
+to reach zero, plus a fixed 0/25/50/75/100% *same-fills* fee sensitivity
+for BOTH account lanes. It shows whether a relative candidate gain survives
+when the fee-savings component is stripped away, while refusing to promote
+even synthetic favorable accounts. Exact Decimal cash reconciliation,
+negative-fee refusal, no-fee and exact-breakeven boundary tests are included.
+See [the research note](v3_paired_paid_fee_sensitivity_2026_10_19.md).
+
+This PR changes neither original trades, fills, opening decisions,
+risk, accounting, funding, source nor worker handoffs. The future frozen
+LONG-trend study still requires genuinely clean independent >=72h source,
+two fresh whole accounts with BOTH absolute after-cost positive and positive
+candidate advantage, plus independent lineage attestation and stability.
+Original v3 source and the forward profit edge remain UNVERIFIED; LIVE OFF.
+The next real economic step is clean-source capital-matched PAPER validation,
+not retrospective fee refunds or skip-only saved cash.
+
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
 ## October 19 — bound optional opening-path GIL work while preserving EVERY observed mark
