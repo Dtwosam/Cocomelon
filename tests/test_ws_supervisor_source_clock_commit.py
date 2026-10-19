@@ -267,7 +267,7 @@ def test_session_normalization_delay_never_retimes_first_received_packet(
             int(event.receive_time.timestamp() * 1_000) == 2_000
             for event in events
         )
-        assert supervisor.health().last_server_message_ms == 2_000
+        assert supervisor.health.last_server_message_ms == 2_000
         assert clock[0] == original[0] == 7_000
         assert not gaps
         assert all(
