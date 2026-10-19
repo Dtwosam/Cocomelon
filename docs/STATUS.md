@@ -2,6 +2,46 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 18 — disclose standby backfill truncation instead of silent source continuity
+
+The redundant mux deliberately bounds standby market-event buffers at
+8,192 original normalized events per subscription by default. But when
+a backup lane accumulated more original rows, the oldest ones were
+silently discarded. If that backup later became the active source,
+the mux replayed only the retained suffix and still reported the
+handoff as if it had complete observed standby coverage. The missing
+original standby backfill cannot be recreated by a later price tick.
+It is not always a proven venue outage: the former active lane may
+have delivered the rows. The mux therefore first checks whether the
+evicted event's **EXACT original key** was already acknowledged by
+the active source. Those exact accepted duplicates do not create a
+false gap. Evictions without such proof are **genuine source-custody
+uncertainty** and must remain visible, never treated as clean evidence.
+
+The mux now retains the **FIRST actually evicted original receive
+timestamp per lane/stream**, along with a negative-only count of
+dropped standby rows. At actual promotion, BEFORE awaiting any sink,
+it freezes an immutable `standby_backfill_overflow` DataGap spanning
+that first dropped original row and the first retained backup row,
+or leaves the end unresolved if the actual receive times are inverted.
+It sends the gap after any accepted retained backfill children
+but BEFORE a newer direct market event/gap can be admitted. Failed
+or cancelled source-gap writes preserve the exact first negative
+receipt as pending; every next input retries that same start/end
+and propagates repeated failure. No buffered market rows are
+synthesized and no previously unqualified source is declared healthy.
+
+Synthetic regression tests exercise loss of one and multiple
+standby rows, observed first/last source boundaries, no fabricated
+market event in the lost interval, the normal no-overflow switch,
+and exact repeated OSError/cancellation retry before newer source
+events. This changes only receipt integrity on affected backup
+failovers. The existing PAPER strategy, account, executions,
+risk/stops, fee/funding or LIVE-disabled state do not change.
+A future independently signed complete >=72h source and two
+new positively returning matched after-cost PAPER accounts remain
+unproven; no measured edge claimed from this defensive fix.
+
 ## October 18 — checkpoint/rotation ALL_MIDS closes wait for complete original frame
 
 The redundant mux's aggregate `allMids` recovery was corrected in
