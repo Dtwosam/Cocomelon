@@ -2,6 +2,34 @@
 
 > Profitability-first mandate: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). No non-economic promotion or LIVE relaxation.
 
+## October 19 — Maker entry missed-winner cost budget; no fabricated profit
+
+Authenticated PAPER worker #39223537959 at 10:40 UTC: **-$209.31**
+marked total account net, $9,790.69 equity, 302 lifetime closes,
+two open positions and $234.47 booked fees. The old deployed code
+`372dff6d` has nonqualifying original source with 2,130,624 dropped
+events, so no maker-vs-IOC after-fee trial is currently admissible.
+
+Following PR #1367's strictly unverified quote/trade-through witness,
+new read-only `maker_entry_cost_budget.py` analyzes an intact original
+**completed trade** cohort. It reports conditional all-entry-at-maker
+fee saving with identical original gross, exits (still taker), funding
+and prices. It subtracts the original largest one/three
+profitable conditional trade contributions to expose how easy it is
+for missed maker entries to erase the saving, and records
+prints where full-size original fill was ruled out. Incompatible
+original lineage, nonreconciling gross/fees/net, impossible quote
+and claimed maker fills/savings all FAIL CLOSED. There are no
+guaranteed maker fills, no realized saving and no whole-account
+positive edge claimed; open marks and reallocation are explicitly
+outside the scope. See
+[maker budget note](maker_entry_missed_winner_cost_budget_2026_10_19.md).
+
+No baseline PAPER opening/risk/stop, commission, original archive,
+frozen v3 source experiment, restart or LIVE configuration changed.
+Continue with independently verified clean source and matched
+whole-account maker execution evidence; **no profitable edge verified**.
+
 ## October 19 — maker entry trade-through upper bound, never synthetic fills
 
 Profit question: with booked fees $233.4237 and realized gross +$32.9299
