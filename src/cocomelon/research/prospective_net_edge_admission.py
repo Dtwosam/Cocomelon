@@ -48,7 +48,7 @@ class ProspectiveNetEdgeState:
             "frozen_at_ms": self.frozen_at_ms,
             "started_at_ms": self.started_at_ms,
             "reference": "all_actual_unfiltered_baseline_paper_closes",
-            "training_only_closes_after_forward_start": True,
+            "training_only_opens_and_closes_after_forward_start": True,
             "training_close_must_precede_target_open": True,
             "window": MAX_RECENT_CLOSED,
             "min_direction_closes": MIN_CLOSED_BY_DIRECTION,
@@ -86,12 +86,16 @@ def preentry_net_floor(
     if direction not in (Direction.LONG, Direction.SHORT):
         raise ProspectiveNetEdgeError("direction must be long or short")
 
+    # A position opened BEFORE the freeze is pre-frozen discovery, even
+    # if its eventual close arrived after forward start. Neither pre-
+    # freeze decisions nor later overlapping closes can vote here.
     # Reject malformed/duplicated ORIGINAL baseline custody even during
     # embargo; never silently choose a favorable copy of a closed trade.
     unique = _chronology(baseline_closes)
     samples = tuple(sorted((
         trade for trade in unique
-        if state.started_at_ms <= trade.closed_at_ms < proposed_open_ms
+        if state.started_at_ms <= trade.opened_at_ms
+        and trade.closed_at_ms < proposed_open_ms
         and trade.direction is direction
     ), key=lambda t: (t.closed_at_ms, t.opened_at_ms, t.trade_id)))
     window = samples[-MAX_RECENT_CLOSED:]
