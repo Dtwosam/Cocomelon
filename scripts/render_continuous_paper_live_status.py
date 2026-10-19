@@ -9773,7 +9773,12 @@ def _v3_live_capture_lines(raw: object) -> list[str]:
         (
             "- original gap predecessor bucket counts / adjacent-edge reconcile: "
             f"{sum(count for _, count in predecessor_counts)} / "
-            f"{str(raw.get('gap_predecessor_counts_reconcile') is True).lower()}"
+            f"{str(
+                raw.get('gap_predecessor_counts_reconcile') is True
+                and sum(count for _, count in predecessor_counts)
+                == sum(count for edge, count in edges
+                       if edge.startswith('data_gap -> '))
+            ).lower()}"
         ),
         (
             "- original regressions market-snapshot / funding / candle: "
