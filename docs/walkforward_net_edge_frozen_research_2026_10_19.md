@@ -20,10 +20,12 @@ return in the same direction is not robustly positive.
 
 `src/cocomelon/research/prospective_net_edge_admission.py` provides the
 pure research contract. A state carries its prospective freeze time and
-**six-hour embargo**. Only **new baseline closes after that forward start** and
-**strictly before the target opportunity's opening time** may enter the
-training window. Delayed overlapping positions, including their future
-exits, cannot vote. Every actual unfiltered baseline outcome remains in
+**six-hour embargo**. Only **baseline trades BOTH opened and closed after forward start** and
+**strictly closed before the target opportunity's opening time** may enter the
+training window. A position opened before the forward start but held
+through it remains OLD discovery and cannot vote, even if it closed
+later. Delayed overlapping positions, including their future exits,
+cannot vote. Every actual unfiltered baseline outcome remains in
 the reference, even when a prior hypothetical candidate would have
 declined it. No hidden re-weighting of losses, fake zero-cost fills, or
 time-forward return leaks.
