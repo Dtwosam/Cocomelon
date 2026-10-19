@@ -448,6 +448,17 @@ def _metrics(trades: list[_Trade]) -> dict[str, object]:
     required_fee_fraction = (
         max(-net, ZERO) / fees if trades and fees > ZERO else None
     )
+    # Quantify the actual booked gross hurdle required PER original close
+    # to cover paid fees and funding. This is a diagnostic, not a
+    # backtest of rejecting bad trades or a calibrated entry forecast.
+    # Only prospective predicted gross edge known BEFORE the entry could
+    # make an executable selection rule, and that edge does not exist here.
+    trade_count = len(trades)
+    break_even_gross = fees - funding
+    gross_shortfall = max(break_even_gross - gross, ZERO)
+    gross_per_trade = gross / trade_count if trade_count else None
+    cost_per_trade = break_even_gross / trade_count if trade_count else None
+    shortfall_per_trade = gross_shortfall / trade_count if trade_count else None
     gross_positive = [t for t in trades if t.gross > ZERO]
     flipped = [t for t in gross_positive if t.net <= ZERO]
     # Use booked after-fee/funding NET dollars, not gross favorable moves.
@@ -501,6 +512,25 @@ def _metrics(trades: list[_Trade]) -> dict[str, object]:
         "fees": str(fees),
         "funding_cash_pnl": str(funding),
         "net_pnl": str(net),
+        "observed_gross_realized_per_closed_trade_usd": (
+            str(gross_per_trade) if gross_per_trade is not None else None
+        ),
+        "booked_cost_to_break_even_per_closed_trade_usd": (
+            str(cost_per_trade) if cost_per_trade is not None else None
+        ),
+        "additional_gross_needed_per_closed_trade_to_zero_usd": (
+            str(shortfall_per_trade) if shortfall_per_trade is not None else None
+        ),
+        "additional_gross_needed_whole_closed_cohort_to_zero_usd": str(
+            gross_shortfall
+        ),
+        "observed_gross_covers_booked_fees_and_funding": (
+            gross >= break_even_gross if trade_count else None
+        ),
+        "gross_cost_hurdle_scope": (
+            "descriptive_original_closed_cohort_not_entry_time_forecast_"
+            "not_executable_abstention_not_full_marked_account"
+        ),
         "same_fill_all_recorded_fees_refunded_net_pnl": str(
             all_fees_refunded_same_fills
         ),
