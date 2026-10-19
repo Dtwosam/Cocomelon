@@ -2,6 +2,33 @@
 
 > Profitability-first mandate: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). No non-economic promotion or LIVE relaxation.
 
+## October 19 — stop treating crossed funding boundaries as free maker exits
+
+The research-only IOC-vs-maker **single-exit** paired PAPER
+comparison previously charged entry and exit fees but omitted
+funding even across a genuine hourly position boundary. Now it
+requires matching original pre-hour oracle and exact original
+mainnet-info `FundingRate` to apply canonical position-size
+and direction-aware funding into both separate account ledgers
+BEFORE the fixed exit. The maker lane pays only if its modeled
+position actually existed through the boundary; a missed
+maker trade cannot secretly inherit baseline gross, fees or
+funding. Missing/stale/wrong-source/late oracle/rate and
+multiple unmatched hourly boundaries all FAIL CLOSED.
+Single-path funding is not full portfolio profitability.
+See [funding-aware paired exits](maker_paired_funding_boundary_2026_10_19.md).
+
+Authenticated ordinary #469 at 13:52 UTC: active PAPER
+#39255842615 on older `6c9f045a`, equity **$9,801.60**,
+marked **-$198.40 net** from $10k, 305 historical closes,
+two open positions, $236.95 fees and -$2.92 funding.
+Original first-received research source still FAILED:
+**829,822 dropped**, 24,770 clock regressions; PR #1374
+diagnostic attribution has not yet been adopted by the
+running worker. This coding work changes no original source,
+actual fees, risk, strategy, worker restart, frozen v3
+promotion gate or LIVE state. **NO PROFITABLE EDGE VERIFIED.**
+
 ## October 19 — original DATA_GAP → raw event causal reason before changing source order
 
 Authenticated 13:20 UTC worker #39255842615 has PAPER
