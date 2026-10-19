@@ -258,5 +258,4 @@ def audit_momentum_pullback_optimistic_fee_stability(
         "positive_absolute_after_cost_equity_verified": False,
         "promotion_authority": False,
         "execution_authority": False,
-        "live_orders": False,
     }
