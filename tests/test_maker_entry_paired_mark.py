@@ -853,3 +853,61 @@ def test_zero_witness_multi_hour_hold_is_not_zero_cost() -> None:
         _funded_closed_pair(
             (), hold_hours=1, supply_evidence=False,
         )
+
+
+@pytest.mark.parametrize(
+    ("side", "touch_side", "through_price"),
+    [
+        (OrderSide.BUY, "A", "99"),
+        (OrderSide.SELL, "B", "102"),
+    ],
+)
+def test_partial_maker_fills_across_hour_never_erase_earlier_lot_funding(
+    side: OrderSide, touch_side: str, through_price: str,
+) -> None:
+    # The first 4 units merely reduce visible 5-unit queue ahead.
+    # An original trade-through of 1.5 then fills 0.5 pre-hour,
+    # while a later original trade-through adds 1 unit after the hour.
+    # Aggregating both fills at the LAST print and using opened_at_ms
+    # would falsely cost zero funding for the earlier 0.5 unit.
+    tape = (
+        _trade(1300, touch_side, "100" if side is OrderSide.BUY else "101", "4"),
+        _trade(1400, touch_side, through_price, "1.5"),
+        _trade(2100, touch_side, through_price, "1"),
+    )
+    with pytest.raises(
+        MakerEntryWitnessError, match="straddle funding boundary",
+    ):
+        _funded_closed_pair(tape, side=side)
+
+
+def test_multi_hour_partial_maker_crossing_first_hour_still_fails_closed() -> None:
+    tape = (
+        _trade(1300, "A", "100", "4"),
+        _trade(1400, "A", "99", "1.5"),
+        _trade(2100, "A", "99", "1"),
+    )
+    witnesses = (
+        _hourly_funding_pair(FUNDING_BOUNDARY_MS),
+        _hourly_funding_pair(2 * FUNDING_BOUNDARY_MS, rate="0.002"),
+    )
+    with pytest.raises(
+        MakerEntryWitnessError, match="lot-level original funding",
+    ):
+        _funded_closed_pair(
+            tape, hold_hours=1, hourly_funding=witnesses,
+        )
+
+
+def test_maker_fill_entirely_after_first_hour_does_not_inherit_early_funding(
+) -> None:
+    outcome = _funded_closed_pair(
+        (_trade(2100, "A", "99", "8"),),
+    )
+    maker = outcome["conditional_maker_account"]
+    baseline = outcome["baseline_account"]
+    assert isinstance(maker, dict) and isinstance(baseline, dict)
+    assert Decimal(maker["funding_usd"]) == Decimal("0")
+    assert Decimal(baseline["funding_usd"]) == Decimal("-0.2")
+    assert maker["position_count"] == 0
+    assert outcome["whole_account_profitable_edge_proven"] is False
