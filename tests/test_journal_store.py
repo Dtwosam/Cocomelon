@@ -580,3 +580,149 @@ def test_canonical_payload_preserves_decimal_strings_not_floats(tmp_path: Path) 
 
     assert payload == '{"risk":"0.002500"}'
     store.close()
+
+
+def test_readonly_canonical_paper_trade_journal_cannot_change_source(
+    tmp_path: Path,
+) -> None:
+    import hashlib
+
+    path = tmp_path / "original-journal.sqlite3"
+    writer = JournalStore(path)
+    original_trade = trade_entry()
+    writer.record_trade(original_trade)
+    writer.close()
+    initial = hashlib.sha256(path.read_bytes()).hexdigest()
+
+    reader = JournalStore(path, read_only=True)
+    try:
+        assert tuple(reader.iter_trades()) == (original_trade,)
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            reader.connection.execute(
+                "INSERT INTO journal_meta(key, value) "
+                "VALUES ('research_fake_key', 'profit')"
+            )
+        with pytest.raises(
+            JournalConsistencyError, match="cannot record trades asynchronously",
+        ):
+            asyncio.run(reader.record_trade_async(original_trade))
+    finally:
+        reader.close()
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == initial
+
+    with sqlite3.connect(path) as untouched:
+        assert untouched.execute(
+            "SELECT count(*) FROM journal_trades"
+        ).fetchone() == (1,)
+        assert untouched.execute(
+            "SELECT value FROM journal_meta "
+            "WHERE key = 'research_fake_key'"
+        ).fetchone() is None
+
+
+def test_readonly_journal_rejects_missing_and_unsupported_schema(
+    tmp_path: Path,
+) -> None:
+    absent = tmp_path / "does-not-exist.sqlite3"
+    with pytest.raises(
+        JournalConsistencyError, match="read-only journal file missing",
+    ):
+        JournalStore(absent, read_only=True)
+    assert not absent.exists()
+    empty = tmp_path / "not-a-journal.sqlite3"
+    with sqlite3.connect(empty):
+        pass
+    with pytest.raises(
+        JournalConsistencyError, match="schema missing",
+    ):
+        JournalStore(empty, read_only=True)
+    writer = JournalStore(tmp_path / "old-journal.sqlite3")
+    writer.close()
+    old = tmp_path / "old-journal.sqlite3"
+    with sqlite3.connect(old) as conn:
+        conn.execute(
+            "UPDATE journal_meta SET value = '999' "
+            "WHERE key = 'schema_version'"
+        )
+    before = old.read_bytes()
+    with pytest.raises(
+        JournalConsistencyError, match="unsupported journal schema version",
+    ):
+        JournalStore(old, read_only=True)
+    assert old.read_bytes() == before
+
+
+def test_net_edge_offline_journal_audit_preserves_hash_and_blocks_promotion(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    import hashlib
+    import json
+    from dataclasses import replace
+
+    from scripts.audit_readonly_prospective_net_edge_journal import main
+
+    source = tmp_path / "original-completed.sqlite3"
+    trade = trade_entry()
+    prospective = replace(
+        trade, opened_at_ms=21_600_100,
+        closed_at_ms=21_601_100, holding_duration_ms=1_000,
+    )
+    writer = JournalStore(source)
+    writer.record_trade(trade)
+    writer.record_trade(prospective)
+    writer.close()
+
+    before = source.read_bytes()
+    output = tmp_path / "offline-net-floor.json"
+    assert main([
+        str(source), "--freeze-ms", "0", "--json-out", str(output),
+    ]) == 0
+    printed = json.loads(capsys.readouterr().out)
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert printed["original_closed_trades"] == 2
+    assert printed["prospective_evaluated_trades"] == 1
+    assert printed["prospective_admitted_trades"] == 0
+    assert report["local_original_journal_trade_count"] == 2
+    assert report["local_original_journal_sha256"] == (
+        hashlib.sha256(before).hexdigest()
+    )
+    assert report["forward_original_rows"] == 1
+    assert report["forward_original_admitted"] == 0
+    assert report["forward_original_skipped"] == 1
+    assert report["independent_signed_source_authentication_verified"] is False
+    assert report["all_source_gaps_closed_and_72h_verified"] is False
+    assert report["capital_matched_challenger_account_verified"] is False
+    assert report["positive_absolute_after_cost_marked_equity_verified"] is False
+    assert report["promotion_authority"] is False
+    assert report["execution_authority"] is False
+    assert source.read_bytes() == before
+
+    with pytest.raises(SystemExit, match="2"):
+        main([
+            str(source), "--freeze-ms", "0", "--json-out", str(output),
+        ])
+    assert source.read_bytes() == before
+
+
+def test_journal_audit_rejects_live_sqlite_sidecars_before_record_reads(
+    tmp_path: Path,
+) -> None:
+    from scripts.audit_readonly_prospective_net_edge_journal import main
+
+    source = tmp_path / "original.sqlite3"
+    writer = JournalStore(source)
+    writer.record_trade(trade_entry())
+    writer.close()
+    original = source.read_bytes()
+    output = tmp_path / "should-not-exist.json"
+    wal = Path(str(source) + "-wal")
+    wal.write_bytes(b"unverified active SQLite WAL")
+    try:
+        with pytest.raises(SystemExit, match="2"):
+            main([
+                str(source), "--freeze-ms", "0", "--json-out", str(output),
+            ])
+        assert not output.exists()
+        assert source.read_bytes() == original
+    finally:
+        wal.unlink()
