@@ -78,10 +78,16 @@ def test_relative_winner_can_still_lose_absolute_after_cost() -> None:
     assert report["candidate"]["additional_net_to_reach_zero_usd"] == "1"
     assert report["candidate"]["absolute_after_cost_positive"] is False
     assert report["positive_absolute_baseline_and_candidate_and_delta"] is False
-    assert report["baseline"]["booked_fee_coverage_by_non_fee_marked_pnl_ratio"] == "-2.35"
+    assert (
+        report["baseline"]["booked_fee_coverage_by_non_fee_marked_pnl_ratio"]
+        == "-2.35"
+    )
     assert report["baseline"]["fraction_of_booked_fees_to_refund_for_zero"] == "3.35"
     assert report["baseline"]["even_full_fee_refund_cannot_make_strict_profit"]
-    assert report["candidate"]["booked_fee_coverage_by_non_fee_marked_pnl_ratio"] == "0.9"
+    assert (
+        report["candidate"]["booked_fee_coverage_by_non_fee_marked_pnl_ratio"]
+        == "0.9"
+    )
     assert report["candidate"]["fraction_of_booked_fees_to_refund_for_zero"] == "0.1"
     assert not report["candidate"]["even_full_fee_refund_cannot_make_strict_profit"]
     scenarios = report["paired_same_fills_fee_refund_sensitivity"]
@@ -190,7 +196,7 @@ def test_no_fees_and_fee_free_breakeven_do_not_synthesize_an_edge() -> None:
     assert report["baseline"]["booked_fee_coverage_by_non_fee_marked_pnl_ratio"] is None
     assert report["baseline"]["even_full_fee_refund_cannot_make_strict_profit"]
     assert report["candidate"]["fraction_of_booked_fees_to_refund_for_zero"] == "0"
-    assert report["candidate"]["even_full_fee_refund_cannot_make_strict_profit"] is False
+    assert not report["candidate"]["even_full_fee_refund_cannot_make_strict_profit"]
     assert report["candidate"]["absolute_after_cost_positive"] is False
     assert not report["paired_same_fills_fee_refund_sensitivity"][0][
         "both_accounts_strictly_positive"
