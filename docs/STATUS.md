@@ -2,6 +2,33 @@
 
 > Profitability-first mandate: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). No non-economic promotion or LIVE relaxation.
 
+## October 19 — maker-first strict-through entry PAPER shadow, still no PnL
+
+Authenticated 11:30 UTC ordinary PAPER #39223537959 (old
+`372dff6d`) marks at **$9,804.30 equity, -$195.70 net** from
+$10,000, 302 lifetime completed trades, two open positions,
++$32.93 realized gross, $234.47 booked taker fees, -$2.94 funding.
+Original v3 first-received source still FAILED, with 3,072,841
+dropped observations. No independent net-profitable study exists.
+
+Added `maker_entry_paper_shadow.py` as a pure read-only candidate
+entry simulator. It carries original approved IOC stop, risk,
+notional, quantum, market metadata and fee ceiling into a
+hypothetical post-only passive quote; with one visible queue
+ahead, touch prints can consume queue but NEVER fill, and only
+strictly-through original opposite-aggressor prints can model
+size-quantized partial/full fills before expiry. Missing/reversed
+tape, unknown fee schedule, source failure, future clocks or
+mismatched original risk fail closed. No actual maker orders,
+`PaperFill`, `ExecutionAttempt`, fees booked, account return
+or execution/promotion authority is created. See
+[strict-through PAPER note](maker_entry_strict_through_paper_shadow_2026_10_19.md).
+
+Next money test: independently source-attested capital-matched
+maker-vs-IOC full PAPER account with real fill/no-fill,
+funding, liquidation/stop, exit costs, open mark and both
+strictly after-cost profitable accounts. **LIVE OFF**.
+
 ## October 19 — maker queue-ahead uncertainty instead of free assumed fills
 
 Ordinary authenticated PAPER #39223537959 at 11:05 UTC:
