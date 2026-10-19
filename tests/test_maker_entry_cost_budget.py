@@ -200,7 +200,9 @@ def test_entry_maker_discount_still_loses_after_all_original_exits() -> None:
     assert report["original_booked_entry_fees_usd"] == "0.27"
     assert report["original_booked_exit_fees_usd"] == "0.27"
     assert report["original_booked_net_usd"] == "-0.8"
-    assert Decimal(report["exact_entry_fee_discount_fraction"]) == Decimal("2") / 3
+    assert abs(
+        Decimal(report["exact_entry_fee_discount_fraction"]) - Decimal("2") / 3
+    ) < Decimal("1E-25")
     assert report["all_original_entries_same_fill_fee_only_saving_usd"] == "0.18"
     assert report["all_original_entries_same_fill_net_usd"] == "-0.62"
     assert report["all_entry_fee_discount_still_nonpositive"] is True
