@@ -178,7 +178,10 @@ def review_original_trade_through(
     possible_volume = ZERO
     crossing_count = 0
     for event in original_events:
-        if event.kind is not StreamKind.TRADE or event.market.canonical != witness.market:
+        if (
+            event.kind is not StreamKind.TRADE
+            or event.market.canonical != witness.market
+        ):
             raise MakerEntryWitnessError("maker quote tape needs exact-market trades")
         received_ms = _received_ms(event)
         if (
