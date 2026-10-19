@@ -73,7 +73,9 @@ def _validate_review(
         or quote.get("baseline_taker_fee_rate") != str(taker_rate)
         or quote.get("hypothetical_maker_fee_rate") != str(maker_rate)
     ):
-        raise MakerEntryCostBudgetError("maker research receipt identity or authority drift")
+        raise MakerEntryCostBudgetError(
+            "maker research receipt identity or authority drift"
+        )
     quote_time = quote.get("quote_at_ms")
     expiry = quote.get("expire_at_ms")
     if (
@@ -186,7 +188,9 @@ def maker_entry_closed_trade_cost_budget(
                     - trade.net_pnl
                 ) > CASH_TOLERANCE
             ):
-                raise MakerEntryCostBudgetError("original trade cash fails reconciliation")
+                raise MakerEntryCostBudgetError(
+                    "original trade cash fails reconciliation"
+                )
             fee_savings = trade.entry_fees * fee_discount_fraction
             original_net += trade.net_pnl
             gross += trade.gross_realized_pnl
@@ -196,7 +200,10 @@ def maker_entry_closed_trade_cost_budget(
             discount += fee_savings
             individual_same_fill_nets.append(trade.net_pnl + fee_savings)
 
-        if abs(gross - entry_fees - exit_fees + funding - original_net) > CASH_TOLERANCE:
+        if (
+            abs(gross - entry_fees - exit_fees + funding - original_net)
+            > CASH_TOLERANCE
+        ):
             raise MakerEntryCostBudgetError("cohort exact cost decomposition mismatch")
 
         same_fill_net = original_net + discount
