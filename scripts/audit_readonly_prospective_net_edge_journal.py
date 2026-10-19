@@ -8,8 +8,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from cocomelon.journal.store import JournalConsistencyError, JournalStore
 from cocomelon.research.prospective_net_edge_admission import (
