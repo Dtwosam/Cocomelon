@@ -17,6 +17,7 @@ from cocomelon.research.historical_discovery_freeze import (
 )
 from cocomelon.research.loss_context_paired_shadow_runtime import (
     LossContextPairedShadowRuntime,
+    LossContextPairedShadowRuntimeError,
 )
 from cocomelon.research.loss_context_portfolio_shadow_candidate import (
     LossContextPortfolioShadowFreeze,
@@ -303,7 +304,8 @@ def test_terminal_checkpoint_fences_future_unsigned_shadow_updates(
                 "summary_end_ms": 4_000,
             }
             with pytest.raises(
-                Exception, match="terminal checkpoint already requested",
+                LossContextPairedShadowRuntimeError,
+                match="terminal checkpoint already requested",
             ):
                 await runtime.terminal_checkpoint(end_ms=6_000)
             assert _FakeShadow.events == [
