@@ -26,6 +26,10 @@ terminal signed checkpoint:
   commands return false; no newer original market event or risk/rank
   mutation can advance an execution SQLite account beyond the final
   signed research checkpoint through this actor.
+- The legacy-plus-trend sidecar calls terminal checkpoint on BOTH independently
+  funded research actors, even when the old permanently failed legacy lane
+  cannot checkpoint. Its separate trend receipt remains explicitly negative
+  on failure, without rewriting either trial.
 - The full read-only summary remains available after the fence, and
   `close` can still complete. A second terminal checkpoint is rejected.
   Existing ordinary nonterminal `checkpoint` stays reusable for tests
