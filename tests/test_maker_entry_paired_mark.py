@@ -511,7 +511,10 @@ def _funded_closed_pair(
     rate: FundingRate | None = None,
     supply_evidence: bool = True,
     shift_ms: int = FUNDING_SHIFT_MS,
+    hold_hours: int = 0,
+    hourly_funding: tuple[tuple[StreamEvent, FundingRate], ...] = (),
 ) -> dict[str, object]:
+    exit_shift_ms = shift_ms + hold_hours * FUNDING_BOUNDARY_MS
     plan = _shift_plan(_plan(side), shift_ms)
     exit_plan = _shift_plan(_exit_plan(side), shift_ms)
     book = _shift_event(_book(), shift_ms)
@@ -547,10 +550,10 @@ def _funded_closed_pair(
         original_trades_to_maker_expiry=tuple(
             _shift_event(event, shift_ms) for event in prints
         ),
-        original_exit_book=_shift_event(_exit_book(side), shift_ms),
+        original_exit_book=_shift_event(_exit_book(side), exit_shift_ms),
         original_after_exit_mark=_shift_event(
             _mark("104" if side is OrderSide.BUY else "98", ms=3300),
-            shift_ms,
+            exit_shift_ms,
         ),
         maker_witness=witness,
         instrument=replace(
@@ -559,11 +562,12 @@ def _funded_closed_pair(
         ),
         execution_config=PaperExecutionConfig(),
         start_cash=Decimal("10000"),
-        exit_at_ms=3200 + shift_ms,
-        mark_at_ms=3300 + shift_ms,
+        exit_at_ms=3200 + exit_shift_ms,
+        mark_at_ms=3300 + exit_shift_ms,
         source_integrity_passed=True,
-        original_funding_oracle=oracle,
-        original_funding_rate=rate,
+        original_funding_oracle=oracle if not hourly_funding else None,
+        original_funding_rate=rate if not hourly_funding else None,
+        original_hourly_funding=hourly_funding,
     )
 
 
@@ -673,4 +677,179 @@ def test_future_funding_inputs_without_crossed_boundary_are_not_credits() -> Non
                 {"oracle_px": Decimal("100"), "mark_px": Decimal("100")},
             ),
             supply_evidence=True,
+        )
+
+
+def _hourly_funding_pair(
+    boundary_ms: int,
+    *,
+    rate: str = "0.001",
+    oracle_price: str = "100",
+    oracle_market: str = "BTC",
+    rate_delay_ms: int = 200,
+) -> tuple[StreamEvent, FundingRate]:
+    return (
+        _event(
+            StreamKind.ACTIVE_ASSET_CTX, boundary_ms - 100,
+            {
+                "oracle_px": Decimal(oracle_price),
+                "mark_px": Decimal(oracle_price),
+            },
+            market=oracle_market,
+        ),
+        FundingRate(
+            market=MarketId("", "BTC"),
+            time_ms=boundary_ms,
+            funding_rate=Decimal(rate),
+            premium=Decimal("0"),
+            source="hyperliquid-mainnet-info",
+            received_at_ms=boundary_ms + rate_delay_ms,
+            schema_version=1,
+        ),
+    )
+
+
+def test_two_hours_charge_each_original_boundary_to_both_funded_lanes() -> None:
+    witnesses = (
+        _hourly_funding_pair(FUNDING_BOUNDARY_MS),
+        _hourly_funding_pair(2 * FUNDING_BOUNDARY_MS, rate="0.002"),
+    )
+    outcome = _funded_closed_pair(
+        (_trade(1400, "A", "99", "8"),),
+        hold_hours=1,
+        hourly_funding=witnesses,
+    )
+    for lane in ("baseline_account", "conditional_maker_account"):
+        row = outcome[lane]
+        assert isinstance(row, dict)
+        assert Decimal(row["funding_usd"]) == Decimal("-0.6")
+        assert row["position_count"] == 0
+    assert outcome["complete_original_hourly_funding_boundaries_costed"] == 2
+    assert outcome["multiple_hour_funding_boundaries_costed"] is True
+    assert outcome["single_funding_boundary_costed"] is False
+    assert outcome["original_funding_boundary_ms"] is None
+    assert outcome["original_hourly_funding_boundaries_ms"] == [
+        FUNDING_BOUNDARY_MS, 2 * FUNDING_BOUNDARY_MS,
+    ]
+    assert len(outcome["original_hourly_funding_oracle_event_keys"]) == 2
+    assert outcome["whole_account_profitable_edge_proven"] is False
+    assert outcome["execution_authority"] is False
+
+
+def test_two_hour_missed_maker_winner_pays_only_baseline_funding() -> None:
+    witnesses = (
+        _hourly_funding_pair(FUNDING_BOUNDARY_MS),
+        _hourly_funding_pair(2 * FUNDING_BOUNDARY_MS, rate="0.002"),
+    )
+    outcome = _funded_closed_pair(
+        (_trade(1400, "B", "101", "9"),),
+        hold_hours=1,
+        hourly_funding=witnesses,
+    )
+    baseline = outcome["baseline_account"]
+    maker = outcome["conditional_maker_account"]
+    assert isinstance(baseline, dict) and isinstance(maker, dict)
+    assert Decimal(baseline["funding_usd"]) == Decimal("-0.6")
+    assert Decimal(maker["funding_usd"]) == Decimal("0")
+    assert maker["position_count"] == 0
+
+
+def test_two_hour_partial_maker_pays_only_its_conditional_quantity() -> None:
+    tape = (
+        _trade(1300, "A", "100", "4"),
+        _trade(1400, "A", "99", "0.7"),
+        _trade(1500, "A", "99", "0.8"),
+    )
+    witnesses = (
+        _hourly_funding_pair(FUNDING_BOUNDARY_MS),
+        _hourly_funding_pair(2 * FUNDING_BOUNDARY_MS, rate="0.002"),
+    )
+    outcome = _funded_closed_pair(
+        tape, hold_hours=1, hourly_funding=witnesses,
+    )
+    maker = outcome["conditional_maker_account"]
+    assert isinstance(maker, dict)
+    assert Decimal(maker["funding_usd"]) == Decimal("-0.15")
+
+
+def test_two_hour_short_funding_is_credited_not_charged() -> None:
+    witnesses = (
+        _hourly_funding_pair(FUNDING_BOUNDARY_MS),
+        _hourly_funding_pair(2 * FUNDING_BOUNDARY_MS, rate="0.002"),
+    )
+    outcome = _funded_closed_pair(
+        (_trade(1400, "B", "102", "9"),),
+        side=OrderSide.SELL,
+        hold_hours=1,
+        hourly_funding=witnesses,
+    )
+    for lane in ("baseline_account", "conditional_maker_account"):
+        row = outcome[lane]
+        assert isinstance(row, dict)
+        assert Decimal(row["funding_usd"]) == Decimal("0.6")
+
+
+@pytest.mark.parametrize("bad_rows", [
+    (_hourly_funding_pair(FUNDING_BOUNDARY_MS),),
+    (
+        _hourly_funding_pair(2 * FUNDING_BOUNDARY_MS),
+        _hourly_funding_pair(FUNDING_BOUNDARY_MS),
+    ),
+    (
+        _hourly_funding_pair(FUNDING_BOUNDARY_MS),
+        _hourly_funding_pair(FUNDING_BOUNDARY_MS),
+    ),
+    (
+        _hourly_funding_pair(FUNDING_BOUNDARY_MS),
+        _hourly_funding_pair(
+            2 * FUNDING_BOUNDARY_MS, oracle_market="ETH",
+        ),
+    ),
+    (
+        _hourly_funding_pair(FUNDING_BOUNDARY_MS),
+        _hourly_funding_pair(
+            2 * FUNDING_BOUNDARY_MS, rate_delay_ms=5000,
+        ),
+    ),
+])
+def test_incomplete_or_invalid_second_hour_never_gets_free_funding(
+    bad_rows: tuple[tuple[StreamEvent, FundingRate], ...],
+) -> None:
+    with pytest.raises(
+        MakerEntryWitnessError, match="complete original evidence",
+    ):
+        _funded_closed_pair(
+            (), hold_hours=1, hourly_funding=bad_rows,
+        )
+
+
+def test_no_boundary_rejects_extra_hourly_funding_evidence() -> None:
+    with pytest.raises(MakerEntryWitnessError, match="without crossed"):
+        _funded_closed_pair(
+            (), shift_ms=0,
+            hourly_funding=(_hourly_funding_pair(FUNDING_BOUNDARY_MS),),
+        )
+
+
+def test_multi_hour_rate_received_after_original_exit_fails_closed() -> None:
+    rows = (
+        _hourly_funding_pair(FUNDING_BOUNDARY_MS),
+        _hourly_funding_pair(
+            2 * FUNDING_BOUNDARY_MS, rate_delay_ms=10_000,
+        ),
+    )
+    with pytest.raises(
+        MakerEntryWitnessError, match="complete original evidence",
+    ):
+        _funded_closed_pair(
+            (), hold_hours=1, hourly_funding=rows,
+        )
+
+
+def test_zero_witness_multi_hour_hold_is_not_zero_cost() -> None:
+    with pytest.raises(
+        MakerEntryWitnessError, match="complete original evidence",
+    ):
+        _funded_closed_pair(
+            (), hold_hours=1, supply_evidence=False,
         )

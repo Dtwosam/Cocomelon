@@ -1,6 +1,7 @@
 """After-entry exit-cost sensitivity on two independent PAPER cash accounts.
 
 Not a complete prospective portfolio or real maker execution.
+Hourly funding must be witnessed for EVERY crossed boundary, never inferred.
 One original predetermined exit decision is applied to both conditional lanes;
 no cherry-picked deletion of losing baseline trades or invented maker fills.
 """
@@ -132,12 +133,13 @@ def paired_maker_vs_ioc_exit_cost_probe(
     source_integrity_passed: bool,
     original_funding_oracle: StreamEvent | None = None,
     original_funding_rate: FundingRate | None = None,
+    original_hourly_funding: tuple[tuple[StreamEvent, FundingRate], ...] = (),
 ) -> dict[str, object]:
     """Pair an unchanged original exit *plan* with conditional maker entries.
 
     The exit plan must pre-exist the exit book, not be synthesized from later
     prices. This is a SINGLE original trade path, with no future signals,
-    capital reallocation or multi-boundary funding, and cannot certify profit.
+    capital reallocation or multi-trade portfolio execution, and cannot certify profit.
     """
     if (
         type(start_cash) is not Decimal
@@ -240,55 +242,92 @@ def paired_maker_vs_ioc_exit_cost_probe(
         or baseline.positions[0].quantity != original_exit_plan.requested_quantity
     ):
         raise MakerEntryWitnessError("paired exit baseline/plan size mismatch")
-    # The original baseline's first real PAPER IOC fill determines the
-    # first hourly funding boundary. If even one such boundary is crossed,
-    # refusing missing evidence is mandatory: charging zero is a fake edge.
+    # Use actual PAPER IOC entry time, not signal time or a hindsight
+    # rounded trade time. Every crossed source hour costs BOTH independent
+    # cash lanes, including the baseline when a maker order never filled.
     baseline_opened_at = baseline.positions[0].opened_at_ms
     first_boundary = (
         (baseline_opened_at // FUNDING_INTERVAL_MS) + 1
     ) * FUNDING_INTERVAL_MS
-    funding_crossed = first_boundary <= exit_at_ms
-    if funding_crossed:
-        if (
-            first_boundary + FUNDING_INTERVAL_MS <= exit_at_ms
-            or original_funding_oracle is None
-            or original_funding_rate is None
-            or original_funding_oracle.source != original_open_book.source
-            or original_funding_oracle.market != original_opening_plan.market
-            or original_funding_oracle.event_key in {
-                original_open_book.event_key,
-                original_exit_book.event_key,
-                original_after_exit_mark.event_key,
-            }
-            or original_funding_rate.market != original_opening_plan.market
-            or original_funding_rate.source != "hyperliquid-mainnet-info"
-            or not (
-                first_boundary
-                <= original_funding_rate.received_at_ms
-                <= exit_at_ms
+    boundaries = range(first_boundary, exit_at_ms + 1, FUNDING_INTERVAL_MS)
+    # Legacy one-boundary input remains valid. The explicit tuple is required
+    # for multi-hour original positions; never mix the two evidence formats.
+    if type(original_hourly_funding) is not tuple:
+        raise MakerEntryWitnessError("paired funding witness must be a tuple")
+    if original_hourly_funding:
+        if original_funding_oracle is not None or original_funding_rate is not None:
+            raise MakerEntryWitnessError("paired funding evidence formats conflict")
+        funding_rows = original_hourly_funding
+    elif original_funding_oracle is not None or original_funding_rate is not None:
+        if original_funding_oracle is None or original_funding_rate is None:
+            raise MakerEntryWitnessError(
+                "paired funding boundary lacks complete original evidence"
             )
+        funding_rows = ((original_funding_oracle, original_funding_rate),)
+    else:
+        funding_rows = ()
+    if not boundaries and funding_rows:
+        raise MakerEntryWitnessError(
+            "paired funding input without crossed original boundary"
+        )
+    if len(funding_rows) != len(boundaries):
+        raise MakerEntryWitnessError(
+            "paired funding boundary lacks complete original evidence"
+        )
+
+    seen_oracle_keys = {
+        original_open_book.event_key,
+        original_exit_book.event_key,
+        original_after_exit_mark.event_key,
+    }
+    previous_rate_received_ms = -1
+    previous_oracle_received_ms = -1
+    oracle_keys: list[str] = []
+    funding_received_ms: list[int] = []
+    for boundary_ms, row in zip(boundaries, funding_rows, strict=True):
+        if (
+            type(row) is not tuple
+            or len(row) != 2
+            or not isinstance(row[0], StreamEvent)
+            or not isinstance(row[1], FundingRate)
         ):
             raise MakerEntryWitnessError(
                 "paired funding boundary lacks complete original evidence"
             )
+        oracle_ctx, rate = row
+        oracle_received_ms = _ms(oracle_ctx)
+        if (
+            oracle_ctx.source != original_open_book.source
+            or oracle_ctx.market != original_opening_plan.market
+            or oracle_ctx.event_key in seen_oracle_keys
+            or oracle_received_ms <= previous_oracle_received_ms
+            or rate.market != original_opening_plan.market
+            or rate.source != "hyperliquid-mainnet-info"
+            or not (
+                boundary_ms <= rate.received_at_ms
+                < boundary_ms + FUNDING_INTERVAL_MS
+            )
+            or rate.received_at_ms > exit_at_ms
+            or rate.received_at_ms <= previous_rate_received_ms
+        ):
+            raise MakerEntryWitnessError(
+                "paired funding boundary lacks complete original evidence"
+            )
+        # reconcile_funding_boundary checks oracle kind/age/time, exact
+        # canonical hour, rate validity, and the position held at that hour.
         baseline = _fund_one_lane(
-            baseline,
-            boundary_ms=first_boundary,
-            oracle_ctx=original_funding_oracle,
-            rate=original_funding_rate,
-            config=execution_config,
+            baseline, boundary_ms=boundary_ms, oracle_ctx=oracle_ctx,
+            rate=rate, config=execution_config,
         )
         candidate = _fund_one_lane(
-            candidate,
-            boundary_ms=first_boundary,
-            oracle_ctx=original_funding_oracle,
-            rate=original_funding_rate,
-            config=execution_config,
+            candidate, boundary_ms=boundary_ms, oracle_ctx=oracle_ctx,
+            rate=rate, config=execution_config,
         )
-    elif original_funding_oracle is not None or original_funding_rate is not None:
-        raise MakerEntryWitnessError(
-            "paired funding input without crossed original boundary"
-        )
+        seen_oracle_keys.add(oracle_ctx.event_key)
+        previous_oracle_received_ms = oracle_received_ms
+        previous_rate_received_ms = rate.received_at_ms
+        oracle_keys.append(oracle_ctx.event_key)
+        funding_received_ms.append(rate.received_at_ms)
     baseline, baseline_status, baseline_exit_qty = _exit_lane(
         baseline, original_exit_plan, original_exit_book,
         instrument, execution_config, exit_at_ms,
@@ -326,14 +365,18 @@ def paired_maker_vs_ioc_exit_cost_probe(
         ),
         "original_source_independently_authenticated": False,
         "real_maker_fills_confirmed": False,
-        "single_funding_boundary_costed": funding_crossed,
+        "single_funding_boundary_costed": len(boundaries) == 1,
         "original_funding_boundary_ms": (
-            first_boundary if funding_crossed else None
+            first_boundary if len(boundaries) == 1 else None
         ),
         "original_funding_oracle_event_key": (
-            original_funding_oracle.event_key if funding_crossed
-            and original_funding_oracle is not None else None
+            oracle_keys[0] if len(oracle_keys) == 1 else None
         ),
+        "original_hourly_funding_boundaries_ms": list(boundaries),
+        "original_hourly_funding_oracle_event_keys": oracle_keys,
+        "original_hourly_funding_received_at_ms": funding_received_ms,
+        "complete_original_hourly_funding_boundaries_costed": len(boundaries),
+        "multiple_hour_funding_boundaries_costed": len(boundaries) > 1,
         "funding_boundaries_and_multi_trade_capacity_modeled": False,
         "whole_account_profitable_edge_proven": False,
         "research_only": True,
