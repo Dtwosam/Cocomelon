@@ -215,3 +215,46 @@ def test_duplicate_original_custody_and_bad_clock_fail_closed() -> None:
     with pytest.raises(ValueError, match="nonnegative"):
         ProspectiveNetEdgeState(frozen_at_ms=-1)
     assert replace(STATE, frozen_at_ms=STATE.frozen_at_ms).contract() == STATE.contract()
+
+
+def test_old_position_closing_after_freeze_cannot_seed_new_training() -> None:
+    # Forty OLD entries happen before the frozen forward epoch,
+    # but they close strictly after the epoch and before the new entry.
+    # The close-time-only eligibility check erroneously let old
+    # discovery decisions count as prospective training.
+    old_opening_positions = tuple(
+        _trade(
+            1_000 + i,
+            opened_ms=BASE - 500_000 + i * 100,
+            closed_ms=BASE + 10_000 + i * 100,
+        )
+        for i in range(40)
+    )
+    report = preentry_net_floor(
+        old_opening_positions,
+        proposed_open_ms=BASE + 100_000,
+        direction=Direction.LONG,
+        state=STATE,
+    )
+    assert report["reference_closed_trades"] == 0
+    assert report["candidate_decision"] == "BLOCK"
+    assert report["reason"] == "insufficient_new_original_reference"
+    assert STATE.contract()[
+        "training_only_opens_and_closes_after_forward_start"
+    ] is True
+
+
+def test_new_training_must_have_40_new_openings_not_39_plus_old() -> None:
+    new = tuple(_trade(i) for i in range(39))
+    old_position = _trade(
+        1_000, r="5", opened_ms=BASE - 1_000,
+        closed_ms=BASE + 100_000,
+    )
+    report = preentry_net_floor(
+        new + (old_position,),
+        proposed_open_ms=BASE + 410_000,
+        direction=Direction.LONG, state=STATE,
+    )
+    assert report["reference_closed_trades"] == 39
+    assert report["candidate_decision"] == "BLOCK"
+    assert report["empirical_stress_floor_net_r"] is None
