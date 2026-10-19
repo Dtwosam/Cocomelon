@@ -2,6 +2,48 @@
 
 > Profitability-first operating contract: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). PAPER equity and sources require independent after-cost and original-feed audit before LIVE may be considered.
 
+## October 19 — prioritize strict v3 source by retiring optional rank research continuity
+
+Authenticated PAPER #39198200811 at 08:11 UTC: $10,000 initial,
+**$9,806.32 marked equity, −$193.68 NET after costs**, 301 closed
+trades. Realized gross +$41.30 cannot cover cumulative $232.01
+fees and −$2.97 funding. The original v3 capture is permanently
+FAILED for this worker with 3,648,660 dropped rows, 9,009 adjacent
+raw-clock regressions, and large selected-market L2 gaps. Previous
+worker startup spent 866s in rank source restore; current worker
+spent **891,505ms (~14.9 min)** in the same optional research substage,
+**915,445ms total pre-monitor**. PR #1360 did not demonstrate a
+production wall-clock speedup in this observed worker.
+
+Critical allocation decision: the giant historical first-seen SHORT
+rank snapshot and its full-feature/context suffix are *optional
+research archives* and are not the original market v3 source or the
+frozen new-account LONG-trend economic study. On any future PAPER
+worker with `V3_CAPTURE_ORIGINAL_SOURCE=1`, explicitly DISCONTINUE
+their prospective rank research lineage by writing immutable
+negative-only failure receipts for rank snapshots, original
+full-feature inputs and market contexts. Existing historical
+failure receipts always take precedence and are never overwritten.
+No old original rank bytes are deleted, modified, sampled, or
+misrepresented as continuity; future rank promotions from that
+abandoned cohort are ineligible. If the durable disqualification
+receipt itself cannot be written, startup fails closed rather than
+claiming valid rank continuity.
+
+This avoids the **known 14–15 minute optional archive revalidation**
+on each natural worker, protecting time for real mainnet ingest and
+first-received source capture. This is a code-path elimination of
+an expensive independent *rank research task*, NOT a bypass of
+mandatory PAPER account checkpoint validation, risk, original market
+v3 row/canonical gap validation, or source certification. Running
+workers are not restarted. It may sacrifice future SHORT-rank
+evidence requiring a new predeclared clean campaign. An actual
+reduction in startup seconds and a clean qualified 72h feed must
+still be observed. No signals, account equity, fees/funding,
+stops, live authorization or frozen paired PAPER thresholds change.
+Both capital-matched accounts must still individually be positive
+after all costs before any promotion.
+
 ## October 18 — disclose standby backfill truncation instead of silent source continuity
 
 The redundant mux deliberately bounds standby market-event buffers at
