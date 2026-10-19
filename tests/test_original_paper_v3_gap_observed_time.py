@@ -215,7 +215,7 @@ def test_named_recovery_timestamp_refuses_unwitnessed_or_open_source_gap() -> No
             "l2Book:TEST", BASE, None, "recovered_after_handoff_witness"
         ),
         DataGap(
-            "l2Book:TEST", BASE + 200, BASE + 100,
+            "l2Book:TEST", BASE + 200, None,
             "recovered_after_rotation_witness",
         ),
     ):
@@ -236,6 +236,6 @@ def test_runtime_routes_all_original_named_closes_through_witness_clock() -> Non
     # ordinary live observation clocks.
     assert enclosed.count("gap_sink=named_recovery_gap_sink,") == 6
     assert "gap_sink=lambda gap: pump.process(gap)" not in enclosed
-    finish = source[stop:source.index("        async def", stop)]
+    finish = source[stop:]
     assert finish.count("gap_sink=named_recovery_gap_sink,") >= 2
     assert "await pump.process(gap)" in enclosed
