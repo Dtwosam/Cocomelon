@@ -250,6 +250,23 @@ def paired_maker_vs_ioc_exit_cost_probe(
         (baseline_opened_at // FUNDING_INTERVAL_MS) + 1
     ) * FUNDING_INTERVAL_MS
     boundaries = range(first_boundary, exit_at_ms + 1, FUNDING_INTERVAL_MS)
+    # apply_opening_fills aggregates conditional maker prints into one
+    # position whose opened_at_ms is the LAST fill. If some quantity was
+    # already open before a boundary and more fills arrived afterwards,
+    # that timestamp would erase funding owed/earned by the earlier lot.
+    # A genuine lot-by-lot chronology/accounting engine is still missing:
+    # reject the uncostable path rather than silently charge zero.
+    if conditional_fills and boundaries:
+        first_maker_fill_ms = min(fill.timestamp_ms for fill in conditional_fills)
+        last_maker_fill_ms = max(fill.timestamp_ms for fill in conditional_fills)
+        if any(
+            first_maker_fill_ms < boundary_ms <= last_maker_fill_ms
+            for boundary_ms in boundaries
+        ):
+            raise MakerEntryWitnessError(
+                "paired maker fills straddle funding boundary; "
+                "lot-level original funding accounting required"
+            )
     # Legacy one-boundary input remains valid. The explicit tuple is required
     # for multi-hour original positions; never mix the two evidence formats.
     if type(original_hourly_funding) is not tuple:
