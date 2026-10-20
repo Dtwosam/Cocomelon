@@ -54,8 +54,15 @@ class PaperExecutionAdapter:
         *,
         starting_cash: Decimal,
         startup_timestamp_ms: int,
+        entries_suspended: bool = False,
     ) -> None:
+        if type(entries_suspended) is not bool:
+            raise ValueError("entries_suspended must be boolean")
         self._config = config
+        self._entries_suspended = entries_suspended
+        self._session_opening_attempts = 0
+        self._session_opening_fills = 0
+        self._session_blocked_openings = 0
         self.store = PaperExecutionStore(path)
         recovered = self.store.load_and_reconcile()
         self._health = ExecutionHealth(
@@ -76,6 +83,27 @@ class PaperExecutionAdapter:
     @property
     def health(self) -> ExecutionHealth:
         return self._health
+
+    @property
+    def entries_suspended(self) -> bool:
+        return self._entries_suspended
+
+    @property
+    def session_opening_attempts(self) -> int:
+        return self._session_opening_attempts
+
+    @property
+    def session_opening_fills(self) -> int:
+        return self._session_opening_fills
+
+    @property
+    def session_blocked_openings(self) -> int:
+        """Direct submission rejections; cutoff-suppressed decisions are separate."""
+        return self._session_blocked_openings
+
+    @property
+    def pending_reduce_only_count(self) -> int:
+        return len(self._pending_reduce_only)
 
     def close(self) -> None:
         self.store.close()
@@ -185,6 +213,15 @@ class PaperExecutionAdapter:
         created_at_ms: int,
         attempt_timestamp_ms: int,
     ) -> OpeningSubmission:
+        if self._entries_suspended:
+            self._session_blocked_openings += 1
+            return OpeningSubmission(
+                risk_decision=risk_decision,
+                plan=None,
+                rejection=PlanningRejection("PAPER_ENTRIES_SUSPENDED"),
+                simulation=None,
+                account=self._account,
+            )
         if not self._health.healthy_for_new_exposure:
             return OpeningSubmission(
                 risk_decision=risk_decision,
@@ -229,6 +266,8 @@ class PaperExecutionAdapter:
             self._config,
             attempt_timestamp_ms=attempt_timestamp_ms,
         )
+        self._session_opening_attempts += 1
+        self._session_opening_fills += len(simulation.fills)
         candidate = self._account
         if simulation.fills:
             candidate = apply_opening_fills(

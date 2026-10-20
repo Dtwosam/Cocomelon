@@ -35,6 +35,111 @@ def _reason_summary(raw: object) -> str:
     )
     return ", ".join(f"{reason}={count}" for reason, count in counts[:8])
 
+
+def _entry_suspension_lines(
+    payload: Mapping[str, object], *, run_id: str, head_sha: str
+) -> list[str]:
+    """Render typed runtime evidence, never infer enforcement from a policy file."""
+    unknown = [
+        "",
+        "### PAPER entry suspension",
+        "",
+        "- runtime acknowledgment: `UNVERIFIED`",
+        "- Original runtime enforcement evidence is absent or invalid; a policy file alone "
+        "does not acknowledge suspension.",
+        "",
+    ]
+    raw = payload.get("entry_suspension")
+    if not isinstance(raw, dict):
+        return unknown
+
+    def sha(value: object) -> bool:
+        return (
+            type(value) is str and len(value) == 40 and set(value) <= frozenset("0123456789abcdef")
+        )
+
+    def count(value: object) -> bool:
+        return type(value) is int and value >= 0
+
+    def worker(value: object) -> bool:
+        return type(value) is int and 0 < value < 10**20
+
+    timestamp = payload.get("timestamp_ms")
+    effective = raw.get("effective_at_ms")
+    origin_run = raw.get("origin_worker_run_id")
+    origin_head = raw.get("origin_worker_head_sha")
+    restore = raw.get("restore_status")
+    integer_fields = (
+        "new_exposure_cutoff_ms",
+        "session_opening_attempts",
+        "session_opening_fills",
+        "session_blocked_openings",
+        "pending_opening_candidate_count",
+        "pending_reduce_only_count",
+    )
+    if not (
+        payload.get("paper_only") is True
+        and payload.get("live_orders") is False
+        and type(run_id) is str
+        and 0 < len(run_id) <= 20
+        and run_id.isascii()
+        and run_id.isdecimal()
+        and int(run_id) > 0
+        and sha(head_sha)
+        and type(raw.get("schema_version")) is int
+        and raw["schema_version"] == 1
+        and raw.get("scope") == "ordinary_paper"
+        and raw.get("entries_suspended") is True
+        and raw.get("live_orders") is False
+        and raw.get("reason") == "unvalidated_strategy_no_new_allocation"
+        and restore in ("created", "restored", "write_failed", "invalid_preserved")
+        and type(raw.get("durable")) is bool
+        and type(raw.get("runtime_enforced")) is bool
+        and type(raw.get("adapter_entries_suspended")) is bool
+        and all(count(raw.get(key)) for key in integer_fields)
+        and type(timestamp) is int
+        and type(effective) is int
+        and 0 <= effective <= timestamp
+        and (origin_run is None or worker(origin_run))
+        and (origin_head is None or sha(origin_head))
+    ):
+        return unknown
+    try:
+        effective_utc = datetime.fromtimestamp(effective / 1000, tz=UTC).isoformat()
+    except (ValueError, OverflowError, OSError):
+        return unknown
+    acknowledged = (
+        raw["runtime_enforced"] is True
+        and raw["adapter_entries_suspended"] is True
+        and raw["new_exposure_cutoff_ms"] == 0
+        and raw["session_opening_attempts"] == 0
+        and raw["session_opening_fills"] == 0
+    )
+    verdict = "ENFORCED IN THIS HEARTBEAT" if acknowledged else "UNVERIFIED"
+    return [
+        "",
+        "### PAPER entry suspension",
+        "",
+        f"- runtime acknowledgment: `{verdict}`",
+        f"- acknowledging worker run / head: `{run_id} / {head_sha}`",
+        f"- policy effective UTC (not observed activation): `{effective_utc}`",
+        f"- policy origin run / head: `{origin_run or 'unknown'} / {origin_head or 'unknown'}`",
+        f"- policy restore / durable: `{restore} / {str(raw['durable']).lower()}`",
+        "- adapter suspended / pipeline cutoff / session opening attempts / fills: "
+        f"`{str(raw['adapter_entries_suspended']).lower()} / "
+        f"{raw['new_exposure_cutoff_ms']} / {raw['session_opening_attempts']} / "
+        f"{raw['session_opening_fills']}`",
+        "- pending opening candidates / reduce-only exits: "
+        f"`{raw['pending_opening_candidate_count']} / {raw['pending_reduce_only_count']}`",
+        f"- direct blocked opening submissions: `{raw['session_blocked_openings']}`",
+        "- Policy durability is not execution health. Runtime acknowledgment is not "
+        "independent activation verification.",
+        "- Candidate/retry counts are not an outstanding-order inventory; direct "
+        "rejections are not a count of all suppressed signals.",
+        "",
+    ]
+
+
 def _account_breakeven_lines(payload: Mapping[str, object]) -> list[str]:
     """Audit actual whole-account marked PnL and fee-free SAME-fills floor.
 
@@ -10318,6 +10423,7 @@ def _render_operational_live_status(
             )
         ),
         "Execution: PAPER ONLY · Live orders: false",
+        *_entry_suspension_lines(payload, run_id=run_id, head_sha=head_sha),
         "",
         (
             "> Operational heartbeat only. Heavy research analytics are "
@@ -10893,6 +10999,7 @@ def render_live_status(
             )
         ),
         "**Execution:** `PAPER ONLY` · **Live orders:** `false`",
+        *_entry_suspension_lines(payload, run_id=run_id, head_sha=head_sha),
         "",
         "### Account",
         "",
