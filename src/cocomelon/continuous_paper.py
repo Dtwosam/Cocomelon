@@ -83,6 +83,10 @@ from cocomelon.hyperliquid.watchlist import DeepWatchlistManager
 from cocomelon.hyperliquid.ws_client import connect_mainnet_ws
 from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor, event_stream_id
 from cocomelon.journal.store import JournalStore
+from cocomelon.paper_entry_suspension import (
+    PaperEntrySuspension,
+    load_entry_suspension,
+)
 from cocomelon.research.account_lifecycle_bridge import (
     account_lifecycle_bridge,
 )
@@ -2424,6 +2428,7 @@ class ContinuousPaperSummary:
     equity: Decimal
     execution_healthy: bool
     execution_reason_codes: tuple[str, ...]
+    entry_suspension: dict[str, object] | None = None
     opening_opportunity_path_count: int = 0
     opening_opportunity_path_complete_count: int = 0
     opening_opportunity_path_state_digest: str = ""
@@ -2493,6 +2498,7 @@ class ContinuousPaperSummary:
             "equity": str(self.equity),
             "execution_healthy": self.execution_healthy,
             "execution_reason_codes": list(self.execution_reason_codes),
+            "entry_suspension": self.entry_suspension,
             "opening_opportunity_path_count": (
                 self.opening_opportunity_path_count
             ),
@@ -5157,9 +5163,11 @@ class _RecordPump:
             LossContextPairedShadowRuntime | PairedShadowTrendSidecar | None
         ) = None,
         original_v3_capture: OriginalPaperMicrostructureCapture | None = None,
+        entry_suspension: PaperEntrySuspension | None = None,
     ) -> None:
         self.pipeline = pipeline
         self.journal = journal
+        self.entry_suspension = entry_suspension
         self.original_v3_capture = original_v3_capture
         self.loss_context_paired_shadow_runtime = (
             loss_context_paired_shadow_runtime
@@ -7586,6 +7594,33 @@ def _excursion_timing_payload(
     return payload
 
 
+def _entry_suspension_payload(
+    execution: PaperExecutionAdapter,
+    pump: _RecordPump,
+) -> dict[str, object] | None:
+    policy = getattr(pump, "entry_suspension", None)
+    if not isinstance(policy, PaperEntrySuspension):
+        return None
+    cutoff = pump.pipeline.new_exposure_cutoff_ms
+    return {
+        **policy.payload(),
+        "runtime_enforced": (
+            execution.entries_suspended
+            and type(cutoff) is int
+            and cutoff == 0
+            and execution.session_opening_attempts == 0
+            and execution.session_opening_fills == 0
+        ),
+        "adapter_entries_suspended": execution.entries_suspended,
+        "new_exposure_cutoff_ms": cutoff,
+        "session_opening_attempts": execution.session_opening_attempts,
+        "session_opening_fills": execution.session_opening_fills,
+        "session_blocked_openings": execution.session_blocked_openings,
+        "pending_opening_candidate_count": len(pump.pipeline.pending_opening_markets),
+        "pending_reduce_only_count": execution.pending_reduce_only_count,
+    }
+
+
 def _live_status_payload(
     execution: PaperExecutionAdapter,
     pump: _RecordPump,
@@ -8220,6 +8255,7 @@ def _live_status_payload(
         "timestamp_ms": timestamp_ms,
         "paper_only": True,
         "live_orders": False,
+        "entry_suspension": _entry_suspension_payload(execution, pump),
         "selected_market_count": len(selected_markets),
         "selected_markets": [
             market.canonical for market in selected_markets
@@ -8983,6 +9019,7 @@ def _operational_live_status_payload(
         "paper_only": True,
         "live_orders": False,
         "research_telemetry_deferred": True,
+        "entry_suspension": _entry_suspension_payload(execution, pump),
         "loss_context_paired_portfolio_shadow": (
             pump.loss_context_paired_shadow_payload()
         ),
@@ -9544,6 +9581,28 @@ def _retire_previous_session_handoff(root: Path) -> None:
         (root / filename).unlink(missing_ok=True)
 
 
+def _ordinary_paper_execution(
+    root: Path,
+    config: PaperExecutionConfig,
+    *,
+    timestamp_ms: int,
+    runtime_identity: ContinuousPaperRuntimeIdentity | None,
+) -> tuple[PaperExecutionAdapter, PaperEntrySuspension]:
+    policy = load_entry_suspension(
+        root,
+        timestamp_ms=timestamp_ms,
+        worker_run_id=None if runtime_identity is None else runtime_identity.worker_run_id,
+        worker_head_sha=None if runtime_identity is None else runtime_identity.worker_head_sha,
+    )
+    return PaperExecutionAdapter(
+        root / "paper.sqlite3",
+        config,
+        starting_cash=Decimal("10000"),
+        startup_timestamp_ms=timestamp_ms,
+        entries_suspended=policy.entries_suspended,
+    ), policy
+
+
 async def run_continuous_paper_session(
     state_root: str | Path,
     config: ContinuousPaperConfig,
@@ -9592,11 +9651,11 @@ async def run_continuous_paper_session(
     reader = InfoClient(settings)
     replay_config = BaselineReplayConfig()
     component_started = time.perf_counter()
-    execution = PaperExecutionAdapter(
-        root / "paper.sqlite3",
+    execution, entry_suspension = _ordinary_paper_execution(
+        root,
         replay_config.execution,
-        starting_cash=Decimal("10000"),
-        startup_timestamp_ms=started_at_ms,
+        timestamp_ms=started_at_ms,
+        runtime_identity=runtime_identity,
     )
     record_startup_component("execution_restore", component_started)
 
@@ -10754,6 +10813,7 @@ async def run_continuous_paper_session(
             selected_markets=selected,
             replay_run_id=RUN_ID,
             evidence_class=EvidenceClass.MICROSTRUCTURE,
+            new_exposure_cutoff_ms=entry_suspension.new_exposure_cutoff_ms,
             feature_snapshot_sink=feature_store,
             opening_lifecycle_sink=opening_lineage_sink,
             closed_lifecycle_sink=trade_path_sink,
@@ -10920,6 +10980,7 @@ async def run_continuous_paper_session(
             journal,
             last_available_at_ms=restored_available_at_ms,
             original_v3_capture=original_v3_capture,
+            entry_suspension=entry_suspension,
             cadence_shadow=cadence_shadow,
             entry_mid_markout_shadow=entry_mid_markout_shadow,
             position_provider=lambda: execution.account.positions,
@@ -13599,6 +13660,7 @@ async def run_continuous_paper_session(
             equity=execution.account.equity,
             execution_healthy=execution.health.healthy_for_new_exposure,
             execution_reason_codes=execution.health.reason_codes,
+            entry_suspension=_entry_suspension_payload(execution, pump),
         )
         _write_json_atomic(root / SUMMARY_FILENAME, summary.payload())
         return summary

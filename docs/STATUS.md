@@ -84,6 +84,31 @@ exact-head Linux full test/researchCI remain required before merge. See
 
 > Profitability-first mandate: [PROFITABILITY_PRIORITY.md](PROFITABILITY_PRIORITY.md). No non-economic promotion or LIVE relaxation.
 
+## October 21 — prepare ordinary PAPER entry suspension; activation blocked
+
+The owner's capital-preservation mandate requires no further unvalidated ordinary
+PAPER allocation. The prepared release blocks entries at the existing lifecycle
+cutoff and the PAPER adapter boundary while retaining real position management,
+protective reductions, accounting and history. Passive policy provenance survives
+the existing full-state archives; policy errors cannot resume entries or disable
+protective management. Runtime acknowledgments distinguish actual enforcement
+from code readiness. See [scope and natural-transition requirements](paper_entry_suspension_2026_10_21.md).
+
+**IMPLEMENTED BUT NOT ACTIVE; activation BLOCKED FOR SAFETY.** The healthy worker
+is untouched. Full tests, independent review and exact-head research CI are
+required before merge; operational lineage, state restoration and successor
+enforcement still require authentication before activation can be claimed.
+Independent review found no material new-code issue. Local focused coverage
+passes 166 tests, including a real ordinary session and whole-root restore into
+a new directory. The pre-existing pending-reduction cache is memory-only:
+restored stops can retry, but exact in-flight intent is not restored. Unknown or
+unverified pending state therefore blocks activation. Local full-suite checking
+also encountered an unchanged macOS directory-unlink exception mismatch; Linux
+exact-head CI remains required. Ruff and strict mypy pass.
+The exhausted strategy-selection branch stays shelved. No distinct mechanism
+passed admission; no challenger allocation or selector is justified. LIVE OFF.
+**NO NEW ECONOMIC PROGRESS.**
+
 ## October 19 — stop treating crossed funding boundaries as free maker exits
 
 The research-only IOC-vs-maker **single-exit** paired PAPER

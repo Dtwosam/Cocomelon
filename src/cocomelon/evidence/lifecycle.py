@@ -520,6 +520,10 @@ class BaselineReplayPipeline:
         )
 
     @property
+    def new_exposure_cutoff_ms(self) -> int | None:
+        return self._new_exposure_cutoff_ms
+
+    @property
     def pending_opening_markets(self) -> tuple[MarketId, ...]:
         return self._opening.pending_markets
 
