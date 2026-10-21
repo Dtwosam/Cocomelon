@@ -1,3 +1,7 @@
+> Owner decision2026-10-21: **SHELVED_OPERATIONALLY_DATA_BLOCKED** after the final
+> free-data check. Economics not disproved; protocol, policy and tests unchanged.
+> No paid-source rescue or new infrastructure. See [decision](../../../docs/free_data_economic_edge_2026_10_21.md).
+
 # Frozen temporary pressure / visible recovery exploratory policy
 
 See [full strategy and trial](../../../docs/exploratory_flow_exhaustion_2026_10_21.md),

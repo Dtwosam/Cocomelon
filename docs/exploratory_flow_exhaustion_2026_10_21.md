@@ -1,5 +1,10 @@
 # New economic hypothesis and frozen exploratory PAPER experiment — October 21, 2026
 
+> Superseded owner decision2026-10-21: **V1 SHELVED_OPERATIONALLY_DATA_BLOCKED**.
+> No paid-source evaluation, collector or infrastructure rescue remains assigned.
+> Preserve this historical report and the immutable V1 protocol; economics not
+> disproved. [Final free-data decision](free_data_economic_edge_2026_10_21.md).
+
 **NO NEW ECONOMIC PROGRESS. No new edge or prospective profit is established.**
 The owner's current request explicitly permits an economically reasoned, unproven
 PAPER trial. Profitability, 72-hour maturity and sufficient samples are validation

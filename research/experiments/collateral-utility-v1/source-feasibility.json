@@ -1,0 +1,126 @@
+{
+  "bounded_probe": "NOT_RUN: independent egress and shared-IP/resource headroom unverified; existing negative evidence decisive. No new Hyperliquid requests.",
+  "extra_connector_call": "One Binance public exchange-information tool call succeeded with931symbols; metadata projection retained separately, not prices, complete raw response, historical cohort or selected-policy input. serverTime is explicitly not freshness authority.",
+  "flow_v1_decision": "SHELVED_OPERATIONALLY_DATA_BLOCKED",
+  "flow_v1_economics": "NOT_DISPROVED",
+  "flow_v1_observed_full_depth_distinct_interval_ms": {
+    "book_levels_each_side": 20,
+    "markets": 20,
+    "max": "5674.46",
+    "median": "5365.53",
+    "p95": "5555.94",
+    "required_max_gap": 2000
+  },
+  "flow_v1_protocol_sha256": "c248746bbe4cd36fa63233b32bd643e368f2d20c63b0e973cf39ffd515873057",
+  "flow_v1_receipt": "https://github.com/Dtwosam/Cocomelon/issues/1235#issuecomment-6179482205",
+  "historical_event_price_test": "NOT_RUN: no admitted original event-vintage/census; no synthetic backtest or price-result claim",
+  "inventory_custody": "Independent agent rehashed raw files against receipts:4 eight-hour,2 daily,47 reclaim15m,49 repricing15m,92 successful funding pages and metadata all match. This proves local custody, not historical availability/fillability. Local original checkout retains raw files; no raw market price panel was copied or queried for new-policy outcomes.",
+  "live_orders": false,
+  "main_ref_before_work": "6d1fa4d9f33cba236057c8cea83312f7f4089dcd",
+  "new_collector_or_launcher": false,
+  "new_free_source_example": {
+    "access": "official English page successfully read by web tool during this assignment",
+    "effective_start_utc": "2026-10-16T06:00:00Z",
+    "published_text": "2026-10-13 10:00",
+    "representation": "Normalized fields extracted from current rendered page, NOT original HTML/body vintage or first-publication proof. Historical two rows excluded from scoring.",
+    "rollout_minutes_approx": 30,
+    "rows": [
+      {
+        "after_pp": 60,
+        "asset": "ASTER",
+        "before_pp": 50
+      },
+      {
+        "after_pp": 60,
+        "asset": "ETC",
+        "before_pp": 50
+      }
+    ],
+    "updated_text": "2026-10-13 10:11",
+    "url": "https://www.binance.com/en/support/announcement/detail/79f36518401b4187b46d52e87bb2c286"
+  },
+  "new_operational_accounts": 0,
+  "new_policy_outcomes_inspected": false,
+  "new_policy_protocol_sha256": "31677ec78380f6d1f56e0aed4245cb332741353d77a33b6bf4c3d73d3b71c5c3",
+  "ordinary_worker_changed": false,
+  "other_source_examples": [
+    {
+      "url": "https://www.binance.com/en/support/announcement/detail/96e0b5370c9a49fbb5d66613b0d7ddf1",
+      "use": "new borrowability mechanism only, no return test/census"
+    },
+    {
+      "url": "https://www.binance.com/en-AE/support/announcement/detail/d5810276f8c44fa7ade2b93746cd6a0a",
+      "use": "subsidized BNB principal inventory end calendar only, no reward-token return test"
+    },
+    {
+      "url": "https://www.binance.com/en/support/faq/detail/94ed108ce89d44ab8602aa3c476dfb04",
+      "use": "early unlock and90min principal/reward return rules; no forced-sale claim"
+    }
+  ],
+  "payments": 0,
+  "purpose": "Feasibility and policy design, not economic outcomes",
+  "schema": "cocomelon.free-data-admission.v1",
+  "verified_local_inventory": {
+    "context_features": {
+      "limits": "decision-selected summaries, not complete raw OI/tape/books or repaired first-receive clocks",
+      "oi_funding_changes": 38186,
+      "snapshots": 39016,
+      "source": "worker39380104678 original authenticated feature export",
+      "spread_depth_summaries": 38183
+    },
+    "funding": {
+      "exact_cash": "UNKNOWN without original boundary position/oracle",
+      "hourly_rates": 27600,
+      "markets_with_data": 46,
+      "receipts": [
+        "data/research/2026-10-20-profitability-discovery/raw-funding/receipt.json",
+        "data/research/2026-10-20-funding-completion-liquidation/raw-funding-attempt2/receipt.json"
+      ],
+      "requested_markets": 47,
+      "successful_pages": 92,
+      "unknown_market": "PENGU"
+    },
+    "native_15m": {
+      "closed_grid_missing": 1039,
+      "closing_after_endpoint": 49,
+      "markets": 49,
+      "missing_by_market": {
+        "PONS": 111,
+        "USELESS": 928
+      },
+      "raw_rows": 238914,
+      "receipt": "data/research/2026-10-20-delayed-repricing/raw-candles/receipt.json"
+    },
+    "native_8h": {
+      "markets": 4,
+      "per_market_rows": 4164,
+      "raw_rows": 16656,
+      "receipt": "data/research/2026-10-20-executable-conditional-discovery/raw-8h/receipt.json",
+      "symbols": [
+        "BTC",
+        "ETH",
+        "SOL",
+        "BNB"
+      ]
+    },
+    "native_daily": {
+      "initial_nonpositive_activity_each": 56,
+      "markets": 2,
+      "receipt": "data/research/2026-10-20-adaptive-conditional-discovery/raw-daily-candles/receipt.json",
+      "rows_each": 1388
+    },
+    "native_meta": {
+      "delisted_field_absent": 178,
+      "explicit_delisted": 56,
+      "identity": "ticker existence only; not authoritative cross-venue underlying identity or current/historical eligibility",
+      "matching_tickers": [
+        "ASTER",
+        "ETC",
+        "BNB"
+      ],
+      "raw": "research/audits/2026-10-20-adaptive-conditional-discovery/data-feasibility/native-meta-raw.json",
+      "rows": 234,
+      "sha256": "aa725f96351e898c95ab7cbc4062208200ea4fa7346478a10f60748e928b82e5"
+    }
+  }
+}
