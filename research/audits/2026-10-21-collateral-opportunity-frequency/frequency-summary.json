@@ -1,0 +1,186 @@
+{
+  "schema": "cocomelon.collateral-opportunity-frequency.v1",
+  "study_start_utc": "2025-01-01T00:00:00+00:00",
+  "rolling_last_end_utc": "2026-10-21T00:00:00+00:00",
+  "verdict": "INCONCLUSIVE — INSUFFICIENT AUTHENTIC EVENT EVIDENCE",
+  "bounds_apply_only_to_inspected_candidate_cohort": true,
+  "archive_census_complete": false,
+  "candidate_ids": 60,
+  "body_confirmed": 21,
+  "future_only": 1,
+  "observed_material_batches": 52,
+  "body_confirmed_material_batches": 18,
+  "occurred_flat_rows": 486,
+  "occurred_raw_material_rows": 421,
+  "raw_material_rows_all_including_future": 428,
+  "unknown_table_ids": [
+    "139e45df5d844004832b4c04dee8e70c",
+    "b1219385d93740d1a8af9fc8de80f1cb",
+    "58b63eb8dd664487910a7cdcb7fc0c23",
+    "4bf81e4829b64eacae3caa802ec6fc59"
+  ],
+  "known_material_amendment_ids": [
+    "a32a2a0e5132427ba568feb2b1a5c7ec",
+    "aa1d165426df4a7a84a0005a5a2f1e03"
+  ],
+  "plan_modification_original_diff_unknown_id": "fdb068f493444efba6cc979dec9a3955",
+  "after_definite_amendment_veto_batches": 50,
+  "revision_screened_material_batches": 49,
+  "optimistic_expanded_cohort_ceiling": 54,
+  "undated_potential_ids": [
+    "4bf81e4829b64eacae3caa802ec6fc59"
+  ],
+  "verified_executable_entries": 0,
+  "verified_historical_eligible_market_count": "UNKNOWN",
+  "distinct_material_asset_labels_not_identity_or_eligible_markets": 223,
+  "raw_component_count": 52,
+  "cross_article_overlapping_component_members": [],
+  "raw_available_direction_batches": {
+    "LONG": 3,
+    "SHORT": 30,
+    "LONG+SHORT": 19
+  },
+  "revision_screened_available_direction_batches": {
+    "LONG": 3,
+    "SHORT": 29,
+    "LONG+SHORT": 17
+  },
+  "rolling": {
+    "90": {
+      "windows": 569,
+      "raw_range": [
+        2,
+        12
+      ],
+      "revision_screened_range": [
+        2,
+        11
+      ],
+      "expanded_ceiling_range": [
+        3,
+        12
+      ],
+      "max_expanded_examples": [
+        {
+          "days": 90,
+          "start_utc": "2025-02-23T00:00:00+00:00",
+          "end_utc_exclusive": "2025-05-24T00:00:00+00:00",
+          "observed_material_batches": 11,
+          "revision_screened_material_batches": 11,
+          "potential_dated_ceiling": 12,
+          "undated_slack_ceiling": 0,
+          "potential_expanded_ceiling": 12,
+          "known_material_cohort_long_available": 0,
+          "known_material_cohort_short_available": 11,
+          "third_1_material": 4,
+          "third_2_material": 3,
+          "third_3_material": 4,
+          "scheduled_proxy_count_side_third_necessary_checks_only": false
+        }
+      ],
+      "raw_max_examples": [
+        {
+          "days": 90,
+          "start_utc": "2025-05-22T00:00:00+00:00",
+          "end_utc_exclusive": "2025-08-20T00:00:00+00:00",
+          "observed_material_batches": 12,
+          "revision_screened_material_batches": 10,
+          "potential_dated_ceiling": 11,
+          "undated_slack_ceiling": 0,
+          "potential_expanded_ceiling": 11,
+          "known_material_cohort_long_available": 6,
+          "known_material_cohort_short_available": 9,
+          "third_1_material": 3,
+          "third_2_material": 2,
+          "third_3_material": 5,
+          "scheduled_proxy_count_side_third_necessary_checks_only": false
+        }
+      ],
+      "scheduled_proxy_necessary_check_windows_not_admitted_trials": 0,
+      "latest": {
+        "days": 90,
+        "start_utc": "2026-07-23T00:00:00+00:00",
+        "end_utc_exclusive": "2026-10-21T00:00:00+00:00",
+        "observed_material_batches": 8,
+        "revision_screened_material_batches": 7,
+        "potential_dated_ceiling": 9,
+        "undated_slack_ceiling": 1,
+        "potential_expanded_ceiling": 10,
+        "known_material_cohort_long_available": 6,
+        "known_material_cohort_short_available": 5,
+        "third_1_material": 3,
+        "third_2_material": 2,
+        "third_3_material": 2,
+        "scheduled_proxy_count_side_third_necessary_checks_only": false
+      }
+    },
+    "180": {
+      "windows": 479,
+      "raw_range": [
+        9,
+        22
+      ],
+      "revision_screened_range": [
+        9,
+        20
+      ],
+      "expanded_ceiling_range": [
+        10,
+        22
+      ],
+      "max_expanded_examples": [
+        {
+          "days": 180,
+          "start_utc": "2025-02-21T00:00:00+00:00",
+          "end_utc_exclusive": "2025-08-20T00:00:00+00:00",
+          "observed_material_batches": 22,
+          "revision_screened_material_batches": 20,
+          "potential_dated_ceiling": 22,
+          "undated_slack_ceiling": 0,
+          "potential_expanded_ceiling": 22,
+          "known_material_cohort_long_available": 6,
+          "known_material_cohort_short_available": 19,
+          "third_1_material": 7,
+          "third_2_material": 6,
+          "third_3_material": 7,
+          "scheduled_proxy_count_side_third_necessary_checks_only": true
+        }
+      ],
+      "raw_max_examples": [
+        {
+          "days": 180,
+          "start_utc": "2025-02-21T00:00:00+00:00",
+          "end_utc_exclusive": "2025-08-20T00:00:00+00:00",
+          "observed_material_batches": 22,
+          "revision_screened_material_batches": 20,
+          "potential_dated_ceiling": 22,
+          "undated_slack_ceiling": 0,
+          "potential_expanded_ceiling": 22,
+          "known_material_cohort_long_available": 6,
+          "known_material_cohort_short_available": 19,
+          "third_1_material": 7,
+          "third_2_material": 6,
+          "third_3_material": 7,
+          "scheduled_proxy_count_side_third_necessary_checks_only": true
+        }
+      ],
+      "scheduled_proxy_necessary_check_windows_not_admitted_trials": 4,
+      "latest": {
+        "days": 180,
+        "start_utc": "2026-04-24T00:00:00+00:00",
+        "end_utc_exclusive": "2026-10-21T00:00:00+00:00",
+        "observed_material_batches": 16,
+        "revision_screened_material_batches": 15,
+        "potential_dated_ceiling": 17,
+        "undated_slack_ceiling": 1,
+        "potential_expanded_ceiling": 18,
+        "known_material_cohort_long_available": 9,
+        "known_material_cohort_short_available": 13,
+        "third_1_material": 6,
+        "third_2_material": 5,
+        "third_3_material": 4,
+        "scheduled_proxy_count_side_third_necessary_checks_only": false
+      }
+    }
+  }
+}

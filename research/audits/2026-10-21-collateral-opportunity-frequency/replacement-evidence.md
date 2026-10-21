@@ -1,0 +1,13 @@
+# Replacement mechanism conclusion
+
+**NO_REPLACEMENT_ADMITTED.** No evaluated distinct participant mechanism has both actual sufficiently frequent decision-time triggers and admitted execution inputs in the existing evidence. No new policy, freeze, return test or collection project follows.
+
+The strongest repeatable avenue assessed was external compulsory deleveraging transmitting pressure into the native perp market. Margin-constrained holders could pay immediacy costs, while intermediaries absorb inventory; finite forced flow could conceivably leave movement beyond costs. Neither its residual magnitude nor persistence is observed here. Merely moving the liquidation label to another venue does not establish novelty against the excluded native-liquidation family; generic cross-venue directional pressure also cannot relabel the rejected delayed-repricing or shelved flow-exhaustion studies.
+
+Actual evidence is narrower than endpoint availability. The Binance metadata projection has 931 symbols and zero trade records. Connected aggregate-trade/taker-volume tools advertise signed-flow fields, but no captured Binance tape or external forced-order population was admitted. Ordinary aggregate trades do not identify forced orders. Thus there is no actual external trigger numerator, covered-time denominator or independent-component count to report.
+
+The preserved native HLP-child response was independently rehashed: 636,887 bytes, SHA256 `64dbe671377a0eb850add81a5f5af145e11cf7ca50fdf91a3daeaa6e0e13e1e6`, 2,000 fills across 167 tickers, exchange times 1792508285726–1792508892089ms (approximately 10m06s), exactly one native liquidation tag. This capped, selected-account response is not a marketwide frequency census and has no matched executable book window. One tag is not one proven independent tradable shock; the count cannot be extrapolated into events/day.
+
+Exact missing observations are a complete native-labelled external forced-order population over a fixed covered interval, verified forced side/size and identity/deduplication, authentic event availability clocks, contemporaneous native eligibility and executable liquidity after information arrival, and a sufficient independent event denominator. The first bounded source unit would be one already-existing coverage-certified Binance USDS forced-order record for 2026-10-20 00:00–24:00 UTC. It would answer frequency/source feasibility only, would not establish alpha or reopen an excluded family, and is not an instruction to acquire or collect it.
+
+No market requests, price-reaction calculations, return evaluations, retuning, repo edits or runtime actions were performed. Existing failures and exclusions remain binding.

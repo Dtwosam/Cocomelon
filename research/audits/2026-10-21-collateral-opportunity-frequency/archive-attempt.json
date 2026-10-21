@@ -1,0 +1,8 @@
+{
+  "scope": "ONE bounded official CMS archive-index request; no retry",
+  "url": "https://www.binance.com/bapi/composite/v1/public/cms/article/list/query?type=1&pageNo=1&pageSize=50&catalogId=49",
+  "started_utc": "2026-10-21T12:29:25.272238+00:00",
+  "error": "<urlopen error [Errno 8] nodename nor servname provided, or not known>",
+  "status": null,
+  "finished_utc": "2026-10-21T12:29:34.336134+00:00"
+}

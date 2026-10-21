@@ -1121,3 +1121,24 @@ monitor/launcher, operational accounts or activation exists. No strategy code is
 added while the existing independently safe source/execution path is unproved.
 Unproven exploratory PAPER does not require a profitable historical backtest;
 source/account/resource safety and all validation/promotion/LIVE restrictions stand.
+
+## D-096 — Opportunity evidence precedes collateral trial implementation
+
+The2026-10-21 owner instruction requires a bounded frequency/source check before
+building any further strategy runner, collector or binding. The inspected official
+cohort has52historical material batches, but incomplete archive coverage, original
+vintages, actual first receipts and native identity/eligibility prevent verified
+execution admission. The optimistic inspected-cohort ceiling is54total, max12/90d
+and22/180d, never a global archive bound or forecast.
+
+Select **INCONCLUSIVE — INSUFFICIENT AUTHENTIC EVENT EVIDENCE**. Neither sufficient
+availability nor global frequency infeasibility is established. One bounded free
+archive-index request failed at environment DNS resolution; stop without retries
+or a historical data engineering project. No distinct replacement has passed
+actual signal-availability/frequency admission; do not create another freeze.
+
+Preserve both protocols and prior economic failures. No further implementation
+phase, source monitor, account/T0, ordinary-worker change, paid service, PR1392
+activation or LIVE authority follows. Reopening this question requires an
+already-existing free complete official12-month index/original-version artifact,
+not new capture infrastructure. [Evidence and exact decision](collateral_opportunity_frequency_2026_10_21.md).

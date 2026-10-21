@@ -1,5 +1,9 @@
 # Free-data economic decision — October 21, 2026
 
+**Later frequency check: INCONCLUSIVE — INSUFFICIENT AUTHENTIC EVENT EVIDENCE.**
+[Count-only investigation](collateral_opportunity_frequency_2026_10_21.md) does not authorize implementation.
+The original frozen protocol is preserved; no new collector or runner follows.
+
 **Flow-exhaustion V1 is SHELVED AS OPERATIONALLY DATA-BLOCKED. Its economics are
 not disproved.** The new owner instruction prohibits paid data/hosting and further
 infrastructure rescue. Original code, tests and protocol SHA256

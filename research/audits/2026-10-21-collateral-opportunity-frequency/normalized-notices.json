@@ -1,0 +1,5677 @@
+[
+  {
+    "article_id": "a6b3cdf700934d91a79ac1b4155767ff",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/a6b3cdf700934d91a79ac1b4155767ff",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2025-01-07T06:00:00Z",
+        "rows": [
+          {
+            "asset": "ENA",
+            "before": 45,
+            "after": 50,
+            "delta_pp": 5,
+            "known_excluded": false
+          },
+          {
+            "asset": "USUAL",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "PENGU",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "BIO",
+            "before": 10,
+            "after": 20,
+            "delta_pp": 10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-01-07T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-01-07T06:00:00Z"
+    ],
+    "raw_flat_rows": 4,
+    "raw_material_rows": 3,
+    "material_rows_after_known_class_exclusions": 3,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "2db64dbefbb34118b315dcc66b88194c",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/2db64dbefbb34118b315dcc66b88194c",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2025-02-24T06:00:00Z",
+        "rows": [
+          {
+            "asset": "SUSHI",
+            "before": 85,
+            "after": 75,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "C98",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ENJ",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "PEOPLE",
+            "before": 50,
+            "after": 40,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "OM",
+            "before": 30,
+            "after": 20,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-02-24T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-02-24T06:00:00Z"
+    ],
+    "raw_flat_rows": 5,
+    "raw_material_rows": 5,
+    "material_rows_after_known_class_exclusions": 5,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "3dfb9c8bb7e242e9ab61282d5f3a8766",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/3dfb9c8bb7e242e9ab61282d5f3a8766",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-02-28T06:00:00Z",
+        "rows": [
+          {
+            "asset": "ATOM",
+            "before": 85,
+            "after": 75,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ANKR",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "COTI",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "EGLD",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "SUSHI",
+            "before": 75,
+            "after": 60,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "OM",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-02-28T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-02-28T06:00:00Z"
+    ],
+    "raw_flat_rows": 6,
+    "raw_material_rows": 6,
+    "material_rows_after_known_class_exclusions": 6,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "b2698a6dee104b008075fbf50350698e",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/b2698a6dee104b008075fbf50350698e",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-03-14T06:00:00Z",
+        "rows": [
+          {
+            "asset": "CELO",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "IOTX",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "LRC",
+            "before": 80,
+            "after": 65,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ALICE",
+            "before": 80,
+            "after": 65,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "AUDIO",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ICX",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-03-14T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-03-14T06:00:00Z"
+    ],
+    "raw_flat_rows": 6,
+    "raw_material_rows": 6,
+    "material_rows_after_known_class_exclusions": 6,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "03ec6ecae00c4915849dd522ce19e1b1",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/03ec6ecae00c4915849dd522ce19e1b1",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2025-03-21T06:00:00Z",
+        "rows": [
+          {
+            "asset": "POL",
+            "before": 85,
+            "after": 75,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ZEC",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "DASH",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "LRC",
+            "before": 80,
+            "after": 65,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "SXP",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "DUSK",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-03-21T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-03-21T06:00:00Z"
+    ],
+    "raw_flat_rows": 6,
+    "raw_material_rows": 6,
+    "material_rows_after_known_class_exclusions": 6,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "bd55a51d736a484087cd146f28d082c4",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/bd55a51d736a484087cd146f28d082c4",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-03-28T06:00:00Z",
+        "rows": [
+          {
+            "asset": "CRV",
+            "before": 85,
+            "after": 80,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "UNI",
+            "before": 85,
+            "after": 80,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "ALGO",
+            "before": 85,
+            "after": 75,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "KSM",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "XTZ",
+            "before": 75,
+            "after": 60,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "XEC",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-03-28T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-03-28T06:00:00Z"
+    ],
+    "raw_flat_rows": 6,
+    "raw_material_rows": 4,
+    "material_rows_after_known_class_exclusions": 4,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "139e45df5d844004832b4c04dee8e70c",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/139e45df5d844004832b4c04dee8e70c",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-04-04T06:00:00Z",
+        "rows": [],
+        "complete": false
+      }
+    ],
+    "all_known_times": [
+      "2025-04-04T06:00:00Z"
+    ],
+    "material_times": [],
+    "raw_flat_rows": 0,
+    "raw_material_rows": 0,
+    "material_rows_after_known_class_exclusions": 0,
+    "raw_material": false,
+    "unknown_table": true,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "ca2ff3cd4cf8465b9a546a5f3e9c87c7",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/ca2ff3cd4cf8465b9a546a5f3e9c87c7",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-04-11T06:00:00Z",
+        "rows": [
+          {
+            "asset": "ICP",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "SNX",
+            "before": 80,
+            "after": 65,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "MANA",
+            "before": 75,
+            "after": 65,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "KAVA",
+            "before": 70,
+            "after": 60,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "KNC",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "CHR",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "TLM",
+            "before": 60,
+            "after": 50,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ALICE",
+            "before": 65,
+            "after": 50,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "BETA",
+            "before": 60,
+            "after": 45,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "SFP",
+            "before": 50,
+            "after": 40,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-04-11T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-04-11T06:00:00Z"
+    ],
+    "raw_flat_rows": 10,
+    "raw_material_rows": 10,
+    "material_rows_after_known_class_exclusions": 10,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "6c1251d647fe483da2ee27fe93374c2d",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/6c1251d647fe483da2ee27fe93374c2d",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-04-18T06:00:00Z",
+        "rows": [
+          {
+            "asset": "DENT",
+            "before": 65,
+            "after": 55,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ENJ",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "NOT",
+            "before": 75,
+            "after": 60,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "DASH",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "CHZ",
+            "before": 80,
+            "after": 65,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "AXS",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ENS",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "SAND",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "THETA",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "QNT",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-04-18T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-04-18T06:00:00Z"
+    ],
+    "raw_flat_rows": 10,
+    "raw_material_rows": 10,
+    "material_rows_after_known_class_exclusions": 10,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "564d3f51b5ad459bbe07fd46f429be7c",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/564d3f51b5ad459bbe07fd46f429be7c",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2025-04-25T06:00:00Z",
+        "rows": [
+          {
+            "asset": "ZEC",
+            "before": 70,
+            "after": 60,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "TWT",
+            "before": 70,
+            "after": 60,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ZIL",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ONE",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ROSE",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "C98",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ANKR",
+            "before": 70,
+            "after": 50,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SKL",
+            "before": 70,
+            "after": 50,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "COTI",
+            "before": 70,
+            "after": 50,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "1INCH",
+            "before": 65,
+            "after": 45,
+            "delta_pp": -20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-04-25T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-04-25T06:00:00Z"
+    ],
+    "raw_flat_rows": 10,
+    "raw_material_rows": 10,
+    "material_rows_after_known_class_exclusions": 10,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "93fe7d8426a34f16b1a929b3f1a11463",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/93fe7d8426a34f16b1a929b3f1a11463",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-05-02T06:00:00Z",
+        "rows": [
+          {
+            "asset": "DOGE",
+            "before": 95,
+            "after": 90,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "DYDX",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "NEO",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "GRT",
+            "before": 80,
+            "after": 65,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "AR",
+            "before": 80,
+            "after": 65,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "KSM",
+            "before": 70,
+            "after": 50,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "ZEC",
+            "before": 60,
+            "after": 45,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "BSW",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "FTT",
+            "before": 40,
+            "after": 20,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "JASMY",
+            "before": 35,
+            "after": 15,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "STPT",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-05-02T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-05-02T06:00:00Z"
+    ],
+    "raw_flat_rows": 11,
+    "raw_material_rows": 10,
+    "material_rows_after_known_class_exclusions": 10,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "be0b2e950851420d8b7f9f427097be08",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/be0b2e950851420d8b7f9f427097be08",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-05-09T06:00:00Z",
+        "rows": [
+          {
+            "asset": "VET",
+            "before": 80,
+            "after": 75,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "EOS",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ARB",
+            "before": 75,
+            "after": 70,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "POL",
+            "before": 75,
+            "after": 65,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "EGLD",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "CELO",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "COMP",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ZEC",
+            "before": 45,
+            "after": 30,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "BSW",
+            "before": 30,
+            "after": 20,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "FTT",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "JASMY",
+            "before": 15,
+            "after": 10,
+            "delta_pp": -5,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-05-09T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-05-09T06:00:00Z"
+    ],
+    "raw_flat_rows": 11,
+    "raw_material_rows": 8,
+    "material_rows_after_known_class_exclusions": 8,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "776c16c430b84e1dac46d676f5ba4e83",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/776c16c430b84e1dac46d676f5ba4e83",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2025-05-23T06:00:00Z",
+        "rows": [
+          {
+            "asset": "ETC",
+            "before": 80,
+            "after": 75,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "CRV",
+            "before": 80,
+            "after": 75,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "CAKE",
+            "before": 75,
+            "after": 70,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "LRC",
+            "before": 65,
+            "after": 50,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "MEME",
+            "before": 50,
+            "after": 40,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "AI",
+            "before": 50,
+            "after": 40,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "BAKE",
+            "before": 50,
+            "after": 35,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "TLM",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "GTC",
+            "before": 40,
+            "after": 25,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "PORTAL",
+            "before": 35,
+            "after": 20,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ZEC",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-05-23T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-05-23T06:00:00Z"
+    ],
+    "raw_flat_rows": 11,
+    "raw_material_rows": 8,
+    "material_rows_after_known_class_exclusions": 8,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "b5c64cd30e2740528992fba781c20229",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/b5c64cd30e2740528992fba781c20229",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-05-30T06:00:00Z",
+        "rows": [
+          {
+            "asset": "UNI",
+            "before": 80,
+            "after": 75,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "QNT",
+            "before": 70,
+            "after": 60,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "THETA",
+            "before": 70,
+            "after": 60,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ICP",
+            "before": 70,
+            "after": 60,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "FLOW",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "GRT",
+            "before": 65,
+            "after": 55,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "DUSK",
+            "before": 55,
+            "after": 40,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "KDA",
+            "before": 50,
+            "after": 40,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "HFT",
+            "before": 50,
+            "after": 35,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ACE",
+            "before": 50,
+            "after": 35,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "PORTAL",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-05-30T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-05-30T06:00:00Z"
+    ],
+    "raw_flat_rows": 11,
+    "raw_material_rows": 10,
+    "material_rows_after_known_class_exclusions": 10,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "b1219385d93740d1a8af9fc8de80f1cb",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/b1219385d93740d1a8af9fc8de80f1cb",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-06-13T06:00:00Z",
+        "rows": [],
+        "complete": false
+      }
+    ],
+    "all_known_times": [
+      "2025-06-13T06:00:00Z"
+    ],
+    "material_times": [],
+    "raw_flat_rows": 0,
+    "raw_material_rows": 0,
+    "material_rows_after_known_class_exclusions": 0,
+    "raw_material": false,
+    "unknown_table": true,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "e778988edec446038ad536bcb0c8d460",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/e778988edec446038ad536bcb0c8d460",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-06-20T06:00:00Z",
+        "rows": [
+          {
+            "asset": "DYDX",
+            "before": 70,
+            "after": 60,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "AR",
+            "before": 65,
+            "after": 55,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "SAND",
+            "before": 65,
+            "after": 55,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "GMT",
+            "before": 60,
+            "after": 50,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "IOTA",
+            "before": 60,
+            "after": 50,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "DENT",
+            "before": 55,
+            "after": 40,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "CHR",
+            "before": 55,
+            "after": 40,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "AUDIO",
+            "before": 55,
+            "after": 40,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "LRC",
+            "before": 50,
+            "after": 40,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "COTI",
+            "before": 50,
+            "after": 40,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "KNC",
+            "before": 55,
+            "after": 35,
+            "delta_pp": -20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-06-20T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-06-20T06:00:00Z"
+    ],
+    "raw_flat_rows": 11,
+    "raw_material_rows": 11,
+    "material_rows_after_known_class_exclusions": 11,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "aa1d165426df4a7a84a0005a5a2f1e03",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/aa1d165426df4a7a84a0005a5a2f1e03",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2025-06-27T06:00:00Z",
+        "rows": [
+          {
+            "asset": "KAVA",
+            "before": 60,
+            "after": 55,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "TWT",
+            "before": 60,
+            "after": 45,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "NOT",
+            "before": 60,
+            "after": 40,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "ENJ",
+            "before": 55,
+            "after": 35,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "ANKR",
+            "before": 50,
+            "after": 35,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "SXP",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "FLUX",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "PYR",
+            "before": 40,
+            "after": 25,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ALICE",
+            "before": 35,
+            "after": 25,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-06-27T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-06-27T06:00:00Z"
+    ],
+    "raw_flat_rows": 9,
+    "raw_material_rows": 8,
+    "material_rows_after_known_class_exclusions": 8,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": true,
+    "plan_modification_original_diff_unknown": false,
+    "potential": false,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "c1addac5267d4efb816b5b603712b77f",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/c1addac5267d4efb816b5b603712b77f",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-07-04T06:00:00Z",
+        "rows": [
+          {
+            "asset": "OP",
+            "before": 75,
+            "after": 65,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "CRV",
+            "before": 75,
+            "after": 65,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "CAKE",
+            "before": 70,
+            "after": 60,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ENS",
+            "before": 70,
+            "after": 60,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "RUNE",
+            "before": 70,
+            "after": 55,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ROSE",
+            "before": 55,
+            "after": 40,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ORDI",
+            "before": 60,
+            "after": 40,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SUSHI",
+            "before": 60,
+            "after": 40,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "ONE",
+            "before": 55,
+            "after": 40,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ALT",
+            "before": 50,
+            "after": 35,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "MANTA",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-07-04T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-07-04T06:00:00Z"
+    ],
+    "raw_flat_rows": 11,
+    "raw_material_rows": 11,
+    "material_rows_after_known_class_exclusions": 11,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "568fe6d4bcaf4fcea744075e230644bf",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/568fe6d4bcaf4fcea744075e230644bf",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-07-08T06:00:00Z",
+        "rows": [
+          {
+            "asset": "VIRTUAL",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "ONDO",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SAHARA",
+            "before": 10,
+            "after": 25,
+            "delta_pp": 15,
+            "known_excluded": false
+          },
+          {
+            "asset": "KAITO",
+            "before": 10,
+            "after": 25,
+            "delta_pp": 15,
+            "known_excluded": false
+          },
+          {
+            "asset": "SYRUP",
+            "before": 10,
+            "after": 20,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "KAIA",
+            "before": 10,
+            "after": 20,
+            "delta_pp": 10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      },
+      {
+        "T": "2025-07-11T06:00:00Z",
+        "rows": [
+          {
+            "asset": "THETA",
+            "before": 60,
+            "after": 50,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "DYDX",
+            "before": 60,
+            "after": 45,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "DUSK",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "AI",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "BAKE",
+            "before": 35,
+            "after": 25,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ACE",
+            "before": 35,
+            "after": 25,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-07-08T06:00:00Z",
+      "2025-07-11T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-07-08T06:00:00Z",
+      "2025-07-11T06:00:00Z"
+    ],
+    "raw_flat_rows": 12,
+    "raw_material_rows": 12,
+    "material_rows_after_known_class_exclusions": 12,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "a32a2a0e5132427ba568feb2b1a5c7ec",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/a32a2a0e5132427ba568feb2b1a5c7ec",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-07-15T06:00:00Z",
+        "rows": [
+          {
+            "asset": "AIXBT",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "NEWT",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SOPH",
+            "before": 10,
+            "after": 20,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "GUN",
+            "before": 10,
+            "after": 20,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "HUMA",
+            "before": 10,
+            "after": 20,
+            "delta_pp": 10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      },
+      {
+        "T": "2025-07-18T06:00:00Z",
+        "rows": [
+          {
+            "asset": "KAVA",
+            "before": 55,
+            "after": 50,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "APE",
+            "before": 60,
+            "after": 50,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ZIL",
+            "before": 55,
+            "after": 40,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "IO",
+            "before": 50,
+            "after": 40,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "SKL",
+            "before": 50,
+            "after": 35,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "CHR",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-07-15T06:00:00Z",
+      "2025-07-18T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-07-15T06:00:00Z",
+      "2025-07-18T06:00:00Z"
+    ],
+    "raw_flat_rows": 11,
+    "raw_material_rows": 10,
+    "material_rows_after_known_class_exclusions": 10,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": true,
+    "plan_modification_original_diff_unknown": false,
+    "potential": false,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "810e7de52311466790f295a4f7abd766",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/810e7de52311466790f295a4f7abd766",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-07-22T06:00:00Z",
+        "rows": [
+          {
+            "asset": "FLOKI",
+            "before": 40,
+            "after": 50,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "PENGU",
+            "before": 30,
+            "after": 50,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "TAO",
+            "before": 30,
+            "after": 50,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SXT",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "FXS",
+            "before": 20,
+            "after": 30,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "RESOLV",
+            "before": 10,
+            "after": 20,
+            "delta_pp": 10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      },
+      {
+        "T": "2025-07-25T06:00:00Z",
+        "rows": [
+          {
+            "asset": "DASH",
+            "before": 55,
+            "after": 45,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "BAT",
+            "before": 50,
+            "after": 40,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "EGLD",
+            "before": 55,
+            "after": 40,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "FLOW",
+            "before": 55,
+            "after": 40,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "COTI",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "DENT",
+            "before": 40,
+            "after": 25,
+            "delta_pp": -15,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-07-22T06:00:00Z",
+      "2025-07-25T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-07-22T06:00:00Z",
+      "2025-07-25T06:00:00Z"
+    ],
+    "raw_flat_rows": 12,
+    "raw_material_rows": 12,
+    "material_rows_after_known_class_exclusions": 12,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "4ec6be211b904da3b46fdc030a86a837",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/4ec6be211b904da3b46fdc030a86a837",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2025-07-29T06:00:00Z",
+        "rows": [
+          {
+            "asset": "WBETH",
+            "before": 85,
+            "after": 95,
+            "delta_pp": 10,
+            "known_excluded": true
+          },
+          {
+            "asset": "TRUMP",
+            "before": 30,
+            "after": 50,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "LDO",
+            "before": 35,
+            "after": 50,
+            "delta_pp": 15,
+            "known_excluded": false
+          },
+          {
+            "asset": "C",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SPK",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "PARTI",
+            "before": 10,
+            "after": 20,
+            "delta_pp": 10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      },
+      {
+        "T": "2025-08-01T06:00:00Z",
+        "rows": [
+          {
+            "asset": "NEO",
+            "before": 55,
+            "after": 45,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "IOTX",
+            "before": 55,
+            "after": 40,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "MANA",
+            "before": 50,
+            "after": 40,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "KSM",
+            "before": 50,
+            "after": 35,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "SNX",
+            "before": 50,
+            "after": 35,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "DYDX",
+            "before": 45,
+            "after": 35,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-07-29T06:00:00Z",
+      "2025-08-01T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-07-29T06:00:00Z",
+      "2025-08-01T06:00:00Z"
+    ],
+    "raw_flat_rows": 12,
+    "raw_material_rows": 12,
+    "material_rows_after_known_class_exclusions": 11,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "cb5a63686f63408d994aaf3443e4850e",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/cb5a63686f63408d994aaf3443e4850e",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-08-05T06:00:00Z",
+        "rows": [
+          {
+            "asset": "VIRTUAL",
+            "before": 30,
+            "after": 50,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "HYPER",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "BERA",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "HEI",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "BABY",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "INIT",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      },
+      {
+        "T": "2025-08-08T06:00:00Z",
+        "rows": [
+          {
+            "asset": "DOT",
+            "before": 80,
+            "after": 75,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "OP",
+            "before": 65,
+            "after": 55,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ENS",
+            "before": 60,
+            "after": 50,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "CHZ",
+            "before": 50,
+            "after": 40,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "HOT",
+            "before": 50,
+            "after": 35,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "LRC",
+            "before": 40,
+            "after": 25,
+            "delta_pp": -15,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-08-05T06:00:00Z",
+      "2025-08-08T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-08-05T06:00:00Z",
+      "2025-08-08T06:00:00Z"
+    ],
+    "raw_flat_rows": 12,
+    "raw_material_rows": 11,
+    "material_rows_after_known_class_exclusions": 11,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "dd052fcc66ce4ba1902f729f49b124f4",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/dd052fcc66ce4ba1902f729f49b124f4",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-08-12T06:00:00Z",
+        "rows": [
+          {
+            "asset": "PENDLE",
+            "before": 35,
+            "after": 50,
+            "delta_pp": 15,
+            "known_excluded": false
+          },
+          {
+            "asset": "SOPH",
+            "before": 20,
+            "after": 30,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "TURBO",
+            "before": 20,
+            "after": 30,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "A2Z",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "ILV",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "TREE",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      },
+      {
+        "T": "2025-08-15T06:00:00Z",
+        "rows": [
+          {
+            "asset": "VET",
+            "before": 70,
+            "after": 65,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "QNT",
+            "before": 60,
+            "after": 50,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "XEC",
+            "before": 55,
+            "after": 45,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "CELO",
+            "before": 55,
+            "after": 45,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "1000SATS",
+            "before": 50,
+            "after": 35,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ONE",
+            "before": 40,
+            "after": 25,
+            "delta_pp": -15,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-08-12T06:00:00Z",
+      "2025-08-15T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-08-12T06:00:00Z",
+      "2025-08-15T06:00:00Z"
+    ],
+    "raw_flat_rows": 12,
+    "raw_material_rows": 11,
+    "material_rows_after_known_class_exclusions": 11,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "8e428625ebeb4cc7ae8678026846095c",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/8e428625ebeb4cc7ae8678026846095c",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2025-08-19T06:00:00Z",
+        "rows": [
+          {
+            "asset": "ENA",
+            "before": 50,
+            "after": 65,
+            "delta_pp": 15,
+            "known_excluded": false
+          },
+          {
+            "asset": "TON",
+            "before": 50,
+            "after": 65,
+            "delta_pp": 15,
+            "known_excluded": false
+          },
+          {
+            "asset": "A",
+            "before": 35,
+            "after": 65,
+            "delta_pp": 30,
+            "known_excluded": false
+          },
+          {
+            "asset": "APT",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ETHFI",
+            "before": 45,
+            "after": 60,
+            "delta_pp": 15,
+            "known_excluded": false
+          },
+          {
+            "asset": "RENDER",
+            "before": 30,
+            "after": 50,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SANTOS",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "ORCA",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      },
+      {
+        "T": "2025-08-22T06:00:00Z",
+        "rows": [
+          {
+            "asset": "FIL",
+            "before": 75,
+            "after": 70,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "PIXEL",
+            "before": 45,
+            "after": 35,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "KDA",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "C98",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "WOO",
+            "before": 40,
+            "after": 25,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ICX",
+            "before": 40,
+            "after": 25,
+            "delta_pp": -15,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-08-19T06:00:00Z",
+      "2025-08-22T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-08-19T06:00:00Z",
+      "2025-08-22T06:00:00Z"
+    ],
+    "raw_flat_rows": 14,
+    "raw_material_rows": 13,
+    "material_rows_after_known_class_exclusions": 13,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "79e6f67b66a54d78b2b8ded95cfbf1e3",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/79e6f67b66a54d78b2b8ded95cfbf1e3",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-09-09T06:00:00Z",
+        "rows": [
+          {
+            "asset": "WLFI",
+            "before": 10,
+            "after": 35,
+            "delta_pp": 25,
+            "known_excluded": false
+          },
+          {
+            "asset": "PLUME",
+            "before": 10,
+            "after": 20,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ERA",
+            "before": 10,
+            "after": 20,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "VANA",
+            "before": 10,
+            "after": 20,
+            "delta_pp": 10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      },
+      {
+        "T": "2025-09-12T06:00:00Z",
+        "rows": [
+          {
+            "asset": "BONK",
+            "before": 75,
+            "after": 70,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "VET",
+            "before": 65,
+            "after": 60,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "ICP",
+            "before": 60,
+            "after": 45,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "GRT",
+            "before": 55,
+            "after": 40,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "COMP",
+            "before": 55,
+            "after": 35,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "BOME",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-09-09T06:00:00Z",
+      "2025-09-12T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-09-09T06:00:00Z",
+      "2025-09-12T06:00:00Z"
+    ],
+    "raw_flat_rows": 10,
+    "raw_material_rows": 8,
+    "material_rows_after_known_class_exclusions": 8,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "db70907c19b84c78b5c9e8a34a648ece",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/db70907c19b84c78b5c9e8a34a648ece",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-09-16T06:00:00Z",
+        "rows": [
+          {
+            "asset": "WLD",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "BIO",
+            "before": 20,
+            "after": 30,
+            "delta_pp": 10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      },
+      {
+        "T": "2025-09-19T06:00:00Z",
+        "rows": [
+          {
+            "asset": "CELO",
+            "before": 45,
+            "after": 30,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ZIL",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "DASH",
+            "before": 35,
+            "after": 25,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ANKR",
+            "before": 35,
+            "after": 25,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "HOT",
+            "before": 35,
+            "after": 25,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-09-16T06:00:00Z",
+      "2025-09-19T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-09-16T06:00:00Z",
+      "2025-09-19T06:00:00Z"
+    ],
+    "raw_flat_rows": 7,
+    "raw_material_rows": 7,
+    "material_rows_after_known_class_exclusions": 7,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "b953c92f1d624ab39408c23847768cd0",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/b953c92f1d624ab39408c23847768cd0",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2025-10-07T06:00:00Z",
+        "rows": [
+          {
+            "asset": "ZEC",
+            "before": 10,
+            "after": 20,
+            "delta_pp": 10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      },
+      {
+        "T": "2025-10-10T06:00:00Z",
+        "rows": [
+          {
+            "asset": "XEC",
+            "before": 35,
+            "after": 20,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "OSMO",
+            "before": 30,
+            "after": 20,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "STORJ",
+            "before": 30,
+            "after": 15,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "TLM",
+            "before": 30,
+            "after": 15,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "LQTY",
+            "before": 30,
+            "after": 15,
+            "delta_pp": -15,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-10-07T06:00:00Z",
+      "2025-10-10T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-10-07T06:00:00Z",
+      "2025-10-10T06:00:00Z"
+    ],
+    "raw_flat_rows": 6,
+    "raw_material_rows": 6,
+    "material_rows_after_known_class_exclusions": 6,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "f0252333194440e7a499a03cf9dab603",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/f0252333194440e7a499a03cf9dab603",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2025-10-28T06:00:00Z",
+        "rows": [
+          {
+            "asset": "ZEC",
+            "before": 20,
+            "after": 30,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "FIL",
+            "before": 70,
+            "after": 50,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "ALGO",
+            "before": 60,
+            "after": 50,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "A",
+            "before": 65,
+            "after": 45,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "RUNE",
+            "before": 55,
+            "after": 35,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "AR",
+            "before": 55,
+            "after": 35,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "LUNC",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "THETA",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "ICP",
+            "before": 45,
+            "after": 25,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "NEO",
+            "before": 45,
+            "after": 25,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "PNUT",
+            "before": 45,
+            "after": 25,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SPK",
+            "before": 40,
+            "after": 20,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "CHZ",
+            "before": 40,
+            "after": 20,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "NOT",
+            "before": 40,
+            "after": 20,
+            "delta_pp": -20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-10-28T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-10-28T06:00:00Z"
+    ],
+    "raw_flat_rows": 14,
+    "raw_material_rows": 14,
+    "material_rows_after_known_class_exclusions": 14,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "47071723d8fe4302ab15dafbd9a2edc8",
+    "year": 2025,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/47071723d8fe4302ab15dafbd9a2edc8",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2025-12-12T06:00:00Z",
+        "rows": [
+          {
+            "asset": "SXP",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "DENT",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2025-12-12T06:00:00Z"
+    ],
+    "material_times": [
+      "2025-12-12T06:00:00Z"
+    ],
+    "raw_flat_rows": 2,
+    "raw_material_rows": 2,
+    "material_rows_after_known_class_exclusions": 2,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "5b49d23d70a84bd9ae1e5948fbabf535",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/5b49d23d70a84bd9ae1e5948fbabf535",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-01-16T06:00:00Z",
+        "rows": [
+          {
+            "asset": "VET",
+            "before": 40,
+            "after": 20,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SC",
+            "before": 35,
+            "after": 10,
+            "delta_pp": -25,
+            "known_excluded": false
+          },
+          {
+            "asset": "BTTC",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "ACT",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "AUDIO",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "PYR",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "FLOW",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "DATA",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "RAD",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "WIN",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "OSMO",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ADX",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "CITY",
+            "before": 15,
+            "after": 10,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "BAR",
+            "before": 15,
+            "after": 10,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "ATM",
+            "before": 15,
+            "after": 10,
+            "delta_pp": -5,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-01-16T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-01-16T06:00:00Z"
+    ],
+    "raw_flat_rows": 15,
+    "raw_material_rows": 12,
+    "material_rows_after_known_class_exclusions": 12,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "d4cd2d5de7494355be0d0e89e4b5b5fc",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/d4cd2d5de7494355be0d0e89e4b5b5fc",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-01-23T06:00:00Z",
+        "rows": [
+          {
+            "asset": "LTC",
+            "before": 90,
+            "after": 85,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "SHIB",
+            "before": 85,
+            "after": 80,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "NEAR",
+            "before": 75,
+            "after": 70,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "CRV",
+            "before": 65,
+            "after": 50,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "PAXG",
+            "before": 60,
+            "after": 50,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "WLD",
+            "before": 60,
+            "after": 40,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "WIF",
+            "before": 60,
+            "after": 40,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "APT",
+            "before": 60,
+            "after": 40,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "TIA",
+            "before": 55,
+            "after": 40,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "FLOKI",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SAND",
+            "before": 35,
+            "after": 10,
+            "delta_pp": -25,
+            "known_excluded": false
+          },
+          {
+            "asset": "USTC",
+            "before": 35,
+            "after": 10,
+            "delta_pp": -25,
+            "known_excluded": false
+          },
+          {
+            "asset": "TWT",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "CHZ",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ORDI",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-01-23T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-01-23T06:00:00Z"
+    ],
+    "raw_flat_rows": 15,
+    "raw_material_rows": 12,
+    "material_rows_after_known_class_exclusions": 12,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "dfd8c9a381e7468a9ecc1942e0f9d6f1",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/dfd8c9a381e7468a9ecc1942e0f9d6f1",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-01-30T06:00:00Z",
+        "rows": [
+          {
+            "asset": "DASH",
+            "before": 25,
+            "after": 30,
+            "delta_pp": 5,
+            "known_excluded": false
+          },
+          {
+            "asset": "ICP",
+            "before": 25,
+            "after": 30,
+            "delta_pp": 5,
+            "known_excluded": false
+          },
+          {
+            "asset": "USDP",
+            "before": 99.9,
+            "after": 90,
+            "delta_pp": -9.9,
+            "known_excluded": false
+          },
+          {
+            "asset": "RAY",
+            "before": 50,
+            "after": 40,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "LUNA",
+            "before": 35,
+            "after": 30,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "SKL",
+            "before": 35,
+            "after": 30,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "SAGA",
+            "before": 35,
+            "after": 30,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "ENJ",
+            "before": 35,
+            "after": 30,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "IMX",
+            "before": 35,
+            "after": 30,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "PIXEL",
+            "before": 35,
+            "after": 30,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "RONIN",
+            "before": 35,
+            "after": 30,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "HFT",
+            "before": 35,
+            "after": 30,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "BLUR",
+            "before": 35,
+            "after": 30,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "ALT",
+            "before": 35,
+            "after": 30,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "ONE",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "COTI",
+            "before": 15,
+            "after": 10,
+            "delta_pp": -5,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-01-30T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-01-30T06:00:00Z"
+    ],
+    "raw_flat_rows": 16,
+    "raw_material_rows": 2,
+    "material_rows_after_known_class_exclusions": 2,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "7acf274f85ef4d9d84e2e4de69b9ad81",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/7acf274f85ef4d9d84e2e4de69b9ad81",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2026-02-06T06:00:00Z",
+        "rows": [
+          {
+            "asset": "LTC",
+            "before": 85,
+            "after": 80,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "DOT",
+            "before": 75,
+            "after": 70,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "TON",
+            "before": 65,
+            "after": 60,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "ENA",
+            "before": 65,
+            "after": 60,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "ATOM",
+            "before": 65,
+            "after": 50,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "OP",
+            "before": 55,
+            "after": 50,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "FET",
+            "before": 55,
+            "after": 50,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "ZRO",
+            "before": 50,
+            "after": 40,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "STRK",
+            "before": 45,
+            "after": 30,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "DYM",
+            "before": 35,
+            "after": 30,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "WAXP",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "VANA",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "IO",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ANIME",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "MOVR",
+            "before": 15,
+            "after": 10,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "ALPINE",
+            "before": 15,
+            "after": 10,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "STORJ",
+            "before": 15,
+            "after": 10,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "BAND",
+            "before": 15,
+            "after": 10,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "COS",
+            "before": 15,
+            "after": 10,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "LQTY",
+            "before": 15,
+            "after": 10,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "TLM",
+            "before": 15,
+            "after": 10,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "FUN",
+            "before": 15,
+            "after": 10,
+            "delta_pp": -5,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-02-06T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-02-06T06:00:00Z"
+    ],
+    "raw_flat_rows": 22,
+    "raw_material_rows": 7,
+    "material_rows_after_known_class_exclusions": 7,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "44b6fb4bfc994057939918ab98d906bb",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/44b6fb4bfc994057939918ab98d906bb",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-02-27T06:00:00Z",
+        "rows": [
+          {
+            "asset": "LRC",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "QTUM",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "1000SATS",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "NTRN",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "PLUME",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "XEC",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "MBOX",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "LPT",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "KAIA",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "OXT",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "SIGN",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "SCR",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "YGG",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "NOT",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "IOST",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ME",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ONT",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "RESOLV",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "HIVE",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "MTL",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-02-27T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-02-27T06:00:00Z"
+    ],
+    "raw_flat_rows": 20,
+    "raw_material_rows": 20,
+    "material_rows_after_known_class_exclusions": 20,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "a46249effc4645c89db2c18a198119d4",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/a46249effc4645c89db2c18a198119d4",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2026-03-07T06:00:00Z",
+        "rows": [
+          {
+            "asset": "WOO",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "BANANA",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "RDNT",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ARKM",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "KAITO",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ACE",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "XAI",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "NEO",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "GTC",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "VET",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "HUMA",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "PARTI",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "DYDX",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "RSR",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "EDU",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "XVG",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "SYRUP",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "PHB",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ERA",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "GUN",
+            "before": 20,
+            "after": 10,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-03-07T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-03-07T06:00:00Z"
+    ],
+    "raw_flat_rows": 20,
+    "raw_material_rows": 20,
+    "material_rows_after_known_class_exclusions": 20,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "361baed0b23744a8b322bc7023cba3a9",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/361baed0b23744a8b322bc7023cba3a9",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-03-13T06:00:00Z",
+        "rows": [
+          {
+            "asset": "WIF",
+            "before": 40,
+            "after": 25,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "BAT",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "HOT",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ANKR",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "SNX",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ALICE",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "ICX",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "AEVO",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "XTZ",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "PNUT",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "MASK",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "RVN",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-03-13T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-03-13T06:00:00Z"
+    ],
+    "raw_flat_rows": 12,
+    "raw_material_rows": 12,
+    "material_rows_after_known_class_exclusions": 12,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "fdd4eb1e1272445b81fa0f1656ad17f6",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/fdd4eb1e1272445b81fa0f1656ad17f6",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2026-03-20T06:00:00Z",
+        "rows": [
+          {
+            "asset": "U",
+            "before": 90,
+            "after": 95,
+            "delta_pp": 5,
+            "known_excluded": false
+          },
+          {
+            "asset": "A2Z",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "WIF",
+            "before": 25,
+            "after": 10,
+            "delta_pp": -15,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-03-20T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-03-20T06:00:00Z"
+    ],
+    "raw_flat_rows": 3,
+    "raw_material_rows": 2,
+    "material_rows_after_known_class_exclusions": 2,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "26d93ead76134f94901e75edd3e008d4",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/26d93ead76134f94901e75edd3e008d4",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-04-24T06:00:00Z",
+        "rows": [
+          {
+            "asset": "WBTC",
+            "before": 70,
+            "after": 60,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "CAKE",
+            "before": 60,
+            "after": 50,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ETHFI",
+            "before": 60,
+            "after": 50,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "INJ",
+            "before": 60,
+            "after": 40,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "TRUMP",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-04-24T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-04-24T06:00:00Z"
+    ],
+    "raw_flat_rows": 5,
+    "raw_material_rows": 5,
+    "material_rows_after_known_class_exclusions": 5,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "7d34ee71003a43d19d88977b9815149e",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/7d34ee71003a43d19d88977b9815149e",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2026-05-01T06:00:00Z",
+        "rows": [
+          {
+            "asset": "STX",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "APT",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "CFX",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "GRT",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "MANA",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "SUSHI",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "TIA",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "W",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "WLD",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ZRO",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ASTER",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-05-01T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-05-01T06:00:00Z"
+    ],
+    "raw_flat_rows": 11,
+    "raw_material_rows": 11,
+    "material_rows_after_known_class_exclusions": 11,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "acc2cb4b45714c7b99cfe3ba4848f3f4",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/acc2cb4b45714c7b99cfe3ba4848f3f4",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-05-08T06:00:00Z",
+        "rows": [
+          {
+            "asset": "DOGE",
+            "before": 90,
+            "after": 85,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "SOL",
+            "before": 90,
+            "after": 85,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "BNSOL",
+            "before": 90,
+            "after": 85,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "TRX",
+            "before": 85,
+            "after": 50,
+            "delta_pp": -35,
+            "known_excluded": false
+          },
+          {
+            "asset": "LINK",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "AVAX",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "AAVE",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "LTC",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "HBAR",
+            "before": 80,
+            "after": 70,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "XLM",
+            "before": 80,
+            "after": 50,
+            "delta_pp": -30,
+            "known_excluded": false
+          },
+          {
+            "asset": "SHIB",
+            "before": 80,
+            "after": 50,
+            "delta_pp": -30,
+            "known_excluded": false
+          },
+          {
+            "asset": "PEPE",
+            "before": 75,
+            "after": 50,
+            "delta_pp": -25,
+            "known_excluded": false
+          },
+          {
+            "asset": "UNI",
+            "before": 75,
+            "after": 60,
+            "delta_pp": -15,
+            "known_excluded": false
+          },
+          {
+            "asset": "BCH",
+            "before": 75,
+            "after": 50,
+            "delta_pp": -25,
+            "known_excluded": false
+          },
+          {
+            "asset": "BONK",
+            "before": 70,
+            "after": 50,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "ARB",
+            "before": 70,
+            "after": 50,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "DOT",
+            "before": 70,
+            "after": 50,
+            "delta_pp": -20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-05-08T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-05-08T06:00:00Z"
+    ],
+    "raw_flat_rows": 17,
+    "raw_material_rows": 14,
+    "material_rows_after_known_class_exclusions": 14,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "fd9a0d1f932f4025bdb09b6c57179c9a",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/fd9a0d1f932f4025bdb09b6c57179c9a",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-05-15T06:00:00Z",
+        "rows": [
+          {
+            "asset": "UNI",
+            "before": 60,
+            "after": 50,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ENA",
+            "before": 60,
+            "after": 50,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "RAY",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "APE",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ZEC",
+            "before": 30,
+            "after": 50,
+            "delta_pp": 20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-05-15T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-05-15T06:00:00Z"
+    ],
+    "raw_flat_rows": 5,
+    "raw_material_rows": 5,
+    "material_rows_after_known_class_exclusions": 5,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "7a9deab7bcad40a69dd61734a577387e",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/7a9deab7bcad40a69dd61734a577387e",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-05-22T06:00:00Z",
+        "rows": [
+          {
+            "asset": "DOGE",
+            "before": 85,
+            "after": 80,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "ETHFI",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "PENGU",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "INJ",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "SEI",
+            "before": 40,
+            "after": 30,
+            "delta_pp": -10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-05-22T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-05-22T06:00:00Z"
+    ],
+    "raw_flat_rows": 5,
+    "raw_material_rows": 4,
+    "material_rows_after_known_class_exclusions": 4,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "4d11138559ff4598b60965c479517934",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/4d11138559ff4598b60965c479517934",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-06-12T06:00:00Z",
+        "rows": [
+          {
+            "asset": "U",
+            "before": 95,
+            "after": 98,
+            "delta_pp": 3,
+            "known_excluded": false
+          },
+          {
+            "asset": "CAKE",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "CRV",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "TAO",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-06-12T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-06-12T06:00:00Z"
+    ],
+    "raw_flat_rows": 4,
+    "raw_material_rows": 3,
+    "material_rows_after_known_class_exclusions": 3,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "d1954a75b8514a2d91b9135a13348df5",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/d1954a75b8514a2d91b9135a13348df5",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2026-06-19T06:00:00Z",
+        "rows": [
+          {
+            "asset": "ADA",
+            "before": 90,
+            "after": 85,
+            "delta_pp": -5,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-06-19T06:00:00Z"
+    ],
+    "material_times": [],
+    "raw_flat_rows": 1,
+    "raw_material_rows": 0,
+    "material_rows_after_known_class_exclusions": 0,
+    "raw_material": false,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": false,
+    "available_directions": [],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "f9b4352902014b6a983b4838f958f757",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/f9b4352902014b6a983b4838f958f757",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2026-06-26T06:00:00Z",
+        "rows": [
+          {
+            "asset": "ADA",
+            "before": 85,
+            "after": 80,
+            "delta_pp": -5,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-06-26T06:00:00Z"
+    ],
+    "material_times": [],
+    "raw_flat_rows": 1,
+    "raw_material_rows": 0,
+    "material_rows_after_known_class_exclusions": 0,
+    "raw_material": false,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": false,
+    "available_directions": [],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "f7dbb4547b4f443d975eb7d619ad2969",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/f7dbb4547b4f443d975eb7d619ad2969",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-07-10T06:00:00Z",
+        "rows": [
+          {
+            "asset": "SOL",
+            "before": 85,
+            "after": 80,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "BNSOL",
+            "before": 85,
+            "after": 80,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "WBTC",
+            "before": 60,
+            "after": 50,
+            "delta_pp": -10,
+            "known_excluded": false
+          },
+          {
+            "asset": "VANRY",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-07-10T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-07-10T06:00:00Z"
+    ],
+    "raw_flat_rows": 4,
+    "raw_material_rows": 2,
+    "material_rows_after_known_class_exclusions": 2,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "a18d439fe26943e09270bfbc45b6db13",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/a18d439fe26943e09270bfbc45b6db13",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-07-17T06:00:00Z",
+        "rows": [
+          {
+            "asset": "LUNC",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "MORPHO",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-07-17T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-07-17T06:00:00Z"
+    ],
+    "raw_flat_rows": 2,
+    "raw_material_rows": 2,
+    "material_rows_after_known_class_exclusions": 2,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "97b4f93f9c684da2a5701ab09530d3df",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/97b4f93f9c684da2a5701ab09530d3df",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2026-07-24T06:00:00Z",
+        "rows": [
+          {
+            "asset": "ALGO",
+            "before": 50,
+            "after": 30,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "PUMP",
+            "before": 30,
+            "after": 50,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "WLD",
+            "before": 30,
+            "after": 50,
+            "delta_pp": 20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-07-24T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-07-24T06:00:00Z"
+    ],
+    "raw_flat_rows": 3,
+    "raw_material_rows": 3,
+    "material_rows_after_known_class_exclusions": 3,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "b4a1a7c64f454abda5b22860cd52c682",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/b4a1a7c64f454abda5b22860cd52c682",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2026-07-31T06:00:00Z",
+        "rows": [
+          {
+            "asset": "STX",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SANTOS",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "EURI",
+            "before": 20,
+            "after": 30,
+            "delta_pp": 10,
+            "known_excluded": true
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-07-31T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-07-31T06:00:00Z"
+    ],
+    "raw_flat_rows": 3,
+    "raw_material_rows": 3,
+    "material_rows_after_known_class_exclusions": 2,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "3f18062274ea49199475b4ad9ff35738",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/3f18062274ea49199475b4ad9ff35738",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-08-14T06:00:00Z",
+        "rows": [
+          {
+            "asset": "CUSDOX",
+            "before": 85,
+            "after": 80,
+            "delta_pp": -5,
+            "known_excluded": false
+          },
+          {
+            "asset": "USDS",
+            "before": 75,
+            "after": 80,
+            "delta_pp": 5,
+            "known_excluded": false
+          },
+          {
+            "asset": "AERO",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-08-14T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-08-14T06:00:00Z"
+    ],
+    "raw_flat_rows": 3,
+    "raw_material_rows": 1,
+    "material_rows_after_known_class_exclusions": 1,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "1f12c2c6cc2b43aa941e382dfc19c417",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/1f12c2c6cc2b43aa941e382dfc19c417",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2026-09-04T06:00:00Z",
+        "rows": [
+          {
+            "asset": "ZEC",
+            "before": 50,
+            "after": 70,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "AIXBT",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "RARE",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "KSM",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "CATI",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "RED",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "FLUX",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "PIXEL",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "RONIN",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SAGA",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "BICO",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SYRUP",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-09-04T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-09-04T06:00:00Z"
+    ],
+    "raw_flat_rows": 12,
+    "raw_material_rows": 12,
+    "material_rows_after_known_class_exclusions": 12,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "58b63eb8dd664487910a7cdcb7fc0c23",
+    "year": 2026,
+    "canonical_url": "UNKNOWN",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-09-11T06:00:00Z",
+        "rows": [],
+        "complete": false
+      }
+    ],
+    "all_known_times": [
+      "2026-09-11T06:00:00Z"
+    ],
+    "material_times": [],
+    "raw_flat_rows": 0,
+    "raw_material_rows": 0,
+    "material_rows_after_known_class_exclusions": 0,
+    "raw_material": false,
+    "unknown_table": true,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "390301281fa84012b654ddbe811f9a53",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/390301281fa84012b654ddbe811f9a53",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2026-09-18T06:00:00Z",
+        "rows": [
+          {
+            "asset": "ARB",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "TAO",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "WLD",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "AUCTION",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "BLUR",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "GALA",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "HYPER",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "S",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SYRUP",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-09-18T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-09-18T06:00:00Z"
+    ],
+    "raw_flat_rows": 9,
+    "raw_material_rows": 9,
+    "material_rows_after_known_class_exclusions": 9,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "fdb068f493444efba6cc979dec9a3955",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/fdb068f493444efba6cc979dec9a3955",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-09-25T06:00:00Z",
+        "rows": [
+          {
+            "asset": "GAS",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "NEWT",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "ORCA",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SFP",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "UMA",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "1MBABYDOGE",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "KAVA",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-09-25T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-09-25T06:00:00Z"
+    ],
+    "raw_flat_rows": 7,
+    "raw_material_rows": 7,
+    "material_rows_after_known_class_exclusions": 7,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": true,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "2200ab5284594d8a8b8239326e3d1fff",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/2200ab5284594d8a8b8239326e3d1fff",
+    "body_confirmed": true,
+    "groups": [
+      {
+        "T": "2026-10-02T06:00:00Z",
+        "rows": [],
+        "complete": false
+      }
+    ],
+    "all_known_times": [
+      "2026-10-02T06:00:00Z"
+    ],
+    "material_times": [],
+    "raw_flat_rows": 0,
+    "raw_material_rows": 0,
+    "material_rows_after_known_class_exclusions": 0,
+    "raw_material": false,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": true,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": false,
+    "available_directions": [],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "74c7657a53f141e8b2d584bf44e6dd87",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/74c7657a53f141e8b2d584bf44e6dd87",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-10-09T06:00:00Z",
+        "rows": [
+          {
+            "asset": "BCH",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "CRCLB",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ENA",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "MSTRB",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ONDO",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "WCT",
+            "before": 30,
+            "after": 10,
+            "delta_pp": -20,
+            "known_excluded": false
+          },
+          {
+            "asset": "MASK",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-10-09T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-10-09T06:00:00Z"
+    ],
+    "raw_flat_rows": 7,
+    "raw_material_rows": 7,
+    "material_rows_after_known_class_exclusions": 7,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "79f36518401b4187b46d52e87bb2c286",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/79f36518401b4187b46d52e87bb2c286",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-10-16T06:00:00Z",
+        "rows": [
+          {
+            "asset": "ASTER",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "ETC",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-10-16T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-10-16T06:00:00Z"
+    ],
+    "raw_flat_rows": 2,
+    "raw_material_rows": 2,
+    "material_rows_after_known_class_exclusions": 2,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [
+      "LONG"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "7d76e6a921024e09a91523f983503014",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/7d76e6a921024e09a91523f983503014",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "2026-10-23T06:00:00Z",
+        "rows": [
+          {
+            "asset": "POL",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "SHIB",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "XLM",
+            "before": 50,
+            "after": 60,
+            "delta_pp": 10,
+            "known_excluded": false
+          },
+          {
+            "asset": "COW",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "NEXO",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "RVN",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          },
+          {
+            "asset": "SAND",
+            "before": 10,
+            "after": 30,
+            "delta_pp": 20,
+            "known_excluded": false
+          }
+        ],
+        "complete": true
+      }
+    ],
+    "all_known_times": [
+      "2026-10-23T06:00:00Z"
+    ],
+    "material_times": [
+      "2026-10-23T06:00:00Z"
+    ],
+    "raw_flat_rows": 7,
+    "raw_material_rows": 7,
+    "material_rows_after_known_class_exclusions": 7,
+    "raw_material": true,
+    "unknown_table": false,
+    "future": true,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": false,
+    "available_directions": [
+      "LONG"
+    ],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  },
+  {
+    "article_id": "4bf81e4829b64eacae3caa802ec6fc59",
+    "year": 2026,
+    "canonical_url": "https://www.binance.com/en/support/announcement/detail/4bf81e4829b64eacae3caa802ec6fc59",
+    "body_confirmed": false,
+    "groups": [
+      {
+        "T": "UNKNOWN",
+        "rows": [],
+        "complete": false
+      }
+    ],
+    "all_known_times": [],
+    "material_times": [],
+    "raw_flat_rows": 0,
+    "raw_material_rows": 0,
+    "material_rows_after_known_class_exclusions": 0,
+    "raw_material": false,
+    "unknown_table": true,
+    "future": false,
+    "wrong_product_only": false,
+    "known_material_amendment": false,
+    "plan_modification_original_diff_unknown": false,
+    "potential": true,
+    "available_directions": [],
+    "strict_qualification": "UNKNOWN",
+    "verified_executable": false,
+    "verified_underlying_native_eligible_markets": "UNKNOWN"
+  }
+]

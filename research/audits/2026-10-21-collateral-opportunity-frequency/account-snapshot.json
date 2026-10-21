@@ -1,0 +1,10 @@
+{
+  "schema": "cocomelon.authenticated-issue469-extract.v1",
+  "source_url": "https://github.com/Dtwosam/Cocomelon/issues/469",
+  "issue_updated_at": "2026-10-21T12:40:29Z",
+  "header": "## Continuous paper runtime live status\n\nUpdated: 2026-10-21T12:40:28.572000+00:00\nWorker run: 39572026775\nWorker head SHA: 528c10e071c808dd8c305822a2a378ad17e7bb9f\nPredecessor run: 39543863546\nExecution: PAPER ONLY · Live orders: false\n\n> Operational heartbeat only. Heavy research analytics are deferred to durable state/artifact audits so they cannot block market streaming or graceful handoff.\n\n",
+  "account": "- starting cash: 10000\n- equity: 9687.535905110678801500000002\n- total account PnL / return: -312.464094889321198499999998 / -0.0312464094889321198499999998\n- cash: 9687.535905110678801500000002\n- daily realized / unrealized PnL: 0.540915147375000000000000045 / 0\n- realized gross / fees / funding: -49.88519000000000000000000231 / 259.41604964490 / -3.1628552444211985\n- exact account after-cost dollars to zero (not profit): `312.464094889321198499999998`\n- actual same-fills marked net with ALL fees refunded (funding/marks unchanged): `-53.04804524442119850000000231`\n- fee-free same-fills still loses / remaining gross needed to zero: `true / 53.04804524442119850000000231`\n- absolute marked PAPER after-cost positive: `false` · 72h source / forward edge / LIVE authority: `NOT CERTIFIED / NOT CERTIFIED / DISABLED`\n- cumulative / session closed trades: 335 / 3\n- open planned risk / equity: 0 / 0E+24\n- stop-trigger gross PnL / R: 0 / None\n- protected-stop positions: 0 / 0\n- gross open notional / equity: 0 / 0E+24\n- available margin: 9687.535905110678801500000002\n- execution healthy: true\n- execution reasons: none",
+  "open_positions": "_No open paper positions in this heartbeat._",
+  "original_source_failure": "original_received_clock_regression",
+  "source_certification": false
+}

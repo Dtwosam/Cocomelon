@@ -1,0 +1,3543 @@
+{
+  "schema": "cocomelon.collateral_notice_frequency_readonly.v1",
+  "period": {
+    "start": "2025-01-01",
+    "end": "2025-12-31"
+  },
+  "protocol_sha256": "31677ec78380f6d1f56e0aed4245cb332741353d77a33b6bf4c3d73d3b71c5c3",
+  "collected_on_utc_date": "2026-10-21",
+  "method": {
+    "search_calls": 4,
+    "body_open_attempts": 12,
+    "body_successes": 10,
+    "body_redirects": 2,
+    "archive_census_proved": false,
+    "paid_services_used": false,
+    "market_price_return_queries": false,
+    "repository_writes": false
+  },
+  "global_caveats": [
+    "Bounded official-site search is discovery, not a complete historical archive. All months have UNKNOWN completeness; missing results are not zero events.",
+    "Only source_evidence=official_body_opened rows were verified by an article body open. Search-only excerpts are separately retained as candidates, not authenticated full semantic bodies.",
+    "Published on headers lack an explicit timezone in retrieved text; raw timestamp is retained and published_utc is null rather than silently asserting UTC. Effective clocks explicitly say UTC.",
+    "Historical page retrieval does not prove a bot received the original complete body by T-7h; no prospective receipt exists.",
+    "Article IDs deduplicate localized URLs and repeated search hits. No archive of prior versions was available; amendments cannot be reconstructed.",
+    "Asset labels alone establish neither underlying identity nor native Hyperliquid support/ordinary eligibility. All are UNKNOWN_NOT_CHECKED.",
+    "Separate ordinary Portfolio Margin flat tables remain distinct from PM Pro tier tables and unrelated futures leverage/margin tables. No tier value is flattened.",
+    "No prices, returns, market outcomes, profitability claims, build, collector, protocol change or worker change."
+  ],
+  "notices": [
+    {
+      "article_id": "a6b3cdf700934d91a79ac1b4155767ff",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/a6b3cdf700934d91a79ac1b4155767ff",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/a6b3cdf700934d91a79ac1b4155767ff",
+      "source_evidence": "official_body_opened",
+      "published_text": "2025-01-06 07:00",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "a6b3cdf700934d91a79ac1b4155767ff",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-01-07T06:00:00Z",
+          "rollout_approximately_minutes": 60,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "ENA",
+              "before_pct": 45,
+              "after_pct": 50,
+              "delta_percentage_points": 5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "USUAL",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "PENGU",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "BIO",
+              "before_pct": 10,
+              "after_pct": 20,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "2db64dbefbb34118b315dcc66b88194c",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/2db64dbefbb34118b315dcc66b88194c",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/2db64dbefbb34118b315dcc66b88194c",
+      "source_evidence": "official_body_opened",
+      "published_text": "2025-02-20 07:30",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "2db64dbefbb34118b315dcc66b88194c",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-02-24T06:00:00Z",
+          "rollout_approximately_minutes": 60,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "SUSHI",
+              "before_pct": 85,
+              "after_pct": 75,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "C98",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ENJ",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "PEOPLE",
+              "before_pct": 50,
+              "after_pct": 40,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "OM",
+              "before_pct": 30,
+              "after_pct": 20,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "3dfb9c8bb7e242e9ab61282d5f3a8766",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/3dfb9c8bb7e242e9ab61282d5f3a8766",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/3dfb9c8bb7e242e9ab61282d5f3a8766",
+      "source_evidence": "search_only",
+      "published_text": "2025-02-24 14:27",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "3dfb9c8bb7e242e9ab61282d5f3a8766",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-02-28T06:00:00Z",
+          "rollout_approximately_minutes": 60,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "ATOM",
+              "before_pct": 85,
+              "after_pct": 75,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ANKR",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "COTI",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "EGLD",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SUSHI",
+              "before_pct": 75,
+              "after_pct": 60,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "OM",
+              "before_pct": 20,
+              "after_pct": 10,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "b2698a6dee104b008075fbf50350698e",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/b2698a6dee104b008075fbf50350698e",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/b2698a6dee104b008075fbf50350698e",
+      "source_evidence": "search_only",
+      "published_text": "2025-03-10 08:00",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "b2698a6dee104b008075fbf50350698e",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-03-14T06:00:00Z",
+          "rollout_approximately_minutes": 60,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "CELO",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "IOTX",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "LRC",
+              "before_pct": 80,
+              "after_pct": 65,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ALICE",
+              "before_pct": 80,
+              "after_pct": 65,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "AUDIO",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ICX",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "03ec6ecae00c4915849dd522ce19e1b1",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/03ec6ecae00c4915849dd522ce19e1b1",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/03ec6ecae00c4915849dd522ce19e1b1",
+      "source_evidence": "official_body_opened",
+      "published_text": "2025-03-17 06:00",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "03ec6ecae00c4915849dd522ce19e1b1",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-03-21T06:00:00Z",
+          "rollout_approximately_minutes": 60,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "POL",
+              "before_pct": 85,
+              "after_pct": 75,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ZEC",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "DASH",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "LRC",
+              "before_pct": 80,
+              "after_pct": 65,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SXP",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "DUSK",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "bd55a51d736a484087cd146f28d082c4",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/bd55a51d736a484087cd146f28d082c4",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/bd55a51d736a484087cd146f28d082c4",
+      "source_evidence": "search_only",
+      "published_text": "2025-03-24 06:00",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "bd55a51d736a484087cd146f28d082c4",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-03-28T06:00:00Z",
+          "rollout_approximately_minutes": 60,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "CRV",
+              "before_pct": 85,
+              "after_pct": 80,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "UNI",
+              "before_pct": 85,
+              "after_pct": 80,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ALGO",
+              "before_pct": 85,
+              "after_pct": 75,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "KSM",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "XTZ",
+              "before_pct": 75,
+              "after_pct": 60,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "XEC",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "139e45df5d844004832b4c04dee8e70c",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/139e45df5d844004832b4c04dee8e70c",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/139e45df5d844004832b4c04dee8e70c",
+      "source_evidence": "search_only",
+      "published_text": null,
+      "published_utc": null,
+      "published_timezone": "UNKNOWN",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "139e45df5d844004832b4c04dee8e70c",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-04-04T06:00:00Z",
+          "rollout_approximately_minutes": null,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [],
+          "table_rows_complete": false
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "Only title/effective-clock excerpt found; publication, rollout and asset rows UNKNOWN."
+      ],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "ca2ff3cd4cf8465b9a546a5f3e9c87c7",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/ca2ff3cd4cf8465b9a546a5f3e9c87c7",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/ca2ff3cd4cf8465b9a546a5f3e9c87c7",
+      "source_evidence": "search_only",
+      "published_text": "2025-04-08 02:00",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "ca2ff3cd4cf8465b9a546a5f3e9c87c7",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-04-11T06:00:00Z",
+          "rollout_approximately_minutes": 60,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "ICP",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SNX",
+              "before_pct": 80,
+              "after_pct": 65,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "MANA",
+              "before_pct": 75,
+              "after_pct": 65,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "KAVA",
+              "before_pct": 70,
+              "after_pct": 60,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "KNC",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "CHR",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "TLM",
+              "before_pct": 60,
+              "after_pct": 50,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ALICE",
+              "before_pct": 65,
+              "after_pct": 50,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "BETA",
+              "before_pct": 60,
+              "after_pct": 45,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SFP",
+              "before_pct": 50,
+              "after_pct": 40,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "6c1251d647fe483da2ee27fe93374c2d",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/6c1251d647fe483da2ee27fe93374c2d",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/6c1251d647fe483da2ee27fe93374c2d",
+      "source_evidence": "search_only",
+      "published_text": "2025-04-12 03:01",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "6c1251d647fe483da2ee27fe93374c2d",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-04-18T06:00:00Z",
+          "rollout_approximately_minutes": 60,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "DENT",
+              "before_pct": 65,
+              "after_pct": 55,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ENJ",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "NOT",
+              "before_pct": 75,
+              "after_pct": 60,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "DASH",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "CHZ",
+              "before_pct": 80,
+              "after_pct": 65,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "AXS",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ENS",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SAND",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "THETA",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "QNT",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "564d3f51b5ad459bbe07fd46f429be7c",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/564d3f51b5ad459bbe07fd46f429be7c",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/564d3f51b5ad459bbe07fd46f429be7c",
+      "source_evidence": "official_body_opened",
+      "published_text": "2025-04-19 03:59",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "564d3f51b5ad459bbe07fd46f429be7c",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-04-25T06:00:00Z",
+          "rollout_approximately_minutes": 60,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "ZEC",
+              "before_pct": 70,
+              "after_pct": 60,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "TWT",
+              "before_pct": 70,
+              "after_pct": 60,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ZIL",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ONE",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ROSE",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "C98",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ANKR",
+              "before_pct": 70,
+              "after_pct": 50,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SKL",
+              "before_pct": 70,
+              "after_pct": 50,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "COTI",
+              "before_pct": 70,
+              "after_pct": 50,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "1INCH",
+              "before_pct": 65,
+              "after_pct": 45,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "93fe7d8426a34f16b1a929b3f1a11463",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/93fe7d8426a34f16b1a929b3f1a11463",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/93fe7d8426a34f16b1a929b3f1a11463",
+      "source_evidence": "search_only",
+      "published_text": "2025-04-26 10:37",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "93fe7d8426a34f16b1a929b3f1a11463",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-05-02T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "DOGE",
+              "before_pct": 95,
+              "after_pct": 90,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "DYDX",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "NEO",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "GRT",
+              "before_pct": 80,
+              "after_pct": 65,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "AR",
+              "before_pct": 80,
+              "after_pct": 65,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "KSM",
+              "before_pct": 70,
+              "after_pct": 50,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ZEC",
+              "before_pct": 60,
+              "after_pct": 45,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "BSW",
+              "before_pct": 50,
+              "after_pct": 30,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "FTT",
+              "before_pct": 40,
+              "after_pct": 20,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "JASMY",
+              "before_pct": 35,
+              "after_pct": 15,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "STPT",
+              "before_pct": 20,
+              "after_pct": 10,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "Separate futures leverage/margin tables ignored."
+      ],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "be0b2e950851420d8b7f9f427097be08",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/be0b2e950851420d8b7f9f427097be08",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/be0b2e950851420d8b7f9f427097be08",
+      "source_evidence": "search_only",
+      "published_text": "2025-05-04 16:00",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "be0b2e950851420d8b7f9f427097be08",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-05-09T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "VET",
+              "before_pct": 80,
+              "after_pct": 75,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "EOS",
+              "before_pct": 80,
+              "after_pct": 70,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ARB",
+              "before_pct": 75,
+              "after_pct": 70,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "POL",
+              "before_pct": 75,
+              "after_pct": 65,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "EGLD",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "CELO",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "COMP",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ZEC",
+              "before_pct": 45,
+              "after_pct": 30,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "BSW",
+              "before_pct": 30,
+              "after_pct": 20,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "FTT",
+              "before_pct": 20,
+              "after_pct": 10,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "JASMY",
+              "before_pct": 15,
+              "after_pct": 10,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "Separate futures leverage/margin tables ignored."
+      ],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "776c16c430b84e1dac46d676f5ba4e83",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/776c16c430b84e1dac46d676f5ba4e83",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/776c16c430b84e1dac46d676f5ba4e83",
+      "source_evidence": "official_body_opened",
+      "published_text": "2025-05-16 14:30",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "776c16c430b84e1dac46d676f5ba4e83",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-05-23T06:00:00Z",
+          "rollout_approximately_minutes": 60,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "ETC",
+              "before_pct": 80,
+              "after_pct": 75,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "CRV",
+              "before_pct": 80,
+              "after_pct": 75,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "CAKE",
+              "before_pct": 75,
+              "after_pct": 70,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "LRC",
+              "before_pct": 65,
+              "after_pct": 50,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "MEME",
+              "before_pct": 50,
+              "after_pct": 40,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "AI",
+              "before_pct": 50,
+              "after_pct": 40,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "BAKE",
+              "before_pct": 50,
+              "after_pct": 35,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "TLM",
+              "before_pct": 50,
+              "after_pct": 30,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "GTC",
+              "before_pct": 40,
+              "after_pct": 25,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "PORTAL",
+              "before_pct": 35,
+              "after_pct": 20,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ZEC",
+              "before_pct": 20,
+              "after_pct": 10,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "b5c64cd30e2740528992fba781c20229",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/b5c64cd30e2740528992fba781c20229",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/b5c64cd30e2740528992fba781c20229",
+      "source_evidence": "search_only",
+      "published_text": "2025-05-25 15:22",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "b5c64cd30e2740528992fba781c20229",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-05-30T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "UNI",
+              "before_pct": 80,
+              "after_pct": 75,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "QNT",
+              "before_pct": 70,
+              "after_pct": 60,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "THETA",
+              "before_pct": 70,
+              "after_pct": 60,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ICP",
+              "before_pct": 70,
+              "after_pct": 60,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "FLOW",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "GRT",
+              "before_pct": 65,
+              "after_pct": 55,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "DUSK",
+              "before_pct": 55,
+              "after_pct": 40,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "KDA",
+              "before_pct": 50,
+              "after_pct": 40,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "HFT",
+              "before_pct": 50,
+              "after_pct": 35,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ACE",
+              "before_pct": 50,
+              "after_pct": 35,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "PORTAL",
+              "before_pct": 20,
+              "after_pct": 10,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "Separate futures leverage/margin tables ignored."
+      ],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "b1219385d93740d1a8af9fc8de80f1cb",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/b1219385d93740d1a8af9fc8de80f1cb",
+      "indexed_url": "https://www.binance.com/en-TR/support/announcement/detail/b1219385d93740d1a8af9fc8de80f1cb",
+      "source_evidence": "search_only",
+      "published_text": null,
+      "published_utc": null,
+      "published_timezone": "UNKNOWN",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "b1219385d93740d1a8af9fc8de80f1cb",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-06-13T06:00:00Z",
+          "rollout_approximately_minutes": null,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [],
+          "table_rows_complete": false
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "Only noncanonical en-TR official search result and effective-clock excerpt; original English body/rows/publication UNKNOWN."
+      ],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "e778988edec446038ad536bcb0c8d460",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/e778988edec446038ad536bcb0c8d460",
+      "indexed_url": "https://www.binance.com/en-PH/support/announcement/detail/e778988edec446038ad536bcb0c8d460",
+      "source_evidence": "search_only",
+      "published_text": "2025-06-14 14:08",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "e778988edec446038ad536bcb0c8d460",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-06-20T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "DYDX",
+              "before_pct": 70,
+              "after_pct": 60,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "AR",
+              "before_pct": 65,
+              "after_pct": 55,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SAND",
+              "before_pct": 65,
+              "after_pct": 55,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "GMT",
+              "before_pct": 60,
+              "after_pct": 50,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "IOTA",
+              "before_pct": 60,
+              "after_pct": 50,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "DENT",
+              "before_pct": 55,
+              "after_pct": 40,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "CHR",
+              "before_pct": 55,
+              "after_pct": 40,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "AUDIO",
+              "before_pct": 55,
+              "after_pct": 40,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "LRC",
+              "before_pct": 50,
+              "after_pct": 40,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "COTI",
+              "before_pct": 50,
+              "after_pct": 40,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "KNC",
+              "before_pct": 55,
+              "after_pct": 35,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "English text indexed under en-PH with language-unsupported message; original canonical English body not opened. Separate futures leverage/margin tables ignored."
+      ],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "aa1d165426df4a7a84a0005a5a2f1e03",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/aa1d165426df4a7a84a0005a5a2f1e03",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/aa1d165426df4a7a84a0005a5a2f1e03",
+      "source_evidence": "official_body_opened",
+      "published_text": "2025-06-22 14:39",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": "2025-06-27 (date only; amendment note)",
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "aa1d165426df4a7a84a0005a5a2f1e03",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-06-27T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "KAVA",
+              "before_pct": 60,
+              "after_pct": 55,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "TWT",
+              "before_pct": 60,
+              "after_pct": 45,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "NOT",
+              "before_pct": 60,
+              "after_pct": 40,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ENJ",
+              "before_pct": 55,
+              "after_pct": 35,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ANKR",
+              "before_pct": 50,
+              "after_pct": 35,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SXP",
+              "before_pct": 40,
+              "after_pct": 30,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "FLUX",
+              "before_pct": 40,
+              "after_pct": 30,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "PYR",
+              "before_pct": 40,
+              "after_pct": 25,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ALICE",
+              "before_pct": 35,
+              "after_pct": 25,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "Explicit amendment2025-06-27 changes collateral-ratio list/assets; retrieved revised state only. Original pre-amendment body unavailable; do not imply these rows were all originally published. Separate futures leverage/margin tables ignored."
+      ],
+      "known_material_amendment": true,
+      "protocol_new_entry_veto": "KNOWN_MATERIAL_AMENDMENT"
+    },
+    {
+      "article_id": "c1addac5267d4efb816b5b603712b77f",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/c1addac5267d4efb816b5b603712b77f",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/c1addac5267d4efb816b5b603712b77f",
+      "source_evidence": "search_only",
+      "published_text": "2025-06-29 14:44",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "c1addac5267d4efb816b5b603712b77f",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-07-04T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "OP",
+              "before_pct": 75,
+              "after_pct": 65,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "CRV",
+              "before_pct": 75,
+              "after_pct": 65,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "CAKE",
+              "before_pct": 70,
+              "after_pct": 60,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ENS",
+              "before_pct": 70,
+              "after_pct": 60,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "RUNE",
+              "before_pct": 70,
+              "after_pct": 55,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ROSE",
+              "before_pct": 55,
+              "after_pct": 40,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ORDI",
+              "before_pct": 60,
+              "after_pct": 40,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SUSHI",
+              "before_pct": 60,
+              "after_pct": 40,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ONE",
+              "before_pct": 55,
+              "after_pct": 40,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ALT",
+              "before_pct": 50,
+              "after_pct": 35,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "MANTA",
+              "before_pct": 50,
+              "after_pct": 30,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "568fe6d4bcaf4fcea744075e230644bf",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/568fe6d4bcaf4fcea744075e230644bf",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/568fe6d4bcaf4fcea744075e230644bf",
+      "source_evidence": "search_only",
+      "published_text": "2025-07-07 04:23",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "568fe6d4bcaf4fcea744075e230644bf",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-07-08T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "VIRTUAL",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ONDO",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SAHARA",
+              "before_pct": 10,
+              "after_pct": 25,
+              "delta_percentage_points": 15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "KAITO",
+              "before_pct": 10,
+              "after_pct": 25,
+              "delta_percentage_points": 15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SYRUP",
+              "before_pct": 10,
+              "after_pct": 20,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "KAIA",
+              "before_pct": 10,
+              "after_pct": 20,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        },
+        {
+          "effective_start_utc": "2025-07-11T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "THETA",
+              "before_pct": 60,
+              "after_pct": 50,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "DYDX",
+              "before_pct": 60,
+              "after_pct": 45,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "DUSK",
+              "before_pct": 40,
+              "after_pct": 30,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "AI",
+              "before_pct": 40,
+              "after_pct": 30,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "BAKE",
+              "before_pct": 35,
+              "after_pct": 25,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ACE",
+              "before_pct": 35,
+              "after_pct": 25,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "a32a2a0e5132427ba568feb2b1a5c7ec",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/a32a2a0e5132427ba568feb2b1a5c7ec",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/a32a2a0e5132427ba568feb2b1a5c7ec",
+      "source_evidence": "search_only_body_redirected",
+      "published_text": "2025-07-14 03:00",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": "2025-07-14 (date only; indexed amendment note)",
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "a32a2a0e5132427ba568feb2b1a5c7ec",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-07-15T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "AIXBT",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "NEWT",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SOPH",
+              "before_pct": 10,
+              "after_pct": 20,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "GUN",
+              "before_pct": 10,
+              "after_pct": 20,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "HUMA",
+              "before_pct": 10,
+              "after_pct": 20,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        },
+        {
+          "effective_start_utc": "2025-07-18T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "KAVA",
+              "before_pct": 55,
+              "after_pct": 50,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "APE",
+              "before_pct": 60,
+              "after_pct": 50,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ZIL",
+              "before_pct": 55,
+              "after_pct": 40,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "IO",
+              "before_pct": 50,
+              "after_pct": 40,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SKL",
+              "before_pct": 50,
+              "after_pct": 35,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "CHR",
+              "before_pct": 40,
+              "after_pct": 30,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "Body open redirected to announcement index. Indexed note says updated2025-07-14 to remove TRUMP. Original TRUMP row and exact update time unavailable; retain as amended/source gap."
+      ],
+      "known_material_amendment": true,
+      "protocol_new_entry_veto": "KNOWN_MATERIAL_AMENDMENT"
+    },
+    {
+      "article_id": "810e7de52311466790f295a4f7abd766",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/810e7de52311466790f295a4f7abd766",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/810e7de52311466790f295a4f7abd766",
+      "source_evidence": "search_only",
+      "published_text": "2025-07-18 14:30",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "810e7de52311466790f295a4f7abd766",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-07-22T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "FLOKI",
+              "before_pct": 40,
+              "after_pct": 50,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "PENGU",
+              "before_pct": 30,
+              "after_pct": 50,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "TAO",
+              "before_pct": 30,
+              "after_pct": 50,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SXT",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "FXS",
+              "before_pct": 20,
+              "after_pct": 30,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "RESOLV",
+              "before_pct": 10,
+              "after_pct": 20,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        },
+        {
+          "effective_start_utc": "2025-07-25T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "DASH",
+              "before_pct": 55,
+              "after_pct": 45,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "BAT",
+              "before_pct": 50,
+              "after_pct": 40,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "EGLD",
+              "before_pct": 55,
+              "after_pct": 40,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "FLOW",
+              "before_pct": 55,
+              "after_pct": 40,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "COTI",
+              "before_pct": 40,
+              "after_pct": 30,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "DENT",
+              "before_pct": 40,
+              "after_pct": 25,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "Separate futures leverage/margin tables ignored."
+      ],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "4ec6be211b904da3b46fdc030a86a837",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/4ec6be211b904da3b46fdc030a86a837",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/4ec6be211b904da3b46fdc030a86a837",
+      "source_evidence": "official_body_opened",
+      "published_text": "2025-07-27 05:44",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "4ec6be211b904da3b46fdc030a86a837",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-07-29T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "WBETH",
+              "before_pct": 85,
+              "after_pct": 95,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED",
+              "exclusion_flag": "WRAPPED_OR_REDEMPTION_CLAIM_LABEL; do not count as protocol-eligible native underlying"
+            },
+            {
+              "asset_label": "TRUMP",
+              "before_pct": 30,
+              "after_pct": 50,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "LDO",
+              "before_pct": 35,
+              "after_pct": 50,
+              "delta_percentage_points": 15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "C",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED",
+              "identity_warning": "Ticker/rebrand/multiplier mapping not authenticated"
+            },
+            {
+              "asset_label": "SPK",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "PARTI",
+              "before_pct": 10,
+              "after_pct": 20,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        },
+        {
+          "effective_start_utc": "2025-08-01T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "NEO",
+              "before_pct": 55,
+              "after_pct": 45,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "IOTX",
+              "before_pct": 55,
+              "after_pct": 40,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "MANA",
+              "before_pct": 50,
+              "after_pct": 40,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "KSM",
+              "before_pct": 50,
+              "after_pct": 35,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SNX",
+              "before_pct": 50,
+              "after_pct": 35,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "DYDX",
+              "before_pct": 45,
+              "after_pct": 35,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "cb5a63686f63408d994aaf3443e4850e",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/cb5a63686f63408d994aaf3443e4850e",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/cb5a63686f63408d994aaf3443e4850e",
+      "source_evidence": "search_only",
+      "published_text": "2025-08-04 04:45",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "cb5a63686f63408d994aaf3443e4850e",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-08-05T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "VIRTUAL",
+              "before_pct": 30,
+              "after_pct": 50,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "HYPER",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "BERA",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "HEI",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "BABY",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "INIT",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        },
+        {
+          "effective_start_utc": "2025-08-08T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "DOT",
+              "before_pct": 80,
+              "after_pct": 75,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "OP",
+              "before_pct": 65,
+              "after_pct": 55,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ENS",
+              "before_pct": 60,
+              "after_pct": 50,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "CHZ",
+              "before_pct": 50,
+              "after_pct": 40,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "HOT",
+              "before_pct": 50,
+              "after_pct": 35,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "LRC",
+              "before_pct": 40,
+              "after_pct": 25,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "dd052fcc66ce4ba1902f729f49b124f4",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/dd052fcc66ce4ba1902f729f49b124f4",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/dd052fcc66ce4ba1902f729f49b124f4",
+      "source_evidence": "search_only",
+      "published_text": "2025-08-11 07:30",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "dd052fcc66ce4ba1902f729f49b124f4",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-08-12T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "PENDLE",
+              "before_pct": 35,
+              "after_pct": 50,
+              "delta_percentage_points": 15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SOPH",
+              "before_pct": 20,
+              "after_pct": 30,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "TURBO",
+              "before_pct": 20,
+              "after_pct": 30,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "A2Z",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ILV",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "TREE",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        },
+        {
+          "effective_start_utc": "2025-08-15T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "VET",
+              "before_pct": 70,
+              "after_pct": 65,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "QNT",
+              "before_pct": 60,
+              "after_pct": 50,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "XEC",
+              "before_pct": 55,
+              "after_pct": 45,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "CELO",
+              "before_pct": 55,
+              "after_pct": 45,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "1000SATS",
+              "before_pct": 50,
+              "after_pct": 35,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED",
+              "identity_warning": "Ticker/rebrand/multiplier mapping not authenticated"
+            },
+            {
+              "asset_label": "ONE",
+              "before_pct": 40,
+              "after_pct": 25,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "8e428625ebeb4cc7ae8678026846095c",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/8e428625ebeb4cc7ae8678026846095c",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/8e428625ebeb4cc7ae8678026846095c",
+      "source_evidence": "official_body_opened",
+      "published_text": "2025-08-17 03:31",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "8e428625ebeb4cc7ae8678026846095c",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-08-19T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "ENA",
+              "before_pct": 50,
+              "after_pct": 65,
+              "delta_percentage_points": 15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "TON",
+              "before_pct": 50,
+              "after_pct": 65,
+              "delta_percentage_points": 15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "A",
+              "before_pct": 35,
+              "after_pct": 65,
+              "delta_percentage_points": 30,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED",
+              "identity_warning": "Ticker/rebrand/multiplier mapping not authenticated"
+            },
+            {
+              "asset_label": "APT",
+              "before_pct": 50,
+              "after_pct": 60,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ETHFI",
+              "before_pct": 45,
+              "after_pct": 60,
+              "delta_percentage_points": 15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "RENDER",
+              "before_pct": 30,
+              "after_pct": 50,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SANTOS",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ORCA",
+              "before_pct": 10,
+              "after_pct": 30,
+              "delta_percentage_points": 20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        },
+        {
+          "effective_start_utc": "2025-08-22T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "FIL",
+              "before_pct": 75,
+              "after_pct": 70,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "PIXEL",
+              "before_pct": 45,
+              "after_pct": 35,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "KDA",
+              "before_pct": 40,
+              "after_pct": 30,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "C98",
+              "before_pct": 40,
+              "after_pct": 30,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "WOO",
+              "before_pct": 40,
+              "after_pct": 25,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ICX",
+              "before_pct": 40,
+              "after_pct": 25,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "Separate futures leverage/margin tables ignored."
+      ],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "79e6f67b66a54d78b2b8ded95cfbf1e3",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/79e6f67b66a54d78b2b8ded95cfbf1e3",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/79e6f67b66a54d78b2b8ded95cfbf1e3",
+      "source_evidence": "search_only_body_redirected",
+      "published_text": "2025-09-07 13:42",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "79e6f67b66a54d78b2b8ded95cfbf1e3",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-09-09T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "WLFI",
+              "before_pct": 10,
+              "after_pct": 35,
+              "delta_percentage_points": 25,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "PLUME",
+              "before_pct": 10,
+              "after_pct": 20,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ERA",
+              "before_pct": 10,
+              "after_pct": 20,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "VANA",
+              "before_pct": 10,
+              "after_pct": 20,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        },
+        {
+          "effective_start_utc": "2025-09-12T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "BONK",
+              "before_pct": 75,
+              "after_pct": 70,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "VET",
+              "before_pct": 65,
+              "after_pct": 60,
+              "delta_percentage_points": -5,
+              "material_abs_delta_ge10pp": false,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ICP",
+              "before_pct": 60,
+              "after_pct": 45,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "GRT",
+              "before_pct": 55,
+              "after_pct": 40,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "COMP",
+              "before_pct": 55,
+              "after_pct": 35,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "BOME",
+              "before_pct": 50,
+              "after_pct": 30,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "Body open redirected to index. Indexed ordinary PM flat tables retained provisionally. Separate PM Pro tier tables PENGU/1000SATS excluded as tiered, not flattened; unrelated futures leverage table ignored."
+      ],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "db70907c19b84c78b5c9e8a34a648ece",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/db70907c19b84c78b5c9e8a34a648ece",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/db70907c19b84c78b5c9e8a34a648ece",
+      "source_evidence": "search_only",
+      "published_text": "2025-09-11 06:12",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "db70907c19b84c78b5c9e8a34a648ece",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-09-16T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "WLD",
+              "before_pct": 50,
+              "after_pct": 60,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "BIO",
+              "before_pct": 20,
+              "after_pct": 30,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        },
+        {
+          "effective_start_utc": "2025-09-19T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "CELO",
+              "before_pct": 45,
+              "after_pct": 30,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ZIL",
+              "before_pct": 40,
+              "after_pct": 30,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "DASH",
+              "before_pct": 35,
+              "after_pct": 25,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ANKR",
+              "before_pct": 35,
+              "after_pct": 25,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "HOT",
+              "before_pct": 35,
+              "after_pct": 25,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "Separate PM Pro tier tables XRP/DOGE/ADA/SUI excluded as tiered, not flattened; unrelated futures leverage/margin table ignored."
+      ],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "b953c92f1d624ab39408c23847768cd0",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/b953c92f1d624ab39408c23847768cd0",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/b953c92f1d624ab39408c23847768cd0",
+      "source_evidence": "search_only",
+      "published_text": "2025-10-05 04:06",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "b953c92f1d624ab39408c23847768cd0",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-10-07T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "ZEC",
+              "before_pct": 10,
+              "after_pct": 20,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        },
+        {
+          "effective_start_utc": "2025-10-10T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "XEC",
+              "before_pct": 35,
+              "after_pct": 20,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "OSMO",
+              "before_pct": 30,
+              "after_pct": 20,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "STORJ",
+              "before_pct": 30,
+              "after_pct": 15,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "TLM",
+              "before_pct": 30,
+              "after_pct": 15,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "LQTY",
+              "before_pct": 30,
+              "after_pct": 15,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "Separate futures leverage/margin tables ignored."
+      ],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "f0252333194440e7a499a03cf9dab603",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/f0252333194440e7a499a03cf9dab603",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/f0252333194440e7a499a03cf9dab603",
+      "source_evidence": "official_body_opened",
+      "published_text": "2025-10-25 06:45",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "f0252333194440e7a499a03cf9dab603",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-10-28T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "ZEC",
+              "before_pct": 20,
+              "after_pct": 30,
+              "delta_percentage_points": 10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "FIL",
+              "before_pct": 70,
+              "after_pct": 50,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ALGO",
+              "before_pct": 60,
+              "after_pct": 50,
+              "delta_percentage_points": -10,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "A",
+              "before_pct": 65,
+              "after_pct": 45,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED",
+              "identity_warning": "Ticker/rebrand/multiplier mapping not authenticated"
+            },
+            {
+              "asset_label": "RUNE",
+              "before_pct": 55,
+              "after_pct": 35,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "AR",
+              "before_pct": 55,
+              "after_pct": 35,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "LUNC",
+              "before_pct": 50,
+              "after_pct": 30,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "THETA",
+              "before_pct": 50,
+              "after_pct": 30,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "ICP",
+              "before_pct": 45,
+              "after_pct": 25,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "NEO",
+              "before_pct": 45,
+              "after_pct": 25,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "PNUT",
+              "before_pct": 45,
+              "after_pct": 25,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "SPK",
+              "before_pct": 40,
+              "after_pct": 20,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "CHZ",
+              "before_pct": 40,
+              "after_pct": 20,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "NOT",
+              "before_pct": 40,
+              "after_pct": 20,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "Separate2025-10-31 PM Pro tier tables for ZEC/RUNE/A/LUNC/AR/CHZ excluded as tiered; intro wording says ordinary PM and PM Pro but explicit second table is PM Pro only. No ordinary flat rows inferred for Oct31. Separate futures leverage/margin tables ignored."
+      ],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    },
+    {
+      "article_id": "47071723d8fe4302ab15dafbd9a2edc8",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/47071723d8fe4302ab15dafbd9a2edc8",
+      "indexed_url": "https://www.binance.com/en/support/announcement/detail/47071723d8fe4302ab15dafbd9a2edc8",
+      "source_evidence": "official_body_opened",
+      "published_text": "2025-12-09 04:00",
+      "published_utc": null,
+      "published_timezone": "NOT_EXPLICIT_IN_RETRIEVED_HEADER",
+      "updated_text": null,
+      "updated_utc": null,
+      "product_scope": "ordinary Portfolio Margin flat ratio",
+      "event_batch_id": "47071723d8fe4302ab15dafbd9a2edc8",
+      "effective_groups": [
+        {
+          "effective_start_utc": "2025-12-12T06:00:00Z",
+          "rollout_approximately_minutes": 30,
+          "rollout_finish_assumption": false,
+          "table_kind": "ordinary_flat_PM",
+          "rows": [
+            {
+              "asset_label": "SXP",
+              "before_pct": 30,
+              "after_pct": 10,
+              "delta_percentage_points": -20,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            },
+            {
+              "asset_label": "DENT",
+              "before_pct": 25,
+              "after_pct": 10,
+              "delta_percentage_points": -15,
+              "material_abs_delta_ge10pp": true,
+              "underlying_identity": "UNKNOWN_TICKER_ONLY",
+              "native_market_eligibility": "UNKNOWN_NOT_CHECKED"
+            }
+          ],
+          "table_rows_complete": true
+        }
+      ],
+      "original_first_receipt_utc": null,
+      "historical_bot_receipt_status": "UNKNOWN",
+      "native_eligibility_status": "UNKNOWN_NOT_CHECKED",
+      "amendment_or_source_notes": [
+        "Intro mentions PM Pro but explicit ordinary PM flat table kept. No tiered ratios inferred. Separate futures leverage/margin tables ignored."
+      ],
+      "known_material_amendment": "UNKNOWN",
+      "protocol_new_entry_veto": "UNKNOWN_PENDING_ORIGINAL_VERSION_AND_RECEIPT"
+    }
+  ],
+  "discovery_excluded": [
+    {
+      "article_id": "176c768a6dd94e8aad95fbb3a021bf95",
+      "url": "https://www.binance.com/en/support/announcement/detail/176c768a6dd94e8aad95fbb3a021bf95",
+      "source_evidence": "search_only",
+      "published_text": "2025-11-11 03:00",
+      "updated_text": "2025-11-11 03:34",
+      "reason": "RWUSD newly supported reward/redemption claim; no before/after ordinary flat change; protocol excludes synthetic/redemption claim and mixed listing treatment."
+    },
+    {
+      "article_id": "812a04fb68614da89d8243ba873a59a8",
+      "url": "https://www.binance.com/en/support/announcement/detail/812a04fb68614da89d8243ba873a59a8",
+      "source_evidence": "search_only",
+      "published_text": "2025-12-04 06:00",
+      "effective_start_utc": "2025-12-08T06:00:00Z",
+      "reason": "Cross Margin only; tiered, no ordinary Portfolio Margin flat table."
+    },
+    {
+      "article_id": "36ee22f32f0b41a99a29a396d010b09e",
+      "url": "https://www.binance.com/en/support/announcement/detail/36ee22f32f0b41a99a29a396d010b09e",
+      "source_evidence": "search_only",
+      "published_text": null,
+      "effective_start_utcs": [
+        "2025-11-07T06:00:00Z",
+        "2025-11-14T06:00:00Z"
+      ],
+      "reason": "Cross Margin only; title date2025-10-31 is not authenticated publication time."
+    }
+  ],
+  "counts": {
+    "official_body_verified_lower_bound": {
+      "notices": 10,
+      "flat_rows": 87,
+      "material_flat_rows_before_identity_gates": 81,
+      "material_increases": 18,
+      "material_decreases": 63
+    },
+    "all_discovered_candidates_including_unverified_excerpts": {
+      "notices": 30,
+      "flat_rows": 262,
+      "material_flat_rows_before_identity_gates": 244,
+      "material_increases": 54,
+      "material_decreases": 190
+    }
+  },
+  "month_coverage": [
+    {
+      "month": "2025-01",
+      "coverage": "UNKNOWN_INCOMPLETE",
+      "body_verified_published_notices": 1,
+      "search_discovered_published_notices": 1,
+      "absence_means_zero": false
+    },
+    {
+      "month": "2025-02",
+      "coverage": "UNKNOWN_INCOMPLETE",
+      "body_verified_published_notices": 1,
+      "search_discovered_published_notices": 2,
+      "absence_means_zero": false
+    },
+    {
+      "month": "2025-03",
+      "coverage": "UNKNOWN_INCOMPLETE",
+      "body_verified_published_notices": 1,
+      "search_discovered_published_notices": 3,
+      "absence_means_zero": false
+    },
+    {
+      "month": "2025-04",
+      "coverage": "UNKNOWN_INCOMPLETE",
+      "body_verified_published_notices": 1,
+      "search_discovered_published_notices": 4,
+      "absence_means_zero": false
+    },
+    {
+      "month": "2025-05",
+      "coverage": "UNKNOWN_INCOMPLETE",
+      "body_verified_published_notices": 1,
+      "search_discovered_published_notices": 3,
+      "absence_means_zero": false
+    },
+    {
+      "month": "2025-06",
+      "coverage": "UNKNOWN_INCOMPLETE",
+      "body_verified_published_notices": 1,
+      "search_discovered_published_notices": 3,
+      "absence_means_zero": false
+    },
+    {
+      "month": "2025-07",
+      "coverage": "UNKNOWN_INCOMPLETE",
+      "body_verified_published_notices": 1,
+      "search_discovered_published_notices": 4,
+      "absence_means_zero": false
+    },
+    {
+      "month": "2025-08",
+      "coverage": "UNKNOWN_INCOMPLETE",
+      "body_verified_published_notices": 1,
+      "search_discovered_published_notices": 3,
+      "absence_means_zero": false
+    },
+    {
+      "month": "2025-09",
+      "coverage": "UNKNOWN_INCOMPLETE",
+      "body_verified_published_notices": 0,
+      "search_discovered_published_notices": 2,
+      "absence_means_zero": false
+    },
+    {
+      "month": "2025-10",
+      "coverage": "UNKNOWN_INCOMPLETE",
+      "body_verified_published_notices": 1,
+      "search_discovered_published_notices": 2,
+      "absence_means_zero": false
+    },
+    {
+      "month": "2025-11",
+      "coverage": "UNKNOWN_INCOMPLETE",
+      "body_verified_published_notices": 0,
+      "search_discovered_published_notices": 0,
+      "absence_means_zero": false
+    },
+    {
+      "month": "2025-12",
+      "coverage": "UNKNOWN_INCOMPLETE",
+      "body_verified_published_notices": 1,
+      "search_discovered_published_notices": 1,
+      "absence_means_zero": false
+    }
+  ]
+}
