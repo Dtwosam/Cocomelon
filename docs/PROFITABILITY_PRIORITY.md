@@ -1,5 +1,17 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 21 — specific Mac integration authorized; no operational admission
+
+The latest owner explicitly supersedes the earlier no-integration restriction for
+this one frozen volatility strategy. The narrow Mac service reuses the PAPER
+lifecycle and native sources with independent fenced custody. [Implementation,
+commands and unresolved admission](../research/experiments/volatility-budget-v1/mac-service.md).
+No ordinary-worker change, PR1392 activation, policy tuning, paid service or LIVE
+action is authorized. Operator-confirmed shared/unknown NAT prevents any market
+connection or account genesis. Exact-head full/research CI and independent review
+are merge gates; genuine runtime/source/custody/resource evidence are activation
+gates. Tests and code are not prospective economics. **NO NEW ECONOMIC PROGRESS.**
+
 ## October 21 — implement this frozen volatility trial only; independent launch blocked
 
 The owner explicitly authorized the existing volatility-budget hypothesis, missing

@@ -1142,3 +1142,22 @@ phase, source monitor, account/T0, ordinary-worker change, paid service, PR1392
 activation or LIVE authority follows. Reopening this question requires an
 already-existing free complete official12-month index/original-version artifact,
 not new capture infrastructure. [Evidence and exact decision](collateral_opportunity_frequency_2026_10_21.md).
+
+## D-097 — Specific volatility service, separate operational admission
+
+The October 21 explicit owner instruction authorizes only the engineering needed
+to operate the frozen volatility-budget PAPER trial. It supersedes prior blanket
+development restrictions for this slice. Reuse the existing trial, execution,
+risk and accounting components; preserve the frozen policy, ordinary worker,
+account history, PR #1392 status and LIVE-off gates.
+
+A dedicated Mac owner uses local original-receipt custody and a separate Git CAS
+ref for bounded independent checkpoints and ownership fencing. A pending receipt
+does not certify the latest local tail. Missing original state cannot reset the
+account; unclean tails permanently disable qualification and new exposure while
+known local positions retain protective obligations. Code tests cannot admit
+current source quality, independent current-tail recovery, host availability or
+aggregate outbound-IP safety. The operator reports shared/unknown network
+ownership, so activation and Hyperliquid requests remain disabled.
+
+[Specific service and limits](../research/experiments/volatility-budget-v1/mac-service.md).
