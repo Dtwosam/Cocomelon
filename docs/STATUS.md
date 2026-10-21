@@ -2,6 +2,25 @@
 
 Read [profitability priority](PROFITABILITY_PRIORITY.md) before selecting work.
 
+## October 21 — authorized specific Mac integration; operational admission pending
+
+The latest owner instruction authorizes only the engineering needed for the frozen
+volatility trial. Added the specific source/transport, independent fenced custody,
+Mac owner and PAPER service; [scope, commands and limits](../research/experiments/volatility-budget-v1/mac-service.md).
+The policy bytes, ordinary worker, PR1392, all losses and LIVE-off are unchanged.
+Local synthetic and bare-Git checks are engineering evidence only; exact-head full
+and research CI and final independent review are required before merge.
+The configured research suite passed 1,980 tests. The local full run plus the
+three PATH-corrected restore checks passed 5,930 tests; one unchanged macOS
+directory-exception mismatch remains, with one skip. Ruff, mypy (580 modules)
+and compilation passed. Linux CI remains the required full-suite merge gate.
+
+**NOT ACTIVE.** The operator explicitly reports shared/unknown outbound-network
+ownership. No Hyperliquid connection, operational account genesis, launchd install,
+release/T0 or first-entry boundary is admitted. Independent current-tail custody,
+actual source/capacity/host failure proof remain deployment requirements.
+**NO NEW ECONOMIC PROGRESS.**
+
 ## October 21 — frozen volatility-budget PAPER binding; activation BLOCKED
 
 The current owner instruction authorizes this one frozen hypothesis and supersedes
