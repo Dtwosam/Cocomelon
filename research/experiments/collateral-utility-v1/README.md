@@ -15,3 +15,6 @@ No paid feed/hosting/subscription or new generalized infrastructure is authorize
 The existing flow-only execution core cannot run this protocol by relabeling
 its immutable identity/hash. Preserve source/account safety before any specific
 reviewed reuse. **NO NEW ECONOMIC PROGRESS.**
+
+Published freeze commit `0310c09ada7e70b91feca81dd12206ad5db51434`;
+[PR1395](https://github.com/Dtwosam/Cocomelon/pull/1395) carries exact-head CI receipts.

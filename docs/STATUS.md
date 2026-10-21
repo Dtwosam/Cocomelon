@@ -18,6 +18,7 @@ old exclusions, source limits, exact rules and validation are in the
 [protocol](../research/experiments/collateral-utility-v1/protocol.json) is frozen
 before any event-return evaluation. It is **DESIGN ONLY / BLOCKED FOR SAFETY**:
 no operational accounts/T0, source monitor, launcher or prospective results.
+Freeze commit `0310c09ada7e70b91feca81dd12206ad5db51434`; publication [PR1395](https://github.com/Dtwosam/Cocomelon/pull/1395).
 Independent source/economic design reviews cleared the frozen specification;
 [review and evidence](../research/experiments/collateral-utility-v1/review.md).
 112 existing handoff/V1 regression tests PASS; JSON/hash consistency, Ruff and
