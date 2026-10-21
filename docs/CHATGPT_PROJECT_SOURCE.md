@@ -1,5 +1,34 @@
 # COCOMELON — CHATGPT PROJECT SOURCE
 
+Read [profitability priority](PROFITABILITY_PRIORITY.md) before selecting work.
+
+## October 21 — bounded independent flow-exhaustion execution core; launch blocked
+
+Added an inactive, trial-specific orchestration core reusing the existing PAPER
+adapter, independent risk approval, depth-aware IOC simulation and accounting.
+It is exercised only with synthetic windows in integration tests. Candidate and
+NO_TRADE control use distinct immutable identities and separate $10,000 SQLite
+stores within a dedicated root; no operational accounts were created. Durable
+opening/exit intentions and exact hourly funding obligations survive restarts.
+No network transport, operational CLI, workflow, LIVE adapter or activation
+receipt was added. Original policy and protocol bytes remain unchanged.
+
+The owner's follow-up limits further engineering until a practical feed is
+proved. Existing full-depth public WS receipts (~5.4s distinct books) fail the
+frozen <=2s gap requirement; no independent existing feed credentials or owned
+research egress were established. Ordinary worker quota telemetry is process-local
+and cannot establish shared-IP headroom. A $200/month provider candidate and a
+$224/month example feed+host base budget are documented, with archive storage and
+actual usage still unpriced. [Feed evidence, costs and bounded next check](flow_exhaustion_feed_feasibility_2026_10_21.md).
+
+**BLOCKED FOR SAFETY / NOT RUNNING.** Source admission, operational launcher and
+immutable activation receipt remain deferred until read-only evaluation access
+and an identified host prove the unchanged full-depth/tape/clock/resource contract.
+First-entry boundary is unassigned; no prospective signals, orders, fills, fees or
+PnL exist for this experiment. PR1392 stays draft/unmerged/inactive. Ordinary worker
+and its historical losses remain untouched. **NO NEW ECONOMIC PROGRESS; LIVE OFF.**
+
+
 ## October 21 — unproven exploratory PAPER hypotheses may be tested
 
 The owner's explicit new request permits a reasoned, frozen, risk-capped isolated
