@@ -1,0 +1,33 @@
+{
+  "snapshot": {
+    "schema": "cocomelon.exploratory-flow-evidence.v1",
+    "retrieval": "authenticated GitHub connector, 2026-10-21",
+    "issue_url": "https://github.com/Dtwosam/Cocomelon/issues/469",
+    "heartbeat_utc": "2026-10-21T09:33:13.495000+00:00",
+    "worker_run_id": 39572026775,
+    "worker_head_sha": "528c10e071c808dd8c305822a2a378ad17e7bb9f",
+    "predecessor_run_id": 39543863546,
+    "main_sha": "528c10e071c808dd8c305822a2a378ad17e7bb9f",
+    "equity": "9700.904542821428801500000002",
+    "net_pnl": "-299.095457178571198499999998",
+    "realized_gross": "-46.03964100000000000000000247",
+    "fees": "258.14020193415",
+    "signed_booked_funding": "-3.1628552444211985",
+    "heartbeat_closes": 332,
+    "canonical_historical_closes": 321,
+    "open_positions": 3,
+    "execution_healthy": true,
+    "live_orders": false,
+    "source_qualified": false,
+    "source_failure": "original_received_clock_regression; original selected-market L2 gaps",
+    "paired_trials": "existing frozen pair failed; independent trend v2 failed, not reused",
+    "launcher_budget": "new 3-market observer BLOCKED insufficient_peak_headroom; in-process budget not shared-IP certificate",
+    "pr1392": "OPEN, head7857dccb8601ef3f34b892860388ff067b4afcbe; activation blocked",
+    "prospective_candidate_observations": 0,
+    "candidate_results": null
+  },
+  "mandate": {
+    "url": "https://github.com/Dtwosam/Cocomelon/issues/1258#issuecomment-6279893016",
+    "body": "## Cross-chat economic mandate — 2026-10-20 (persistent decision, not profitability evidence)\n\nThis decision is binding for future autonomous and fresh-chat sessions. Prior runs repeatedly reverted to low-value engineering despite the owner's explicit demand for dollar-positive PAPER results. A new chat, an abbreviated summary, a PR, a CI success, or a new run must **not** reset this priority.\n\n**Single success criterion:** Independently authenticated, prospective, capital-matched, >=72h complete first-observed original source and **positive ABSOLUTE whole-account marked PAPER equity after fees, funding, spreads, slippage, missed fills, open positions and margin effects**, with robust chronological performance. Until proved: **NO VERIFIED EDGE / NOT PROFITABLE**, and LIVE DISABLED.\n\n**Working rule before any PR:** Quote latest authenticated absolute whole-account after-cost PnL and source-validity verdict; choose ONE falsifiable gross-alpha hypothesis tied to specific dollar impact; name available authentic evidence, predeclared candidate/control, execution fills/no-fills and stop/reject rule. If this cannot be done, no strategy PR is justified. Do not count CI, diagnostics, recovery, PR totals, relative PnL improvement or profitable retrospective subsets as economic progress.\n\n**Hard anti-loop gate:** No standalone observability, CI, worker or infrastructure work except a narrowly demonstrated source-critical defect that directly blocks the selected economic experiment. Never fabricate/cleanse source, retime original clocks, reset v2/v5 losses, duplicate or forcibly restart traders, weaken safety, or place LIVE orders. A safely healthy PAPER worker must not be disrupted to install a patch. Do not promote strategies on missing data or selective samples. If the current strategy's forward robust gross edge cannot be established, reject/shelve it and test a genuinely different alpha thesis.\n\n**Cross-chat boot requirement:** Re-read this decision, Issue #469 (authenticated worker/ledger/source), Issue #1258 (audit), current main/open PRs and active workflow run/JOB/SHA, and current scheduled economic mandate BEFORE deciding what to build. Treat older snapshots as historical only. Persist each **new substantive economic verdict** here; avoid repetitive progress comments. Report dollars and evidence, not GitHub activity.\n\nThis comment is a mandate and process correction, NOT a result, certification, code change, verified new quote, or claim of profitability."
+  }
+}

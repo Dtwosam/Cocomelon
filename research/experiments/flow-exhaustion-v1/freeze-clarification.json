@@ -1,0 +1,13 @@
+{
+  "schema": "cocomelon.preoutcome-freeze-clarification.v1",
+  "old_sha256": "9b894f18c102a1fbd63065b56da751d74ff746de0a2444be53917e0ba5c09ff7",
+  "final_sha256": "c248746bbe4cd36fa63233b32bd643e368f2d20c63b0e973cf39ffd515873057",
+  "prospective_observations_seen": 0,
+  "parameter_values_changed": false,
+  "reason": "Independent preimplementation review required explicit per-stream exchange clocks, both book ages, and recovered depth/absorbed executions BEFORE measured response window; no numerical threshold fitting or outcome review. Also distinguish independent maximum peak-to-trough drawdown validation from fixed initial-equity9950 entry-disable floor. Final pre-outcome inference definitions specify equal elapsed thirds, cash/equity component denominator and dependence-aware fixed48hour calendar-cluster bootstrap including empty/unknown outcomes; extension only for predeclared insufficient sample. No new market observations or return outcomes were viewed. Final completeness check fixes cross-market queue lexicographically and one IOC per epoch; all candidates retained. Numerical entry/exit/risk thresholds remain unchanged. Release has not occurred and prospective observations remain0.",
+  "earlier_sha256": [
+    "314a99441a924a1ae8ec2af14c813053733ff7ee65f92db21eeaa356f72bbb3d",
+    "d56927b80c71d45471943c5e202073a8c2cc51f65513eae1f50acfeb9848ebc1",
+    "2590b0b28e00fd6e518480c6fdd55b3cc84cb0e1278ac6f6ab1427bfda9b96b1"
+  ]
+}

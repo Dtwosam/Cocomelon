@@ -1075,3 +1075,32 @@ A newly admitted worker whose heartbeat still belongs to its predecessor receive
 **Controlled exception to no-repeat rule:** Launch precisely one new independent **research-only** forward baseline/challenger pair at `loss-context-paired-portfolio-shadow-scoped-v5`, after the root-cause fix, with fresh zero-history durable accounts, the *existing* frozen candidate and original gate thresholds, identical mainnet source events, 0.25% per-position target risk, existing margin/fee/funding and execution logic. Keep v1–v4 directories independently inspectable and do not import their outcomes. The live ordinary paper account and its separate ENA quarantine continue unchanged. This is not a strategy change or evidence that the candidate is profitable.
 
 **Acceptance / fail closed:** Require first signed v5 checkpoint to bind **both** SQLite account state IDs to their paired-state payload; restore the same IDs over the next exact worker handoff; verify research-held market L2 freshness across shortlist rotation and all sourced funding gaps; and measure actual forward matched-window baseline/candidate net PnL, drawdown, direction/market exposures, funding and fees with the existing frozen minima. A failed v5 trial stays failed; do not create v6 automatically. No order routing, live permission, strategy promotion or economic credit without the independently certified evidence.
+
+
+## D-094 — Exploratory PAPER entry is distinct from edge validation
+
+**Explicit owner direction, 2026-10-21:** New economically reasoned hypotheses may
+be implemented and tested in a safely isolated, frozen, risk-capped PAPER trial
+without first proving positive backtest performance. The point of exploratory
+PAPER is to discover whether the hypothesis works. >=72h authenticated original
+prospective data, adequate independent samples, positive absolute whole-account
+returns after all costs and chronological robustness remain necessary before
+calling an edge validated; existing independent promotion/LIVE gates stand. This
+supersedes earlier historical-survivor-before-implementation/admission language
+only for exploratory PAPER. No prior failed experiment is repaired or renamed.
+
+Freeze temporary-pressure-visible-recovery-v1 and its independent equal-capital
+NO_TRADE trial. Native signed tape and same-price-band observed L2 depth recovery
+are mandatory; candles/static imbalance do not substitute. Initial thresholds
+are economic test choices, not fitted winning subsets. Preserve all previous
+accounts, losses, gaps and risk gates. The existing ordinary worker is healthy
+and cannot be modified/restarted/duplicated. PR1392 remains unmerged/inactive
+under its separate operational restrictions.
+
+Safe experimentation is conditionally authorized, but this policy has no reviewed
+independent launcher with source/control custody and shared-IP resource proof.
+Prepare the executable pure policy and frozen trial; activation remains BLOCKED
+FOR OPERATIONAL ISOLATION, with zero prospective returns. No infrastructure
+framework, worker rollout, wallet action or live authority follows.
+
+[Complete policy, experiment and evidence](exploratory_flow_exhaustion_2026_10_21.md).

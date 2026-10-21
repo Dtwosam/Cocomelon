@@ -1,0 +1,14 @@
+{
+  "schema": "cocomelon.flow-policy-local-verification.v1",
+  "python": "3.12",
+  "policy_tests_passed": 62,
+  "research_tests_passed": 1713,
+  "compile": "PASS src tests scripts",
+  "ruff": "PASS src tests scripts",
+  "mypy": "PASS 572 source files",
+  "full_local_suite": "Four first-run failures: three subprocess PATH errors fixed by venv PATH and rerun; one unchanged macOS PermissionError-versus-Linux IsADirectoryError assertion remains. Exact-head Linux CI required; no full-local-PASS claim.",
+  "protocol_sha256": "c248746bbe4cd36fa63233b32bd643e368f2d20c63b0e973cf39ffd515873057",
+  "economic_result": "NO NEW ECONOMIC PROGRESS",
+  "activation": "BLOCKED_FOR_OPERATIONAL_ISOLATION",
+  "prospective_observations": 0
+}

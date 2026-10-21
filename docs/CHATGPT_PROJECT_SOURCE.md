@@ -1,5 +1,24 @@
 # COCOMELON — CHATGPT PROJECT SOURCE
 
+## October 21 — unproven exploratory PAPER hypotheses may be tested
+
+The owner's explicit new request permits a reasoned, frozen, risk-capped isolated
+PAPER trial without an already-profitable backtest. This supersedes earlier
+prove-profit-before-experiment admission wording; >=72h complete original source,
+adequate independent samples, positive absolute after-all-cost equity and robust
+chronology remain validation/promotion requirements. Preserve old losses, source
+failures, freezes, risk limits and LIVE-off. Do not modify/restart/duplicate the
+healthy ordinary worker or activate restricted PR1392.
+
+One new economic policy tests temporary aggressive pressure followed by actual
+visible depth recovery and opposing executed response. [Frozen strategy and
+trial](exploratory_flow_exhaustion_2026_10_21.md). Both sides allowed, planned
+risk0.10%, independently simulated$10,000candidate/$10,000NO_TRADEcontrol;
+no historical tuning. Pure policy prepared; **BLOCKED FOR OPERATIONAL ISOLATION,
+NOT RUNNING**: no reviewed independent arbitrary-policy launcher/source/control
+custody and shared-IP resource proof. Zero prospective trades/results; no
+profitability or activation claim. **NO NEW ECONOMIC PROGRESS; LIVE disabled.**
+
 **Purpose:** Portable bootstrap context for continuing Cocomelon across ChatGPT chats. Live GitHub state and authoritative repository docs always outrank this summary.
 
 **Snapshot updated:** 2026-10-10  
