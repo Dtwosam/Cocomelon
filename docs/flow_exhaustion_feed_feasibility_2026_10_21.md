@@ -1,5 +1,10 @@
 # Flow-exhaustion feed feasibility — 2026-10-21
 
+> Superseded owner decision2026-10-21: **V1 SHELVED_OPERATIONALLY_DATA_BLOCKED**.
+> No paid-source evaluation, collector or infrastructure rescue remains assigned.
+> Preserve this historical report and the immutable V1 protocol; economics not
+> disproved. [Final free-data decision](free_data_economic_edge_2026_10_21.md).
+
 **BLOCKED FOR SAFETY. No provider feed, experimental market collector, or candidate entries were activated. No purchase or provider contact was made.** The frozen economic protocol remains SHA256 `c248746bbe4cd36fa63233b32bd643e368f2d20c63b0e973cf39ffd515873057`; thresholds, native broad-universe eligibility, costs, stops and risk limits must remain unchanged.
 
 ## What is actually available

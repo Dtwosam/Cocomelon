@@ -1,5 +1,24 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 21 — free data only; flow V1 shelved, collateral-utility design frozen
+
+The newest owner instruction prohibits paid data/hosting and further infrastructure
+rescue. Final existing authentic full-depth sample fails frozen2sbook coverage;
+independent resource proof is absent, so no new probe was run. **Flow-exhaustion V1
+is SHELVED_OPERATIONALLY_DATA_BLOCKED, not economically disproved.** Preserve its
+original protocol, code/tests and inactive execution core; no paid-feed next step.
+
+Free candles/funding/metadata and official policy notices support a new distinct
+collateral-utility question: LONG a material flat Portfolio Margin ratio increase,
+SHORT a reduction, at a frozen pre-effective clock. Three participant mechanisms,
+old exclusions, source limits, exact rules and validation are in the
+[free-data economic decision](free_data_economic_edge_2026_10_21.md). Separate
+[protocol](../research/experiments/collateral-utility-v1/protocol.json) is frozen
+before any event-return evaluation. It is **DESIGN ONLY / BLOCKED FOR SAFETY**:
+no operational accounts/T0, source monitor, launcher or prospective results.
+No ordinary-worker change, PR1392 activation, loss reset or LIVE permission.
+**NO NEW ECONOMIC PROGRESS.**
+
 ## October 21 — bounded independent flow-exhaustion execution core; launch blocked
 
 Added an inactive, trial-specific orchestration core reusing the existing PAPER

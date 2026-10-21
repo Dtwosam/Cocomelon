@@ -1104,3 +1104,20 @@ FOR OPERATIONAL ISOLATION, with zero prospective returns. No infrastructure
 framework, worker rollout, wallet action or live authority follows.
 
 [Complete policy, experiment and evidence](exploratory_flow_exhaustion_2026_10_21.md).
+
+## D-095 — Free-data economic trials; shelve unavailable flow V1
+
+The2026-10-21 owner instruction prohibits paid feeds/hosting/subscriptions and
+infrastructure rescue for unavailable observations. Existing full-depth receipts
+fail the immutable flow-exhaustion2scontract; absent independent resources forbids
+another probe. Shelve V1 as operationally data-blocked, preserving all code,
+protocol, tests and non-results. This is not economic falsification.
+
+A separate unvalidated collateral-utility hypothesis is frozen from free official
+before/after policy notices, without price/volume triggers or event-return fitting.
+Its exact inputs, costs, risk,90/180day evaluation and limits are in the
+[free-data decision](free_data_economic_edge_2026_10_21.md). Design only; no source
+monitor/launcher, operational accounts or activation exists. No strategy code is
+added while the existing independently safe source/execution path is unproved.
+Unproven exploratory PAPER does not require a profitable historical backtest;
+source/account/resource safety and all validation/promotion/LIVE restrictions stand.

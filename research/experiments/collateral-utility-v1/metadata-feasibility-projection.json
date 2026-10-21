@@ -1,0 +1,64 @@
+{
+  "schema": "cocomelon.free-metadata-feasibility-projection.v1",
+  "transport": "connected Binance tool: get_futures_usds_exchange_information",
+  "observation": "one metadata feasibility call; no price request; no Hyperliquid call",
+  "serverTime_not_freshness_authority": 1792576990595,
+  "symbol_count": 931,
+  "symbol_schema": [
+    "symbol",
+    "pair",
+    "contractType",
+    "deliveryDate",
+    "onboardDate",
+    "status",
+    "maintMarginPercent",
+    "requiredMarginPercent",
+    "baseAsset",
+    "quoteAsset",
+    "marginAsset",
+    "pricePrecision",
+    "quantityPrecision",
+    "baseAssetPrecision",
+    "quotePrecision",
+    "underlyingType",
+    "underlyingSubType",
+    "triggerProtect",
+    "liquidationFee",
+    "marketTakeBound",
+    "maxMoveOrderLimit",
+    "filters",
+    "orderTypes",
+    "timeInForce",
+    "permissionSets"
+  ],
+  "selected_examples": [
+    {
+      "symbol": "ETCUSDT",
+      "baseAsset": "ETC",
+      "quoteAsset": "USDT",
+      "marginAsset": "USDT",
+      "contractType": "PERPETUAL",
+      "onboardDate": 1579161600000,
+      "status": "TRADING"
+    },
+    {
+      "symbol": "BNBUSDT",
+      "baseAsset": "BNB",
+      "quoteAsset": "USDT",
+      "marginAsset": "USDT",
+      "contractType": "PERPETUAL",
+      "onboardDate": 1581321600000,
+      "status": "TRADING"
+    },
+    {
+      "symbol": "ASTERUSDT",
+      "baseAsset": "ASTER",
+      "quoteAsset": "USDT",
+      "marginAsset": "USDT",
+      "contractType": "PERPETUAL",
+      "onboardDate": 1758283200000,
+      "status": "TRADING"
+    }
+  ],
+  "caveat": "Projection only, not full original response or historical event census. Not an input to selected collateral policy."
+}
