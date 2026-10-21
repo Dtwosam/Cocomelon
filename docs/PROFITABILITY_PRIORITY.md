@@ -1,5 +1,20 @@
 # PROFITABILITY FIRST — start here in every new Cocomelon chat
 
+## October 21 — implement this frozen volatility trial only; independent launch blocked
+
+The owner explicitly authorized the existing volatility-budget hypothesis, missing
+PAPER lifecycle integration and safe activation, without a profitable-backtest
+prerequisite. The dedicated inactive binding is implemented and independently
+reviewed; its frozen policy remains byte-identical. [Implementation, tests and
+admission limits](../research/experiments/volatility-budget-v1/README.md).
+
+**BLOCKED FOR SAFETY:** no independently admitted existing24h process, aggregate
+outbound-IP budget or durable original-source/restart custody was established.
+Finish exact-head verification and retain inactivity; no new hosting/feed project,
+operational accounts/T0, ordinary-worker change/restart/duplicate, PR1392 activation,
+policy tuning, historic return search or LIVE action. Existing paid-resource
+proposals below are historical and not authorized next steps. **NO NEW ECONOMIC PROGRESS.**
+
 ## October 21 — collateral opportunity frequency INCONCLUSIVE; stop before implementation
 
 The bounded official-record check found60candidate article IDs,52historical

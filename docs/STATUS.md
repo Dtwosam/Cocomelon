@@ -2,6 +2,33 @@
 
 Read [profitability priority](PROFITABILITY_PRIORITY.md) before selecting work.
 
+## October 21 — frozen volatility-budget PAPER binding; activation BLOCKED
+
+The current owner instruction authorizes this one frozen hypothesis and supersedes
+older no-binding instructions below. Implemented a dedicated pure daily policy and
+independent PAPER lifecycle using existing IOC, risk and accounting components.
+Exact native8h daily formation, current/prior sample-volatility crossings, one daily
+canonical attempt,72hANYside signal cooldown, fixed stop/target,24h reduction,
+partial/no-fill retry, hourly/post-close funding and9950permanent suspension are
+covered. Local mirrored lifecycle witnesses reject trial-only/account-only rollback;
+authorization and source admission do not survive restart. No ordinary-worker code,
+workflow, account, reset, forced handoff, PR1392 activation or LIVE path changed.
+
+[Unchanged freeze, implementation and limits](../research/experiments/volatility-budget-v1/README.md).
+Policy SHA256 `eca2816e42a1a0409737e179b45761a8a4ad0ebb2149ee7ad956b6867caffdaa`.
+120newtests and independent258regressionsPASS; research1868PASS; compile/Ruff/mypy575
+PASS. Localfull5818PASS,1SKIP,1knownmacOSdirectory-exception mismatch;
+[verification and exact reviewed bytes](../research/experiments/volatility-budget-v1/verification.md).
+Required exact-head Linuxfull/researchCI is a separate merge gate.
+
+**BLOCKED FOR SAFETY.** The bounded free-resource check established no independent
+continuous owner, aggregate egress budget or durable original-source/restart custody.
+Disk capacity and spot books do not prove24h service; local witnesses cannot detect
+coherent whole-root rollback. No operational accounts, T0, launcher, entry boundary
+or activation receipt exist. Do not expand this into an infrastructure program.
+Candidate/control prospective activity and economics are unavailable.
+**NO NEW ECONOMIC PROGRESS; LIVE OFF.**
+
 ## October 21 — collateral opportunity frequency INCONCLUSIVE; stop before implementation
 
 The bounded official-record check found60candidate article IDs,52historical
