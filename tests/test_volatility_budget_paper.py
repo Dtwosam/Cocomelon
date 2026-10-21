@@ -536,3 +536,335 @@ def test_short_uses_native_paper_stack_and_records_signed_complete_component(tmp
     assert D(component["net"]) > 0  # Synthetic outcome only.
     assert obj.control.account.equity == D(10000)
     obj.close()
+
+
+def test_known_opening_mark_immediately_latches_stop_and_permanent_loss_floor(tmp_path):
+    obj = trial(tmp_path)
+    stage(obj)
+    obj.on_book(quote(T + 300), spec(), mark(T + 300, "80"), now_ms=T + 300)
+    position = obj.candidate.account.positions[0]
+    assert position.latest_mark == D("80")
+    assert obj.candidate.account.unrealized_pnl < D(0)
+    assert obj.candidate.account.equity <= D(9950)
+    assert obj.snapshot()["permanently_disabled"]
+    assert obj.snapshot()["exit_reason"] == "stop"
+    obj.on_mark(mark(T + 400), now_ms=T + 400)
+    assert obj.candidate.account.equity > D(9950)
+    assert obj.snapshot()["permanently_disabled"]
+    assert obj.snapshot()["exit_reason"] == "stop"
+    obj.close()
+
+
+@pytest.mark.parametrize("later_mark", [None, "100"])
+def test_commit_before_opening_mark_reconciles_historical_stop_and_floor(
+    tmp_path, monkeypatch, later_mark
+):
+    from cocomelon.research.volatility_budget_paper import VolatilityPaperTrial
+
+    obj = trial(tmp_path)
+    stage(obj)
+    submit = obj.candidate.submit_opening
+
+    def committed_then_interrupted(*args, **kwargs):
+        submit(*args, **kwargs)
+        if later_mark is not None:
+            # Account can be ahead of the trial checkpoint after an interrupted
+            # independent account write; this valuation must survive recovery.
+            obj.candidate.mark_account_to_market({BTC: D(later_mark)}, timestamp_ms=T + 400)
+        raise RuntimeError("synthetic interruption after actual adapter commit")
+
+    monkeypatch.setattr(obj.candidate, "submit_opening", committed_then_interrupted)
+    with pytest.raises(RuntimeError, match="after actual adapter commit"):
+        obj.on_book(quote(T + 300), spec(), mark(T + 300, "80"), now_ms=T + 300)
+    obj._dispose()  # Abrupt loss: do not checkpoint post-commit transient state.
+    restored = VolatilityPaperTrial(
+        tmp_path,
+        candidate_id="volatility-candidate",
+        control_id="volatility-control",
+        first_entry_ms=T,
+        startup_ms=T + 10_000,
+    )
+    assert not restored.entries_authorized
+    assert not restored.source_valid  # The old receipt does not certify current freshness.
+    assert restored.snapshot()["permanently_disabled"]
+    assert restored.snapshot()["exit_reason"] == "stop"
+    if later_mark is None:
+        assert restored.candidate.account.equity <= D(9950)
+        assert restored.candidate.account.positions[0].latest_mark == D("80")
+    else:
+        assert restored.candidate.account.equity > D(9950)
+        assert restored.candidate.account.positions[0].latest_mark == D("100")
+    fills_before = restored.candidate.store.table_counts()["paper_fills"]
+    restored.close()
+    restored = VolatilityPaperTrial(
+        tmp_path,
+        candidate_id="volatility-candidate",
+        control_id="volatility-control",
+        first_entry_ms=T,
+        startup_ms=T + 11_000,
+    )
+    assert restored.snapshot()["permanently_disabled"]
+    assert restored.snapshot()["exit_reason"] == "stop"
+    assert restored.candidate.store.table_counts()["paper_fills"] == fills_before
+    # A historical breach never backdates a new actual reduction plan or latency.
+    restored.on_book(quote(T + 12_000), spec(), now_ms=T + 12_000)
+    assert restored.candidate.account.positions
+    restored.on_book(quote(T + 12_200), spec(), now_ms=T + 12_200)
+    assert restored.candidate.account.positions
+    assert restored.candidate.store.table_counts()["paper_fills"] == fills_before
+    restored.on_book(quote(T + 12_300), spec(), now_ms=T + 12_300)
+    assert not restored.candidate.account.positions
+    assert restored.snapshot()["components"][0]["exit_reason"] == "stop"
+    restored.close()
+
+
+def test_committed_final_reduction_recovers_without_repeating_exit(tmp_path, monkeypatch):
+    from cocomelon.research.volatility_budget_paper import VolatilityPaperTrial
+
+    obj = trial(tmp_path)
+    opened(obj)
+    obj.on_book(
+        quote(T + 1000, bid="103", ask="103.02"), spec(), mark(T + 1000, "103"), now_ms=T + 1000
+    )
+    assert obj.snapshot()["exit_reason"] == "target"
+    execute = obj.candidate._execute_reduce_only_plan
+
+    def committed_close_then_interrupted(*args, **kwargs):
+        execute(*args, **kwargs)
+        raise RuntimeError("synthetic interruption after committed final reduction")
+
+    monkeypatch.setattr(
+        obj.candidate, "_execute_reduce_only_plan", committed_close_then_interrupted
+    )
+    with pytest.raises(RuntimeError, match="committed final reduction"):
+        obj.on_book(quote(T + 1300, bid="103", ask="103.02"), spec(), now_ms=T + 1300)
+    assert not obj.candidate.account.positions
+    cash = obj.candidate.account.cash
+    fills = obj.candidate.store.table_counts()["paper_fills"]
+    obj._dispose()
+    restored = VolatilityPaperTrial(
+        tmp_path,
+        candidate_id="volatility-candidate",
+        control_id="volatility-control",
+        first_entry_ms=T,
+        startup_ms=T + 2000,
+    )
+    assert not restored.candidate.account.positions
+    assert restored.candidate.account.cash == cash
+    assert restored.snapshot()["pending"] is None
+    assert restored.snapshot()["exit_reason"] is None
+    assert len(restored.snapshot()["components"]) == 1
+    assert restored.snapshot()["components"][0]["exit_reason"] == "target"
+    restored.on_book(quote(T + 2300), spec(), now_ms=T + 2300)
+    assert restored.candidate.store.table_counts()["paper_fills"] == fills
+    restored.close()
+
+
+def test_same_timestamp_mark_commit_with_audit_event_recovers_pruned_peaks(tmp_path, monkeypatch):
+    from cocomelon.research.volatility_budget_paper import VolatilityPaperTrial
+
+    obj = trial(tmp_path)
+    opened(obj)
+    counts = obj.candidate.store.table_counts()
+    mark_account = obj.candidate.mark_account_to_market
+
+    def committed_mark_then_interrupted(*args, **kwargs):
+        mark_account(*args, **kwargs)
+        raise RuntimeError("synthetic interruption after committed same-clock mark")
+
+    monkeypatch.setattr(obj.candidate, "mark_account_to_market", committed_mark_then_interrupted)
+    with pytest.raises(RuntimeError, match="committed same-clock mark"):
+        obj.on_mark(mark(T + 300, "101"), now_ms=T + 300)
+    after = obj.candidate.store.table_counts()
+    assert after["paper_position_events"] > counts["paper_position_events"]
+    assert after["paper_rolling_peak_candidates"] < counts["paper_rolling_peak_candidates"]
+    equity = obj.candidate.account.equity
+    obj._dispose()
+    restored = VolatilityPaperTrial(
+        tmp_path,
+        candidate_id="volatility-candidate",
+        control_id="volatility-control",
+        first_entry_ms=T,
+        startup_ms=T + 2000,
+    )
+    assert restored.candidate.account.positions[0].latest_mark == D("101")
+    assert restored.candidate.account.equity == equity
+    assert not restored.snapshot()["faults"]
+    restored.close()
+
+
+def test_same_clock_mark_without_expected_transition_cannot_bypass_custody(tmp_path):
+    from cocomelon.research.volatility_budget_paper import VolatilityPaperTrial
+
+    obj = trial(tmp_path)
+    opened(obj)
+    obj.candidate.mark_account_to_market({BTC: D("101")}, timestamp_ms=T + 300)
+    obj._dispose()
+    with pytest.raises(ValueError, match="custody state mismatch"):
+        VolatilityPaperTrial(
+            tmp_path,
+            candidate_id="volatility-candidate",
+            control_id="volatility-control",
+            first_entry_ms=T,
+            startup_ms=T + 2000,
+        )
+
+
+def test_conflicting_same_clock_mark_after_expected_commit_is_rejected(tmp_path, monkeypatch):
+    from cocomelon.research.volatility_budget_paper import VolatilityPaperTrial
+
+    obj = trial(tmp_path)
+    opened(obj)
+    mark_account = obj.candidate.mark_account_to_market
+
+    def conflicting_commits_then_interrupted(*args, **kwargs):
+        mark_account(*args, **kwargs)
+        mark_account({BTC: D("102")}, timestamp_ms=T + 300)
+        raise RuntimeError("synthetic conflicting commit")
+
+    monkeypatch.setattr(
+        obj.candidate, "mark_account_to_market", conflicting_commits_then_interrupted
+    )
+    with pytest.raises(RuntimeError, match="conflicting commit"):
+        obj.on_mark(mark(T + 300, "101"), now_ms=T + 300)
+    obj._dispose()
+    with pytest.raises(ValueError, match="custody state mismatch"):
+        VolatilityPaperTrial(
+            tmp_path,
+            candidate_id="volatility-candidate",
+            control_id="volatility-control",
+            first_entry_ms=T,
+            startup_ms=T + 2000,
+        )
+
+
+def test_interruption_before_witnessed_mark_commit_recovers_observed_loss(tmp_path, monkeypatch):
+    from cocomelon.research.volatility_budget_paper import VolatilityPaperTrial
+
+    obj = trial(tmp_path)
+    opened(obj)
+
+    def interrupted_before_mark(*args, **kwargs):
+        raise RuntimeError("synthetic interruption before witnessed mark commit")
+
+    monkeypatch.setattr(obj.candidate, "mark_account_to_market", interrupted_before_mark)
+    with pytest.raises(RuntimeError, match="before witnessed mark commit"):
+        obj.on_mark(mark(T + 1000, "80"), now_ms=T + 1000)
+    assert obj.candidate.account.equity > D(9950)
+    obj._dispose()
+    restored = VolatilityPaperTrial(
+        tmp_path,
+        candidate_id="volatility-candidate",
+        control_id="volatility-control",
+        first_entry_ms=T,
+        startup_ms=T + 10_000,
+    )
+    assert restored.candidate.account.positions[0].latest_mark == D("80")
+    assert restored.candidate.account.equity <= D(9950)
+    assert restored.snapshot()["permanently_disabled"]
+    assert restored.snapshot()["exit_reason"] == "stop"
+    assert not restored.source_valid
+    restored.close()
+
+
+def test_partial_reduction_preserves_genuine_known_marked_equity_and_margin(tmp_path):
+    obj = trial(tmp_path)
+    initial = opened(obj)
+    obj.on_book(
+        quote(T + 1000, bid="150", ask="150.02"), spec(), mark(T + 1000, "150"), now_ms=T + 1000
+    )
+    obj.on_book(quote(T + 1300, bid="150", ask="150.02", size=".01"), spec(), now_ms=T + 1300)
+    remaining = obj.candidate.account.positions[0]
+    assert remaining.quantity == initial.quantity - D(".01")
+    expected = (D("150") - initial.average_entry_price) * remaining.quantity
+    assert obj.candidate.account.unrealized_pnl == expected
+    assert obj.candidate.account.equity == obj.candidate.account.cash + expected
+    assert obj.candidate.account.gross_open_notional == D("150") * remaining.quantity
+    assert obj.candidate.account.reserved_margin > 0
+    obj.close()
+
+
+def test_partial_reduction_known_mark_latches_loss_floor_before_recovery(tmp_path):
+    obj = trial(tmp_path)
+    opened(obj)
+    obj.on_book(
+        quote(T + 1000, bid="50", ask="50.02"), spec(), mark(T + 1000, "96"), now_ms=T + 1000
+    )
+    assert not obj.snapshot()["permanently_disabled"]
+    obj.on_book(quote(T + 1300, bid="50", ask="50.02", size=".6"), spec(), now_ms=T + 1300)
+    assert obj.candidate.account.equity <= D(9950)
+    assert obj.snapshot()["permanently_disabled"]
+    assert obj.snapshot()["exit_reason"] == "stop"
+    obj.on_mark(mark(T + 1400), now_ms=T + 1400)
+    assert obj.candidate.account.equity > D(9950)
+    assert obj.snapshot()["permanently_disabled"]
+    obj.close()
+
+
+@pytest.mark.parametrize("later_mark", [None, "100"])
+def test_committed_partial_recovers_historical_marked_loss_without_overwriting_newer_mark(
+    tmp_path, monkeypatch, later_mark
+):
+    from cocomelon.research.volatility_budget_paper import VolatilityPaperTrial
+
+    obj = trial(tmp_path)
+    initial = opened(obj)
+    obj.on_book(
+        quote(T + 1000, bid="50", ask="50.02"), spec(), mark(T + 1000, "96"), now_ms=T + 1000
+    )
+    execute = obj.candidate._execute_reduce_only_plan
+
+    def committed_partial_then_interrupted(*args, **kwargs):
+        execute(*args, **kwargs)
+        if later_mark is not None:
+            obj.candidate.mark_account_to_market({BTC: D(later_mark)}, timestamp_ms=T + 1400)
+        raise RuntimeError("synthetic interruption after committed partial reduction")
+
+    monkeypatch.setattr(
+        obj.candidate, "_execute_reduce_only_plan", committed_partial_then_interrupted
+    )
+    with pytest.raises(RuntimeError, match="committed partial reduction"):
+        obj.on_book(quote(T + 1300, bid="50", ask="50.02", size=".6"), spec(), now_ms=T + 1300)
+    obj._dispose()
+    restored = VolatilityPaperTrial(
+        tmp_path,
+        candidate_id="volatility-candidate",
+        control_id="volatility-control",
+        first_entry_ms=T,
+        startup_ms=T + 10_000,
+    )
+    assert restored.candidate.account.positions[0].quantity == initial.quantity - D(".6")
+    assert restored.snapshot()["permanently_disabled"]
+    assert restored.snapshot()["exit_reason"] == "stop"
+    assert not restored.source_valid
+    assert not restored.entries_authorized
+    if later_mark is None:
+        assert restored.candidate.account.positions[0].latest_mark == D("96")
+        assert restored.candidate.account.equity <= D(9950)
+    else:
+        assert restored.candidate.account.positions[0].latest_mark == D("100")
+        assert restored.candidate.account.equity > D(9950)
+    fills = restored.candidate.store.table_counts()["paper_fills"]
+    restored.on_book(quote(T + 12_000, bid="50", ask="50.02"), spec(), now_ms=T + 12_000)
+    restored.on_book(quote(T + 12_200, bid="50", ask="50.02"), spec(), now_ms=T + 12_200)
+    assert restored.candidate.store.table_counts()["paper_fills"] == fills
+    restored.on_book(quote(T + 12_300, bid="50", ask="50.02"), spec(), now_ms=T + 12_300)
+    assert not restored.candidate.account.positions
+    assert restored.snapshot()["permanently_disabled"]
+    restored.close()
+
+
+def test_stale_context_keeps_partial_protection_enabled_and_qualification_closed(tmp_path):
+    obj = trial(tmp_path)
+    initial = opened(obj)
+    obj.on_book(quote(T + 7000, bid="50", ask="50.02"), spec(), now_ms=T + 7000)
+    obj.on_book(quote(T + 7300, bid="50", ask="50.02", size=".6"), spec(), now_ms=T + 7300)
+    assert obj.candidate.account.positions[0].quantity == initial.quantity - D(".6")
+    assert obj.snapshot()["permanently_disabled"]
+    assert not obj.source_valid
+    assert "REDUCTION_MARK_PROVENANCE_UNRECOVERABLE" in obj.snapshot()["faults"]
+    obj.on_book(quote(T + 7600, bid="50", ask="50.02"), spec(), now_ms=T + 7600)
+    obj.on_book(quote(T + 7900, bid="50", ask="50.02"), spec(), now_ms=T + 7900)
+    assert not obj.candidate.account.positions
+    assert obj.snapshot()["permanently_disabled"]
+    obj.close()

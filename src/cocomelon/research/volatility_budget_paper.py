@@ -68,6 +68,14 @@ D = Decimal
 HOUR = 3_600_000
 DAY = 86_400_000
 CONTEXT = Context(prec=28, rounding=ROUND_HALF_EVEN)
+IMMUTABLE_ACCOUNT_TABLES = (
+    "paper_order_plans",
+    "paper_execution_attempts",
+    "paper_fills",
+    "paper_position_events",
+    "paper_funding_events",
+)
+ECONOMIC_EVENT_TABLES = ("paper_execution_attempts", "paper_fills", "paper_funding_events")
 
 
 def _json(value: object) -> str:
@@ -298,6 +306,7 @@ class VolatilityPaperTrial:
                 "selected_market": None,
                 "custody": None,
                 "revision": 0,
+                "mark_commit": None,
                 "now": startup_ms,
                 "faults": [],
                 "components": [],
@@ -372,10 +381,11 @@ class VolatilityPaperTrial:
 
     @staticmethod
     def _custody(adapter: PaperExecutionAdapter) -> dict[str, Any]:
+        counts = adapter.store.table_counts()
         return {
             "time_ms": adapter.account.updated_at_ms,
             "state_id": adapter.account.state_id,
-            "counts": adapter.store.table_counts(),
+            "counts": {table: counts[table] for table in IMMUTABLE_ACCOUNT_TABLES},
         }
 
     def _validate_custody(self) -> None:
@@ -398,17 +408,29 @@ class VolatilityPaperTrial:
                 raise ValueError("trial lifecycle custody digest mismatch")
             current = self._custody(getattr(self, name))
             original = witness[name]
+            # Materialized positions disappear on genuine closes and rolling
+            # peaks are pruned. Only immutable event histories are monotonic.
             if current["time_ms"] < original["time_ms"] or any(
-                current["counts"].get(table, 0) < count
-                for table, count in original["counts"].items()
+                current["counts"][table] < original["counts"].get(table, 0)
+                for table in IMMUTABLE_ACCOUNT_TABLES
             ):
                 raise ValueError("account/trial custody rollback mismatch")
-            if (
-                current["time_ms"] == original["time_ms"]
-                and current["counts"] == original["counts"]
-                and current["state_id"] != original["state_id"]
-            ):
-                raise ValueError("account/trial custody state mismatch")
+            economic_commit = any(
+                current["counts"][table] > original["counts"].get(table, 0)
+                for table in ECONOMIC_EVENT_TABLES
+            )
+            transition = self._state.get("mark_commit") if name == "candidate" else None
+            expected_mark = (
+                transition is not None
+                and transition["before_state_id"] == original["state_id"]
+                and transition["expected_state_id"] == current["state_id"]
+                and transition["time_ms"] == current["time_ms"]
+            )
+            if current["state_id"] != original["state_id"] and not economic_commit:
+                if (
+                    current["time_ms"] == original["time_ms"] or transition is not None
+                ) and not expected_mark:
+                    raise ValueError("account/trial custody state mismatch")
 
     def _record(self, kind: str, now: int, payload: object) -> None:
         with self._db:
@@ -422,6 +444,10 @@ class VolatilityPaperTrial:
             self._state["faults"].append(reason)
 
     def _recover(self) -> None:
+        self._recover_mark_commit()
+        reduction = self._state["exit"]
+        if reduction is not None and reduction.get("attempt") is not None:
+            self._reconcile_reduction_mark(reduction["attempt"])
         for key, intent in self._state["intents"].items():
             plan_id = intent.get("plan_id")
             if not plan_id:
@@ -435,6 +461,8 @@ class VolatilityPaperTrial:
                     p.opening_plan_id == plan_id for p in self.candidate.account.positions
                 ):
                     self._state["active"] = key
+                if fills:
+                    self._reconcile_opening_mark(intent, fills)
             elif intent["status"] == "attempting":
                 # Uncertain interruption consumes this epoch; an old intent never chases.
                 intent["status"] = "interrupted_no_attempt"
@@ -822,6 +850,65 @@ class VolatilityPaperTrial:
                     }
                     self._save()
 
+    def _commit_mark(
+        self,
+        marks: Mapping[MarketId, Decimal],
+        *,
+        timestamp_ms: int,
+        contexts: tuple[dict[str, Any], ...],
+    ) -> None:
+        """Witness this exact existing-adapter mark before its independent commit."""
+        with localcontext(CONTEXT):
+            expected = mark_to_market(
+                self.candidate.account,
+                marks,
+                timestamp_ms,
+                paper_max_gross_leverage=self.config.paper_max_gross_leverage,
+            )
+            self._state["mark_commit"] = {
+                "before_state_id": self.candidate.account.state_id,
+                "expected_state_id": expected.state_id,
+                "expected_equity": str(expected.equity),
+                "time_ms": timestamp_ms,
+                "contexts": contexts,
+                "opening_plan_ids": [p.opening_plan_id for p in self.candidate.account.positions],
+            }
+            self._save()
+            self.candidate.mark_account_to_market(marks, timestamp_ms=timestamp_ms)
+            self._state["mark_commit"] = None
+
+    def _recover_mark_commit(self) -> None:
+        transition = self._state.get("mark_commit")
+        if transition is None:
+            return
+        with localcontext(CONTEXT):
+            at_ms = transition["time_ms"]
+            events = tuple(_event_from(row) for row in transition["contexts"])
+            if any(not self._valid_context(event, at_ms) for event in events):
+                self._fault("MARK_COMMIT_PROVENANCE_UNRECOVERABLE")
+                return
+            if D(transition["expected_equity"]) <= D(9950):
+                self._state["permanent"] = True
+            if any(
+                p.opening_plan_id in transition["opening_plan_ids"]
+                for p in self.candidate.account.positions
+            ):
+                for event in events:
+                    self._latch_mark_stop(event, at_ms)
+            if self.candidate.account.state_id == transition["before_state_id"]:
+                marks = {event.market: D(str(event.payload["mark_px"])) for event in events}
+                expected = mark_to_market(
+                    self.candidate.account,
+                    marks,
+                    at_ms,
+                    paper_max_gross_leverage=self.config.paper_max_gross_leverage,
+                )
+                if expected.state_id != transition["expected_state_id"]:
+                    self._fault("MARK_COMMIT_EXPECTED_STATE_MISMATCH")
+                    return
+                self.candidate.mark_account_to_market(marks, timestamp_ms=at_ms)
+            self._state["mark_commit"] = None
+
     def on_mark(self, event: StreamEvent, *, now_ms: int) -> None:
         with localcontext(CONTEXT):
             self._advance(now_ms)
@@ -844,7 +931,11 @@ class VolatilityPaperTrial:
                     self._save()
                     return
                 marks[position.market] = D(row["payload"]["mark_px"])
-            self.candidate.mark_account_to_market(marks, timestamp_ms=now_ms)
+            self._commit_mark(
+                marks,
+                timestamp_ms=now_ms,
+                contexts=tuple(self._state["marks"][m.canonical] for m in marks),
+            )
             if self.candidate.account.equity <= D(9950):
                 self._state["permanent"] = True
             self._record("equity", now_ms, self._equity())
@@ -915,6 +1006,8 @@ class VolatilityPaperTrial:
             status="attempting",
             plan_id=planned.plan_id,
             equity_before=str(self.candidate.account.equity),
+            opening_mark=json.loads(_json(context)),
+            opening_mark_applied=False,
         )
         self._save()  # Crash after committed adapter fill must never repeat opening.
         submission = self.candidate.submit_opening(
@@ -929,8 +1022,64 @@ class VolatilityPaperTrial:
         self._state["pending"] = None
         if submission.simulation and submission.simulation.fills:
             self._state["active"] = key
+            self._reconcile_opening_mark(intent, submission.simulation.fills)
         self._record("opening", now, asdict(submission))
         self._record("equity", now, self._equity())
+
+    def _reconcile_opening_mark(self, intent: dict[str, Any], fills: tuple[PaperFill, ...]) -> None:
+        """Apply the genuinely known context at exposure creation, including recovery.
+
+        Its original receipt is tested against the actual first fill, never the
+        restart clock. A newer account valuation is retained; the historical stop
+        and marked loss floor are independently durable and cannot be erased by a
+        later recovering mark. This does not admit source freshness on restart.
+        """
+        if intent.get("opening_mark_applied"):
+            return
+        with localcontext(CONTEXT):
+            first_fill_ms = min(fill.timestamp_ms for fill in fills)
+            row = intent.get("opening_mark")
+            event = None if row is None else _event_from(row)
+            if (
+                event is None
+                or event.market != fills[0].market
+                or not self._valid_context(event, first_fill_ms)
+            ):
+                self.source_valid = False
+                self._fault("OPENING_MARK_PROVENANCE_UNRECOVERABLE")
+                self._record("opening_mark_unrecoverable", first_fill_ms, intent["plan_id"])
+                return
+            assert row is not None
+            price = event.payload["mark_px"]
+            assert isinstance(price, Decimal)
+            sign = D(1) if fills[0].side.value == "buy" else D(-1)
+            historical_equity = D(intent["equity_before"]) + sum(
+                (sign * (price - fill.price) * fill.quantity - fill.taker_fee for fill in fills),
+                D(0),
+            )
+            if historical_equity <= D(9950):
+                self._state["permanent"] = True
+            held = any(
+                p.opening_plan_id == intent["plan_id"] for p in self.candidate.account.positions
+            )
+            if held:
+                self._latch_mark_stop(event, first_fill_ms)
+                if self.candidate.account.updated_at_ms <= first_fill_ms:
+                    self._commit_mark(
+                        {event.market: price}, timestamp_ms=first_fill_ms, contexts=(row,)
+                    )
+            intent["opening_mark_applied"] = True
+            intent["opening_mark_equity"] = str(historical_equity)
+            self._record(
+                "opening_mark_reconciliation",
+                first_fill_ms,
+                {
+                    "plan_id": intent["plan_id"],
+                    "event": row,
+                    "marked_equity_at_fill": historical_equity,
+                },
+            )
+            self._save()
 
     @staticmethod
     def _fresh_book(book: StreamEvent, instrument: InstrumentExecutionSpec, now: int) -> bool:
@@ -1057,6 +1206,18 @@ class VolatilityPaperTrial:
             )
         if _received(book) < planned.earliest_execution_ms or now < planned.earliest_execution_ms:
             return
+        # Pin actual preattempt custody before the independent IOC commit. Its
+        # historical residual mark/floor must survive a later recovering mark.
+        reduction["attempt"] = {
+            "plan_id": planned.plan_id,
+            "time_ms": now,
+            "book_key": book.event_key,
+            "position": _position_payload(position),
+            "cash_before": str(self.candidate.account.cash),
+            "context": json.loads(_json(self._state["marks"].get(position.market.canonical))),
+            "reconciled": False,
+        }
+        self._save()
         # Post-intent, post-latency original fresh books only, including after restart.
         outcome = self.candidate._execute_reduce_only_plan(
             position.market,
@@ -1066,6 +1227,7 @@ class VolatilityPaperTrial:
             book,
             attempt_timestamp_ms=now,
         )
+        self._reconcile_reduction_mark(reduction["attempt"])
         reduction["plan_id"] = None
         self._record("management", now, asdict(outcome))
         self._record("equity", now, self._equity())
@@ -1073,6 +1235,80 @@ class VolatilityPaperTrial:
             self._finish_component()
         if self.candidate.account.equity <= D(9950):
             self._state["permanent"] = True
+
+    def _reconcile_reduction_mark(self, witness: dict[str, Any]) -> None:
+        """Value a committed residual at its genuinely known attempt-time context."""
+        if witness["reconciled"]:
+            return
+        with localcontext(CONTEXT):
+            attempts, fills = self.candidate.store.load_execution_history(witness["plan_id"])
+            if not attempts:
+                return  # No IOC commit occurred; the protective intent still survives.
+            at_ms = witness["time_ms"]
+            if (
+                len(attempts) != 1
+                or attempts[0].attempt_timestamp_ms != at_ms
+                or attempts[0].source_event_key != witness["book_key"]
+                or any(
+                    f.timestamp_ms != at_ms or f.attempt_id != attempts[0].attempt_id for f in fills
+                )
+            ):
+                self._fault("REDUCTION_ATTEMPT_WITNESS_MISMATCH")
+                return
+            if not fills:
+                witness["reconciled"] = True
+                return
+            before = _position_from_payload(witness["position"])
+            sign = D(1) if before.side is PositionSide.LONG else D(-1)
+            remaining = before.quantity - sum((f.quantity for f in fills), D(0))
+            cash = D(witness["cash_before"]) + sum(
+                (
+                    sign * (f.price - before.average_entry_price) * f.quantity - f.taker_fee
+                    for f in fills
+                ),
+                D(0),
+            )
+            if remaining < 0:
+                self._fault("REDUCTION_RESIDUAL_QUANTITY_MISMATCH")
+                return
+            row = witness["context"]
+            event = None if row is None else _event_from(row)
+            if remaining > 0 and (
+                event is None
+                or event.market != before.market
+                or not self._valid_context(event, at_ms)
+            ):
+                # Unknown mark is not zero, and never prevents protective fills.
+                self.source_valid = False
+                self._fault("REDUCTION_MARK_PROVENANCE_UNRECOVERABLE")
+                witness["reconciled"] = True
+                self._record("reduction_mark_unknown", at_ms, witness)
+                self._save()
+                return
+            equity = cash
+            held = any(
+                p.opening_plan_id == before.opening_plan_id
+                for p in self.candidate.account.positions
+            )
+            if remaining > 0:
+                assert event is not None and row is not None
+                price = event.payload["mark_px"]
+                assert isinstance(price, Decimal)
+                equity += sign * (price - before.average_entry_price) * remaining
+                if equity <= D(9950):
+                    self._state["permanent"] = True
+                if held:
+                    self._latch_mark_stop(event, at_ms)
+                    if self.candidate.account.updated_at_ms <= at_ms:
+                        self._commit_mark(
+                            {before.market: price}, timestamp_ms=at_ms, contexts=(row,)
+                        )
+            if equity <= D(9950):
+                self._state["permanent"] = True
+            witness["reconciled"] = True
+            witness["marked_equity_after"] = str(equity)
+            self._record("reduction_mark_reconciliation", at_ms, witness)
+            self._save()
 
     def _finish_component(self) -> None:
         key = self._state["active"]

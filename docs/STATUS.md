@@ -16,8 +16,8 @@ workflow, account, reset, forced handoff, PR1392 activation or LIVE path changed
 
 [Unchanged freeze, implementation and limits](../research/experiments/volatility-budget-v1/README.md).
 Policy SHA256 `eca2816e42a1a0409737e179b45761a8a4ad0ebb2149ee7ad956b6867caffdaa`.
-107newtests and independent245regressionsPASS; research1855PASS; compile/Ruff/mypy575
-PASS. Localfull5805PASS,1SKIP,1knownmacOSdirectory-exception mismatch;
+120newtests and independent258regressionsPASS; research1868PASS; compile/Ruff/mypy575
+PASS. Localfull5818PASS,1SKIP,1knownmacOSdirectory-exception mismatch;
 [verification and exact reviewed bytes](../research/experiments/volatility-budget-v1/verification.md).
 Required exact-head Linuxfull/researchCI is a separate merge gate.
 
