@@ -1,0 +1,57 @@
+{
+  "schema": "cocomelon.volatility-budget-adjustment.v1",
+  "status": "FROZEN_RESEARCH_POLICY_ONLY; BLOCKED_FOR_SAFETY; no execution binding, operational accounts, T0 or activation",
+  "policy_id": "volatility-budget-adjustment-v1",
+  "mechanism": "Net-long volatility-budget allocators may reduce exposure when estimated risk rises and add it when risk falls. Delayed adjustment could create residual price pressure. Their presence, size and schedule are unobserved hypotheses; neither volatility nor historical winners prove signed alpha.",
+  "selected_after_frequency_before_returns": true,
+  "historical_outcomes_evaluated": false,
+  "market_scope": "Native namespace empty; BTC, ETH, SOL, BNB. Uniform existing source panel, selected without returns. Broad native discovery remains intact; this is a predeclared research scope, not a change to the ordinary universe.",
+  "signal": {
+    "daily_clock_utc": "00:00:30",
+    "data": "Thirty consecutive daily closes, each formed from three exact native 8h bars. Preserve native inclusive T; canonical close T+1ms. Require finite positive OHLC, volume and trade count for all bars, exact symbols/grid, no duplicates/gaps/unfinished bars, and original retrieval receipt before decision cutoff. Historical seed retrieval is warmup known now, never historic bot availability.",
+    "calculation": "Sample standard deviations (ddof=1) of daily log returns over latest7 and28 returns. Compute prior-day ratio from same30close formation. Let q=sigma7/sigma28; zero/unknown denominator => UNKNOWN and no entry.",
+    "SHORT": "Prior q<1.5 and current q>=1.5.",
+    "LONG": "Prior q>2/3 and current q<=2/3, using exact rational threshold in arithmetic.",
+    "NO_TRADE": "Neither crossing, unknown/late/invalid source, no eligible instrument, unavailable predecision reference, capacity/cooldown, unresolved accounting obligation or independent risk/execution veto. Never force an entry.",
+    "selection": "Filter current eligibility first; choose first canonical market among simultaneous qualifying signals. One trial-wide attempt per daily decision batch, even if rejected/partial/unfilled. No substitute or chase afterward.",
+    "same_market_cooldown_hours": 72,
+    "cooldown_basis": "72hours since the prior cooldown-admitted qualifying crossing in this market, ANYside. A valid crossing consumes this signal cooldown even if later notselected/rejected/unfilled. A crossing suppressed by cooldown does not move expiry. Missing/late source is UNKNOWN, never fabricated false. Actual pending/open capacity is separate."
+  },
+  "eligibility": "Current native metadata, active status, supported margin/precision, genuine mark/mid/oracle, daynotionalvolume>=max(10000000,ordinary requirement), OI notional>=max(5000000,ordinary requirement), both visible25bpdepth>=10000, fullspread<=5bp, and all stricter unchanged ordinary eligibility/health/risk conditions. Missing data fails closed. No historical eligibility is inferred from current metadata.",
+  "execution": {
+    "mode": "PAPER ONLY; existing depth-aware IOC simulation; no venue order endpoint or wallet",
+    "decision_reference": "Latest genuine predecision executable ask for LONG/bid for SHORT, received by decision clock with exchange AND receipt age<=1000ms. This E fixes geometry before submission; never retime a missed daily decision.",
+    "stop_distance_bps": "s=max(100,10000*sigma28), where sigma28 is the already-computed daily log-return standard deviation.",
+    "stop_target": "LONG stop=E*(1-s/10000),target=E*(1+2*s/10000); SHORT stop=E*(1+s/10000),target=E*(1-2*s/10000). Reject nonpositive geometry. No stop widening, target movement or averaging.",
+    "opening": "250ms latency; require a genuine book received after decision+250ms, at actual attempt with exchange AND receipt ages<=1000ms. One IOC,25bp cap,2s expiry measured from decision. Independent risk rechecks actual book/geometry and can reduce or reject. Retain partial/missed fills; no assumed quote between books.",
+    "exits": "Existing protective reductions always enabled; stop first, target second, full time-exit trigger24h after first actual fill third. Fresh post-intent/postlatency execution books, same fees and actual partial/failed exit accounting. No additional opening before flat. Retain unresolved reductions durably across restart; a time trigger never guarantees a fill.",
+    "marks_funding": "Fresh original marks/oracles; max5000ms context receipt age or stricter ordinary requirement. Book each actual hourly liability exactly once from boundary exposure and original preboundary oracle plus settled rate, including partial exits and rates arriving after position closes. Unknown liabilities are not zero and prevent qualification/new entries.",
+    "cost_reserve_bps": "c=9+latestfullspread_bps+10+25*abs(current hourlyfundingrate)*10000. Require c<=50 and2*s>=4*c. Reserve is a scenario, not a cost bound or expected return. Use max(c,unchanged independent worst-IOC/fee/funding risk reserve) for sizing. Actual fee tier0 taker4.5bp/side, observed fill spread/impact and actual funding determine cash; do not subtract embedded spread/slippage twice."
+  },
+  "risk": {
+    "candidate_cash": 10000,
+    "control_cash": 10000,
+    "control": "Distinct durable NO_TRADE simulated account; zero cash yield; no operational account created",
+    "planned_risk_fraction_at_most": "0.001",
+    "sizing": "N<=min(.001*marked_equity/((s+max(c,independent risk reserve))/10000),.25*marked_equity,.05*genuine contra25bp visibledepth); round quantity DOWN to native precision. Existing independent venue minimum, margin, correlation and stop/risk approvals can reduce/reject. Ceilings are not minimum allocation.",
+    "capacity": "One pending/open trial-wide position; at most one opening attempt/UTCday; no pyramids, averaging or martingale.",
+    "locks": "Marked equity<=9950 permanently suspends new entries. Preserve ordinary1%daily/3%weekly limits, three-loss1h cooldown and all stricter vetoes. Realized losses can exceed planned risk through gaps/slippage. No loss reset/new version to erase failures. Protective exits continue."
+  },
+  "source_safety": "No old flow2s continuous full-depth signal requirement is inherited. Exact closed-bar source and all actual mark, book, accounting and lifecycle requirements remain. Persist original raw responses/receive clocks and gaps; no repaired or retimed observations. Prove independent account/source/resource ownership and restart custody before activation. Successful spot requests do not certify an ongoing feed or safe24h service. Never start a duplicate ordinary baseline runtime. A backward receive clock, conflicting account identity/history, missing restart custody, lost funding boundary liability or unrecoverable source/equity accounting permanently disables V1 entries; preserve all losses and continue protective exits. An isolated missed decision/book is a recorded NO_TRADE, never retimed; an unresolved material held-position source gap prevents qualification and new exposure. No automatic new version or reset.",
+  "evaluation": {
+    "primary_days": 90,
+    "extension": "One unchanged extension to180days only if independent sample counts insufficient, never to rescue adequate economic failure or source/custody failure.",
+    "minimums": "At least20 common-shock components,3 executed markets,5 LONG-only and5 SHORT-only components,5 components per elapsed chronological third. Union overlapping actual entry-to-final-close lifetimes or shared decision batches; assign by first fill. A mixed component counts toward neither side minimum. Report all rejected/unknown/unfilled cases separately.",
+    "edge_validation": ">=72h complete authenticated original prospective source and adequate samples; positive absolute whole marked candidate equity after all costs and liabilities, versus equal-capital NO_TRADE; all three chronological thirds positive after costs, drawdown/profitfactor/expectancy/risk-adjusted metrics and concentration sensitivity. Missing source/custody/settlement => UNQUALIFIED. Adequate complete sample failing absolute-positive/robustness => REJECT_V1, no retuning.",
+    "historical_frequency_boundary": "Past conditional counts only; no historic prices after a signal, future return/strategy backtest, performance grid or historical fills were evaluated. Current 180d counts51asset signals/40clocks/33overlap24hcomponents are pre-eligibility opportunities, not fills or a forecast."
+  },
+  "activation": {
+    "T0": null,
+    "first_entry_boundary": null,
+    "operational_accounts": 0,
+    "authorized": false
+  },
+  "forbidden": "No paid data/host/subscription, new general execution framework, ordinary worker modification/restart/duplicate, PR1392 activation without separate custody admission, historic loss reset, flow/collateral reopening without genuinely new evidence, policy retuning or LIVE action.",
+  "freeze_created_at_utc": "2026-10-21T14:31:29.204055+00:00",
+  "frequency_window_definition": "Latest historical decision clock observed2026-10-20T00Z. Rolling count windows end2026-10-21T00Z EXCLUSIVE, start=end−90/180/365calendar days, startINCLUSIVE; Oct21dailydecision UNKNOWN/excluded. Componentthirds anchored at windowstart. 180day proxythirds11/11/11. All historical eligibility/execution is UNKNOWN; sameclose24hproxy can differ from actual entry+latency and exits."
+}
