@@ -1,5 +1,9 @@
 # Collateral utility v1 — frozen design only
 
+**Later frequency check: INCONCLUSIVE — INSUFFICIENT AUTHENTIC EVENT EVIDENCE.**
+[Count-only investigation](../../../docs/collateral_opportunity_frequency_2026_10_21.md) does not authorize implementation.
+The original frozen protocol is preserved; no new collector or runner follows.
+
 **UNVALIDATED / BLOCKED FOR SAFETY / NOT RUNNING / LIVE OFF.**
 
 Protocol SHA256 `31677ec78380f6d1f56e0aed4245cb332741353d77a33b6bf4c3d73d3b71c5c3`. This is a separate financing-utility event hypothesis,

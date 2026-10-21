@@ -1,0 +1,3332 @@
+{
+  "schema": "cocomelon.collateral_notice_frequency.manual.v1",
+  "protocol_sha256": "31677ec78380f6d1f56e0aed4245cb332741353d77a33b6bf4c3d73d3b71c5c3",
+  "manual_study_date_utc": "2026-10-21",
+  "observation_metadata_recorded_at_utc": "2026-10-21T12:28:56Z",
+  "scope": {
+    "publication_window_start": "2026-01-01",
+    "publication_window_end": "2026-10-21",
+    "source": "Official English Binance announcement pages/search text; one regional official result retained as unresolved",
+    "focus": "Flat ordinary Portfolio Margin collateral ratios, before and after",
+    "excluded_queries": "No price reaction, return, profitability, funding or market-price query performed"
+  },
+  "retrieval_budget": {
+    "search_calls": 4,
+    "queries_per_call": 4,
+    "body_open_attempts": 12,
+    "successful_article_body_opens": 9,
+    "generic_redirects": 3,
+    "CMS_probes": 0,
+    "paid_services_used": 0
+  },
+  "counting_rules": [
+    "One canonical article ID is one notice batch, regardless of number of affected assets or ancillary PM Pro tiers.",
+    "Same-article amendments and locale duplicates are not additional events.",
+    "Absolute(after-before)>=10 percentage points is only a mathematical materiality flag; it does not prove native eligibility or strict qualification.",
+    "Publication and update displays are never substituted for historical first durable receipt.",
+    "One notice with both signs is marked MIXED; this does not establish two direction samples or how frozen capacity/selection would choose."
+  ],
+  "coverage_caveats": [
+    "Bounded search results are not a complete 2026 archive or an unbiased sample; no zero-event claim for months/weeks absent from results.",
+    "Complete ordinary flat table in search text is weaker than successful current body retrieval and never authenticates the original historical revision.",
+    "Canonical English route is retained when directly returned in official search/body evidence; regional-only candidate is UNKNOWN.",
+    "Historical first receipt, authoritative asset mapping and native Hyperliquid ordinary eligibility are UNKNOWN for every row; strict qualifying-event frequency cannot be estimated from these notices alone.",
+    "Displayed publication/update times lack an explicit timezone in retrieved text; original display preserved, UTC normalization UNKNOWN. Effective rollout starts explicitly say UTC.",
+    "Current revised notices may not match the originally published plan. Sept25 explicitly discloses a plan modification; original body/version was not recovered.",
+    "The 2026-10-23 batch was announced on Oct20 but was future at cutoff; do not add it to occurred historical frequency.",
+    "All prerelease/pre-T0 notices are excluded from prospective outcome scoring under the frozen protocol."
+  ],
+  "counts": {
+    "candidate_notice_ids": 30,
+    "complete_flat_table_notice_ids": 27,
+    "raw_material_notice_ids": 25,
+    "raw_material_notice_ids_effective_by_cutoff": 24,
+    "future_announced_raw_material_notice_ids": 1,
+    "nonmaterial_flat_notice_ids": 2,
+    "leverage_PMPro_only_notice_ids": 1,
+    "unresolved_candidate_notice_ids": 2,
+    "observed_ordinary_flat_asset_rows": 231,
+    "raw_material_asset_rows_all_including_future": 184,
+    "raw_material_occurred_direction_counts": {
+      "SHORT_ONLY": 13,
+      "LONG_ONLY": 2,
+      "MIXED": 9
+    },
+    "strict_qualified_notice_count": "UNKNOWN"
+  },
+  "notices": [
+    {
+      "article_id": "5b49d23d70a84bd9ae1e5948fbabf535",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-01-12)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/5b49d23d70a84bd9ae1e5948fbabf535",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/5b49d23d70a84bd9ae1e5948fbabf535",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/5b49d23d70a84bd9ae1e5948fbabf535"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search2",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 15
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-01-12 09:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-01-16T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-01-16T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": "UNKNOWN",
+      "ordinary_pm_rows": [
+        {
+          "asset": "VET",
+          "before_percent": 40,
+          "after_percent": 20,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SC",
+          "before_percent": 35,
+          "after_percent": 10,
+          "signed_delta_pp": -25,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "BTTC",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ACT",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "AUDIO",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "PYR",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "FLOW",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "DATA",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "RAD",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "WIN",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "OSMO",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ADX",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "CITY",
+          "before_percent": 15,
+          "after_percent": 10,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "BAR",
+          "before_percent": 15,
+          "after_percent": 10,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "ATM",
+          "before_percent": 15,
+          "after_percent": 10,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        }
+      ],
+      "ordinary_flat_row_count": 15,
+      "raw_material_row_count": 12,
+      "raw_material_notice": true,
+      "raw_material_direction": "SHORT_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "d4cd2d5de7494355be0d0e89e4b5b5fc",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin of USDⓈ-M Perpetual Contracts (2026-01-23)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/d4cd2d5de7494355be0d0e89e4b5b5fc",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/d4cd2d5de7494355be0d0e89e4b5b5fc",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/d4cd2d5de7494355be0d0e89e4b5b5fc"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search2",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 15
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-01-20 10:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-01-23T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-01-23T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": "UNKNOWN",
+      "ordinary_pm_rows": [
+        {
+          "asset": "LTC",
+          "before_percent": 90,
+          "after_percent": 85,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "SHIB",
+          "before_percent": 85,
+          "after_percent": 80,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "NEAR",
+          "before_percent": 75,
+          "after_percent": 70,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "CRV",
+          "before_percent": 65,
+          "after_percent": 50,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "PAXG",
+          "before_percent": 60,
+          "after_percent": 50,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "WLD",
+          "before_percent": 60,
+          "after_percent": 40,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "WIF",
+          "before_percent": 60,
+          "after_percent": 40,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "APT",
+          "before_percent": 60,
+          "after_percent": 40,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "TIA",
+          "before_percent": 55,
+          "after_percent": 40,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "FLOKI",
+          "before_percent": 50,
+          "after_percent": 30,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SAND",
+          "before_percent": 35,
+          "after_percent": 10,
+          "signed_delta_pp": -25,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "USTC",
+          "before_percent": 35,
+          "after_percent": 10,
+          "signed_delta_pp": -25,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "TWT",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "CHZ",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ORDI",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 15,
+      "raw_material_row_count": 12,
+      "raw_material_notice": true,
+      "raw_material_direction": "SHORT_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": [
+        "15 ordinary flat rows; exactly12 have absolute delta>=10pp. PAXG and USTC must not be silently treated as eligible native nonclaim assets."
+      ]
+    },
+    {
+      "article_id": "dfd8c9a381e7468a9ecc1942e0f9d6f1",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-01-30)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/dfd8c9a381e7468a9ecc1942e0f9d6f1",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/dfd8c9a381e7468a9ecc1942e0f9d6f1",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/dfd8c9a381e7468a9ecc1942e0f9d6f1"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search2",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 16
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-01-27 07:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-01-30T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-01-30T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "DASH",
+          "before_percent": 25,
+          "after_percent": 30,
+          "signed_delta_pp": 5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "ICP",
+          "before_percent": 25,
+          "after_percent": 30,
+          "signed_delta_pp": 5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "USDP",
+          "before_percent": 99.9,
+          "after_percent": 90,
+          "signed_delta_pp": -9.9,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "RAY",
+          "before_percent": 50,
+          "after_percent": 40,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "LUNA",
+          "before_percent": 35,
+          "after_percent": 30,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "SKL",
+          "before_percent": 35,
+          "after_percent": 30,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "SAGA",
+          "before_percent": 35,
+          "after_percent": 30,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "ENJ",
+          "before_percent": 35,
+          "after_percent": 30,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "IMX",
+          "before_percent": 35,
+          "after_percent": 30,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "PIXEL",
+          "before_percent": 35,
+          "after_percent": 30,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "RONIN",
+          "before_percent": 35,
+          "after_percent": 30,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "HFT",
+          "before_percent": 35,
+          "after_percent": 30,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "BLUR",
+          "before_percent": 35,
+          "after_percent": 30,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "ALT",
+          "before_percent": 35,
+          "after_percent": 30,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "ONE",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "COTI",
+          "before_percent": 15,
+          "after_percent": 10,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        }
+      ],
+      "ordinary_flat_row_count": 16,
+      "raw_material_row_count": 2,
+      "raw_material_notice": true,
+      "raw_material_direction": "SHORT_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "7acf274f85ef4d9d84e2e4de69b9ad81",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-02-03)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/7acf274f85ef4d9d84e2e4de69b9ad81",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/7acf274f85ef4d9d84e2e4de69b9ad81",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/7acf274f85ef4d9d84e2e4de69b9ad81"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search2",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 0
+        },
+        {
+          "tool_group": "open1",
+          "mode": "body_open",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 22
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-02-03 06:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "2026-02-03 07:33",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-02-06T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-02-06T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_and_body_open",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "LTC",
+          "before_percent": 85,
+          "after_percent": 80,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "DOT",
+          "before_percent": 75,
+          "after_percent": 70,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "TON",
+          "before_percent": 65,
+          "after_percent": 60,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "ENA",
+          "before_percent": 65,
+          "after_percent": 60,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "ATOM",
+          "before_percent": 65,
+          "after_percent": 50,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "OP",
+          "before_percent": 55,
+          "after_percent": 50,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "FET",
+          "before_percent": 55,
+          "after_percent": 50,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "ZRO",
+          "before_percent": 50,
+          "after_percent": 40,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "STRK",
+          "before_percent": 45,
+          "after_percent": 30,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "DYM",
+          "before_percent": 35,
+          "after_percent": 30,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "WAXP",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "VANA",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "IO",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ANIME",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "MOVR",
+          "before_percent": 15,
+          "after_percent": 10,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "ALPINE",
+          "before_percent": 15,
+          "after_percent": 10,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "STORJ",
+          "before_percent": 15,
+          "after_percent": 10,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "BAND",
+          "before_percent": 15,
+          "after_percent": 10,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "COS",
+          "before_percent": 15,
+          "after_percent": 10,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "LQTY",
+          "before_percent": 15,
+          "after_percent": 10,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "TLM",
+          "before_percent": 15,
+          "after_percent": 10,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "FUN",
+          "before_percent": 15,
+          "after_percent": 10,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        }
+      ],
+      "ordinary_flat_row_count": 22,
+      "raw_material_row_count": 7,
+      "raw_material_notice": true,
+      "raw_material_direction": "SHORT_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UPDATE_TIMESTAMP_PRESENT_DIFF_UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": [
+        "Updated timestamp is visible; the original revision and amendment diff were not recovered."
+      ]
+    },
+    {
+      "article_id": "44b6fb4bfc994057939918ab98d906bb",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-02-27)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/44b6fb4bfc994057939918ab98d906bb",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/44b6fb4bfc994057939918ab98d906bb",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/44b6fb4bfc994057939918ab98d906bb"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search1",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 17
+        },
+        {
+          "tool_group": "search2",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 20
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-02-24 02:30",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-02-27T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-02-27T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "LRC",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "QTUM",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "1000SATS",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "NTRN",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "PLUME",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "XEC",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "MBOX",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "LPT",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "KAIA",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "OXT",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SIGN",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SCR",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "YGG",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "NOT",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "IOST",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ME",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ONT",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "RESOLV",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "HIVE",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "MTL",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 20,
+      "raw_material_row_count": 20,
+      "raw_material_notice": true,
+      "raw_material_direction": "SHORT_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "a46249effc4645c89db2c18a198119d4",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-03-07)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/a46249effc4645c89db2c18a198119d4",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/a46249effc4645c89db2c18a198119d4",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/a46249effc4645c89db2c18a198119d4"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search2",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 0
+        },
+        {
+          "tool_group": "open1",
+          "mode": "body_open",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 20
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-03-03 02:30",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-03-07T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-03-07T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_and_body_open",
+      "ancillary_tiered_pmpro_table_observed": "UNKNOWN",
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "WOO",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "BANANA",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "RDNT",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ARKM",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "KAITO",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ACE",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "XAI",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "NEO",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "GTC",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "VET",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "HUMA",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "PARTI",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "DYDX",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "RSR",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "EDU",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "XVG",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SYRUP",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "PHB",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ERA",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "GUN",
+          "before_percent": 20,
+          "after_percent": 10,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 20,
+      "raw_material_row_count": 20,
+      "raw_material_notice": true,
+      "raw_material_direction": "SHORT_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "361baed0b23744a8b322bc7023cba3a9",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-03-10)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/361baed0b23744a8b322bc7023cba3a9",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/361baed0b23744a8b322bc7023cba3a9",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/361baed0b23744a8b322bc7023cba3a9"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search1",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 12
+        },
+        {
+          "tool_group": "search2",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 12
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-03-10 05:30",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-03-13T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-03-13T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "WIF",
+          "before_percent": 40,
+          "after_percent": 25,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "BAT",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "HOT",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ANKR",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SNX",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ALICE",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ICX",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "AEVO",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "XTZ",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "PNUT",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "MASK",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "RVN",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 12,
+      "raw_material_row_count": 12,
+      "raw_material_notice": true,
+      "raw_material_direction": "SHORT_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "fdd4eb1e1272445b81fa0f1656ad17f6",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-03-20)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/fdd4eb1e1272445b81fa0f1656ad17f6",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/fdd4eb1e1272445b81fa0f1656ad17f6",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/fdd4eb1e1272445b81fa0f1656ad17f6"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search2",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 0
+        },
+        {
+          "tool_group": "open1",
+          "mode": "body_open",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 3
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-03-17 06:30",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-03-20T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-03-20T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_and_body_open",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "U",
+          "before_percent": 90,
+          "after_percent": 95,
+          "signed_delta_pp": 5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "A2Z",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "WIF",
+          "before_percent": 25,
+          "after_percent": 10,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 3,
+      "raw_material_row_count": 2,
+      "raw_material_notice": true,
+      "raw_material_direction": "SHORT_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "26d93ead76134f94901e75edd3e008d4",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-04-24)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/26d93ead76134f94901e75edd3e008d4",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/26d93ead76134f94901e75edd3e008d4",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/26d93ead76134f94901e75edd3e008d4"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search2",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 5
+        },
+        {
+          "tool_group": "search3",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 5
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-04-21 06:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-04-24T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-04-24T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "WBTC",
+          "before_percent": 70,
+          "after_percent": 60,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "CAKE",
+          "before_percent": 60,
+          "after_percent": 50,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ETHFI",
+          "before_percent": 60,
+          "after_percent": 50,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "INJ",
+          "before_percent": 60,
+          "after_percent": 40,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "TRUMP",
+          "before_percent": 50,
+          "after_percent": 30,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 5,
+      "raw_material_row_count": 5,
+      "raw_material_notice": true,
+      "raw_material_direction": "SHORT_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "7d34ee71003a43d19d88977b9815149e",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-05-01)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/7d34ee71003a43d19d88977b9815149e",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/7d34ee71003a43d19d88977b9815149e",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/7d34ee71003a43d19d88977b9815149e"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search2",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 0
+        },
+        {
+          "tool_group": "open1",
+          "mode": "body_open",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 11
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-04-29 01:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-05-01T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-05-01T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_and_body_open",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "STX",
+          "before_percent": 50,
+          "after_percent": 30,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "APT",
+          "before_percent": 40,
+          "after_percent": 30,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "CFX",
+          "before_percent": 40,
+          "after_percent": 30,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "GRT",
+          "before_percent": 40,
+          "after_percent": 30,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "MANA",
+          "before_percent": 40,
+          "after_percent": 30,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SUSHI",
+          "before_percent": 40,
+          "after_percent": 30,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "TIA",
+          "before_percent": 40,
+          "after_percent": 30,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "W",
+          "before_percent": 40,
+          "after_percent": 30,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "WLD",
+          "before_percent": 40,
+          "after_percent": 30,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ZRO",
+          "before_percent": 40,
+          "after_percent": 30,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ASTER",
+          "before_percent": 10,
+          "after_percent": 30,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 11,
+      "raw_material_row_count": 11,
+      "raw_material_notice": true,
+      "raw_material_direction": "MIXED",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": [
+        "EIGENUSDT appears twice in the ancillary leverage-contract list. Ordinary PM ratio table has no duplicate assets; one article remains one event batch."
+      ]
+    },
+    {
+      "article_id": "acc2cb4b45714c7b99cfe3ba4848f3f4",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-05-08)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/acc2cb4b45714c7b99cfe3ba4848f3f4",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/acc2cb4b45714c7b99cfe3ba4848f3f4",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/acc2cb4b45714c7b99cfe3ba4848f3f4"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search1",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 17
+        },
+        {
+          "tool_group": "search3",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 17
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-05-06 02:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-05-08T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-05-08T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": "UNKNOWN",
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "DOGE",
+          "before_percent": 90,
+          "after_percent": 85,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "SOL",
+          "before_percent": 90,
+          "after_percent": 85,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "BNSOL",
+          "before_percent": 90,
+          "after_percent": 85,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "TRX",
+          "before_percent": 85,
+          "after_percent": 50,
+          "signed_delta_pp": -35,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "LINK",
+          "before_percent": 80,
+          "after_percent": 70,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "AVAX",
+          "before_percent": 80,
+          "after_percent": 70,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "AAVE",
+          "before_percent": 80,
+          "after_percent": 70,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "LTC",
+          "before_percent": 80,
+          "after_percent": 70,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "HBAR",
+          "before_percent": 80,
+          "after_percent": 70,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "XLM",
+          "before_percent": 80,
+          "after_percent": 50,
+          "signed_delta_pp": -30,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SHIB",
+          "before_percent": 80,
+          "after_percent": 50,
+          "signed_delta_pp": -30,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "PEPE",
+          "before_percent": 75,
+          "after_percent": 50,
+          "signed_delta_pp": -25,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "UNI",
+          "before_percent": 75,
+          "after_percent": 60,
+          "signed_delta_pp": -15,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "BCH",
+          "before_percent": 75,
+          "after_percent": 50,
+          "signed_delta_pp": -25,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "BONK",
+          "before_percent": 70,
+          "after_percent": 50,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ARB",
+          "before_percent": 70,
+          "after_percent": 50,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "DOT",
+          "before_percent": 70,
+          "after_percent": 50,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 17,
+      "raw_material_row_count": 14,
+      "raw_material_notice": true,
+      "raw_material_direction": "SHORT_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "fd9a0d1f932f4025bdb09b6c57179c9a",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-05-15)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/fd9a0d1f932f4025bdb09b6c57179c9a",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/fd9a0d1f932f4025bdb09b6c57179c9a",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/fd9a0d1f932f4025bdb09b6c57179c9a"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search1",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 5
+        },
+        {
+          "tool_group": "search3",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 5
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-05-12 03:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-05-15T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-05-15T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "UNI",
+          "before_percent": 60,
+          "after_percent": 50,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ENA",
+          "before_percent": 60,
+          "after_percent": 50,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "RAY",
+          "before_percent": 40,
+          "after_percent": 30,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "APE",
+          "before_percent": 40,
+          "after_percent": 30,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ZEC",
+          "before_percent": 30,
+          "after_percent": 50,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 5,
+      "raw_material_row_count": 5,
+      "raw_material_notice": true,
+      "raw_material_direction": "MIXED",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "7a9deab7bcad40a69dd61734a577387e",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-05-22)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/7a9deab7bcad40a69dd61734a577387e",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/7a9deab7bcad40a69dd61734a577387e",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/7a9deab7bcad40a69dd61734a577387e"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search1",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 5
+        },
+        {
+          "tool_group": "search3",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 5
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-05-19 04:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-05-22T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-05-22T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "DOGE",
+          "before_percent": 85,
+          "after_percent": 80,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "ETHFI",
+          "before_percent": 50,
+          "after_percent": 30,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "PENGU",
+          "before_percent": 50,
+          "after_percent": 30,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "INJ",
+          "before_percent": 40,
+          "after_percent": 30,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SEI",
+          "before_percent": 40,
+          "after_percent": 30,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 5,
+      "raw_material_row_count": 4,
+      "raw_material_notice": true,
+      "raw_material_direction": "SHORT_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "4d11138559ff4598b60965c479517934",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-06-12)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/4d11138559ff4598b60965c479517934",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/4d11138559ff4598b60965c479517934",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/4d11138559ff4598b60965c479517934"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search3",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 4
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-06-09 06:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-06-12T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-06-12T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": "UNKNOWN",
+      "ordinary_pm_rows": [
+        {
+          "asset": "U",
+          "before_percent": 95,
+          "after_percent": 98,
+          "signed_delta_pp": 3,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "CAKE",
+          "before_percent": 50,
+          "after_percent": 30,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "CRV",
+          "before_percent": 50,
+          "after_percent": 30,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "TAO",
+          "before_percent": 50,
+          "after_percent": 30,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 4,
+      "raw_material_row_count": 3,
+      "raw_material_notice": true,
+      "raw_material_direction": "SHORT_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "d1954a75b8514a2d91b9135a13348df5",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-06-19)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/d1954a75b8514a2d91b9135a13348df5",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/d1954a75b8514a2d91b9135a13348df5",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/d1954a75b8514a2d91b9135a13348df5"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search3",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 0
+        },
+        {
+          "tool_group": "open2",
+          "mode": "body_open",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 1
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-06-17 02:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-06-19T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-06-19T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_and_body_open",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "ADA",
+          "before_percent": 90,
+          "after_percent": 85,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        }
+      ],
+      "ordinary_flat_row_count": 1,
+      "raw_material_row_count": 0,
+      "raw_material_notice": false,
+      "raw_material_direction": "NO_MATERIAL_ROW",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "f9b4352902014b6a983b4838f958f757",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-06-26)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/f9b4352902014b6a983b4838f958f757",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/f9b4352902014b6a983b4838f958f757",
+      "discovered_official_urls": [
+        "https://www.binance.com/en-AE/support/announcement/detail/f9b4352902014b6a983b4838f958f757",
+        "https://www.binance.com/en/support/announcement/detail/f9b4352902014b6a983b4838f958f757"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search3",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 0
+        },
+        {
+          "tool_group": "open2",
+          "mode": "body_open",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 1
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-06-24 02:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-06-26T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-06-26T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_and_body_open",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "ADA",
+          "before_percent": 85,
+          "after_percent": 80,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        }
+      ],
+      "ordinary_flat_row_count": 1,
+      "raw_material_row_count": 0,
+      "raw_material_notice": false,
+      "raw_material_direction": "NO_MATERIAL_ROW",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "f7dbb4547b4f443d975eb7d619ad2969",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-07-10)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/f7dbb4547b4f443d975eb7d619ad2969",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/f7dbb4547b4f443d975eb7d619ad2969",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/f7dbb4547b4f443d975eb7d619ad2969"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search1",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 4
+        },
+        {
+          "tool_group": "search3",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 0
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-07-07 07:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-07-10T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-07-10T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": "UNKNOWN",
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "SOL",
+          "before_percent": 85,
+          "after_percent": 80,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "BNSOL",
+          "before_percent": 85,
+          "after_percent": 80,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "WBTC",
+          "before_percent": 60,
+          "after_percent": 50,
+          "signed_delta_pp": -10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "VANRY",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 4,
+      "raw_material_row_count": 2,
+      "raw_material_notice": true,
+      "raw_material_direction": "SHORT_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "a18d439fe26943e09270bfbc45b6db13",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-07-17)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/a18d439fe26943e09270bfbc45b6db13",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/a18d439fe26943e09270bfbc45b6db13",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/a18d439fe26943e09270bfbc45b6db13"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search1",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 2
+        },
+        {
+          "tool_group": "search3",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 2
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-07-14 10:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-07-17T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-07-17T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "LUNC",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "MORPHO",
+          "before_percent": 10,
+          "after_percent": 30,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 2,
+      "raw_material_row_count": 2,
+      "raw_material_notice": true,
+      "raw_material_direction": "MIXED",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "97b4f93f9c684da2a5701ab09530d3df",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-07-24)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/97b4f93f9c684da2a5701ab09530d3df",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/97b4f93f9c684da2a5701ab09530d3df",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/97b4f93f9c684da2a5701ab09530d3df"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search3",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 0
+        },
+        {
+          "tool_group": "open2",
+          "mode": "body_open",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 3
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-07-21 07:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-07-24T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-07-24T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_and_body_open",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "ALGO",
+          "before_percent": 50,
+          "after_percent": 30,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "PUMP",
+          "before_percent": 30,
+          "after_percent": 50,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "WLD",
+          "before_percent": 30,
+          "after_percent": 50,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 3,
+      "raw_material_row_count": 3,
+      "raw_material_notice": true,
+      "raw_material_direction": "MIXED",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "b4a1a7c64f454abda5b22860cd52c682",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-07-31)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/b4a1a7c64f454abda5b22860cd52c682",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/b4a1a7c64f454abda5b22860cd52c682",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/b4a1a7c64f454abda5b22860cd52c682"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search4",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 0
+        },
+        {
+          "tool_group": "open2",
+          "mode": "body_open",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 3
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-07-28 09:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-07-31T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-07-31T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_and_body_open",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "STX",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SANTOS",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "EURI",
+          "before_percent": 20,
+          "after_percent": 30,
+          "signed_delta_pp": 10,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 3,
+      "raw_material_row_count": 3,
+      "raw_material_notice": true,
+      "raw_material_direction": "MIXED",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": [
+        "EURI +10pp is a raw mathematical material row. Stablecoin/asset-kind identity must be checked; do not count it as an eligible LONG."
+      ]
+    },
+    {
+      "article_id": "3f18062274ea49199475b4ad9ff35738",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-08-14)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/3f18062274ea49199475b4ad9ff35738",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/3f18062274ea49199475b4ad9ff35738",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/3f18062274ea49199475b4ad9ff35738"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search1",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 3
+        },
+        {
+          "tool_group": "search4",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 3
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-08-11 08:22",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-08-14T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-08-14T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [
+        {
+          "asset": "CUSDOX",
+          "before_percent": 85,
+          "after_percent": 80,
+          "signed_delta_pp": -5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "USDS",
+          "before_percent": 75,
+          "after_percent": 80,
+          "signed_delta_pp": 5,
+          "absolute_delta_gte_10_pp": false
+        },
+        {
+          "asset": "AERO",
+          "before_percent": 10,
+          "after_percent": 30,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 3,
+      "raw_material_row_count": 1,
+      "raw_material_notice": true,
+      "raw_material_direction": "LONG_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "1f12c2c6cc2b43aa941e382dfc19c417",
+      "title": "Update on the Collateral Ratio Under Cross Margin and Portfolio Margin (2026-09-04)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/1f12c2c6cc2b43aa941e382dfc19c417",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/1f12c2c6cc2b43aa941e382dfc19c417",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/1f12c2c6cc2b43aa941e382dfc19c417"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search4",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 12
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-09-01 09:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-09-04T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-09-04T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin_and_Cross_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": "UNKNOWN",
+      "ordinary_pm_rows": [
+        {
+          "asset": "ZEC",
+          "before_percent": 50,
+          "after_percent": 70,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "AIXBT",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "RARE",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "KSM",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "CATI",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "RED",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "FLUX",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "PIXEL",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "RONIN",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SAGA",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "BICO",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SYRUP",
+          "before_percent": 10,
+          "after_percent": 30,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 12,
+      "raw_material_row_count": 12,
+      "raw_material_notice": true,
+      "raw_material_direction": "MIXED",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "58b63eb8dd664487910a7cdcb7fc0c23",
+      "title": "Update on the Collateral Ratio & Leverage Under Cross Margin and Portfolio Margin (2026-09-11)",
+      "canonical_url": "UNKNOWN",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/58b63eb8dd664487910a7cdcb7fc0c23",
+      "discovered_official_urls": [
+        "https://www.binance.com/fr-AF/support/announcement/detail/58b63eb8dd664487910a7cdcb7fc0c23"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search4",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 0
+        },
+        {
+          "tool_group": "open3",
+          "mode": "body_open",
+          "redirect_to_generic_index": true,
+          "flat_rows_recovered": 0
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "UNKNOWN",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-09-11T06:00:00Z",
+      "rollout_duration_text": "UNKNOWN",
+      "rollout_estimated_end_utc": "2026-09-11T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "UNKNOWN",
+      "ordinary_pm_table_structure": "UNKNOWN",
+      "complete_ordinary_flat_table_recovered": "UNKNOWN",
+      "evidence_completeness": "incomplete",
+      "ancillary_tiered_pmpro_table_observed": "UNKNOWN",
+      "ancillary_leverage_notice_observed": "UNKNOWN",
+      "ordinary_pm_rows": [],
+      "ordinary_flat_row_count": "UNKNOWN",
+      "raw_material_row_count": "UNKNOWN",
+      "raw_material_notice": "UNKNOWN",
+      "raw_material_direction": "UNKNOWN",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": [
+        "Only official regional fr-AF search excerpt recovered. English body candidate redirected. Exact English canonical URL, publication, rows and ordinary-flat table qualification UNKNOWN."
+      ]
+    },
+    {
+      "article_id": "390301281fa84012b654ddbe811f9a53",
+      "title": "Update on the Collateral Ratio Under Cross Margin and Portfolio Margin (2026-09-18)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/390301281fa84012b654ddbe811f9a53",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/390301281fa84012b654ddbe811f9a53",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/390301281fa84012b654ddbe811f9a53"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search4",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 9
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-09-15 09:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-09-18T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-09-18T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin_and_Cross_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": "UNKNOWN",
+      "ordinary_pm_rows": [
+        {
+          "asset": "ARB",
+          "before_percent": 50,
+          "after_percent": 60,
+          "signed_delta_pp": 10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "TAO",
+          "before_percent": 50,
+          "after_percent": 60,
+          "signed_delta_pp": 10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "WLD",
+          "before_percent": 50,
+          "after_percent": 60,
+          "signed_delta_pp": 10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "AUCTION",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "BLUR",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "GALA",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "HYPER",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "S",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SYRUP",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 9,
+      "raw_material_row_count": 9,
+      "raw_material_notice": true,
+      "raw_material_direction": "MIXED",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "fdb068f493444efba6cc979dec9a3955",
+      "title": "Update on the Collateral Ratio Under Cross Margin and Portfolio Margin (2026-09-25)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/fdb068f493444efba6cc979dec9a3955",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/fdb068f493444efba6cc979dec9a3955",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/fdb068f493444efba6cc979dec9a3955"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search4",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 7
+        },
+        {
+          "tool_group": "open3",
+          "mode": "body_open",
+          "redirect_to_generic_index": true,
+          "flat_rows_recovered": 0
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-09-22 09:15",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "2026-09-23 08:38",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-09-25T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-09-25T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin_and_Cross_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": "UNKNOWN",
+      "ancillary_leverage_notice_observed": "UNKNOWN",
+      "ordinary_pm_rows": [
+        {
+          "asset": "GAS",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "NEWT",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ORCA",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SFP",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "UMA",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "1MBABYDOGE",
+          "before_percent": 10,
+          "after_percent": 30,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "KAVA",
+          "before_percent": 10,
+          "after_percent": 30,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 7,
+      "raw_material_row_count": 7,
+      "raw_material_notice": true,
+      "raw_material_direction": "MIXED",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "OFFICIAL_PLAN_MODIFICATION_DISCLOSED_ORIGINAL_DIFF_UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": [
+        "Official search text says announcement was updated on 2026-09-23 to modify token collateral update plan. These are current revised rows, not authenticated original rows. Original plan and material amendment delta UNKNOWN. Body open redirected to general announcement page."
+      ]
+    },
+    {
+      "article_id": "2200ab5284594d8a8b8239326e3d1fff",
+      "title": "Update on the Collateral Ratio & Leverage Under Cross Margin and Portfolio Margin (2026-10-02)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/2200ab5284594d8a8b8239326e3d1fff",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/2200ab5284594d8a8b8239326e3d1fff",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/2200ab5284594d8a8b8239326e3d1fff"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search1",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 0
+        },
+        {
+          "tool_group": "search4",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 0
+        },
+        {
+          "tool_group": "open3",
+          "mode": "body_open",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 0
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-09-29 09:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-10-02T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-10-02T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin_leverage_and_PMPro_tiered_collateral_only",
+      "ordinary_pm_table_structure": "no_ordinary_flat_ratio_table_in_opened_body",
+      "complete_ordinary_flat_table_recovered": "UNKNOWN",
+      "evidence_completeness": "body_open_confirms_leverage_and_PMPro_tiers_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": true,
+      "ordinary_pm_rows": [],
+      "ordinary_flat_row_count": 0,
+      "raw_material_row_count": 0,
+      "raw_material_notice": false,
+      "raw_material_direction": "UNKNOWN",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": [
+        "Opened body has ordinary PM leverage changes 3x to5x and PM Pro tiered collateral changes. No ordinary flat collateral-ratio rows are present. Excluded from flat-ratio material notice counts."
+      ]
+    },
+    {
+      "article_id": "74c7657a53f141e8b2d584bf44e6dd87",
+      "title": "Update on the Collateral Ratio Under Cross Margin and Portfolio Margin (2026-10-09)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/74c7657a53f141e8b2d584bf44e6dd87",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/74c7657a53f141e8b2d584bf44e6dd87",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/74c7657a53f141e8b2d584bf44e6dd87"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search1",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 7
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-10-06 09:30",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-10-09T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-10-09T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin_and_Cross_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": "UNKNOWN",
+      "ordinary_pm_rows": [
+        {
+          "asset": "BCH",
+          "before_percent": 50,
+          "after_percent": 60,
+          "signed_delta_pp": 10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "CRCLB",
+          "before_percent": 50,
+          "after_percent": 60,
+          "signed_delta_pp": 10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ENA",
+          "before_percent": 50,
+          "after_percent": 60,
+          "signed_delta_pp": 10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "MSTRB",
+          "before_percent": 50,
+          "after_percent": 60,
+          "signed_delta_pp": 10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ONDO",
+          "before_percent": 50,
+          "after_percent": 60,
+          "signed_delta_pp": 10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "WCT",
+          "before_percent": 30,
+          "after_percent": 10,
+          "signed_delta_pp": -20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "MASK",
+          "before_percent": 10,
+          "after_percent": 30,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 7,
+      "raw_material_row_count": 7,
+      "raw_material_notice": true,
+      "raw_material_direction": "MIXED",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": []
+    },
+    {
+      "article_id": "79f36518401b4187b46d52e87bb2c286",
+      "title": "Update on the Collateral Ratio Under Cross Margin and Portfolio Margin (2026-10-16)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/79f36518401b4187b46d52e87bb2c286",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/79f36518401b4187b46d52e87bb2c286",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/79f36518401b4187b46d52e87bb2c286"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search1",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 2
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-10-13 10:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "2026-10-13 10:11",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-10-16T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-10-16T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin_and_Cross_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": "UNKNOWN",
+      "ancillary_leverage_notice_observed": "UNKNOWN",
+      "ordinary_pm_rows": [
+        {
+          "asset": "ASTER",
+          "before_percent": 50,
+          "after_percent": 60,
+          "signed_delta_pp": 10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "ETC",
+          "before_percent": 50,
+          "after_percent": 60,
+          "signed_delta_pp": 10,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 2,
+      "raw_material_row_count": 2,
+      "raw_material_notice": true,
+      "raw_material_direction": "LONG_ONLY",
+      "historically_effective_by_cutoff": true,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UPDATE_TIMESTAMP_PRESENT_DIFF_UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": [
+        "Known ASTER/ETC source example; updated timestamp visible; original revision/diff UNKNOWN. Explicitly excluded from frozen prospective outcome scoring."
+      ]
+    },
+    {
+      "article_id": "7d76e6a921024e09a91523f983503014",
+      "title": "Update on the Collateral Ratio Under Cross Margin and Portfolio Margin (2026-10-23)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/7d76e6a921024e09a91523f983503014",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/7d76e6a921024e09a91523f983503014",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/7d76e6a921024e09a91523f983503014"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search1",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 7
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "2026-10-20 12:00",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "2026-10-23T06:00:00Z",
+      "rollout_duration_text": "approximately 30 minutes",
+      "rollout_estimated_end_utc": "2026-10-23T06:30:00Z",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "ordinary_Portfolio_Margin_and_Cross_Margin",
+      "ordinary_pm_table_structure": "flat",
+      "complete_ordinary_flat_table_recovered": true,
+      "evidence_completeness": "ordinary_flat_table_from_official_search_text_only",
+      "ancillary_tiered_pmpro_table_observed": true,
+      "ancillary_leverage_notice_observed": "UNKNOWN",
+      "ordinary_pm_rows": [
+        {
+          "asset": "POL",
+          "before_percent": 50,
+          "after_percent": 60,
+          "signed_delta_pp": 10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SHIB",
+          "before_percent": 50,
+          "after_percent": 60,
+          "signed_delta_pp": 10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "XLM",
+          "before_percent": 50,
+          "after_percent": 60,
+          "signed_delta_pp": 10,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "COW",
+          "before_percent": 10,
+          "after_percent": 30,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "NEXO",
+          "before_percent": 10,
+          "after_percent": 30,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "RVN",
+          "before_percent": 10,
+          "after_percent": 30,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        },
+        {
+          "asset": "SAND",
+          "before_percent": 10,
+          "after_percent": 30,
+          "signed_delta_pp": 20,
+          "absolute_delta_gte_10_pp": true
+        }
+      ],
+      "ordinary_flat_row_count": 7,
+      "raw_material_row_count": 7,
+      "raw_material_notice": true,
+      "raw_material_direction": "LONG_ONLY",
+      "historically_effective_by_cutoff": false,
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": [
+        "Published before cutoff; announced effective time is after 2026-10-21 cutoff. Counted only as future announced material batch, never as an occurred historical event."
+      ]
+    },
+    {
+      "article_id": "4bf81e4829b64eacae3caa802ec6fc59",
+      "title": "Update on the Collateral Ratio Under Portfolio Margin and the Leverage & Margin Tiers of USDⓈ-M Perpetual Contracts (2026-08-07)",
+      "canonical_url": "https://www.binance.com/en/support/announcement/detail/4bf81e4829b64eacae3caa802ec6fc59",
+      "english_url_candidate": "https://www.binance.com/en/support/announcement/detail/4bf81e4829b64eacae3caa802ec6fc59",
+      "discovered_official_urls": [
+        "https://www.binance.com/en/support/announcement/detail/4bf81e4829b64eacae3caa802ec6fc59"
+      ],
+      "source_evidence": [
+        {
+          "tool_group": "search4",
+          "mode": "official_search_result",
+          "redirect_to_generic_index": false,
+          "flat_rows_recovered": 0
+        },
+        {
+          "tool_group": "open3",
+          "mode": "body_open",
+          "redirect_to_generic_index": true,
+          "flat_rows_recovered": 0
+        }
+      ],
+      "notice_family": "Binance collateral-ratio/PM update candidate",
+      "published_display_text": "UNKNOWN",
+      "published_at_utc": "UNKNOWN",
+      "published_timezone_evidence": "Displayed publication timestamp has no explicit timezone in retrieved text; not silently normalized to UTC.",
+      "updated_display_text": "UNKNOWN",
+      "updated_at_utc": "UNKNOWN",
+      "announced_effective_start_utc": "UNKNOWN",
+      "rollout_duration_text": "UNKNOWN",
+      "rollout_estimated_end_utc": "UNKNOWN",
+      "actual_completion_utc": "UNKNOWN",
+      "product_scope": "UNKNOWN",
+      "ordinary_pm_table_structure": "UNKNOWN",
+      "complete_ordinary_flat_table_recovered": "UNKNOWN",
+      "evidence_completeness": "incomplete",
+      "ancillary_tiered_pmpro_table_observed": "UNKNOWN",
+      "ancillary_leverage_notice_observed": "UNKNOWN",
+      "ordinary_pm_rows": [],
+      "ordinary_flat_row_count": "UNKNOWN",
+      "raw_material_row_count": "UNKNOWN",
+      "raw_material_notice": "UNKNOWN",
+      "raw_material_direction": "UNKNOWN",
+      "historically_effective_by_cutoff": "UNKNOWN",
+      "same_notice_ordinary_row_duplicates": [],
+      "same_notice_batch_count": 1,
+      "authenticated_original_revision": "UNKNOWN",
+      "material_amendment_status": "UNKNOWN",
+      "mixed_listing_delisting_treatment_same_notice": "UNKNOWN",
+      "historical_first_receipt_utc": "UNKNOWN",
+      "historical_asset_identity_and_native_eligibility": "UNKNOWN",
+      "strict_frozen_protocol_qualified_notice": "UNKNOWN",
+      "notes": [
+        "Official search result title and futures leverage excerpt only. Body open redirected. Ordinary-PM table, rows, publication, effective timestamp and materiality UNKNOWN; title date is not substituted for effective time."
+      ]
+    }
+  ],
+  "incidental_listing_candidates_excluded": [
+    {
+      "article_id": "d3a87ea5cd69421884932ef7f91d6c5b",
+      "reason": "FRAX listing notice; no flat ordinary-PM before/after ratio table recovered; not counted."
+    },
+    {
+      "article_id": "5c52a77daddf4e0d9769b87cdc91fae4",
+      "reason": "AERO listing notice; no flat ordinary-PM before/after ratio table recovered; not counted."
+    }
+  ],
+  "search_queries": [
+    [
+      "site:binance.com/en/support/announcement \"Portfolio Margin\" \"Collateral Ratio\" \"2026\"",
+      "site:binance.com \"Portfolio Margin\" \"Collateral Ratio\" \"2026-01\"",
+      "site:binance.com \"Portfolio Margin\" \"Collateral Ratio\" \"2026-02\"",
+      "site:binance.com \"Portfolio Margin\" \"Collateral Ratio\" \"2026-03\""
+    ],
+    [
+      "site:binance.com/en/support/announcement \"collateral ratio\" \"Portfolio Margin\" \"2026-01\"",
+      "site:binance.com/en/support/announcement \"collateral ratio\" \"Portfolio Margin\" \"2026-02\" -2026-02-27",
+      "site:binance.com/en/support/announcement \"collateral ratio\" \"Portfolio Margin\" \"2026-03\" -2026-03-10",
+      "site:binance.com/en/support/announcement \"collateral ratio\" \"Portfolio Margin\" \"2026-04\""
+    ],
+    [
+      "site:binance.com/en/support/announcement \"Collateral Ratio\" \"Portfolio Margin\" \"2026-05\" -2026-05-08 -2026-05-15 -2026-05-22",
+      "site:binance.com/en/support/announcement \"Collateral Ratio\" \"Portfolio Margin\" \"2026-06\"",
+      "site:binance.com/en/support/announcement \"Collateral Ratio\" \"Portfolio Margin\" \"2026-07\" -2026-07-10 -2026-07-17",
+      "site:binance.com/en/support/announcement \"Collateral Ratio\" \"Portfolio Margin\" \"2026-04\" -2026-04-24 -2026-04-29"
+    ],
+    [
+      "site:binance.com/en/support/announcement \"Collateral Ratio\" \"Portfolio Margin\" \"2026-08\" -2026-08-14",
+      "site:binance.com/en/support/announcement \"Collateral Ratio\" \"Portfolio Margin\" \"2026-09\"",
+      "site:binance.com/en/support/announcement \"Collateral Ratio\" \"Portfolio Margin\" \"2026-07-31\"",
+      "site:binance.com/en/support/announcement \"Collateral Ratio\" \"Portfolio Margin\" \"2026-06-05\""
+    ]
+  ]
+}

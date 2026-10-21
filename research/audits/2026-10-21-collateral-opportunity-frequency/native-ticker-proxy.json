@@ -1,0 +1,1114 @@
+{
+  "schema": "cocomelon.later-native-ticker-spelling-proxy.v1",
+  "source_path": "/Users/Dtwo1/Cocomelon/research/audits/2026-10-20-adaptive-conditional-discovery/data-feasibility/native-meta-raw.json",
+  "source_sha256": "aa725f96351e898c95ab7cbc4062208200ea4fa7346478a10f60748e928b82e5",
+  "authority": "TICKER PROXY ONLY; not underlying identity or historical/current eligibility; absence is not a negative",
+  "rows": [
+    {
+      "name": "BTC",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ETH",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ATOM",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MATIC",
+      "isDelisted": true
+    },
+    {
+      "name": "DYDX",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "SOL",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "AVAX",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "BNB",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "APE",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "OP",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "LTC",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ARB",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "DOGE",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "INJ",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "SUI",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "kPEPE",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "CRV",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "LDO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "LINK",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "STX",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "RNDR",
+      "isDelisted": true
+    },
+    {
+      "name": "CFX",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "FTM",
+      "isDelisted": true
+    },
+    {
+      "name": "GMX",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "SNX",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "XRP",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "BCH",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "APT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "AAVE",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "COMP",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MKR",
+      "isDelisted": true
+    },
+    {
+      "name": "WLD",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "FXS",
+      "isDelisted": true
+    },
+    {
+      "name": "HPOS",
+      "isDelisted": true
+    },
+    {
+      "name": "RLB",
+      "isDelisted": true
+    },
+    {
+      "name": "UNIBOT",
+      "isDelisted": true
+    },
+    {
+      "name": "YGG",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "TRX",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "kSHIB",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "UNI",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "SEI",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "RUNE",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "OX",
+      "isDelisted": true
+    },
+    {
+      "name": "FRIEND",
+      "isDelisted": true
+    },
+    {
+      "name": "SHIA",
+      "isDelisted": true
+    },
+    {
+      "name": "CYBER",
+      "isDelisted": true
+    },
+    {
+      "name": "ZRO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "BLZ",
+      "isDelisted": true
+    },
+    {
+      "name": "DOT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "BANANA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "TRB",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "FTT",
+      "isDelisted": true
+    },
+    {
+      "name": "LOOM",
+      "isDelisted": true
+    },
+    {
+      "name": "OGN",
+      "isDelisted": true
+    },
+    {
+      "name": "RDNT",
+      "isDelisted": true
+    },
+    {
+      "name": "ARK",
+      "isDelisted": true
+    },
+    {
+      "name": "BNT",
+      "isDelisted": true
+    },
+    {
+      "name": "CANTO",
+      "isDelisted": true
+    },
+    {
+      "name": "REQ",
+      "isDelisted": true
+    },
+    {
+      "name": "BIGTIME",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "KAS",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ORBS",
+      "isDelisted": true
+    },
+    {
+      "name": "BLUR",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "TIA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "BSV",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ADA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "TON",
+      "isDelisted": true
+    },
+    {
+      "name": "MINA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "POLYX",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "GAS",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "PENDLE",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "STG",
+      "isDelisted": true
+    },
+    {
+      "name": "FET",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "STRAX",
+      "isDelisted": true
+    },
+    {
+      "name": "NEAR",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MEME",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ORDI",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "BADGER",
+      "isDelisted": true
+    },
+    {
+      "name": "NEO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ZEN",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "FIL",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "PYTH",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "SUSHI",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ILV",
+      "isDelisted": true
+    },
+    {
+      "name": "IMX",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "kBONK",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "GMT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "SUPER",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "USTC",
+      "isDelisted": true
+    },
+    {
+      "name": "NFTI",
+      "isDelisted": true
+    },
+    {
+      "name": "JUP",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "kLUNC",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "RSR",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "GALA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "JTO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "NTRN",
+      "isDelisted": true
+    },
+    {
+      "name": "ACE",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MAV",
+      "isDelisted": true
+    },
+    {
+      "name": "WIF",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "CAKE",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "PEOPLE",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ENS",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ETC",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "XAI",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MANTA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "UMA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ONDO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ALT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ZETA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "DYM",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MAVIA",
+      "isDelisted": true
+    },
+    {
+      "name": "W",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "PANDORA",
+      "isDelisted": true
+    },
+    {
+      "name": "STRK",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "PIXEL",
+      "isDelisted": true
+    },
+    {
+      "name": "AI",
+      "isDelisted": true
+    },
+    {
+      "name": "TAO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "AR",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MYRO",
+      "isDelisted": true
+    },
+    {
+      "name": "kFLOKI",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "BOME",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ETHFI",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ENA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MNT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "TNSR",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "SAGA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MERL",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "HBAR",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "POPCAT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "OMNI",
+      "isDelisted": true
+    },
+    {
+      "name": "EIGEN",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "REZ",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "NOT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "TURBO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "BRETT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "IO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ZK",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "BLAST",
+      "isDelisted": true
+    },
+    {
+      "name": "LISTA",
+      "isDelisted": true
+    },
+    {
+      "name": "MEW",
+      "isDelisted": true
+    },
+    {
+      "name": "RENDER",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "kDOGS",
+      "isDelisted": true
+    },
+    {
+      "name": "POL",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "CATI",
+      "isDelisted": true
+    },
+    {
+      "name": "CELO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "HMSTR",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "SCR",
+      "isDelisted": true
+    },
+    {
+      "name": "NEIROETH",
+      "isDelisted": true
+    },
+    {
+      "name": "kNEIRO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "GOAT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MOODENG",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "GRASS",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "PURR",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "PNUT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "XLM",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "CHILLGUY",
+      "isDelisted": true
+    },
+    {
+      "name": "SAND",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "IOTA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ALGO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "HYPE",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ME",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MOVE",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "VIRTUAL",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "PENGU",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "USUAL",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "FARTCOIN",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "AI16Z",
+      "isDelisted": true
+    },
+    {
+      "name": "AIXBT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ZEREBRO",
+      "isDelisted": true
+    },
+    {
+      "name": "BIO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "GRIFFAIN",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "SPX",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "S",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MORPHO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "TRUMP",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MELANIA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ANIME",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "VINE",
+      "isDelisted": true
+    },
+    {
+      "name": "VVV",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "JELLY",
+      "isDelisted": true
+    },
+    {
+      "name": "BERA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "TST",
+      "isDelisted": true
+    },
+    {
+      "name": "LAYER",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "IP",
+      "isDelisted": true
+    },
+    {
+      "name": "OM",
+      "isDelisted": true
+    },
+    {
+      "name": "KAITO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "NIL",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "PAXG",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "PROMPT",
+      "isDelisted": true
+    },
+    {
+      "name": "BABY",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "WCT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "HYPER",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ZORA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "INIT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "DOOD",
+      "isDelisted": true
+    },
+    {
+      "name": "LAUNCHCOIN",
+      "isDelisted": true
+    },
+    {
+      "name": "NXPC",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "SOPH",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "RESOLV",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "SYRUP",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "PUMP",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "PROVE",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "YZY",
+      "isDelisted": true
+    },
+    {
+      "name": "XPL",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "WLFI",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "LINEA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "SKY",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ASTER",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "AVNT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "STBL",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "0G",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "HEMI",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "APEX",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "2Z",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ZEC",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MON",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MET",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "MEGA",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "CC",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "ICP",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "AERO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "STABLE",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "FOGO",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "LIT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "XMR",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "AXS",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "DASH",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "SKR",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "AZTEC",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "CHIP",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "GRAM",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "CASHCAT",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "PONS",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    },
+    {
+      "name": "USELESS",
+      "isDelisted": "UNKNOWN_FLAG_ABSENT"
+    }
+  ],
+  "2026_occurred_material_non_EURI_labels": 150,
+  "exact_matches": [
+    "AAVE",
+    "ACE",
+    "AERO",
+    "AIXBT",
+    "ALGO",
+    "ANIME",
+    "APE",
+    "APT",
+    "ARB",
+    "ASTER",
+    "ATOM",
+    "AVAX",
+    "BANANA",
+    "BCH",
+    "BLUR",
+    "CAKE",
+    "CATI",
+    "CFX",
+    "CRV",
+    "DOT",
+    "DYDX",
+    "ENA",
+    "ETC",
+    "ETHFI",
+    "GALA",
+    "GAS",
+    "HBAR",
+    "HYPER",
+    "INJ",
+    "IO",
+    "KAITO",
+    "LINK",
+    "LTC",
+    "ME",
+    "MORPHO",
+    "NEO",
+    "NOT",
+    "NTRN",
+    "ONDO",
+    "ORDI",
+    "PAXG",
+    "PENGU",
+    "PIXEL",
+    "PNUT",
+    "PUMP",
+    "RDNT",
+    "RESOLV",
+    "RSR",
+    "S",
+    "SAGA",
+    "SAND",
+    "SCR",
+    "SEI",
+    "SNX",
+    "STRK",
+    "STX",
+    "SUSHI",
+    "SYRUP",
+    "TAO",
+    "TIA",
+    "TRUMP",
+    "TRX",
+    "UMA",
+    "UNI",
+    "USTC",
+    "W",
+    "WCT",
+    "WIF",
+    "WLD",
+    "XAI",
+    "XLM",
+    "YGG",
+    "ZEC",
+    "ZRO"
+  ],
+  "exact_matches_not_currently_flagged_delisted": [
+    "AAVE",
+    "ACE",
+    "AERO",
+    "AIXBT",
+    "ALGO",
+    "ANIME",
+    "APE",
+    "APT",
+    "ARB",
+    "ASTER",
+    "ATOM",
+    "AVAX",
+    "BANANA",
+    "BCH",
+    "BLUR",
+    "CAKE",
+    "CFX",
+    "CRV",
+    "DOT",
+    "DYDX",
+    "ENA",
+    "ETC",
+    "ETHFI",
+    "GALA",
+    "GAS",
+    "HBAR",
+    "HYPER",
+    "INJ",
+    "IO",
+    "KAITO",
+    "LINK",
+    "LTC",
+    "ME",
+    "MORPHO",
+    "NEO",
+    "NOT",
+    "ONDO",
+    "ORDI",
+    "PAXG",
+    "PENGU",
+    "PNUT",
+    "PUMP",
+    "RESOLV",
+    "RSR",
+    "S",
+    "SAGA",
+    "SAND",
+    "SEI",
+    "SNX",
+    "STRK",
+    "STX",
+    "SUSHI",
+    "SYRUP",
+    "TAO",
+    "TIA",
+    "TRUMP",
+    "TRX",
+    "UMA",
+    "UNI",
+    "W",
+    "WCT",
+    "WIF",
+    "WLD",
+    "XAI",
+    "XLM",
+    "YGG",
+    "ZEC",
+    "ZRO"
+  ],
+  "matched_batches_not_currently_flagged_delisted": [
+    "d4cd2d5de7494355be0d0e89e4b5b5fc",
+    "7acf274f85ef4d9d84e2e4de69b9ad81",
+    "44b6fb4bfc994057939918ab98d906bb",
+    "a46249effc4645c89db2c18a198119d4",
+    "361baed0b23744a8b322bc7023cba3a9",
+    "fdd4eb1e1272445b81fa0f1656ad17f6",
+    "26d93ead76134f94901e75edd3e008d4",
+    "7d34ee71003a43d19d88977b9815149e",
+    "acc2cb4b45714c7b99cfe3ba4848f3f4",
+    "fd9a0d1f932f4025bdb09b6c57179c9a",
+    "7a9deab7bcad40a69dd61734a577387e",
+    "4d11138559ff4598b60965c479517934",
+    "a18d439fe26943e09270bfbc45b6db13",
+    "97b4f93f9c684da2a5701ab09530d3df",
+    "b4a1a7c64f454abda5b22860cd52c682",
+    "3f18062274ea49199475b4ad9ff35738",
+    "1f12c2c6cc2b43aa941e382dfc19c417",
+    "390301281fa84012b654ddbe811f9a53",
+    "fdb068f493444efba6cc979dec9a3955",
+    "74c7657a53f141e8b2d584bf44e6dd87",
+    "79f36518401b4187b46d52e87bb2c286"
+  ]
+}
