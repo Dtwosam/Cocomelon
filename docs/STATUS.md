@@ -24,6 +24,10 @@ actual usage still unpriced. [Feed evidence, costs and bounded next check](flow_
 **BLOCKED FOR SAFETY / NOT RUNNING.** Source admission, operational launcher and
 immutable activation receipt remain deferred until read-only evaluation access
 and an identified host prove the unchanged full-depth/tape/clock/resource contract.
+Core commit `3927eb6f83193ca86cd416e6a8dab3e238fa4ff9`: 35 new integration tests and 62 frozen policy tests pass;
+configured research selection 1748 PASS; compile/Ruff/mypy 573 modules PASS.
+Final local full suite: 5698 PASS, 1 skipped, 1 documented macOS-only directory
+exception assertion failure. Exact-head Linux full/research CI remain required.
 [Independent execution review and verification](../research/experiments/flow-exhaustion-v1/runner-review.md).
 First-entry boundary is unassigned; no prospective signals, orders, fills, fees or
 PnL exist for this experiment. PR1392 stays draft/unmerged/inactive. Ordinary worker

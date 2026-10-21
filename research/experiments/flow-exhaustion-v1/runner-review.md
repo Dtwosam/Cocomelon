@@ -32,7 +32,9 @@ tests. Compile, Ruff and fresh-cache mypy (573 source modules) pass. A local ful
 run exposed a moved profitability-priority link; restored the link at the top and
 reran its regression. The existing macOS directory-unlink exception assertion
 remains platform-specific; exact-head Linux full/research CI are required before
-merge. The configured research selection includes the new tests.
+merge. Final configured research selection: 1748 PASS. Final local full suite:
+5698 PASS, 1 skipped, 1 unchanged macOS directory-exception assertion failure.
+Code commit `3927eb6f83193ca86cd416e6a8dab3e238fa4ff9`.
 
 [Feed and cost investigation](../../../docs/flow_exhaustion_feed_feasibility_2026_10_21.md)
 sets the next bounded decision: evaluation access, an identified host/egress owner
