@@ -131,6 +131,8 @@ def test_long_trend_execution_shadow_requires_durable_gate() -> None:
         '(run.get("head_repository") or {}).get("full_name")'
         in gate
     )
+    assert 'print(item["id"], item["name"], digest, sep="|")' in gate
+    assert "print(f\"{item['id']}" not in gate
     assert "durable gate artifact digest mismatch" in gate
     assert "durable gate ledger digest mismatch" in gate
     assert "durable gate candidate lineage mismatch" in gate
